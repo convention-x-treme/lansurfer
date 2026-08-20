@@ -24,7 +24,8 @@ You might want to play:
 
 * Warcraft III
 * Age of Empires II
-* Counter-Strike 2
+* Counter-Strike 1.6
+* Flatout 2
 * Trackmania
 * Quake III Arena
 * Unreal Tournament
