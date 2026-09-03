@@ -1,0 +1,140 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Quality and unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Check formatting
+        shell: bash
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [[ -n "$unformatted" ]]; then
+            printf 'The following files need gofmt:\n%s\n' "$unformatted"
+            exit 1
+          fi
+
+      - name: Check module files
+        run: go mod tidy -diff
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Check generated database code
+        shell: bash
+        run: |
+          go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1 generate
+          if [[ -n "$(git status --short)" ]]; then
+            git status --short
+            git diff
+            exit 1
+          fi
+
+      - name: Run unit tests
+        run: go test -race ./...
+
+  integration:
+    name: PostgreSQL integration tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18.6-alpine
+        env:
+          POSTGRES_DB: lansurfer_test
+          POSTGRES_USER: lansurfer_test
+          POSTGRES_PASSWORD: lansurfer_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U lansurfer_test -d lansurfer_test"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run integration tests
+        env:
+          LANSURFER_TEST_DATABASE_URL: postgres://lansurfer_test:lansurfer_test@127.0.0.1:5432/lansurfer_test?sslmode=disable
+        run: go test -race -count=1 -tags=integration ./internal/platform/postgres
+
+  build:
+    name: Build and Compose smoke test
+    needs: [quality, integration]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build binary
+        run: go build -trimpath ./...
+
+      - name: Run Compose smoke test
+        shell: bash
+        run: |
+          cleanup() {
+            status=$?
+            if [[ $status -ne 0 ]]; then
+              docker compose logs
+            fi
+            docker compose down --volumes --remove-orphans
+            exit "$status"
+          }
+          trap cleanup EXIT
+
+          docker compose up --build --detach
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:8080/readyz >/dev/null; then
+              break
+            fi
+            if [[ $attempt -eq 30 ]]; then
+              exit 1
+            fi
+            sleep 1
+          done
+          curl --fail --silent http://127.0.0.1:8080/healthz | grep --fixed-strings --line-regexp ok
+          curl --fail --silent http://127.0.0.1:8080/readyz | grep --fixed-strings --line-regexp ready
