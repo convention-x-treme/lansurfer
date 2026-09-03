@@ -1,389 +1,105 @@
 # 🌊 LANsurfer
 
-**Find your crew. Catch the next game.**
+**Find players. Start a game.**
 
-LANsurfer is an open-source **Looking for Group (LFG)** platform built for LAN parties, gaming events, and gaming communities.
+LANsurfer is an open-source, self-hosted Looking-for-Group application for LAN parties, gaming events, and gaming communities.
 
-Instead of wondering who else might be interested in playing a specific game, simply start a **Wave**.
+At a large LAN event, the hard part is often not finding people. It is discovering who wants to play the same game at the same time. LANsurfer gives participants a simple web interface to follow games, create a Game Request, join other players, and start playing.
 
-Players following that game can be notified, join the Wave, and start playing.
+> LANsurfer is in early development. The architecture, schema, and user interface may change before the first release.
 
-> 🎮 Someone wants to play Warcraft III.
-> 🌊 They start a Wave.
-> 🔔 Interested players get notified.
-> 👥 The crew comes together.
-> 🚀 Game on.
+## Product direction
 
----
+The first prototype is web-only and targets the CXT LAN party with roughly 400 participants. Its core flow is:
 
-## 🌊 What is LANsurfer?
+1. A user signs in through OpenID Connect.
+2. The user follows games they are interested in.
+3. A user creates a Game Request.
+4. Other interested users see it immediately.
+5. Players join the request and start playing.
 
-Finding players at a LAN party sounds easy — until hundreds of people are sitting in the same venue playing dozens or even hundreds of different games.
+The v0.1 scope includes server-rendered pages, HTMX interactions, Server-Sent Events, a local game catalog, basic event support, PostgreSQL-backed users and sessions, and Docker Compose self-hosting.
 
-You might want to play:
+Discord, Web Push, chat, teams, tournaments, external game catalogs, and configurable instance branding are deliberately deferred. See [the product definition](docs/PRODUCT.md) and [roadmap](docs/ROADMAP.md) for details.
 
-* Warcraft III
-* Age of Empires II
-* Counter-Strike 1.6
-* Flatout 2
-* Trackmania
-* Quake III Arena
-* Unreal Tournament
-* OpenTTD
-* or some obscure game from 20 years ago
+## Current status
 
-Chances are, someone else wants to play it too.
+The repository currently provides the backend and PostgreSQL foundation:
 
-**You just need to find each other.**
+- Go application with chi routing
+- PostgreSQL connection retry and readiness checks
+- embedded goose migrations protected by a PostgreSQL advisory lock
+- pgx and sqlc setup
+- structured logging and graceful shutdown
+- health and readiness endpoints
+- Docker and Docker Compose workflows
+- unit, integration, and CI checks
 
-That's what LANsurfer is for.
+Product features and the frontend are not implemented yet.
 
-LANsurfer provides a central place where players can discover what others want to play, subscribe to their favorite games, and quickly form groups.
+## Quick start
 
----
+Requirements:
 
-## 🏄 How it works
+- Docker with Docker Compose
+- Go 1.27.1 for local Go development
+- [Task](https://taskfile.dev/) for the documented task shortcuts
 
-LANsurfer uses a simple concept:
+Start LANsurfer and PostgreSQL:
 
-### 🌊 Waves
-
-A **Wave** is an LFG request.
-
-For example:
-
-```text
-Warcraft III
-2 / 4 players
-
-Mode: 2v2
-Style: Casual
-Starts: Now
-
-"Getting back into WC3 — no pros please 😄"
-
-[ Join Wave ]
+```sh
+docker compose up --build
 ```
 
-Creating a Wave should take only a few seconds.
+Then verify the service:
 
----
-
-### 👥 Crew
-
-Players joining a Wave become the **Crew**.
-
-Once enough players have joined, it's time to play.
-
-No complicated matchmaking.
-
-No endless Discord channel scrolling.
-
-Just:
-
-**Start Wave → Find Players → Play**
-
----
-
-### 🔔 Follow Games
-
-Players can follow games they are interested in.
-
-```text
-Warcraft III          🔔 Following
-Age of Empires II     🔔 Following
-Quake III Arena       🔔 Following
-Counter-Strike 2      ○
+```sh
+curl http://localhost:8080/healthz
+curl http://localhost:8080/readyz
 ```
 
-When someone starts a Wave for a followed game, LANsurfer can notify interested players.
+Both endpoints should return a successful response. Stop the stack with:
 
----
-
-## 🔥 Discover what's happening
-
-LANsurfer isn't just about actively searching for players.
-
-It also makes the current gaming interests of a community visible.
-
-```text
-🔥 Trending Now
-
-Counter-Strike 2       23 interested
-Trackmania             17 interested
-Warcraft III           11 interested
-Age of Empires II       8 interested
-Quake III Arena         6 interested
+```sh
+docker compose down
 ```
 
-At a large LAN party, this can reveal gaming opportunities that would otherwise go unnoticed.
+The Compose credentials are development defaults and must not be reused for an exposed deployment.
 
----
+## Local development
 
-## 🟢 Ready to Play
+Common commands:
 
-Players can optionally signal that they are currently available for specific games.
-
-```text
-🟢 Ready to Play
-
-Warcraft III
-Age of Empires II
-Quake III Arena
-Trackmania
+```sh
+task dev               # build and run the complete Compose stack
+task run               # run Go locally using environment configuration
+task build             # build bin/lansurfer
+task lint              # check formatting, modules, and Go source
+task test              # run race-enabled unit tests
+task test:integration  # start an isolated PostgreSQL and run integration tests
+task generate          # regenerate sqlc code
 ```
 
-This makes it easy to see which games could be started **right now**.
+Running the Go process directly requires:
 
----
-
-## 🎯 Built for LAN parties
-
-LANsurfer was created with physical LAN events in mind.
-
-The original use case is **CXT**, a LAN party with around 400 participants.
-
-With hundreds of players in the same building, the challenge isn't necessarily finding *people*.
-
-It's finding the people who want to play **the same game at the same time**.
-
-LANsurfer aims to solve exactly that.
-
----
-
-## 🔌 Integrations
-
-LANsurfer is designed around the idea that LFG requests shouldn't live in just one place.
-
-Planned integrations include:
-
-### 🌐 Web
-
-The main LANsurfer application.
-
-Browse Waves, follow games, manage your profile, and find players.
-
-### 💬 Discord
-
-Discord integration can notify communities about new Waves and allow players to interact with LANsurfer directly from Discord.
-
-### 🔔 Web Push
-
-Get notified when someone wants to play one of your followed games.
-
-### 📺 Twitch
-
-Potential future integrations may allow Waves or currently trending games to appear in event streams.
-
-### 🔗 API & Webhooks
-
-LANsurfer aims to provide APIs and webhooks so communities can build their own integrations.
-
----
-
-## 🗺️ Project Status
-
-> ⚠️ **LANsurfer is currently in early development.**
-
-The architecture, APIs, database schema, and UI may change significantly.
-
-The initial goal is to build a working MVP and test it at a real LAN event.
-
----
-
-## 🚀 MVP
-
-The first version of LANsurfer will focus on the core experience:
-
-* [ ] User authentication
-* [ ] Discord login
-* [ ] Create and manage events / communities
-* [ ] Browse games
-* [ ] Follow games
-* [ ] Create Waves
-* [ ] Join and leave Waves
-* [ ] Player limits
-* [ ] Start time / "Play now"
-* [ ] Casual / Competitive tags
-* [ ] Ready-to-Play status
-* [ ] Notifications
-* [ ] Discord integration
-* [ ] Responsive web interface
-* [ ] Dark mode
-* [ ] Self-hosting
-* [ ] Docker deployment
-
-The guiding principle is simple:
-
-> **A player should be able to find or start a game within seconds.**
-
----
-
-## 🔮 Ideas for the Future
-
-LANsurfer may eventually support:
-
-* Steam library import
-* Discord game roles
-* scheduled Waves
-* recurring gaming sessions
-* skill / experience preferences
-* team creation
-* voice channel integration
-* automatic temporary Discord channels
-* tournament integration
-* event displays / big-screen dashboards
-* public and private communities
-* multiple LAN events per instance
-* federation between LANsurfer instances
-* Matrix integration
-* Twitch integration
-* mobile notifications
-* public API
-* webhooks
-* bots
-* community statistics
-
-And probably a few things we haven't thought of yet.
-
----
-
-## 🎨 The LANsurfer Language
-
-LANsurfer uses a light surfing theme throughout the project.
-
-| LANsurfer            | Meaning                               |
-| -------------------- | ------------------------------------- |
-| 🌊 **Wave**          | Looking for Group request             |
-| 👥 **Crew**          | Players joining a Wave                |
-| 📍 **Spot**          | LAN event or gaming community         |
-| 🏄 **Catch a Wave**  | Join an LFG                           |
-| 🔔 **Follow**        | Subscribe to notifications for a game |
-| 🟢 **Ready to Play** | Available to play right now           |
-
-The theme should remain fun without getting in the way of usability.
-
----
-
-## 🦦 Meet the LANsurfer Otter
-
-LANsurfer's mascot is an otter.
-
-Why an otter?
-
-Otters are social, spend a lot of time in the water, and — most importantly — look great with a headset and a surfboard.
-
-The mascot may appear in:
-
-* onboarding
-* empty states
-* Discord
-* documentation
-* stickers
-* event displays
-* community content
-
-The application itself remains focused on a clean and modern UI.
-
----
-
-## 🎨 Design
-
-LANsurfer combines a modern gaming interface with an ocean-inspired visual identity.
-
-Primary colors:
-
-| Color       | Hex       |
-| ----------- | --------- |
-| Deep Ocean  | `#0D1B2A` |
-| Ocean Depth | `#1B263B` |
-| Surf Blue   | `#00B4D8` |
-| Aqua Wave   | `#48CAE4` |
-| Sea Foam    | `#90E0EF` |
-| White Sand  | `#F8F9FA` |
-| Sunset      | `#F4D35E` |
-
-The interface is designed **Dark Mode first**.
-
-The goal is to avoid the typical overloaded RGB/cyberpunk gaming aesthetic and instead create something clean, modern, and community-focused.
-
----
-
-## 🐳 Self-Hosting
-
-LANsurfer is intended to be easy to self-host.
-
-The goal is for LAN organizers and gaming communities to run their own instance:
-
-```text
-your-lan.example
-lfg.your-community.example
-games.example.org
+```sh
+export LANSURFER_DATABASE_URL='postgres://lansurfer:lansurfer@127.0.0.1:5432/lansurfer?sslmode=disable'
+export LANSURFER_LISTEN_ADDR=':8080' # optional; this is the default
+go run ./cmd/lansurfer
 ```
 
-Docker-based deployment is planned as the primary installation method.
+## Architecture
 
-More documentation will follow as the project develops.
+LANsurfer is a modular Go monolith using server-side rendering and progressive enhancement. PostgreSQL is the only required infrastructure dependency.
 
----
+Read these documents before contributing:
 
-## 🤝 Contributing
+- [Development rules](AGENTS.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [Product definition](docs/PRODUCT.md)
+- [Roadmap](docs/ROADMAP.md)
+- [Contributing](CONTRIBUTING.md)
 
-Contributions are welcome!
+## License
 
-LANsurfer is being developed as an open-source project, and we'd love to see it used and improved by other LAN parties and gaming communities.
-
-You can help with:
-
-* 💻 Development
-* 🎨 UI / UX
-* 🐛 Bug reports
-* 💡 Feature ideas
-* 📖 Documentation
-* 🌍 Translations
-* 🔌 Integrations
-* 🧪 Testing at LAN events
-
-If you have an idea, feel free to open an **Issue** or start a **Discussion**.
-
-Contribution guidelines will be added as the project matures.
-
----
-
-## 💡 Philosophy
-
-LANsurfer is built around a few simple principles:
-
-**Gaming is better together.**
-
-LAN parties should make it easy to discover what other people want to play.
-
-**Finding players shouldn't require searching through dozens of Discord channels.**
-
-Open protocols and integrations are better than platform lock-in.
-
-**Communities should be able to host their own infrastructure.**
-
-And sometimes the best game at a LAN isn't the newest one.
-
-It's the 20-year-old game you suddenly discover ten other people also want to play.
-
----
-
-## 📜 License
-
-LANsurfer is free and open-source software licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**.
-
-You are free to use, modify, and distribute LANsurfer under the terms of the license.
-
-See [`LICENSE`](LICENSE) for details.
-
----
-
-## 🌊 LANsurfer
-
-**Find your crew. Catch the next game.**
-
-Built for LAN parties.
-Built for gaming communities.
-Built in the open.
+LANsurfer is licensed under the [GNU Affero General Public License v3.0](LICENSE).
