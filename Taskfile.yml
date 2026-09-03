@@ -1,0 +1,67 @@
+version: "3"
+
+vars:
+  SQLC_VERSION: v1.31.1
+  TEST_DATABASE_URL: postgres://lansurfer_test:lansurfer_test@127.0.0.1:55432/lansurfer_test?sslmode=disable
+
+tasks:
+  default:
+    desc: List available tasks
+    cmds:
+      - task --list
+
+  dev:
+    desc: Build and run LANsurfer with PostgreSQL
+    cmds:
+      - docker compose up --build
+
+  run:
+    desc: Run LANsurfer with configuration from the environment
+    cmds:
+      - go run ./cmd/lansurfer
+
+  build:
+    desc: Build the LANsurfer binary
+    cmds:
+      - mkdir -p bin
+      - go build -trimpath -o bin/lansurfer ./cmd/lansurfer
+
+  test:
+    desc: Run unit tests with the race detector
+    cmds:
+      - go test -race ./...
+
+  test:integration:
+    desc: Run PostgreSQL integration tests in an isolated container
+    cmds:
+      - defer: docker compose -p lansurfer-test -f compose.test.yaml down --volumes --remove-orphans
+      - docker compose -p lansurfer-test -f compose.test.yaml up -d --wait
+      - LANSURFER_TEST_DATABASE_URL='{{.TEST_DATABASE_URL}}' go test -race -count=1 -tags=integration ./internal/platform/postgres
+
+  generate:
+    desc: Generate typed database code
+    cmds:
+      - go run github.com/sqlc-dev/sqlc/cmd/sqlc@{{.SQLC_VERSION}} generate
+
+  lint:
+    desc: Check formatting, modules, and Go source
+    cmds:
+      - |
+        unformatted="$(gofmt -l .)"
+        if [ -n "$unformatted" ]; then
+          echo "The following files need gofmt:"
+          echo "$unformatted"
+          exit 1
+        fi
+      - go mod tidy -diff
+      - go vet ./...
+
+  db:up:
+    desc: Start the development PostgreSQL service
+    cmds:
+      - docker compose up -d --wait postgres
+
+  db:down:
+    desc: Stop development services
+    cmds:
+      - docker compose down
