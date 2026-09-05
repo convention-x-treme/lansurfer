@@ -2,7 +2,7 @@
 
 Thanks for helping make LANsurfer useful and maintainable.
 
-Before changing code, read [AGENTS.md](AGENTS.md), [the architecture](docs/ARCHITECTURE.md), [the product definition](docs/PRODUCT.md), and [the roadmap](docs/ROADMAP.md). These documents define the project scope and architectural boundaries.
+Before changing code, read [AGENTS.md](AGENTS.md). Consult the current [roadmap milestone](docs/ROADMAP.md#progress) and the sections of [the architecture](docs/ARCHITECTURE.md) and [product definition](docs/PRODUCT.md) relevant to your task.
 
 ## Development setup
 
@@ -28,6 +28,16 @@ task build
 ```
 
 Run `task generate` after changing SQL queries or migrations and commit the generated sqlc files.
+
+To run Go directly, start the development database with `task db:up`, then set the configuration shown in [.env.example](.env.example):
+
+```sh
+export LANSURFER_DATABASE_URL='postgres://lansurfer:lansurfer@127.0.0.1:5432/lansurfer?sslmode=disable'
+export LANSURFER_LISTEN_ADDR=':8080'
+task run
+```
+
+These credentials are for local development only. Run `task --list` for all available workflows.
 
 ## Changes
 

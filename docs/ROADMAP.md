@@ -4,11 +4,22 @@ This roadmap defines implementation milestones for the first LANsurfer prototype
 
 The milestones describe outcomes, not exact code structure.
 
-Codex may make reasonable implementation-level decisions while following `AGENTS.md` and `docs/ARCHITECTURE.md`.
+Follow the [development workflow](../AGENTS.md#workflow-and-documentation) and consult the architecture/product sections relevant to the current milestone. Each milestone must leave the repository buildable and testable.
 
-Every milestone should leave the repository buildable and testable.
+## Progress
 
-Do not implement later milestones early solely for architectural completeness.
+- [x] Milestone 0 — Repository Foundation
+- [x] Milestone 1 — Runnable Backend and PostgreSQL
+- [ ] **Current:** Milestone 2 — Frontend Foundation
+- [ ] Milestone 3 — Authentication and Users
+- [ ] Milestone 4 — Events and Local Game Catalog
+- [ ] Milestone 5 — Game Subscriptions
+- [ ] Milestone 6 — Core GameRequest Workflow
+- [ ] Milestone 7 — SSE Realtime Experience
+- [ ] Milestone 8 — Prototype UX and Hardening
+- [ ] Milestone 9 — Open Source Self-Hosting Release
+
+Future milestones remain deferred until the v0.1 roadmap is complete.
 
 ---
 
@@ -31,7 +42,7 @@ Create a clean open-source repository foundation before application features.
 - `.gitignore`
 - editor/tooling basics where justified
 
-## Codex may decide
+## Implementation details
 
 - exact Go module path once repository URL/module name is known
 - minor documentation organization
@@ -584,36 +595,3 @@ If hosted LANsurfer later needs horizontal scaling:
 - PostgreSQL LISTEN/NOTIFY is the preferred first option to investigate
 
 Do not add distributed infrastructure before this requirement exists.
-
----
-
-# Codex Working Style
-
-For each milestone:
-
-1. Read `AGENTS.md`.
-2. Read `docs/ARCHITECTURE.md`.
-3. Read `docs/PRODUCT.md`.
-4. Read this roadmap.
-5. Inspect the current repository before designing new structures.
-6. Propose significant new direct dependencies before adding them.
-7. Keep scope limited to the current milestone.
-8. Run relevant generators.
-9. Run tests.
-10. Run the production build when practical.
-11. Summarize implementation decisions and deliberate omissions.
-
-Codex may make small implementation decisions independently.
-
-Ask before changing:
-
-- core stack
-- database
-- architecture style
-- module ownership
-- authentication model
-- public domain model
-- self-hosting model
-- v0.1 scope
-
-The roadmap should be updated as implementation teaches us more.

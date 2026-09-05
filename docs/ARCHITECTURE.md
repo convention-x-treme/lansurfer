@@ -153,6 +153,7 @@ For v0.1, the event broker may run in memory.
 The event publishing abstraction should remain replaceable so PostgreSQL `LISTEN/NOTIFY` can be used later if multiple LANsurfer application instances are deployed.
 
 WebSockets are not part of the initial architecture.
+Introducing them requires approval and a meaningful bidirectional use case.
 
 ---
 
@@ -507,11 +508,11 @@ auth_sessions
 - last_seen_at
 ```
 
-The browser receives only an opaque random session ID.
+The browser receives only an opaque, high-entropy random session ID in a cookie with bounded lifetime, `HttpOnly`, `SameSite`, and `Secure` in production.
 
 No JWT browser sessions.
 
-Sessions should be revocable.
+Sessions must be revocable server-side.
 
 ---
 
@@ -539,20 +540,9 @@ Do not introduce a config file format unless a concrete requirement appears.
 
 ## 16. Branding Architecture
 
-Branding is intentionally not a v0.1 feature.
+Keep names, colors, and asset paths in one small centralized value/object; templates must consume it rather than repeat constants. This boundary should allow future database-backed instance branding without a frontend rewrite.
 
-For now:
-
-- static LANsurfer name
-- static logo
-- static theme
-- central branding values
-
-Future customization will be per LANsurfer instance, not per Event.
-
-Do not spread branding constants across pages.
-
-A small centralized value/object is acceptable even while values remain hard-coded.
+See [Product branding](PRODUCT.md#20-branding) for the fixed v0.1 branding and customization scope.
 
 ---
 
@@ -716,17 +706,4 @@ Architecture documentation alone should not be the only defense against accident
 
 ## 23. Architectural Decision Policy
 
-Small internal implementation choices can evolve without an ADR.
-
-Create a short ADR or update this document when changing something significant, such as:
-
-- database technology
-- frontend architecture
-- authentication architecture
-- module boundaries
-- deployment model
-- realtime transport
-- domain ownership
-- major direct infrastructure dependency
-
-The project should remain understandable from this document without reconstructing architecture decisions from Git history.
+Follow the [approval rules](../AGENTS.md#constraints-requiring-approval). Document approved architectural changes here or in a short ADR, including the reason for the decision. Small internal implementation choices do not need an ADR.

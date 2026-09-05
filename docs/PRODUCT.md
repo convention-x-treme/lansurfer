@@ -93,6 +93,8 @@ Avoid requiring users to learn terms such as:
 
 The product name provides the personality; the UI should prioritize clarity.
 
+Use these domain names in code and the database: `User`, `Identity`, `AuthSession`, `Game`, `GameAlias`, `GameExternalID`, `GameSubscription`, `Event`, `GameRequest`, and `GameRequestMember`. Surf metaphors are reserved for marketing and UI copy.
+
 ---
 
 ## 5. v0.1 Scope
@@ -511,11 +513,7 @@ Current tagline:
 
 The product may use ocean/surf visual identity.
 
-For v0.1 the branding is static and centralized.
-
-Do not implement configurable branding yet.
-
-Future branding is expected to be per LANsurfer instance.
+For v0.1 use fixed branding; do not add branding tables, logo uploads, or a theme editor. Future customization is per instance, not per Event. See [Branding architecture](ARCHITECTURE.md#16-branding-architecture) for centralizing the values.
 
 ---
 
@@ -560,20 +558,4 @@ The prototype does not need every future integration to prove the core concept.
 
 ## 23. Product Decisions Intentionally Left to Implementation
 
-Codex may make reasonable implementation choices for details such as:
-
-- exact form layout
-- exact empty-state copy
-- exact pagination style
-- precise admin route layout
-- exact internal validation helper structure
-- whether a simple list or search-first UI is better for small screens
-
-Codex should not independently change:
-
-- the primary domain terms
-- the web-only v0.1 scope
-- local PostgreSQL as the game catalog source of truth
-- OIDC/no-password authentication
-- GameRequest as the main LFG concept
-- self-hosting simplicity as a primary product requirement
+Layout, copy, pagination, admin routes, and validation helpers are implementation details. Follow the [approval rules](../AGENTS.md#constraints-requiring-approval) for changes to product scope or domain decisions.
