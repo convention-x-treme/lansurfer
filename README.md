@@ -1,105 +1,114 @@
 # 🌊 LANsurfer
 
-**Find players. Start a game.**
+**Find your crew. Catch the next game.**
 
-LANsurfer is an open-source, self-hosted Looking-for-Group application for LAN parties, gaming events, and gaming communities.
+**LANsurfer is back.**
 
-At a large LAN event, the hard part is often not finding people. It is discovering who wants to play the same game at the same time. LANsurfer gives participants a simple web interface to follow games, create a Game Request, join other players, and start playing.
+Originally built for LAN parties in the early 2000s.<br>
+Reimagined as an open-source **Looking for Group (LFG)** platform for gaming communities.
 
-> LANsurfer is in early development. The architecture, schema, and user interface may change before the first release.
+Self-hosted and built for LAN parties, gaming events, and the people who bring them to life.
 
-## Product direction
+Hundreds of players. Dozens of games. And somewhere in the room, someone else is thinking: *“Anyone up for Warcraft III?”*
 
-The first prototype is web-only and targets the CXT LAN party with roughly 400 participants. Its core flow is:
+**You just need to find each other.**
 
-1. A user signs in through OpenID Connect.
-2. The user follows games they are interested in.
-3. A user creates a Game Request.
-4. Other interested users see it immediately.
-5. Players join the request and start playing.
+[The idea](#-what-is-lansurfer) · [How it works](#-how-it-works) · [Project status](#-project-status) · [Get involved](#-get-involved)
 
-The v0.1 scope includes server-rendered pages, HTMX interactions, Server-Sent Events, a local game catalog, basic event support, PostgreSQL-backed users and sessions, and Docker Compose self-hosting.
+> 🚧 **Early development:** the backend foundation is in place. The player-facing experience described below is planned for the first prototype; there is no playable web UI yet.
 
-Discord, Web Push, chat, teams, tournaments, external game catalogs, and configurable instance branding are deliberately deferred. See [the product definition](docs/PRODUCT.md) and [roadmap](docs/ROADMAP.md) for details.
+## 🎮 What is LANsurfer?
 
-## Current status
+Maybe it's a quick round of Counter-Strike. Maybe it's FlatOut 2, an all-night OpenTTD session, or that obscure game you haven't launched in twenty years.
 
-The repository currently provides the backend and PostgreSQL foundation:
+Chances are, someone brought it too.
 
-- Go application with chi routing
-- PostgreSQL connection retry and readiness checks
-- embedded goose migrations protected by a PostgreSQL advisory lock
-- pgx and sqlc setup
-- structured logging and graceful shutdown
-- health and readiness endpoints
-- Docker and Docker Compose workflows
-- unit, integration, and CI checks
+LANsurfer aims to give everyone at the event a shared place to find out what others want to play, follow their favorite games, and get a group together. From Warcraft III and Age of Empires II to Trackmania, Quake III Arena, and Unreal Tournament — old favorites deserve another round.
 
-Product features and the frontend are not implemented yet.
+The original use case is **CXT**, a LAN party with around **400 participants**. The goal is to make those spontaneous “let's play something” moments easier for LAN organizers and gaming communities everywhere.
 
-## Quick start
+## 🏄 How it works
 
-Requirements:
+The first prototype will focus on a simple browser-based flow:
 
-- Docker with Docker Compose
-- Go 1.27.1 for local Go development
-- [Task](https://taskfile.dev/) for the documented task shortcuts
+1. **Follow your games.** Pick the games you'd like to play and find them again in My Games.
+2. **Find players.** Create a Game Request with a start time, an optional player limit, and a short description.
+3. **Join a game.** Browse requests, see who's still looking for players, and join in. Live updates keep player counts and new requests visible in the browser.
 
-Start LANsurfer and PostgreSQL:
+A request could look like this — an illustration of the planned experience:
+
+```text
+Warcraft III
+2 / 4 players · Starts now
+
+“Casual 2v2 — getting back into WC3.
+ Rusty players welcome 😄”
+
+[ Join ]
+```
+
+Once the group is ready, it's time to launch the game.
+
+**Follow games → Find players → Play together**
+
+## 🌊 Built for your community
+
+- **Your LAN, your instance.** Organizers can host LANsurfer on their own infrastructure and maintain the games available at their event.
+- **A place for the classics.** The local game catalog can include the games your community actually plays, including the less obvious ones.
+- **Easy to join in.** The first release targets desktop and mobile browsers, with quick, readable game requests.
+- **Built in the open.** Players, organizers, designers, and developers can help shape the project.
+
+## 🦦 Meet the LANsurfer Otter
+
+An otter with a headset and a surfboard feels right at home here: social, at ease in the water, and ready for the next game.
+
+The otter brings a little personality to LANsurfer's ocean-inspired identity. In the application, the wording stays familiar: games, players, events, and joining a game.
+
+## 🗺️ Project status
+
+We're building toward a **web-only v0.1 prototype** to try at a real LAN event. The backend and database foundation are implemented; the web interface is the next milestone. Login, following games, and creating or joining requests are still ahead.
+
+The [roadmap](docs/ROADMAP.md#progress) tracks completed work and what's next. The [product definition](docs/PRODUCT.md#5-v01-scope) describes the first release in detail.
+
+Discord, Web Push, external game catalogs, and a separate Ready-to-Play status are possibilities for later. They are outside the first prototype. The design and database may still change during development.
+
+## 🐳 Try the development foundation
+
+With this repository checked out and Docker with Docker Compose installed, start LANsurfer and PostgreSQL:
 
 ```sh
 docker compose up --build
 ```
 
-Then verify the service:
+This currently starts the backend, including automatic database migrations. Check that it is running:
 
 ```sh
 curl http://localhost:8080/healthz
 curl http://localhost:8080/readyz
 ```
 
-Both endpoints should return a successful response. Stop the stack with:
+Expect `ok` from `/healthz` and `ready` from `/readyz`. There is no homepage yet. Stop the stack with:
 
 ```sh
 docker compose down
 ```
 
-The Compose credentials are development defaults and must not be reused for an exposed deployment.
+The Compose credentials are development defaults; do not use them for an exposed deployment. See the [contributing guide](CONTRIBUTING.md#development-setup) for local Go development, configuration, and checks.
 
-## Local development
+## 🤝 Get involved
 
-Common commands:
+Have you organized a LAN? Spent half the evening trying to find a fourth player? We'd love your perspective.
 
-```sh
-task dev               # build and run the complete Compose stack
-task run               # run Go locally using environment configuration
-task build             # build bin/lansurfer
-task lint              # check formatting, modules, and Go source
-task test              # run race-enabled unit tests
-task test:integration  # start an isolated PostgreSQL and run integration tests
-task generate          # regenerate sqlc code
-```
+You can help with interface design, development, documentation, bug reports, and testing at LAN events. Share a concrete use case in an [issue](https://github.com/convention-x-treme/lansurfer/issues), or start with the [contributing guide](CONTRIBUTING.md).
 
-Running the Go process directly requires:
+For the technical side, LANsurfer is a modular Go monolith with server-rendered pages and PostgreSQL. The [architecture](docs/ARCHITECTURE.md) explains the choices; [development rules](AGENTS.md) cover repository conventions and commands.
 
-```sh
-export LANSURFER_DATABASE_URL='postgres://lansurfer:lansurfer@127.0.0.1:5432/lansurfer?sslmode=disable'
-export LANSURFER_LISTEN_ADDR=':8080' # optional; this is the default
-go run ./cmd/lansurfer
-```
+## 📜 License
 
-## Architecture
+LANsurfer is free and open-source software under the [GNU Affero General Public License v3.0 (AGPL-3.0)](LICENSE).
 
-LANsurfer is a modular Go monolith using server-side rendering and progressive enhancement. PostgreSQL is the only required infrastructure dependency.
+---
 
-Read these documents before contributing:
+Sometimes the best game at a LAN is the twenty-year-old one you suddenly discover ten other people also want to play.
 
-- [Development rules](AGENTS.md)
-- [Architecture](docs/ARCHITECTURE.md)
-- [Product definition](docs/PRODUCT.md)
-- [Roadmap](docs/ROADMAP.md)
-- [Contributing](CONTRIBUTING.md)
-
-## License
-
-LANsurfer is licensed under the [GNU Affero General Public License v3.0](LICENSE).
+**Built for LAN parties. Built for gaming communities. Built in the open.**
