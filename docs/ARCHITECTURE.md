@@ -540,9 +540,13 @@ Do not introduce a config file format unless a concrete requirement appears.
 
 ## 16. Branding Architecture
 
-Keep names, colors, and asset paths in one small centralized value/object; templates must consume it rather than repeat constants. This boundary should allow future database-backed instance branding without a frontend rewrite.
+Keep the product name, tagline, semantic colors, and asset paths in one small centralized value/object near the web composition layer. Templates must consume it rather than repeat constants. Tailwind/DaisyUI theme definitions and CSS custom properties must map to the same semantic color roles in both dark and light modes.
 
-See [Product branding](PRODUCT.md#20-branding) for the fixed v0.1 branding and customization scope.
+Bundle approved logos, mascot artwork, and Montserrat/JetBrains Mono webfonts with the production assets. They must be served from the embedded application; do not add a runtime image or font CDN. The wordmark remains text until an approved production signet is available.
+
+Branding is fixed application data in v0.1, not environment configuration or PostgreSQL state. This boundary should still allow future database-backed instance branding without a frontend rewrite.
+
+See [Product branding](PRODUCT.md#20-branding) for the fixed v0.1 branding and customization scope, and the [visual branding guide](BRANDING.md) for the canonical design tokens and usage rules.
 
 ---
 

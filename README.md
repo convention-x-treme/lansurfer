@@ -60,9 +60,13 @@ Once the group is ready, it's time to launch the game.
 
 ## 🦦 Meet the LANsurfer Otter
 
+<img src="docs/Otter02.png" alt="LANsurfer otter wearing a headset and holding a surfboard" width="280">
+
 An otter with a headset and a surfboard feels right at home here: social, at ease in the water, and ready for the next game.
 
 The otter brings a little personality to LANsurfer's ocean-inspired identity. In the application, the wording stays familiar: games, players, events, and joining a game.
+
+The [visual branding guide](docs/BRANDING.md) defines the palette, typography, mascot usage, and dark/light interface direction for the first prototype.
 
 ## 🗺️ Project status
 

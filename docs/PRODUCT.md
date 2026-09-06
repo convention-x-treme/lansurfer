@@ -513,7 +513,9 @@ Current tagline:
 
 The product may use ocean/surf visual identity.
 
-For v0.1 use fixed branding; do not add branding tables, logo uploads, or a theme editor. Future customization is per instance, not per Event. See [Branding architecture](ARCHITECTURE.md#16-branding-architecture) for centralizing the values.
+The fixed v0.1 visual identity uses an ocean-blue base, restrained warm semantic accents, Montserrat typography, JetBrains Mono for compact data, equal dark/light presentations, and a guide-like otter mascot. The detailed palette, type scale, logo status, mascot rules, component semantics, and terminology boundary are defined in the [Branding guide](BRANDING.md).
+
+For v0.1 use fixed branding; do not add branding tables, logo uploads, a theme editor, or environment-configurable brand values. Future customization is per instance, not per Event. See [Branding architecture](ARCHITECTURE.md#16-branding-architecture) for centralizing the values.
 
 ---
 

@@ -111,7 +111,7 @@ Establish the server-rendered frontend toolchain without implementing product co
 - production frontend assets embedded via `go:embed`
 - base page layout
 - responsive navigation
-- fixed centralized LANsurfer branding
+- fixed centralized LANsurfer branding following the [visual branding guide](BRANDING.md)
 - basic error/empty-state patterns
 
 ## Constraints
