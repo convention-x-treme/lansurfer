@@ -1,0 +1,67 @@
+@source "../../internal/web/**/*.templ";
+
+@theme {
+  --font-sans: "Montserrat", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+@layer base {
+  html {
+    min-width: 20rem;
+    background: var(--color-base-100);
+  }
+
+  body {
+    min-height: 100vh;
+    font-family: var(--font-sans);
+    font-weight: 500;
+  }
+
+  :focus-visible {
+    outline: 3px solid var(--color-warning);
+    outline-offset: 3px;
+  }
+}
+
+@layer components {
+  .brand-wordmark {
+    font-weight: 800;
+    letter-spacing: -0.035em;
+  }
+
+  .data-text {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .page-shell {
+    width: min(100% - 2rem, 72rem);
+    margin-inline: auto;
+  }
+
+  .hero-waterline {
+    background:
+      radial-gradient(circle at 12% 20%, color-mix(in srgb, var(--color-secondary) 24%, transparent), transparent 32%),
+      radial-gradient(circle at 88% 78%, color-mix(in srgb, var(--color-primary) 20%, transparent), transparent 35%);
+  }
+
+  .htmx-indicator {
+    display: none;
+  }
+
+  .htmx-request .htmx-indicator,
+  .htmx-request.htmx-indicator {
+    display: inline-block;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

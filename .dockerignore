@@ -1,7 +1,10 @@
 .git
 .github
 .env
+.env.*
 bin
+node_modules
 coverage.out
+*.test
 README.md
 docs

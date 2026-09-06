@@ -12,6 +12,7 @@ tasks:
 
   dev:
     desc: Build and run LANsurfer with PostgreSQL
+    deps: [generate]
     cmds:
       - docker compose up --build
 
@@ -39,12 +40,24 @@ tasks:
       - LANSURFER_TEST_DATABASE_URL='{{.TEST_DATABASE_URL}}' go test -race -count=1 -tags=integration ./internal/platform/postgres
 
   generate:
-    desc: Generate typed database code
+    desc: Generate templates, frontend assets, and typed database code
     cmds:
+      - npm ci
+      - go generate ./internal/web/branding
+      - go run github.com/a-h/templ/cmd/templ@v0.3.1020 generate
+      - npm run build
       - go run github.com/sqlc-dev/sqlc/cmd/sqlc@{{.SQLC_VERSION}} generate
 
+  frontend:build:
+    desc: Generate templates and production frontend assets
+    cmds:
+      - npm ci
+      - go generate ./internal/web/branding
+      - go run github.com/a-h/templ/cmd/templ@v0.3.1020 generate
+      - npm run build
+
   lint:
-    desc: Check formatting, modules, and Go source
+    desc: Check formatting, modules, Go source, and TypeScript
     cmds:
       - |
         unformatted="$(gofmt -l .)"
@@ -55,6 +68,8 @@ tasks:
         fi
       - go mod tidy -diff
       - go vet ./...
+      - npm ci
+      - npm run typecheck
 
   db:up:
     desc: Start the development PostgreSQL service

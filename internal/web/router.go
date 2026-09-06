@@ -2,11 +2,16 @@
 package web
 
 import (
+	"bytes"
 	"context"
-	"io"
 	"net/http"
 	"time"
 
+	"github.com/a-h/templ"
+	"github.com/convention-x-treme/lansurfer/internal/web/assets"
+	"github.com/convention-x-treme/lansurfer/internal/web/branding"
+	"github.com/convention-x-treme/lansurfer/internal/web/components"
+	"github.com/convention-x-treme/lansurfer/internal/web/pages"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 )
@@ -18,10 +23,15 @@ type ReadyCheck func(context.Context) error
 
 // NewRouter constructs the HTTP router.
 func NewRouter(ready ReadyCheck) http.Handler {
+	brand := branding.Default()
 	router := chi.NewRouter()
 	router.Use(middleware.RequestID)
 	router.Use(middleware.Recoverer)
 
+	router.Handle("/assets/*", http.StripPrefix("/assets/", assets.Handler()))
+	router.Get("/", componentHandler(pages.Home(brand)))
+	router.Get("/ui/patterns/empty", componentHandler(components.EmptyState(brand)))
+	router.Get("/ui/patterns/error", componentHandler(components.ErrorState()))
 	router.Get("/healthz", healthHandler)
 	router.Get("/readyz", readinessHandler(ready))
 
@@ -30,8 +40,7 @@ func NewRouter(ready ReadyCheck) http.Handler {
 
 func healthHandler(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.WriteHeader(http.StatusOK)
-	_, _ = io.WriteString(w, "ok\n")
+	_, _ = w.Write([]byte("ok\n"))
 }
 
 func readinessHandler(ready ReadyCheck) http.HandlerFunc {
@@ -45,7 +54,18 @@ func readinessHandler(ready ReadyCheck) http.HandlerFunc {
 			return
 		}
 
-		w.WriteHeader(http.StatusOK)
-		_, _ = io.WriteString(w, "ready\n")
+		_, _ = w.Write([]byte("ready\n"))
+	}
+}
+
+func componentHandler(component templ.Component) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var rendered bytes.Buffer
+		if err := component.Render(r.Context(), &rendered); err != nil {
+			http.Error(w, "render page", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = rendered.WriteTo(w)
 	}
 }

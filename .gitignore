@@ -7,6 +7,7 @@
 /bin/
 /coverage.out
 *.test
+/node_modules/
 
 # Editors and operating systems
 .idea/

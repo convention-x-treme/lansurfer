@@ -9,6 +9,7 @@ Before changing code, read [AGENTS.md](AGENTS.md). Consult the current [roadmap 
 Install:
 
 - Go 1.27.1 or later in the Go 1.27 release line
+- Node.js 24 and npm for frontend generation
 - Docker with Docker Compose
 - [Task](https://taskfile.dev/) for the documented development commands
 
@@ -27,7 +28,9 @@ task test:integration
 task build
 ```
 
-Run `task generate` after changing SQL queries or migrations and commit the generated sqlc files.
+Run `task generate` after changing templ templates, frontend sources, branding,
+SQL queries, or migrations. Commit the generated Go code and production assets;
+the deployed binary does not require Node.js.
 
 To run Go directly, start the development database with `task db:up`, then set the configuration shown in [.env.example](.env.example):
 

@@ -1,0 +1,62 @@
+package components
+
+import "github.com/convention-x-treme/lansurfer/internal/web/branding"
+
+templ Layout(brand branding.Brand, title string) {
+	<!doctype html>
+	<html lang="en" data-theme="lansurfer-dark">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<meta name="description" content={ brand.Tagline }/>
+			<title>{ title } · { brand.Name }</title>
+			<link rel="stylesheet" href={ brand.Assets.Stylesheet }/>
+			<script src={ brand.Assets.Script } defer></script>
+		</head>
+		<body class="bg-base-100 text-base-content antialiased">
+			<a class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-warning focus:px-4 focus:py-2 focus:text-warning-content" href="#main-content">Skip to content</a>
+			@Navigation(brand)
+			<main id="main-content">
+				{ children... }
+			</main>
+			@Footer(brand)
+		</body>
+	</html>
+}
+
+templ Navigation(brand branding.Brand) {
+	<header class="border-b border-base-300 bg-base-200/95 shadow-sm">
+		<nav class="navbar page-shell min-h-18 px-0" aria-label="Primary navigation">
+			<div class="navbar-start">
+				<a class="brand-wordmark text-2xl text-primary" href="/" aria-label={ brand.Name + " home" }>{ brand.Name }</a>
+			</div>
+			<div class="navbar-center hidden md:flex">
+				<ul class="menu menu-horizontal gap-1 px-1">
+					<li><a class="menu-active" href="/" aria-current="page">Home</a></li>
+					<li><span class="cursor-not-allowed opacity-55" aria-disabled="true">Games</span></li>
+					<li><span class="cursor-not-allowed opacity-55" aria-disabled="true">Game Requests</span></li>
+				</ul>
+			</div>
+			<div class="navbar-end gap-2">
+				<button type="button" class="btn btn-ghost btn-sm" data-theme-toggle aria-label="Use light theme" title="Use light theme">Light</button>
+				<details class="dropdown dropdown-end md:hidden">
+					<summary class="btn btn-ghost btn-sm" aria-label="Open navigation">Menu</summary>
+					<ul class="menu dropdown-content z-20 mt-3 w-56 rounded-box border border-base-300 bg-base-200 p-2 shadow-xl">
+						<li><a class="menu-active" href="/" aria-current="page">Home</a></li>
+						<li><span class="cursor-not-allowed opacity-55" aria-disabled="true">Games</span></li>
+						<li><span class="cursor-not-allowed opacity-55" aria-disabled="true">Game Requests</span></li>
+					</ul>
+				</details>
+			</div>
+		</nav>
+	</header>
+}
+
+templ Footer(brand branding.Brand) {
+	<footer class="border-t border-base-300 bg-base-200">
+		<div class="page-shell flex flex-col gap-1 py-6 text-sm text-base-content/70 sm:flex-row sm:items-center sm:justify-between">
+			<p><span class="brand-wordmark text-base-content">{ brand.Name }</span> · Open-source LFG for LAN events.</p>
+			<p>{ brand.Tagline }</p>
+		</div>
+	</footer>
+}

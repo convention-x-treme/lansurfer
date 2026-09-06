@@ -1,0 +1,27 @@
+package components
+
+import "github.com/convention-x-treme/lansurfer/internal/web/branding"
+
+templ EmptyState(brand branding.Brand) {
+	<section class="card border border-base-300 bg-base-200 shadow-sm" aria-labelledby="empty-state-title">
+		<div class="card-body items-center gap-4 text-center sm:flex-row sm:text-left">
+			<img class="h-32 w-32 shrink-0 object-contain" src={ brand.Assets.Mascot } alt="LANsurfer otter ready to help players find a game"/>
+			<div>
+				<h3 id="empty-state-title" class="card-title text-xl">No Game Requests yet</h3>
+				<p class="mt-1 max-w-xl text-base-content/75">When players start looking for a game, their requests will appear here. Clear copy and a useful next action keep an empty screen from becoming a dead end.</p>
+				<button type="button" class="btn btn-primary btn-sm mt-4" disabled>Create Game Request</button>
+				<p class="mt-2 text-xs text-base-content/60">Creating requests arrives in a later milestone.</p>
+			</div>
+		</div>
+	</section>
+}
+
+templ ErrorState() {
+	<div role="alert" class="alert alert-error border border-error">
+		<div>
+			<h3 class="font-bold">Something went wrong</h3>
+			<p class="text-sm">We could not load this section. Try the request again.</p>
+		</div>
+		<button type="button" class="btn btn-sm border-error-content/30 bg-transparent text-error-content hover:bg-error-content/10" hx-get="/ui/patterns/empty" hx-target="#pattern-preview" hx-swap="innerHTML">Try again</button>
+	</div>
+}

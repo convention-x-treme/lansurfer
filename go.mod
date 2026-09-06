@@ -3,6 +3,7 @@ module github.com/convention-x-treme/lansurfer
 go 1.27.1
 
 require (
+	github.com/a-h/templ v0.3.1020
 	github.com/go-chi/chi/v5 v5.3.2
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/pressly/goose/v3 v3.28.0

@@ -15,7 +15,7 @@ Hundreds of players. Dozens of games. And somewhere in the room, someone else is
 
 [The idea](#-what-is-lansurfer) · [How it works](#-how-it-works) · [Project status](#-project-status) · [Get involved](#-get-involved)
 
-> 🚧 **Early development:** the backend foundation is in place. The player-facing experience described below is planned for the first prototype; there is no playable web UI yet.
+> 🚧 **Early development:** the backend and server-rendered frontend foundations are in place. Authentication and the player-facing workflows described below are planned for later milestones.
 
 ## 🎮 What is LANsurfer?
 
@@ -70,7 +70,7 @@ The [visual branding guide](docs/BRANDING.md) defines the palette, typography, m
 
 ## 🗺️ Project status
 
-We're building toward a **web-only v0.1 prototype** to try at a real LAN event. The backend and database foundation are implemented; the web interface is the next milestone. Login, following games, and creating or joining requests are still ahead.
+We're building toward a **web-only v0.1 prototype** to try at a real LAN event. The backend, database, and responsive web foundations are implemented. Login, following games, and creating or joining requests are still ahead.
 
 The [roadmap](docs/ROADMAP.md#progress) tracks completed work and what's next. The [product definition](docs/PRODUCT.md#5-v01-scope) describes the first release in detail.
 
@@ -84,14 +84,14 @@ With this repository checked out and Docker with Docker Compose installed, start
 docker compose up --build
 ```
 
-This currently starts the backend, including automatic database migrations. Check that it is running:
+This starts the application, including automatic database migrations and the responsive LANsurfer foundation page. Open <http://localhost:8080> or check that the service is running:
 
 ```sh
 curl http://localhost:8080/healthz
 curl http://localhost:8080/readyz
 ```
 
-Expect `ok` from `/healthz` and `ready` from `/readyz`. There is no homepage yet. Stop the stack with:
+Expect `ok` from `/healthz` and `ready` from `/readyz`. Stop the stack with:
 
 ```sh
 docker compose down
