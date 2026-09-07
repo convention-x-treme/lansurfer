@@ -45,6 +45,9 @@ templ Navigation(brand branding.Brand, state NavigationState) {
 					<li><a class="menu-active" href="/" aria-current="page">Home</a></li>
 					<li><span class="cursor-not-allowed opacity-55" aria-disabled="true">Games</span></li>
 					<li><span class="cursor-not-allowed opacity-55" aria-disabled="true">Game Requests</span></li>
+					if state.Viewer != nil && state.Viewer.Role == "admin" {
+						<li><a href="/admin/games">Admin</a></li>
+					}
 				</ul>
 			</div>
 			<div class="navbar-end gap-2">
@@ -69,6 +72,10 @@ templ Navigation(brand branding.Brand, state NavigationState) {
 						<li><a class="menu-active" href="/" aria-current="page">Home</a></li>
 						<li><span class="cursor-not-allowed opacity-55" aria-disabled="true">Games</span></li>
 						<li><span class="cursor-not-allowed opacity-55" aria-disabled="true">Game Requests</span></li>
+						if state.Viewer != nil && state.Viewer.Role == "admin" {
+							<li><a href="/admin/games">Admin games</a></li>
+							<li><a href="/admin/events">Admin events</a></li>
+						}
 					</ul>
 				</details>
 			</div>

@@ -185,61 +185,81 @@ func Navigation(brand branding.Brand, state NavigationState) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "</a></div><div class=\"navbar-center hidden md:flex\"><ul class=\"menu menu-horizontal gap-1 px-1\"><li><a class=\"menu-active\" href=\"/\" aria-current=\"page\">Home</a></li><li><span class=\"cursor-not-allowed opacity-55\" aria-disabled=\"true\">Games</span></li><li><span class=\"cursor-not-allowed opacity-55\" aria-disabled=\"true\">Game Requests</span></li></ul></div><div class=\"navbar-end gap-2\"><button type=\"button\" class=\"btn btn-ghost btn-sm\" data-theme-toggle aria-label=\"Use light theme\" title=\"Use light theme\">Light</button> ")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "</a></div><div class=\"navbar-center hidden md:flex\"><ul class=\"menu menu-horizontal gap-1 px-1\"><li><a class=\"menu-active\" href=\"/\" aria-current=\"page\">Home</a></li><li><span class=\"cursor-not-allowed opacity-55\" aria-disabled=\"true\">Games</span></li><li><span class=\"cursor-not-allowed opacity-55\" aria-disabled=\"true\">Game Requests</span></li>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		if state.Viewer != nil && state.Viewer.Role == "admin" {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "<li><a href=\"/admin/games\">Admin</a></li>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "</ul></div><div class=\"navbar-end gap-2\"><button type=\"button\" class=\"btn btn-ghost btn-sm\" data-theme-toggle aria-label=\"Use light theme\" title=\"Use light theme\">Light</button> ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if state.Viewer != nil {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "<details class=\"dropdown dropdown-end\"><summary class=\"btn btn-ghost btn-sm\" aria-label=\"Open user menu\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "<details class=\"dropdown dropdown-end\"><summary class=\"btn btn-ghost btn-sm\" aria-label=\"Open user menu\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var10 string
 			templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(state.Viewer.DisplayName)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/layout.templ`, Line: 54, Col: 98}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/layout.templ`, Line: 57, Col: 98}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "</summary><div class=\"dropdown-content z-20 mt-3 w-56 rounded-box border border-base-300 bg-base-200 p-3 shadow-xl\"><p class=\"truncate font-semibold\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "</summary><div class=\"dropdown-content z-20 mt-3 w-56 rounded-box border border-base-300 bg-base-200 p-3 shadow-xl\"><p class=\"truncate font-semibold\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var11 string
 			templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(state.Viewer.DisplayName)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/layout.templ`, Line: 56, Col: 67}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/layout.templ`, Line: 59, Col: 67}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "</p><p class=\"data-text mt-1 text-xs uppercase text-base-content/60\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "</p><p class=\"data-text mt-1 text-xs uppercase text-base-content/60\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var12 string
 			templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(state.Viewer.Role)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/layout.templ`, Line: 57, Col: 91}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/layout.templ`, Line: 60, Col: 91}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "</p><form method=\"post\" action=\"/auth/logout\" class=\"mt-3\"><button type=\"submit\" class=\"btn btn-outline btn-sm w-full\">Log out</button></form></div></details> ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "</p><form method=\"post\" action=\"/auth/logout\" class=\"mt-3\"><button type=\"submit\" class=\"btn btn-outline btn-sm w-full\">Log out</button></form></div></details> ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else if state.LoginAvailable {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "<a class=\"btn btn-primary btn-sm\" href=\"/auth/login\">Log in</a> ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "<a class=\"btn btn-primary btn-sm\" href=\"/auth/login\">Log in</a> ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "<details class=\"dropdown dropdown-end md:hidden\"><summary class=\"btn btn-ghost btn-sm\" aria-label=\"Open navigation\">Menu</summary><ul class=\"menu dropdown-content z-20 mt-3 w-56 rounded-box border border-base-300 bg-base-200 p-2 shadow-xl\"><li><a class=\"menu-active\" href=\"/\" aria-current=\"page\">Home</a></li><li><span class=\"cursor-not-allowed opacity-55\" aria-disabled=\"true\">Games</span></li><li><span class=\"cursor-not-allowed opacity-55\" aria-disabled=\"true\">Game Requests</span></li></ul></details></div></nav></header>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "<details class=\"dropdown dropdown-end md:hidden\"><summary class=\"btn btn-ghost btn-sm\" aria-label=\"Open navigation\">Menu</summary><ul class=\"menu dropdown-content z-20 mt-3 w-56 rounded-box border border-base-300 bg-base-200 p-2 shadow-xl\"><li><a class=\"menu-active\" href=\"/\" aria-current=\"page\">Home</a></li><li><span class=\"cursor-not-allowed opacity-55\" aria-disabled=\"true\">Games</span></li><li><span class=\"cursor-not-allowed opacity-55\" aria-disabled=\"true\">Game Requests</span></li>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		if state.Viewer != nil && state.Viewer.Role == "admin" {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "<li><a href=\"/admin/games\">Admin games</a></li><li><a href=\"/admin/events\">Admin events</a></li>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "</ul></details></div></nav></header>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -268,33 +288,33 @@ func Footer(brand branding.Brand) templ.Component {
 			templ_7745c5c3_Var13 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "<footer class=\"border-t border-base-300 bg-base-200\"><div class=\"page-shell flex flex-col gap-1 py-6 text-sm text-base-content/70 sm:flex-row sm:items-center sm:justify-between\"><p><span class=\"brand-wordmark text-base-content\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "<footer class=\"border-t border-base-300 bg-base-200\"><div class=\"page-shell flex flex-col gap-1 py-6 text-sm text-base-content/70 sm:flex-row sm:items-center sm:justify-between\"><p><span class=\"brand-wordmark text-base-content\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var14 string
 		templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(brand.Name)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/layout.templ`, Line: 82, Col: 65}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/layout.templ`, Line: 89, Col: 65}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "</span> · Open-source LFG for LAN events.</p><p>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "</span> · Open-source LFG for LAN events.</p><p>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var15 string
 		templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs(brand.Tagline)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/layout.templ`, Line: 83, Col: 21}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/layout.templ`, Line: 90, Col: 21}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "</p></div></footer>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "</p></div></footer>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

@@ -18,6 +18,10 @@ import (
 
 	"github.com/convention-x-treme/lansurfer/internal/auth"
 	authpostgres "github.com/convention-x-treme/lansurfer/internal/auth/postgres"
+	"github.com/convention-x-treme/lansurfer/internal/event"
+	eventpostgres "github.com/convention-x-treme/lansurfer/internal/event/postgres"
+	"github.com/convention-x-treme/lansurfer/internal/game"
+	gamepostgres "github.com/convention-x-treme/lansurfer/internal/game/postgres"
 	"github.com/convention-x-treme/lansurfer/internal/user"
 	userpostgres "github.com/convention-x-treme/lansurfer/internal/user/postgres"
 	"github.com/jackc/pgx/v5"
@@ -39,6 +43,14 @@ func TestAuthenticationPersistence(t *testing.T) {
 	}
 	if account.Role != user.RoleUser || account.ID == "" || account.CreatedAt.IsZero() || account.UpdatedAt.IsZero() {
 		t.Fatalf("account = %#v", account)
+	}
+	promoted, err := users.PromoteToAdmin(t.Context(), account.ID)
+	if err != nil || promoted.Role != user.RoleAdmin {
+		t.Fatalf("promote user = %#v, %v", promoted, err)
+	}
+	listedUsers, err := users.List(t.Context())
+	if err != nil || len(listedUsers) != 1 || listedUsers[0].ID != account.ID || listedUsers[0].Role != user.RoleAdmin {
+		t.Fatalf("list users = %#v, %v", listedUsers, err)
 	}
 
 	identities := authpostgres.NewIdentityStore(pool)
@@ -92,6 +104,82 @@ func TestAuthenticationPersistence(t *testing.T) {
 	}
 }
 
+func TestEventAndGameCatalogPersistence(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+
+	events := event.NewService(eventpostgres.NewStore(pool))
+	startsAt := time.Date(2027, time.May, 1, 10, 0, 0, 0, time.UTC)
+	first, err := events.Create(t.Context(), "CXT 2027", startsAt, startsAt.Add(48*time.Hour))
+	if err != nil {
+		t.Fatalf("create first event: %v", err)
+	}
+	second, err := events.Create(t.Context(), "CXT 2028", startsAt.AddDate(1, 0, 0), startsAt.AddDate(1, 0, 2))
+	if err != nil {
+		t.Fatalf("create second event: %v", err)
+	}
+	if err := events.SetCurrent(t.Context(), first.ID); err != nil {
+		t.Fatalf("set first current: %v", err)
+	}
+	if err := events.SetCurrent(t.Context(), second.ID); err != nil {
+		t.Fatalf("set second current: %v", err)
+	}
+	updatedFirst, err := events.Update(t.Context(), first.ID, "CXT 2027 Extended", startsAt, startsAt.Add(72*time.Hour))
+	if err != nil || updatedFirst.Name != "CXT 2027 Extended" {
+		t.Fatalf("update event = %#v, %v", updatedFirst, err)
+	}
+	listedEvents, err := events.List(t.Context())
+	if err != nil || len(listedEvents) != 2 || !listedEvents[0].IsCurrent || listedEvents[0].ID != second.ID || listedEvents[1].IsCurrent {
+		t.Fatalf("list events = %#v, %v", listedEvents, err)
+	}
+
+	games := game.NewService(gamepostgres.NewStore(pool))
+	warcraft, err := games.Create(t.Context(), "Warcraft III", "warcraft-3")
+	if err != nil {
+		t.Fatalf("create game: %v", err)
+	}
+	alias, err := games.AddAlias(t.Context(), warcraft.ID, "WC3")
+	if err != nil {
+		t.Fatalf("add alias: %v", err)
+	}
+	if _, err := games.AddAlias(t.Context(), warcraft.ID, "wc3"); !errors.Is(err, game.ErrAlreadyExists) {
+		t.Fatalf("duplicate alias error = %v, want ErrAlreadyExists", err)
+	}
+	searchResults, err := games.List(t.Context(), "wC3")
+	if err != nil || len(searchResults) != 1 || searchResults[0].ID != warcraft.ID || len(searchResults[0].Aliases) != 1 {
+		t.Fatalf("alias search results = %#v, %v", searchResults, err)
+	}
+	if err := games.SetActive(t.Context(), warcraft.ID, false); err != nil {
+		t.Fatalf("deactivate game: %v", err)
+	}
+	updatedGame, err := games.Update(t.Context(), warcraft.ID, "Warcraft III: Reign of Chaos", "warcraft-3")
+	if err != nil || updatedGame.Name != "Warcraft III: Reign of Chaos" {
+		t.Fatalf("update game = %#v, %v", updatedGame, err)
+	}
+	allGames, err := games.List(t.Context(), "")
+	if err != nil || len(allGames) != 1 || allGames[0].Active {
+		t.Fatalf("games after deactivation = %#v, %v", allGames, err)
+	}
+	if err := games.RemoveAlias(t.Context(), warcraft.ID, alias.ID); err != nil {
+		t.Fatalf("remove alias: %v", err)
+	}
+
+	if _, err := pool.Exec(t.Context(), `
+		INSERT INTO game_external_ids (game_id, provider, external_id)
+		VALUES ($1, 'Steam', '123')
+	`, warcraft.ID); err != nil {
+		t.Fatalf("insert generic external ID: %v", err)
+	}
+	if _, err := pool.Exec(t.Context(), `
+		INSERT INTO game_external_ids (game_id, provider, external_id)
+		VALUES ($1, 'steam', '123')
+	`, warcraft.ID); err == nil {
+		t.Fatal("duplicate provider/external ID unexpectedly succeeded")
+	}
+}
+
 func TestMigrateAndReadyCheck(t *testing.T) {
 	pool := newTestPool(t)
 	logger := testLogger()
@@ -114,8 +202,8 @@ func TestMigrateAndReadyCheck(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get migration version: %v", err)
 	}
-	if version != 2 {
-		t.Errorf("migration version = %d, want 2", version)
+	if version != 3 {
+		t.Errorf("migration version = %d, want 3", version)
 	}
 
 	if err := migrateFS(t.Context(), pool, migrationFS, logger); err != nil {

@@ -80,3 +80,15 @@ tasks:
     desc: Stop development services
     cmds:
       - docker compose down
+
+  admin:users:
+    desc: List local LANsurfer users in the running Compose stack
+    cmds:
+      - docker compose exec lansurfer /lansurfer admin users
+
+  admin:promote:
+    desc: Promote a local user to admin in the running Compose stack
+    requires:
+      vars: [USER_ID]
+    cmds:
+      - docker compose exec lansurfer /lansurfer admin promote --user-id '{{.USER_ID}}'

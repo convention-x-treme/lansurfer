@@ -11,6 +11,10 @@ import (
 
 	"github.com/convention-x-treme/lansurfer/internal/auth"
 	authpostgres "github.com/convention-x-treme/lansurfer/internal/auth/postgres"
+	"github.com/convention-x-treme/lansurfer/internal/event"
+	eventpostgres "github.com/convention-x-treme/lansurfer/internal/event/postgres"
+	"github.com/convention-x-treme/lansurfer/internal/game"
+	gamepostgres "github.com/convention-x-treme/lansurfer/internal/game/postgres"
 	"github.com/convention-x-treme/lansurfer/internal/platform/config"
 	"github.com/convention-x-treme/lansurfer/internal/platform/postgres"
 	"github.com/convention-x-treme/lansurfer/internal/user"
@@ -63,12 +67,16 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		authpostgres.NewSessionStore(pool),
 		userService,
 	)
+	eventService := event.NewService(eventpostgres.NewStore(pool))
+	gameService := game.NewService(gamepostgres.NewStore(pool))
 
 	server := &http.Server{
 		Addr: cfg.ListenAddr,
 		Handler: web.NewRouter(web.RouterDependencies{
 			Ready:          postgres.ReadyCheck(pool),
 			Authentication: authService,
+			Events:         eventService,
+			Games:          gameService,
 			SecureCookies:  strings.HasPrefix(cfg.BaseURL, "https://"),
 		}),
 		ReadHeaderTimeout: 5 * time.Second,

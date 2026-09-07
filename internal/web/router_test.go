@@ -6,10 +6,14 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/convention-x-treme/lansurfer/internal/auth"
+	"github.com/convention-x-treme/lansurfer/internal/event"
+	"github.com/convention-x-treme/lansurfer/internal/game"
 	"github.com/convention-x-treme/lansurfer/internal/user"
 	webmiddleware "github.com/convention-x-treme/lansurfer/internal/web/middleware"
 )
@@ -197,6 +201,62 @@ func TestEmbeddedAssetsAreServed(t *testing.T) {
 	}
 }
 
+func TestAdminRoutesRequireAdmin(t *testing.T) {
+	dependencies := RouterDependencies{
+		Ready:          func(context.Context) error { return nil },
+		Authentication: &routerAuthentication{account: user.User{DisplayName: "Player", Role: user.RoleUser}},
+		Events:         &routerEvents{}, Games: &routerGames{},
+	}
+	request := httptest.NewRequest(http.MethodGet, "/admin/games", nil)
+	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	response := httptest.NewRecorder()
+
+	NewRouter(dependencies).ServeHTTP(response, request)
+
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusForbidden)
+	}
+}
+
+func TestAdminCanCreateEvent(t *testing.T) {
+	events := &routerEvents{}
+	router := adminTestRouter(events, &routerGames{})
+	form := url.Values{
+		"name": {"CXT 2027"}, "starts_at": {"2027-05-01T10:00"}, "ends_at": {"2027-05-03T10:00"},
+	}
+	request := httptest.NewRequest(http.MethodPost, "/admin/events", strings.NewReader(form.Encode()))
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	response := httptest.NewRecorder()
+
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/admin/events?notice=event-created" {
+		t.Fatalf("response = %d %q", response.Code, response.Header().Get("Location"))
+	}
+	if events.created.Name != "CXT 2027" || events.created.StartsAt.Location() != time.UTC {
+		t.Fatalf("created event = %#v", events.created)
+	}
+}
+
+func TestAdminGameSearchRendersAliasMatch(t *testing.T) {
+	games := &routerGames{items: []game.Game{{ID: "game-1", Name: "Warcraft III", Slug: "warcraft-3", Active: true, Aliases: []game.Alias{{ID: "alias-1", Value: "WC3"}}}}}
+	request := httptest.NewRequest(http.MethodGet, "/admin/games?q=wc3", nil)
+	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	response := httptest.NewRecorder()
+
+	adminTestRouter(&routerEvents{}, games).ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK || games.search != "wc3" {
+		t.Fatalf("response status = %d, search = %q", response.Code, games.search)
+	}
+	for _, want := range []string{"Warcraft III", "WC3", "Deactivate game"} {
+		if !strings.Contains(response.Body.String(), want) {
+			t.Errorf("body does not contain %q", want)
+		}
+	}
+}
+
 func assertResponse(t *testing.T, response *http.Response, wantStatus int, wantBody string) {
 	t.Helper()
 	defer response.Body.Close()
@@ -219,6 +279,48 @@ func assertResponse(t *testing.T, response *http.Response, wantStatus int, wantB
 type routerAuthentication struct {
 	account user.User
 }
+
+func adminTestRouter(events *routerEvents, games *routerGames) http.Handler {
+	return NewRouter(RouterDependencies{
+		Ready:          func(context.Context) error { return nil },
+		Authentication: &routerAuthentication{account: user.User{DisplayName: "Ada Admin", Role: user.RoleAdmin}},
+		Events:         events,
+		Games:          games,
+	})
+}
+
+type routerEvents struct{ created event.Event }
+
+func (*routerEvents) List(context.Context) ([]event.Event, error) { return nil, nil }
+func (r *routerEvents) Create(_ context.Context, name string, startsAt, endsAt time.Time) (event.Event, error) {
+	r.created = event.Event{Name: name, StartsAt: startsAt, EndsAt: endsAt}
+	return r.created, nil
+}
+func (*routerEvents) Update(context.Context, string, string, time.Time, time.Time) (event.Event, error) {
+	return event.Event{}, nil
+}
+func (*routerEvents) SetCurrent(context.Context, string) error { return nil }
+
+type routerGames struct {
+	items  []game.Game
+	search string
+}
+
+func (r *routerGames) List(_ context.Context, search string) ([]game.Game, error) {
+	r.search = search
+	return r.items, nil
+}
+func (*routerGames) Create(context.Context, string, string) (game.Game, error) {
+	return game.Game{}, nil
+}
+func (*routerGames) Update(context.Context, string, string, string) (game.Game, error) {
+	return game.Game{}, nil
+}
+func (*routerGames) SetActive(context.Context, string, bool) error { return nil }
+func (*routerGames) AddAlias(context.Context, string, string) (game.Alias, error) {
+	return game.Alias{}, nil
+}
+func (*routerGames) RemoveAlias(context.Context, string, string) error { return nil }
 
 func (*routerAuthentication) Available() bool { return true }
 

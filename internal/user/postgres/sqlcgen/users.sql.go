@@ -82,3 +82,76 @@ func (q *Queries) GetUser(ctx context.Context, id pgtype.UUID) (GetUserRow, erro
 	)
 	return i, err
 }
+
+const listUsers = `-- name: ListUsers :many
+SELECT id::text, display_name, role, created_at, updated_at
+FROM users
+ORDER BY created_at, id
+`
+
+type ListUsersRow struct {
+	ID          string
+	DisplayName string
+	Role        string
+	CreatedAt   pgtype.Timestamptz
+	UpdatedAt   pgtype.Timestamptz
+}
+
+func (q *Queries) ListUsers(ctx context.Context) ([]ListUsersRow, error) {
+	rows, err := q.db.Query(ctx, listUsers)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListUsersRow
+	for rows.Next() {
+		var i ListUsersRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.DisplayName,
+			&i.Role,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const setUserRole = `-- name: SetUserRole :one
+UPDATE users
+SET role = $1, updated_at = now()
+WHERE id = $2::uuid
+RETURNING id::text, display_name, role, created_at, updated_at
+`
+
+type SetUserRoleParams struct {
+	Role string
+	ID   pgtype.UUID
+}
+
+type SetUserRoleRow struct {
+	ID          string
+	DisplayName string
+	Role        string
+	CreatedAt   pgtype.Timestamptz
+	UpdatedAt   pgtype.Timestamptz
+}
+
+func (q *Queries) SetUserRole(ctx context.Context, arg SetUserRoleParams) (SetUserRoleRow, error) {
+	row := q.db.QueryRow(ctx, setUserRole, arg.Role, arg.ID)
+	var i SetUserRoleRow
+	err := row.Scan(
+		&i.ID,
+		&i.DisplayName,
+		&i.Role,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}

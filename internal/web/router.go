@@ -31,6 +31,8 @@ type Authentication interface {
 type RouterDependencies struct {
 	Ready          ReadyCheck
 	Authentication Authentication
+	Events         handler.EventAdministration
+	Games          handler.GameAdministration
 	SecureCookies  bool
 }
 
@@ -38,12 +40,31 @@ type RouterDependencies struct {
 func NewRouter(dependencies RouterDependencies) http.Handler {
 	brand := branding.Default()
 	authenticationHandler := handler.NewAuthentication(dependencies.Authentication, brand, dependencies.SecureCookies)
+	administrationHandler := handler.NewAdministration(dependencies.Events, dependencies.Games, brand)
 	router := chi.NewRouter()
 	router.Use(middleware.RequestID)
 	router.Use(middleware.Recoverer)
 
 	router.Handle("/assets/*", http.StripPrefix("/assets/", assets.Handler()))
-	router.With(webmiddleware.Authentication(dependencies.Authentication, dependencies.SecureCookies)).Get("/", homeHandler(brand, dependencies.Authentication))
+	router.Group(func(authenticated chi.Router) {
+		authenticated.Use(webmiddleware.Authentication(dependencies.Authentication, dependencies.SecureCookies))
+		authenticated.Get("/", homeHandler(brand, dependencies.Authentication))
+		if dependencies.Events != nil && dependencies.Games != nil {
+			authenticated.Route("/admin", func(admin chi.Router) {
+				admin.Use(handler.RequireAdmin)
+				admin.Get("/events", administrationHandler.Events)
+				admin.Post("/events", administrationHandler.CreateEvent)
+				admin.Post("/events/{eventID}", administrationHandler.UpdateEvent)
+				admin.Post("/events/{eventID}/current", administrationHandler.SetCurrentEvent)
+				admin.Get("/games", administrationHandler.Games)
+				admin.Post("/games", administrationHandler.CreateGame)
+				admin.Post("/games/{gameID}", administrationHandler.UpdateGame)
+				admin.Post("/games/{gameID}/active", administrationHandler.SetGameActive)
+				admin.Post("/games/{gameID}/aliases", administrationHandler.AddGameAlias)
+				admin.Post("/games/{gameID}/aliases/{aliasID}/remove", administrationHandler.RemoveGameAlias)
+			})
+		}
+	})
 	router.Get("/auth/login", authenticationHandler.Login)
 	router.Get("/auth/callback", authenticationHandler.Callback)
 	router.Post("/auth/logout", authenticationHandler.Logout)

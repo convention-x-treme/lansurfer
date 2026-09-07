@@ -113,6 +113,27 @@ Set the issuer URL itself rather than its `/.well-known/openid-configuration` en
 
 For the local Keycloak client, enable **Standard flow**, leave **Client authentication** disabled, require the `S256` PKCE method, and configure `http://localhost:8080/auth/callback` as the exact valid redirect URI. A production server deployment should normally use a confidential client with client authentication enabled and provide its secret through `LANSURFER_OIDC_CLIENT_SECRET`.
 
+### Promote the first administrator
+
+Every new account starts with the `user` role. Log in once to create your local
+account, then list the users in the running Compose stack:
+
+```sh
+task admin:users
+```
+
+Copy your user ID from the output and promote it:
+
+```sh
+task admin:promote USER_ID=2c359aee-7690-4975-a2f8-1730cf37f42b
+```
+
+Reload LANsurfer after the command succeeds. Existing sessions resolve the local
+role on every request, so you do not need to log out. The same operations are
+available directly from the binary as `lansurfer admin users` and
+`lansurfer admin promote --user-id <UUID>` when
+`LANSURFER_DATABASE_URL` is configured.
+
 The Compose credentials are development defaults; do not use them for an exposed deployment. See the [contributing guide](CONTRIBUTING.md#development-setup) for local Go development, configuration, and checks.
 
 ## 🤝 Get involved

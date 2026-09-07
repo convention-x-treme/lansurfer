@@ -50,13 +50,41 @@ func (s *Store) ByID(ctx context.Context, id string) (user.User, error) {
 	if err != nil {
 		return user.User{}, fmt.Errorf("get user: %w", err)
 	}
+	return fromUser(row.ID, row.DisplayName, row.Role, row.CreatedAt, row.UpdatedAt), nil
+}
+
+func (s *Store) List(ctx context.Context) ([]user.User, error) {
+	rows, err := s.queries.ListUsers(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list users: %w", err)
+	}
+	result := make([]user.User, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, fromUser(row.ID, row.DisplayName, row.Role, row.CreatedAt, row.UpdatedAt))
+	}
+	return result, nil
+}
+
+func (s *Store) SetRole(ctx context.Context, id string, role user.Role) (user.User, error) {
+	databaseID, err := parseUUID(id)
+	if err != nil {
+		return user.User{}, user.ErrNotFound
+	}
+	row, err := s.queries.SetUserRole(ctx, sqlcgen.SetUserRoleParams{ID: databaseID, Role: string(role)})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return user.User{}, user.ErrNotFound
+	}
+	if err != nil {
+		return user.User{}, fmt.Errorf("set user role: %w", err)
+	}
+	return fromUser(row.ID, row.DisplayName, row.Role, row.CreatedAt, row.UpdatedAt), nil
+}
+
+func fromUser(id, displayName, role string, createdAt, updatedAt pgtype.Timestamptz) user.User {
 	return user.User{
-		ID:          row.ID,
-		DisplayName: row.DisplayName,
-		Role:        user.Role(row.Role),
-		CreatedAt:   row.CreatedAt.Time,
-		UpdatedAt:   row.UpdatedAt.Time,
-	}, nil
+		ID: id, DisplayName: displayName, Role: user.Role(role),
+		CreatedAt: createdAt.Time, UpdatedAt: updatedAt.Time,
+	}
 }
 
 func (s *Store) Delete(ctx context.Context, id string) error {

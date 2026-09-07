@@ -16,6 +16,40 @@ type AuthSession struct {
 	LastSeenAt pgtype.Timestamptz
 }
 
+type Event struct {
+	ID        pgtype.UUID
+	Name      string
+	StartsAt  pgtype.Timestamptz
+	EndsAt    pgtype.Timestamptz
+	IsCurrent bool
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+}
+
+type Game struct {
+	ID        pgtype.UUID
+	Name      string
+	Slug      string
+	Active    bool
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+}
+
+type GameAlias struct {
+	ID        pgtype.UUID
+	GameID    pgtype.UUID
+	Alias     string
+	CreatedAt pgtype.Timestamptz
+}
+
+type GameExternalID struct {
+	ID         pgtype.UUID
+	GameID     pgtype.UUID
+	Provider   string
+	ExternalID string
+	CreatedAt  pgtype.Timestamptz
+}
+
 type User struct {
 	ID          pgtype.UUID
 	DisplayName string

@@ -40,6 +40,8 @@ type User struct {
 type Repository interface {
 	Create(context.Context, string, Role) (User, error)
 	ByID(context.Context, string) (User, error)
+	List(context.Context) ([]User, error)
+	SetRole(context.Context, string, Role) (User, error)
 	Delete(context.Context, string) error
 }
 
@@ -63,6 +65,19 @@ func (s *Service) Register(ctx context.Context, displayName string) (User, error
 
 func (s *Service) ByID(ctx context.Context, id string) (User, error) {
 	return s.repository.ByID(ctx, id)
+}
+
+// List returns local users for operator administration.
+func (s *Service) List(ctx context.Context) ([]User, error) {
+	return s.repository.List(ctx)
+}
+
+// PromoteToAdmin grants the deliberately small local administrator role.
+func (s *Service) PromoteToAdmin(ctx context.Context, id string) (User, error) {
+	if strings.TrimSpace(id) == "" {
+		return User{}, ErrNotFound
+	}
+	return s.repository.SetRole(ctx, id, RoleAdmin)
 }
 
 // RollbackRegistration removes a user created during an identity-linking
