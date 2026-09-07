@@ -8,6 +8,7 @@ sql:
         package: sqlcgen
         out: internal/platform/postgres/sqlcgen
         sql_package: pgx/v5
+        omit_unused_structs: true
   - engine: postgresql
     schema: internal/platform/postgres/migrations
     queries: internal/user/postgres/queries
@@ -16,6 +17,7 @@ sql:
         package: sqlcgen
         out: internal/user/postgres/sqlcgen
         sql_package: pgx/v5
+        omit_unused_structs: true
   - engine: postgresql
     schema: internal/platform/postgres/migrations
     queries: internal/auth/postgres/queries
@@ -24,6 +26,7 @@ sql:
         package: sqlcgen
         out: internal/auth/postgres/sqlcgen
         sql_package: pgx/v5
+        omit_unused_structs: true
   - engine: postgresql
     schema: internal/platform/postgres/migrations
     queries: internal/event/postgres/queries
@@ -32,6 +35,7 @@ sql:
         package: sqlcgen
         out: internal/event/postgres/sqlcgen
         sql_package: pgx/v5
+        omit_unused_structs: true
   - engine: postgresql
     schema: internal/platform/postgres/migrations
     queries: internal/game/postgres/queries
@@ -40,3 +44,4 @@ sql:
         package: sqlcgen
         out: internal/game/postgres/sqlcgen
         sql_package: pgx/v5
+        omit_unused_structs: true
