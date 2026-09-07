@@ -28,6 +28,30 @@ func TestCatalogValidation(t *testing.T) {
 	}
 }
 
+func TestSubscriptionSearchValidationAndWrites(t *testing.T) {
+	repository := &recordingSubscriptionRepository{}
+	service := NewSubscriptionService(repository)
+
+	if _, err := service.Browse(t.Context(), "user-1", "  wc3  "); err != nil {
+		t.Fatalf("Browse() error = %v", err)
+	}
+	if repository.search != "wc3" {
+		t.Fatalf("browse search = %q, want wc3", repository.search)
+	}
+	if _, err := service.Browse(t.Context(), "user-1", string(make([]byte, maxSearchLength+1))); !errors.Is(err, ErrInvalidSearch) {
+		t.Errorf("long search error = %v, want ErrInvalidSearch", err)
+	}
+	if err := service.Follow(t.Context(), "user-1", "game-1"); err != nil {
+		t.Fatalf("Follow() error = %v", err)
+	}
+	if err := service.Unfollow(t.Context(), "user-1", "game-1"); err != nil {
+		t.Fatalf("Unfollow() error = %v", err)
+	}
+	if repository.followed != "user-1/game-1" || repository.unfollowed != "user-1/game-1" {
+		t.Fatalf("writes = %q, %q", repository.followed, repository.unfollowed)
+	}
+}
+
 type recordingRepository struct{ createdSlug, alias string }
 
 func (*recordingRepository) List(context.Context, string) ([]Game, error) { return nil, nil }
@@ -44,3 +68,21 @@ func (r *recordingRepository) AddAlias(_ context.Context, _, value string) (Alia
 	return Alias{Value: value}, nil
 }
 func (*recordingRepository) RemoveAlias(context.Context, string, string) error { return nil }
+
+type recordingSubscriptionRepository struct{ search, followed, unfollowed string }
+
+func (r *recordingSubscriptionRepository) Browse(_ context.Context, _, search string) ([]SubscriptionGame, error) {
+	r.search = search
+	return nil, nil
+}
+func (*recordingSubscriptionRepository) MyGames(context.Context, string) ([]SubscriptionGame, error) {
+	return nil, nil
+}
+func (r *recordingSubscriptionRepository) Follow(_ context.Context, userID, gameID string) error {
+	r.followed = userID + "/" + gameID
+	return nil
+}
+func (r *recordingSubscriptionRepository) Unfollow(_ context.Context, userID, gameID string) error {
+	r.unfollowed = userID + "/" + gameID
+	return nil
+}

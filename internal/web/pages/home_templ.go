@@ -96,13 +96,18 @@ func Home(brand branding.Brand, navigation components.NavigationState) templ.Com
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
+			} else if navigation.Viewer != nil {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<a class=\"btn btn-primary\" href=\"/games\">Browse games</a> ")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
 			} else {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<a class=\"btn btn-primary\" href=\"#patterns\">Explore the interface</a> ")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<a class=\"btn btn-primary\" href=\"#patterns\">Explore the interface</a> ")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<a class=\"btn btn-ghost\" href=\"/healthz\">Service health</a></div></div><div class=\"card border border-base-300 bg-base-200 shadow-xl\"><div class=\"card-body gap-5\"><p class=\"data-text text-sm font-semibold uppercase tracking-widest text-secondary\">Built for the LAN</p><h2 class=\"card-title text-2xl\">Fast, obvious, and local</h2><p class=\"text-base-content/75\">The foundation uses ordinary links, forms, and server-rendered fragments. JavaScript enhances the experience without owning product behavior.</p><div class=\"flex flex-wrap gap-2\" aria-label=\"Frontend technologies\"><span class=\"badge badge-outline\">templ</span> <span class=\"badge badge-outline\">HTMX</span> <span class=\"badge badge-outline\">Tailwind CSS</span> <span class=\"badge badge-outline\">DaisyUI</span></div></div></div></div></section><section id=\"patterns\" class=\"page-shell py-16\" aria-labelledby=\"patterns-title\"><div class=\"max-w-2xl\"><p class=\"data-text text-sm font-semibold uppercase tracking-widest text-secondary\">Server-rendered patterns</p><h2 id=\"patterns-title\" class=\"mt-2 text-3xl font-bold\">Useful states before product complexity</h2><p class=\"mt-3 text-base-content/75\">These controls request HTML fragments from Go. HTMX swaps only the preview while the page remains server rendered.</p></div><div class=\"mt-6 flex flex-wrap gap-3\" role=\"group\" aria-label=\"Preview interface states\"><button type=\"button\" class=\"btn btn-primary\" hx-get=\"/ui/patterns/empty\" hx-target=\"#pattern-preview\" hx-swap=\"innerHTML\" hx-indicator=\"#pattern-loading\">Show empty state</button> <button type=\"button\" class=\"btn btn-outline\" hx-get=\"/ui/patterns/error\" hx-target=\"#pattern-preview\" hx-swap=\"innerHTML\" hx-indicator=\"#pattern-loading\">Show error state</button> <span id=\"pattern-loading\" class=\"loading loading-spinner loading-sm htmx-indicator self-center\" aria-label=\"Loading\"></span></div><div id=\"pattern-preview\" class=\"mt-6\" aria-live=\"polite\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "<a class=\"btn btn-ghost\" href=\"/healthz\">Service health</a></div></div><div class=\"card border border-base-300 bg-base-200 shadow-xl\"><div class=\"card-body gap-5\"><p class=\"data-text text-sm font-semibold uppercase tracking-widest text-secondary\">Built for the LAN</p><h2 class=\"card-title text-2xl\">Fast, obvious, and local</h2><p class=\"text-base-content/75\">The foundation uses ordinary links, forms, and server-rendered fragments. JavaScript enhances the experience without owning product behavior.</p><div class=\"flex flex-wrap gap-2\" aria-label=\"Frontend technologies\"><span class=\"badge badge-outline\">templ</span> <span class=\"badge badge-outline\">HTMX</span> <span class=\"badge badge-outline\">Tailwind CSS</span> <span class=\"badge badge-outline\">DaisyUI</span></div></div></div></div></section><section id=\"patterns\" class=\"page-shell py-16\" aria-labelledby=\"patterns-title\"><div class=\"max-w-2xl\"><p class=\"data-text text-sm font-semibold uppercase tracking-widest text-secondary\">Server-rendered patterns</p><h2 id=\"patterns-title\" class=\"mt-2 text-3xl font-bold\">Useful states before product complexity</h2><p class=\"mt-3 text-base-content/75\">These controls request HTML fragments from Go. HTMX swaps only the preview while the page remains server rendered.</p></div><div class=\"mt-6 flex flex-wrap gap-3\" role=\"group\" aria-label=\"Preview interface states\"><button type=\"button\" class=\"btn btn-primary\" hx-get=\"/ui/patterns/empty\" hx-target=\"#pattern-preview\" hx-swap=\"innerHTML\" hx-indicator=\"#pattern-loading\">Show empty state</button> <button type=\"button\" class=\"btn btn-outline\" hx-get=\"/ui/patterns/error\" hx-target=\"#pattern-preview\" hx-swap=\"innerHTML\" hx-indicator=\"#pattern-loading\">Show error state</button> <span id=\"pattern-loading\" class=\"loading loading-spinner loading-sm htmx-indicator self-center\" aria-label=\"Loading\"></span></div><div id=\"pattern-preview\" class=\"mt-6\" aria-live=\"polite\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -110,7 +115,7 @@ func Home(brand branding.Brand, navigation components.NavigationState) templ.Com
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "</div></section>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "</div></section>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

@@ -11,6 +11,79 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const activeGameExists = `-- name: ActiveGameExists :one
+SELECT EXISTS (
+    SELECT 1 FROM games WHERE id = $1::uuid AND active
+)
+`
+
+func (q *Queries) ActiveGameExists(ctx context.Context, gameID pgtype.UUID) (bool, error) {
+	row := q.db.QueryRow(ctx, activeGameExists, gameID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const browseSubscriptionGames = `-- name: BrowseSubscriptionGames :many
+SELECT g.id::text, g.name, g.slug,
+       EXISTS (
+           SELECT 1
+           FROM game_subscriptions gs
+           WHERE gs.game_id = g.id
+             AND gs.user_id = $1::uuid
+       ) AS subscribed
+FROM games g
+WHERE g.active
+  AND (
+      $2::text = ''
+      OR strpos(lower(g.name), lower($2::text)) > 0
+      OR EXISTS (
+          SELECT 1
+          FROM game_aliases ga
+          WHERE ga.game_id = g.id
+            AND strpos(lower(ga.alias), lower($2::text)) > 0
+      )
+  )
+ORDER BY lower(g.name), g.id
+`
+
+type BrowseSubscriptionGamesParams struct {
+	UserID pgtype.UUID
+	Search string
+}
+
+type BrowseSubscriptionGamesRow struct {
+	GID        string
+	Name       string
+	Slug       string
+	Subscribed bool
+}
+
+func (q *Queries) BrowseSubscriptionGames(ctx context.Context, arg BrowseSubscriptionGamesParams) ([]BrowseSubscriptionGamesRow, error) {
+	rows, err := q.db.Query(ctx, browseSubscriptionGames, arg.UserID, arg.Search)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []BrowseSubscriptionGamesRow
+	for rows.Next() {
+		var i BrowseSubscriptionGamesRow
+		if err := rows.Scan(
+			&i.GID,
+			&i.Name,
+			&i.Slug,
+			&i.Subscribed,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const createGame = `-- name: CreateGame :one
 INSERT INTO games (name, slug)
 VALUES ($1, $2)
@@ -80,6 +153,28 @@ type DeleteGameAliasParams struct {
 
 func (q *Queries) DeleteGameAlias(ctx context.Context, arg DeleteGameAliasParams) (int64, error) {
 	result, err := q.db.Exec(ctx, deleteGameAlias, arg.ID, arg.GameID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const followGame = `-- name: FollowGame :execrows
+INSERT INTO game_subscriptions (user_id, game_id)
+SELECT $1::uuid, g.id
+FROM games g
+WHERE g.id = $2::uuid
+  AND g.active
+ON CONFLICT (user_id, game_id) DO NOTHING
+`
+
+type FollowGameParams struct {
+	UserID pgtype.UUID
+	GameID pgtype.UUID
+}
+
+func (q *Queries) FollowGame(ctx context.Context, arg FollowGameParams) (int64, error) {
+	result, err := q.db.Exec(ctx, followGame, arg.UserID, arg.GameID)
 	if err != nil {
 		return 0, err
 	}
@@ -168,6 +263,47 @@ func (q *Queries) ListGames(ctx context.Context, search string) ([]ListGamesRow,
 	return items, nil
 }
 
+const listSubscribedGames = `-- name: ListSubscribedGames :many
+SELECT g.id::text, g.name, g.slug, true AS subscribed
+FROM game_subscriptions gs
+JOIN games g ON g.id = gs.game_id
+WHERE gs.user_id = $1::uuid
+  AND g.active
+ORDER BY lower(g.name), g.id
+`
+
+type ListSubscribedGamesRow struct {
+	GID        string
+	Name       string
+	Slug       string
+	Subscribed bool
+}
+
+func (q *Queries) ListSubscribedGames(ctx context.Context, userID pgtype.UUID) ([]ListSubscribedGamesRow, error) {
+	rows, err := q.db.Query(ctx, listSubscribedGames, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListSubscribedGamesRow
+	for rows.Next() {
+		var i ListSubscribedGamesRow
+		if err := rows.Scan(
+			&i.GID,
+			&i.Name,
+			&i.Slug,
+			&i.Subscribed,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const setGameActive = `-- name: SetGameActive :execrows
 UPDATE games
 SET active = $1, updated_at = now()
@@ -185,6 +321,22 @@ func (q *Queries) SetGameActive(ctx context.Context, arg SetGameActiveParams) (i
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const unfollowGame = `-- name: UnfollowGame :exec
+DELETE FROM game_subscriptions
+WHERE user_id = $1::uuid
+  AND game_id = $2::uuid
+`
+
+type UnfollowGameParams struct {
+	UserID pgtype.UUID
+	GameID pgtype.UUID
+}
+
+func (q *Queries) UnfollowGame(ctx context.Context, arg UnfollowGameParams) error {
+	_, err := q.db.Exec(ctx, unfollowGame, arg.UserID, arg.GameID)
+	return err
 }
 
 const updateGame = `-- name: UpdateGame :one

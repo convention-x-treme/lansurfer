@@ -131,6 +131,94 @@ func (s *Store) RemoveAlias(ctx context.Context, gameID, aliasID string) error {
 	return nil
 }
 
+func (s *Store) Browse(ctx context.Context, userID, search string) ([]game.SubscriptionGame, error) {
+	databaseUserID, err := parseUUID(userID)
+	if err != nil {
+		return nil, fmt.Errorf("parse user ID: %w", err)
+	}
+	rows, err := s.queries.BrowseSubscriptionGames(ctx, sqlcgen.BrowseSubscriptionGamesParams{
+		UserID: databaseUserID,
+		Search: search,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("browse subscription games: %w", err)
+	}
+	result := make([]game.SubscriptionGame, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, game.SubscriptionGame{
+			ID: row.GID, Name: row.Name, Slug: row.Slug, Subscribed: row.Subscribed,
+		})
+	}
+	return result, nil
+}
+
+func (s *Store) MyGames(ctx context.Context, userID string) ([]game.SubscriptionGame, error) {
+	databaseUserID, err := parseUUID(userID)
+	if err != nil {
+		return nil, fmt.Errorf("parse user ID: %w", err)
+	}
+	rows, err := s.queries.ListSubscribedGames(ctx, databaseUserID)
+	if err != nil {
+		return nil, fmt.Errorf("list subscribed games: %w", err)
+	}
+	result := make([]game.SubscriptionGame, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, game.SubscriptionGame{
+			ID: row.GID, Name: row.Name, Slug: row.Slug, Subscribed: row.Subscribed,
+		})
+	}
+	return result, nil
+}
+
+func (s *Store) Follow(ctx context.Context, userID, gameID string) error {
+	databaseUserID, err := parseUUID(userID)
+	if err != nil {
+		return fmt.Errorf("parse user ID: %w", err)
+	}
+	databaseGameID, err := parseUUID(gameID)
+	if err != nil {
+		return game.ErrNotFound
+	}
+	inserted, err := s.queries.FollowGame(ctx, sqlcgen.FollowGameParams{
+		UserID: databaseUserID,
+		GameID: databaseGameID,
+	})
+	if isForeignKeyViolation(err) {
+		return game.ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("follow game: %w", err)
+	}
+	if inserted == 0 {
+		exists, err := s.queries.ActiveGameExists(ctx, databaseGameID)
+		if err != nil {
+			return fmt.Errorf("check active game: %w", err)
+		}
+		if !exists {
+			return game.ErrNotFound
+		}
+	}
+	return nil
+}
+
+func (s *Store) Unfollow(ctx context.Context, userID, gameID string) error {
+	databaseUserID, err := parseUUID(userID)
+	if err != nil {
+		return fmt.Errorf("parse user ID: %w", err)
+	}
+	databaseGameID, err := parseUUID(gameID)
+	if err != nil {
+		return game.ErrNotFound
+	}
+	if err := s.queries.UnfollowGame(ctx, sqlcgen.UnfollowGameParams{
+		UserID: databaseUserID,
+		GameID: databaseGameID,
+	}); err != nil {
+		return fmt.Errorf("unfollow game: %w", err)
+	}
+	return nil
+}
+
 func fromGame(id, name, slug string, active bool, createdAt, updatedAt pgtype.Timestamptz) game.Game {
 	return game.Game{ID: id, Name: name, Slug: slug, Active: active, CreatedAt: createdAt.Time, UpdatedAt: updatedAt.Time, Aliases: []game.Alias{}}
 }

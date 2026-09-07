@@ -68,7 +68,9 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		userService,
 	)
 	eventService := event.NewService(eventpostgres.NewStore(pool))
-	gameService := game.NewService(gamepostgres.NewStore(pool))
+	gameStore := gamepostgres.NewStore(pool)
+	gameService := game.NewService(gameStore)
+	gameSubscriptions := game.NewSubscriptionService(gameStore)
 
 	server := &http.Server{
 		Addr: cfg.ListenAddr,
@@ -77,6 +79,7 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 			Authentication: authService,
 			Events:         eventService,
 			Games:          gameService,
+			Subscriptions:  gameSubscriptions,
 			SecureCookies:  strings.HasPrefix(cfg.BaseURL, "https://"),
 		}),
 		ReadHeaderTimeout: 5 * time.Second,

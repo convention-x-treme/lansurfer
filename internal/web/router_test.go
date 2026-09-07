@@ -257,6 +257,67 @@ func TestAdminGameSearchRendersAliasMatch(t *testing.T) {
 	}
 }
 
+func TestGameCatalogRequiresAuthentication(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "/games", nil)
+	response := httptest.NewRecorder()
+
+	NewRouter(RouterDependencies{
+		Ready:         func(context.Context) error { return nil },
+		Subscriptions: &routerSubscriptions{},
+	}).ServeHTTP(response, request)
+
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusUnauthorized)
+	}
+}
+
+func TestAuthenticatedUserCanBrowseAndFollowGames(t *testing.T) {
+	subscriptions := &routerSubscriptions{items: []game.SubscriptionGame{{
+		ID: "game-1", Name: "Warcraft III", Slug: "warcraft-3",
+	}}}
+	router := gameTestRouter(subscriptions)
+
+	request := httptest.NewRequest(http.MethodGet, "/games?q=wc3", nil)
+	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || subscriptions.search != "wc3" {
+		t.Fatalf("browse response = %d, search = %q", response.Code, subscriptions.search)
+	}
+	for _, want := range []string{"Warcraft III", "Follow Game", `hx-post="/games/game-1/follow"`, "My Games"} {
+		if !strings.Contains(response.Body.String(), want) {
+			t.Errorf("body does not contain %q", want)
+		}
+	}
+
+	follow := httptest.NewRequest(http.MethodPost, "/games/game-1/follow", nil)
+	follow.Header.Set("HX-Request", "true")
+	follow.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	followResponse := httptest.NewRecorder()
+	router.ServeHTTP(followResponse, follow)
+	if followResponse.Code != http.StatusOK || subscriptions.followed != "user-1/game-1" {
+		t.Fatalf("follow response = %d, write = %q", followResponse.Code, subscriptions.followed)
+	}
+	if !strings.Contains(followResponse.Body.String(), "Unfollow") {
+		t.Errorf("follow fragment = %q", followResponse.Body.String())
+	}
+}
+
+func TestMyGamesRendersOnlySubscriptions(t *testing.T) {
+	subscriptions := &routerSubscriptions{mine: []game.SubscriptionGame{{
+		ID: "game-1", Name: "Warcraft III", Slug: "warcraft-3", Subscribed: true,
+	}}}
+	request := httptest.NewRequest(http.MethodGet, "/games/mine", nil)
+	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	response := httptest.NewRecorder()
+
+	gameTestRouter(subscriptions).ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "Warcraft III") {
+		t.Fatalf("response = %d %q", response.Code, response.Body.String())
+	}
+}
+
 func assertResponse(t *testing.T, response *http.Response, wantStatus int, wantBody string) {
 	t.Helper()
 	defer response.Body.Close()
@@ -286,6 +347,16 @@ func adminTestRouter(events *routerEvents, games *routerGames) http.Handler {
 		Authentication: &routerAuthentication{account: user.User{DisplayName: "Ada Admin", Role: user.RoleAdmin}},
 		Events:         events,
 		Games:          games,
+	})
+}
+
+func gameTestRouter(subscriptions *routerSubscriptions) http.Handler {
+	return NewRouter(RouterDependencies{
+		Ready: func(context.Context) error { return nil },
+		Authentication: &routerAuthentication{account: user.User{
+			ID: "user-1", DisplayName: "Ada Player", Role: user.RoleUser,
+		}},
+		Subscriptions: subscriptions,
 	})
 }
 
@@ -321,6 +392,29 @@ func (*routerGames) AddAlias(context.Context, string, string) (game.Alias, error
 	return game.Alias{}, nil
 }
 func (*routerGames) RemoveAlias(context.Context, string, string) error { return nil }
+
+type routerSubscriptions struct {
+	items, mine []game.SubscriptionGame
+	search      string
+	followed    string
+	unfollowed  string
+}
+
+func (r *routerSubscriptions) Browse(_ context.Context, _, search string) ([]game.SubscriptionGame, error) {
+	r.search = search
+	return r.items, nil
+}
+func (r *routerSubscriptions) MyGames(context.Context, string) ([]game.SubscriptionGame, error) {
+	return r.mine, nil
+}
+func (r *routerSubscriptions) Follow(_ context.Context, userID, gameID string) error {
+	r.followed = userID + "/" + gameID
+	return nil
+}
+func (r *routerSubscriptions) Unfollow(_ context.Context, userID, gameID string) error {
+	r.unfollowed = userID + "/" + gameID
+	return nil
+}
 
 func (*routerAuthentication) Available() bool { return true }
 

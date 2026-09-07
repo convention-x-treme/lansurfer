@@ -20,6 +20,8 @@ templ Home(brand branding.Brand, navigation components.NavigationState) {
 					<div class="mt-8 flex flex-wrap gap-3">
 						if navigation.Viewer == nil && navigation.LoginAvailable {
 							<a class="btn btn-primary" href="/auth/login">Log in to LANsurfer</a>
+						} else if navigation.Viewer != nil {
+							<a class="btn btn-primary" href="/games">Browse games</a>
 						} else {
 							<a class="btn btn-primary" href="#patterns">Explore the interface</a>
 						}

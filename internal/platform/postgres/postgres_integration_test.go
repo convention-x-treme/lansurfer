@@ -180,6 +180,60 @@ func TestEventAndGameCatalogPersistence(t *testing.T) {
 	}
 }
 
+func TestGameSubscriptionPersistence(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+
+	users := user.NewService(userpostgres.NewStore(pool))
+	account, err := users.Register(t.Context(), "Subscribed Player")
+	if err != nil {
+		t.Fatalf("register user: %v", err)
+	}
+	catalog := game.NewService(gamepostgres.NewStore(pool))
+	warcraft, err := catalog.Create(t.Context(), "Warcraft III", "warcraft-3")
+	if err != nil {
+		t.Fatalf("create game: %v", err)
+	}
+	if _, err := catalog.AddAlias(t.Context(), warcraft.ID, "WC3"); err != nil {
+		t.Fatalf("add alias: %v", err)
+	}
+	quake, err := catalog.Create(t.Context(), "Quake III Arena", "quake-3-arena")
+	if err != nil {
+		t.Fatalf("create second game: %v", err)
+	}
+
+	subscriptions := game.NewSubscriptionService(gamepostgres.NewStore(pool))
+	if err := subscriptions.Follow(t.Context(), account.ID, warcraft.ID); err != nil {
+		t.Fatalf("follow game: %v", err)
+	}
+	if err := subscriptions.Follow(t.Context(), account.ID, warcraft.ID); err != nil {
+		t.Fatalf("follow game idempotently: %v", err)
+	}
+	results, err := subscriptions.Browse(t.Context(), account.ID, "wc3")
+	if err != nil || len(results) != 1 || results[0].ID != warcraft.ID || !results[0].Subscribed {
+		t.Fatalf("browse subscriptions = %#v, %v", results, err)
+	}
+	mine, err := subscriptions.MyGames(t.Context(), account.ID)
+	if err != nil || len(mine) != 1 || mine[0].ID != warcraft.ID {
+		t.Fatalf("my games = %#v, %v", mine, err)
+	}
+	if err := catalog.SetActive(t.Context(), quake.ID, false); err != nil {
+		t.Fatalf("deactivate game: %v", err)
+	}
+	if err := subscriptions.Follow(t.Context(), account.ID, quake.ID); !errors.Is(err, game.ErrNotFound) {
+		t.Fatalf("follow inactive game error = %v, want ErrNotFound", err)
+	}
+	if err := subscriptions.Unfollow(t.Context(), account.ID, warcraft.ID); err != nil {
+		t.Fatalf("unfollow game: %v", err)
+	}
+	mine, err = subscriptions.MyGames(t.Context(), account.ID)
+	if err != nil || len(mine) != 0 {
+		t.Fatalf("my games after unfollow = %#v, %v", mine, err)
+	}
+}
+
 func TestMigrateAndReadyCheck(t *testing.T) {
 	pool := newTestPool(t)
 	logger := testLogger()
@@ -202,8 +256,8 @@ func TestMigrateAndReadyCheck(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get migration version: %v", err)
 	}
-	if version != 3 {
-		t.Errorf("migration version = %d, want 3", version)
+	if version != 4 {
+		t.Errorf("migration version = %d, want 4", version)
 	}
 
 	if err := migrateFS(t.Context(), pool, migrationFS, logger); err != nil {

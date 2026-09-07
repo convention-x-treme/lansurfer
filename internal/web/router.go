@@ -33,6 +33,7 @@ type RouterDependencies struct {
 	Authentication Authentication
 	Events         handler.EventAdministration
 	Games          handler.GameAdministration
+	Subscriptions  handler.GameSubscriptions
 	SecureCookies  bool
 }
 
@@ -41,6 +42,7 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 	brand := branding.Default()
 	authenticationHandler := handler.NewAuthentication(dependencies.Authentication, brand, dependencies.SecureCookies)
 	administrationHandler := handler.NewAdministration(dependencies.Events, dependencies.Games, brand)
+	gamesHandler := handler.NewGames(dependencies.Subscriptions, brand)
 	router := chi.NewRouter()
 	router.Use(middleware.RequestID)
 	router.Use(middleware.Recoverer)
@@ -49,6 +51,15 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 	router.Group(func(authenticated chi.Router) {
 		authenticated.Use(webmiddleware.Authentication(dependencies.Authentication, dependencies.SecureCookies))
 		authenticated.Get("/", homeHandler(brand, dependencies.Authentication))
+		if dependencies.Subscriptions != nil {
+			authenticated.Route("/games", func(games chi.Router) {
+				games.Use(handler.RequireAuthentication)
+				games.Get("/", gamesHandler.Browse)
+				games.Get("/mine", gamesHandler.MyGames)
+				games.Post("/{gameID}/follow", gamesHandler.Follow)
+				games.Post("/{gameID}/unfollow", gamesHandler.Unfollow)
+			})
+		}
 		if dependencies.Events != nil && dependencies.Games != nil {
 			authenticated.Route("/admin", func(admin chi.Router) {
 				admin.Use(handler.RequireAdmin)

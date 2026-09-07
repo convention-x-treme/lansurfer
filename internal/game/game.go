@@ -44,6 +44,15 @@ type Game struct {
 	UpdatedAt time.Time
 }
 
+// SubscriptionGame is the user-facing catalog projection with the current
+// user's subscription state.
+type SubscriptionGame struct {
+	ID         string
+	Name       string
+	Slug       string
+	Subscribed bool
+}
+
 type Repository interface {
 	List(context.Context, string) ([]Game, error)
 	Create(context.Context, string, string) (Game, error)
@@ -61,12 +70,55 @@ func NewService(repository Repository) *Service {
 	return &Service{repository: repository}
 }
 
+type SubscriptionRepository interface {
+	Browse(context.Context, string, string) ([]SubscriptionGame, error)
+	MyGames(context.Context, string) ([]SubscriptionGame, error)
+	Follow(context.Context, string, string) error
+	Unfollow(context.Context, string, string) error
+}
+
+type SubscriptionService struct {
+	repository SubscriptionRepository
+}
+
+func NewSubscriptionService(repository SubscriptionRepository) *SubscriptionService {
+	return &SubscriptionService{repository: repository}
+}
+
+func (s *SubscriptionService) Browse(ctx context.Context, userID, search string) ([]SubscriptionGame, error) {
+	search, err := validateSearch(search)
+	if err != nil {
+		return nil, err
+	}
+	return s.repository.Browse(ctx, userID, search)
+}
+
+func (s *SubscriptionService) MyGames(ctx context.Context, userID string) ([]SubscriptionGame, error) {
+	return s.repository.MyGames(ctx, userID)
+}
+
+func (s *SubscriptionService) Follow(ctx context.Context, userID, gameID string) error {
+	return s.repository.Follow(ctx, userID, gameID)
+}
+
+func (s *SubscriptionService) Unfollow(ctx context.Context, userID, gameID string) error {
+	return s.repository.Unfollow(ctx, userID, gameID)
+}
+
 func (s *Service) List(ctx context.Context, search string) ([]Game, error) {
-	search = strings.TrimSpace(search)
-	if utf8.RuneCountInString(search) > maxSearchLength {
-		return nil, ErrInvalidSearch
+	search, err := validateSearch(search)
+	if err != nil {
+		return nil, err
 	}
 	return s.repository.List(ctx, search)
+}
+
+func validateSearch(search string) (string, error) {
+	search = strings.TrimSpace(search)
+	if utf8.RuneCountInString(search) > maxSearchLength {
+		return "", ErrInvalidSearch
+	}
+	return search, nil
 }
 
 func (s *Service) Create(ctx context.Context, name, slug string) (Game, error) {

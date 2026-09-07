@@ -41,3 +41,51 @@ RETURNING id::text, alias;
 -- name: DeleteGameAlias :execrows
 DELETE FROM game_aliases
 WHERE id = sqlc.arg(id)::uuid AND game_id = sqlc.arg(game_id)::uuid;
+
+-- name: BrowseSubscriptionGames :many
+SELECT g.id::text, g.name, g.slug,
+       EXISTS (
+           SELECT 1
+           FROM game_subscriptions gs
+           WHERE gs.game_id = g.id
+             AND gs.user_id = sqlc.arg(user_id)::uuid
+       ) AS subscribed
+FROM games g
+WHERE g.active
+  AND (
+      sqlc.arg(search)::text = ''
+      OR strpos(lower(g.name), lower(sqlc.arg(search)::text)) > 0
+      OR EXISTS (
+          SELECT 1
+          FROM game_aliases ga
+          WHERE ga.game_id = g.id
+            AND strpos(lower(ga.alias), lower(sqlc.arg(search)::text)) > 0
+      )
+  )
+ORDER BY lower(g.name), g.id;
+
+-- name: ListSubscribedGames :many
+SELECT g.id::text, g.name, g.slug, true AS subscribed
+FROM game_subscriptions gs
+JOIN games g ON g.id = gs.game_id
+WHERE gs.user_id = sqlc.arg(user_id)::uuid
+  AND g.active
+ORDER BY lower(g.name), g.id;
+
+-- name: FollowGame :execrows
+INSERT INTO game_subscriptions (user_id, game_id)
+SELECT sqlc.arg(user_id)::uuid, g.id
+FROM games g
+WHERE g.id = sqlc.arg(game_id)::uuid
+  AND g.active
+ON CONFLICT (user_id, game_id) DO NOTHING;
+
+-- name: ActiveGameExists :one
+SELECT EXISTS (
+    SELECT 1 FROM games WHERE id = sqlc.arg(game_id)::uuid AND active
+);
+
+-- name: UnfollowGame :exec
+DELETE FROM game_subscriptions
+WHERE user_id = sqlc.arg(user_id)::uuid
+  AND game_id = sqlc.arg(game_id)::uuid;
