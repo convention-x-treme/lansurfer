@@ -526,11 +526,15 @@ Examples:
 LANSURFER_DATABASE_URL
 LANSURFER_BASE_URL
 LANSURFER_LISTEN_ADDR
-LANSURFER_SESSION_SECRET
 LANSURFER_OIDC_ISSUER
 LANSURFER_OIDC_CLIENT_ID
 LANSURFER_OIDC_CLIENT_SECRET
 ```
+
+`LANSURFER_OIDC_CLIENT_SECRET` is optional for public clients using PKCE and is
+required when the provider configures LANsurfer as a confidential client.
+Opaque browser session tokens are generated randomly and stored only as hashes;
+they do not require a separate application session secret.
 
 Product/runtime customization may later be stored in PostgreSQL.
 

@@ -15,7 +15,7 @@ Hundreds of players. Dozens of games. And somewhere in the room, someone else is
 
 [The idea](#-what-is-lansurfer) · [How it works](#-how-it-works) · [Project status](#-project-status) · [Get involved](#-get-involved)
 
-> 🚧 **Early development:** the backend and server-rendered frontend foundations are in place. Authentication and the player-facing workflows described below are planned for later milestones.
+> 🚧 **Early development:** the backend, server-rendered frontend, and generic OIDC login are in place. The player-facing game workflows described below are planned for later milestones.
 
 ## 🎮 What is LANsurfer?
 
@@ -70,7 +70,7 @@ The [visual branding guide](docs/BRANDING.md) defines the palette, typography, m
 
 ## 🗺️ Project status
 
-We're building toward a **web-only v0.1 prototype** to try at a real LAN event. The backend, database, and responsive web foundations are implemented. Login, following games, and creating or joining requests are still ahead.
+We're building toward a **web-only v0.1 prototype** to try at a real LAN event. The backend, database, responsive web foundation, and OIDC login are implemented. Following games and creating or joining requests are still ahead.
 
 The [roadmap](docs/ROADMAP.md#progress) tracks completed work and what's next. The [product definition](docs/PRODUCT.md#5-v01-scope) describes the first release in detail.
 
@@ -96,6 +96,22 @@ Expect `ok` from `/healthz` and `ready` from `/readyz`. Stop the stack with:
 ```sh
 docker compose down
 ```
+
+### Configure OIDC login
+
+LANsurfer uses generic OpenID Connect discovery and server-side PostgreSQL sessions. The local Compose environment defaults to the CXT development realm and client below. The provider must allow the exact callback URL `http://localhost:8080/auth/callback`:
+
+```sh
+LANSURFER_BASE_URL=http://localhost:8080
+LANSURFER_OIDC_ISSUER=https://auth.convention-x-treme.de/realms/local-dev
+LANSURFER_OIDC_CLIENT_ID=lansurver
+# Leave empty for the local public PKCE client.
+LANSURFER_OIDC_CLIENT_SECRET=
+```
+
+Set the issuer URL itself rather than its `/.well-known/openid-configuration` endpoint; LANsurfer discovers that endpoint automatically. The client secret is optional for public PKCE clients and required when the provider configures a confidential client. For an exposed deployment, use an HTTPS base URL; LANsurfer then marks its opaque session and login-flow cookies `Secure`. The identity provider subject is linked to a separate local LANsurfer user, and matching email addresses are never used to merge accounts.
+
+For the local Keycloak client, enable **Standard flow**, leave **Client authentication** disabled, require the `S256` PKCE method, and configure `http://localhost:8080/auth/callback` as the exact valid redirect URI. A production server deployment should normally use a confidential client with client authentication enabled and provide its secret through `LANSURFER_OIDC_CLIENT_SECRET`.
 
 The Compose credentials are development defaults; do not use them for an exposed deployment. See the [contributing guide](CONTRIBUTING.md#development-setup) for local Go development, configuration, and checks.
 

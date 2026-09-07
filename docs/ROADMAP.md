@@ -11,8 +11,8 @@ Follow the [development workflow](../AGENTS.md#workflow-and-documentation) and c
 - [x] Milestone 0 — Repository Foundation
 - [x] Milestone 1 — Runnable Backend and PostgreSQL
 - [x] Milestone 2 — Frontend Foundation
-- [ ] **Current:** Milestone 3 — Authentication and Users
-- [ ] Milestone 4 — Events and Local Game Catalog
+- [x] Milestone 3 — Authentication and Users
+- [ ] **Current:** Milestone 4 — Events and Local Game Catalog
 - [ ] Milestone 5 — Game Subscriptions
 - [ ] Milestone 6 — Core GameRequest Workflow
 - [ ] Milestone 7 — SSE Realtime Experience

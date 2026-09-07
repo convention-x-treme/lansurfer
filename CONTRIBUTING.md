@@ -40,7 +40,12 @@ export LANSURFER_LISTEN_ADDR=':8080'
 task run
 ```
 
-These credentials are for local development only. Run `task --list` for all available workflows.
+OIDC login is enabled by default in the local Compose environment. When running
+Go directly, export `LANSURFER_BASE_URL`, `LANSURFER_OIDC_ISSUER`, and
+`LANSURFER_OIDC_CLIENT_ID` as described in the README and `.env.example`.
+`LANSURFER_OIDC_CLIENT_SECRET` is optional for a public PKCE client.
+These credentials are for local development only. Run `task --list` for all
+available workflows.
 
 ## Changes
 
