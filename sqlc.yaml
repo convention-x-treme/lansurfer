@@ -8,3 +8,19 @@ sql:
         package: sqlcgen
         out: internal/platform/postgres/sqlcgen
         sql_package: pgx/v5
+  - engine: postgresql
+    schema: internal/platform/postgres/migrations
+    queries: internal/user/postgres/queries
+    gen:
+      go:
+        package: sqlcgen
+        out: internal/user/postgres/sqlcgen
+        sql_package: pgx/v5
+  - engine: postgresql
+    schema: internal/platform/postgres/migrations
+    queries: internal/auth/postgres/queries
+    gen:
+      go:
+        package: sqlcgen
+        out: internal/auth/postgres/sqlcgen
+        sql_package: pgx/v5

@@ -1,0 +1,26 @@
+package pages
+
+import (
+	"github.com/convention-x-treme/lansurfer/internal/web/branding"
+	"github.com/convention-x-treme/lansurfer/internal/web/components"
+)
+
+templ AuthenticationError(brand branding.Brand, message string, loginAvailable bool) {
+	@components.Layout(brand, "Login problem", components.NavigationState{LoginAvailable: loginAvailable}) {
+		<section class="page-shell flex min-h-[28rem] items-center py-16">
+			<div role="alert" class="card w-full border border-error bg-base-200 shadow-xl">
+				<div class="card-body">
+					<p class="data-text text-sm font-semibold uppercase tracking-widest text-error">Authentication</p>
+					<h1 class="card-title text-3xl">Login could not be completed</h1>
+					<p class="max-w-2xl text-base-content/75">{ message }</p>
+					<div class="card-actions mt-4">
+						if loginAvailable {
+							<a class="btn btn-primary" href="/auth/login">Start login again</a>
+						}
+						<a class="btn btn-ghost" href="/">Return home</a>
+					</div>
+				</div>
+			</div>
+		</section>
+	}
+}

@@ -3,3 +3,33 @@
 //   sqlc v1.31.1
 
 package sqlcgen
+
+import (
+	"github.com/jackc/pgx/v5/pgtype"
+)
+
+type AuthSession struct {
+	IDHash     []byte
+	UserID     pgtype.UUID
+	ExpiresAt  pgtype.Timestamptz
+	CreatedAt  pgtype.Timestamptz
+	LastSeenAt pgtype.Timestamptz
+}
+
+type User struct {
+	ID          pgtype.UUID
+	DisplayName string
+	Role        string
+	CreatedAt   pgtype.Timestamptz
+	UpdatedAt   pgtype.Timestamptz
+}
+
+type UserIdentity struct {
+	ID          pgtype.UUID
+	UserID      pgtype.UUID
+	Provider    string
+	Subject     string
+	DisplayName pgtype.Text
+	Email       pgtype.Text
+	CreatedAt   pgtype.Timestamptz
+}

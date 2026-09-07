@@ -13,7 +13,7 @@ import (
 	"github.com/convention-x-treme/lansurfer/internal/web/components"
 )
 
-func Home(brand branding.Brand) templ.Component {
+func Home(brand branding.Brand, navigation components.NavigationState) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -46,20 +46,63 @@ func Home(brand branding.Brand) templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<section class=\"hero-waterline border-b border-base-300\"><div class=\"page-shell grid min-h-[28rem] items-center gap-10 py-16 lg:grid-cols-[1.2fr_0.8fr]\"><div><div class=\"badge badge-outline badge-primary mb-5\">Frontend foundation ready</div><h1 class=\"max-w-3xl text-4xl font-bold leading-tight tracking-tight sm:text-5xl lg:text-6xl\">Find the people who want to play the same game.</h1><p class=\"mt-6 max-w-2xl text-lg leading-relaxed text-base-content/75\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<section class=\"hero-waterline border-b border-base-300\"><div class=\"page-shell grid min-h-[28rem] items-center gap-10 py-16 lg:grid-cols-[1.2fr_0.8fr]\"><div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var3 string
-			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(brand.Tagline)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/home.templ`, Line: 15, Col: 91}
+			if navigation.Viewer != nil {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<div class=\"badge badge-outline badge-primary mb-5\">Signed in as ")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var3 string
+				templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(navigation.Viewer.DisplayName)
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/home.templ`, Line: 14, Col: 102}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "</div>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			} else {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "<div class=\"badge badge-outline badge-primary mb-5\">Ready to find your next game</div>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<h1 class=\"max-w-3xl text-4xl font-bold leading-tight tracking-tight sm:text-5xl lg:text-6xl\">Find the people who want to play the same game.</h1><p class=\"mt-6 max-w-2xl text-lg leading-relaxed text-base-content/75\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, " LANsurfer brings server-rendered, mobile-friendly game discovery to the event floor.</p><div class=\"mt-8 flex flex-wrap gap-3\"><a class=\"btn btn-primary\" href=\"#patterns\">Explore the interface</a> <a class=\"btn btn-ghost\" href=\"/healthz\">Service health</a></div></div><div class=\"card border border-base-300 bg-base-200 shadow-xl\"><div class=\"card-body gap-5\"><p class=\"data-text text-sm font-semibold uppercase tracking-widest text-secondary\">Built for the LAN</p><h2 class=\"card-title text-2xl\">Fast, obvious, and local</h2><p class=\"text-base-content/75\">The foundation uses ordinary links, forms, and server-rendered fragments. JavaScript enhances the experience without owning product behavior.</p><div class=\"flex flex-wrap gap-2\" aria-label=\"Frontend technologies\"><span class=\"badge badge-outline\">templ</span> <span class=\"badge badge-outline\">HTMX</span> <span class=\"badge badge-outline\">Tailwind CSS</span> <span class=\"badge badge-outline\">DaisyUI</span></div></div></div></div></section><section id=\"patterns\" class=\"page-shell py-16\" aria-labelledby=\"patterns-title\"><div class=\"max-w-2xl\"><p class=\"data-text text-sm font-semibold uppercase tracking-widest text-secondary\">Server-rendered patterns</p><h2 id=\"patterns-title\" class=\"mt-2 text-3xl font-bold\">Useful states before product complexity</h2><p class=\"mt-3 text-base-content/75\">These controls request HTML fragments from Go. HTMX swaps only the preview while the page remains server rendered.</p></div><div class=\"mt-6 flex flex-wrap gap-3\" role=\"group\" aria-label=\"Preview interface states\"><button type=\"button\" class=\"btn btn-primary\" hx-get=\"/ui/patterns/empty\" hx-target=\"#pattern-preview\" hx-swap=\"innerHTML\" hx-indicator=\"#pattern-loading\">Show empty state</button> <button type=\"button\" class=\"btn btn-outline\" hx-get=\"/ui/patterns/error\" hx-target=\"#pattern-preview\" hx-swap=\"innerHTML\" hx-indicator=\"#pattern-loading\">Show error state</button> <span id=\"pattern-loading\" class=\"loading loading-spinner loading-sm htmx-indicator self-center\" aria-label=\"Loading\"></span></div><div id=\"pattern-preview\" class=\"mt-6\" aria-live=\"polite\">")
+			var templ_7745c5c3_Var4 string
+			templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(brand.Tagline)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/home.templ`, Line: 19, Col: 91}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, " LANsurfer brings server-rendered, mobile-friendly game discovery to the event floor.</p><div class=\"mt-8 flex flex-wrap gap-3\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if navigation.Viewer == nil && navigation.LoginAvailable {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "<a class=\"btn btn-primary\" href=\"/auth/login\">Log in to LANsurfer</a> ")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			} else {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<a class=\"btn btn-primary\" href=\"#patterns\">Explore the interface</a> ")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<a class=\"btn btn-ghost\" href=\"/healthz\">Service health</a></div></div><div class=\"card border border-base-300 bg-base-200 shadow-xl\"><div class=\"card-body gap-5\"><p class=\"data-text text-sm font-semibold uppercase tracking-widest text-secondary\">Built for the LAN</p><h2 class=\"card-title text-2xl\">Fast, obvious, and local</h2><p class=\"text-base-content/75\">The foundation uses ordinary links, forms, and server-rendered fragments. JavaScript enhances the experience without owning product behavior.</p><div class=\"flex flex-wrap gap-2\" aria-label=\"Frontend technologies\"><span class=\"badge badge-outline\">templ</span> <span class=\"badge badge-outline\">HTMX</span> <span class=\"badge badge-outline\">Tailwind CSS</span> <span class=\"badge badge-outline\">DaisyUI</span></div></div></div></div></section><section id=\"patterns\" class=\"page-shell py-16\" aria-labelledby=\"patterns-title\"><div class=\"max-w-2xl\"><p class=\"data-text text-sm font-semibold uppercase tracking-widest text-secondary\">Server-rendered patterns</p><h2 id=\"patterns-title\" class=\"mt-2 text-3xl font-bold\">Useful states before product complexity</h2><p class=\"mt-3 text-base-content/75\">These controls request HTML fragments from Go. HTMX swaps only the preview while the page remains server rendered.</p></div><div class=\"mt-6 flex flex-wrap gap-3\" role=\"group\" aria-label=\"Preview interface states\"><button type=\"button\" class=\"btn btn-primary\" hx-get=\"/ui/patterns/empty\" hx-target=\"#pattern-preview\" hx-swap=\"innerHTML\" hx-indicator=\"#pattern-loading\">Show empty state</button> <button type=\"button\" class=\"btn btn-outline\" hx-get=\"/ui/patterns/error\" hx-target=\"#pattern-preview\" hx-swap=\"innerHTML\" hx-indicator=\"#pattern-loading\">Show error state</button> <span id=\"pattern-loading\" class=\"loading loading-spinner loading-sm htmx-indicator self-center\" aria-label=\"Loading\"></span></div><div id=\"pattern-preview\" class=\"mt-6\" aria-live=\"polite\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -67,13 +110,13 @@ func Home(brand branding.Brand) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "</div></section>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "</div></section>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			return nil
 		})
-		templ_7745c5c3_Err = components.Layout(brand, "Home").Render(templ.WithChildren(ctx, templ_7745c5c3_Var2), templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = components.Layout(brand, "Home", navigation).Render(templ.WithChildren(ctx, templ_7745c5c3_Var2), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

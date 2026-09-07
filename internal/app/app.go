@@ -6,16 +6,22 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
+	"github.com/convention-x-treme/lansurfer/internal/auth"
+	authpostgres "github.com/convention-x-treme/lansurfer/internal/auth/postgres"
 	"github.com/convention-x-treme/lansurfer/internal/platform/config"
 	"github.com/convention-x-treme/lansurfer/internal/platform/postgres"
+	"github.com/convention-x-treme/lansurfer/internal/user"
+	userpostgres "github.com/convention-x-treme/lansurfer/internal/user/postgres"
 	"github.com/convention-x-treme/lansurfer/internal/web"
 )
 
 const (
 	databaseStartupTimeout = 60 * time.Second
 	migrationTimeout       = 5 * time.Minute
+	oidcDiscoveryTimeout   = 30 * time.Second
 	shutdownTimeout        = 10 * time.Second
 )
 
@@ -36,9 +42,35 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		return fmt.Errorf("apply database migrations: %w", err)
 	}
 
+	userService := user.NewService(userpostgres.NewStore(pool))
+	var oidcProvider auth.Provider
+	if cfg.OIDC != nil {
+		discoveryCtx, cancelDiscovery := context.WithTimeout(ctx, oidcDiscoveryTimeout)
+		oidcProvider, err = auth.DiscoverOIDCProvider(discoveryCtx, auth.OIDCConfig{
+			IssuerURL:    cfg.OIDC.Issuer,
+			ClientID:     cfg.OIDC.ClientID,
+			ClientSecret: cfg.OIDC.ClientSecret,
+			RedirectURL:  cfg.BaseURL + "/auth/callback",
+		})
+		cancelDiscovery()
+		if err != nil {
+			return fmt.Errorf("initialize OIDC: %w", err)
+		}
+	}
+	authService := auth.NewService(
+		oidcProvider,
+		authpostgres.NewIdentityStore(pool),
+		authpostgres.NewSessionStore(pool),
+		userService,
+	)
+
 	server := &http.Server{
-		Addr:              cfg.ListenAddr,
-		Handler:           web.NewRouter(postgres.ReadyCheck(pool)),
+		Addr: cfg.ListenAddr,
+		Handler: web.NewRouter(web.RouterDependencies{
+			Ready:          postgres.ReadyCheck(pool),
+			Authentication: authService,
+			SecureCookies:  strings.HasPrefix(cfg.BaseURL, "https://"),
+		}),
 		ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}

@@ -5,16 +5,24 @@ import (
 	"github.com/convention-x-treme/lansurfer/internal/web/components"
 )
 
-templ Home(brand branding.Brand) {
-	@components.Layout(brand, "Home") {
+templ Home(brand branding.Brand, navigation components.NavigationState) {
+	@components.Layout(brand, "Home", navigation) {
 		<section class="hero-waterline border-b border-base-300">
 			<div class="page-shell grid min-h-[28rem] items-center gap-10 py-16 lg:grid-cols-[1.2fr_0.8fr]">
 				<div>
-					<div class="badge badge-outline badge-primary mb-5">Frontend foundation ready</div>
+					if navigation.Viewer != nil {
+						<div class="badge badge-outline badge-primary mb-5">Signed in as { navigation.Viewer.DisplayName }</div>
+					} else {
+						<div class="badge badge-outline badge-primary mb-5">Ready to find your next game</div>
+					}
 					<h1 class="max-w-3xl text-4xl font-bold leading-tight tracking-tight sm:text-5xl lg:text-6xl">Find the people who want to play the same game.</h1>
 					<p class="mt-6 max-w-2xl text-lg leading-relaxed text-base-content/75">{ brand.Tagline } LANsurfer brings server-rendered, mobile-friendly game discovery to the event floor.</p>
 					<div class="mt-8 flex flex-wrap gap-3">
-						<a class="btn btn-primary" href="#patterns">Explore the interface</a>
+						if navigation.Viewer == nil && navigation.LoginAvailable {
+							<a class="btn btn-primary" href="/auth/login">Log in to LANsurfer</a>
+						} else {
+							<a class="btn btn-primary" href="#patterns">Explore the interface</a>
+						}
 						<a class="btn btn-ghost" href="/healthz">Service health</a>
 					</div>
 				</div>

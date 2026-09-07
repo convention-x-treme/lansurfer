@@ -5,6 +5,7 @@ package postgres
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"io"
@@ -15,11 +16,81 @@ import (
 	"testing/fstest"
 	"time"
 
+	"github.com/convention-x-treme/lansurfer/internal/auth"
+	authpostgres "github.com/convention-x-treme/lansurfer/internal/auth/postgres"
+	"github.com/convention-x-treme/lansurfer/internal/user"
+	userpostgres "github.com/convention-x-treme/lansurfer/internal/user/postgres"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
 )
+
+func TestAuthenticationPersistence(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+
+	users := user.NewService(userpostgres.NewStore(pool))
+	account, err := users.Register(t.Context(), "LAN Player")
+	if err != nil {
+		t.Fatalf("register user: %v", err)
+	}
+	if account.Role != user.RoleUser || account.ID == "" || account.CreatedAt.IsZero() || account.UpdatedAt.IsZero() {
+		t.Fatalf("account = %#v", account)
+	}
+
+	identities := authpostgres.NewIdentityStore(pool)
+	identity, err := identities.Create(t.Context(), auth.Identity{
+		UserID:      account.ID,
+		Provider:    "https://identity.example/realms/lan",
+		Subject:     "subject-1",
+		DisplayName: "Identity Name",
+		Email:       "player@example.test",
+	})
+	if err != nil {
+		t.Fatalf("create identity: %v", err)
+	}
+	found, err := identities.ByProviderSubject(t.Context(), identity.Provider, identity.Subject)
+	if err != nil || found.UserID != account.ID || found.Email != identity.Email {
+		t.Fatalf("find identity = %#v, %v", found, err)
+	}
+	if _, err := identities.Create(t.Context(), auth.Identity{
+		UserID: account.ID, Provider: identity.Provider, Subject: identity.Subject,
+	}); !errors.Is(err, auth.ErrIdentityExists) {
+		t.Fatalf("duplicate identity error = %v, want ErrIdentityExists", err)
+	}
+
+	sessions := authpostgres.NewSessionStore(pool)
+	tokenHash := sha256.Sum256([]byte("opaque-token"))
+	expiresAt := time.Now().Add(time.Hour).UTC().Truncate(time.Microsecond)
+	if err := sessions.Create(t.Context(), tokenHash, account.ID, expiresAt); err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	sessions = authpostgres.NewSessionStore(pool)
+	resolved, err := sessions.Resolve(t.Context(), tokenHash)
+	if err != nil || resolved.UserID != account.ID || !resolved.ExpiresAt.Equal(expiresAt) {
+		t.Fatalf("resolve session = %#v, %v", resolved, err)
+	}
+	if err := sessions.Delete(t.Context(), tokenHash); err != nil {
+		t.Fatalf("delete session: %v", err)
+	}
+	if _, err := sessions.Resolve(t.Context(), tokenHash); !errors.Is(err, auth.ErrSessionNotFound) {
+		t.Fatalf("resolve revoked session error = %v, want ErrSessionNotFound", err)
+	}
+
+	expiredHash := sha256.Sum256([]byte("expired-token"))
+	if _, err := pool.Exec(t.Context(), `
+		INSERT INTO auth_sessions (id_hash, user_id, expires_at, created_at)
+		VALUES ($1, $2, now() - interval '1 minute', now() - interval '2 minutes')
+	`, expiredHash[:], account.ID); err != nil {
+		t.Fatalf("insert expired session: %v", err)
+	}
+	if _, err := sessions.Resolve(t.Context(), expiredHash); !errors.Is(err, auth.ErrSessionNotFound) {
+		t.Fatalf("resolve expired session error = %v, want ErrSessionNotFound", err)
+	}
+}
 
 func TestMigrateAndReadyCheck(t *testing.T) {
 	pool := newTestPool(t)
@@ -43,8 +114,8 @@ func TestMigrateAndReadyCheck(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get migration version: %v", err)
 	}
-	if version != 1 {
-		t.Errorf("migration version = %d, want 1", version)
+	if version != 2 {
+		t.Errorf("migration version = %d, want 2", version)
 	}
 
 	if err := migrateFS(t.Context(), pool, migrationFS, logger); err != nil {

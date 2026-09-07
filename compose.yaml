@@ -24,6 +24,10 @@ services:
     environment:
       LANSURFER_DATABASE_URL: postgres://lansurfer:lansurfer@postgres:5432/lansurfer?sslmode=disable
       LANSURFER_LISTEN_ADDR: :8080
+      LANSURFER_BASE_URL: ${LANSURFER_BASE_URL:-http://localhost:8080}
+      LANSURFER_OIDC_ISSUER: ${LANSURFER_OIDC_ISSUER:-https://auth.convention-x-treme.de/realms/local-dev}
+      LANSURFER_OIDC_CLIENT_ID: ${LANSURFER_OIDC_CLIENT_ID:-lansurver}
+      LANSURFER_OIDC_CLIENT_SECRET: ${LANSURFER_OIDC_CLIENT_SECRET:-}
     init: true
     ports:
       - "${LANSURFER_HTTP_PORT:-8080}:8080"

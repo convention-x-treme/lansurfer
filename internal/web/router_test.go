@@ -8,13 +8,17 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/convention-x-treme/lansurfer/internal/auth"
+	"github.com/convention-x-treme/lansurfer/internal/user"
+	webmiddleware "github.com/convention-x-treme/lansurfer/internal/web/middleware"
 )
 
 func TestHealth(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	response := httptest.NewRecorder()
 
-	NewRouter(func(context.Context) error { return nil }).ServeHTTP(response, request)
+	NewRouter(RouterDependencies{Ready: func(context.Context) error { return nil }}).ServeHTTP(response, request)
 
 	assertResponse(t, response.Result(), http.StatusOK, "ok\n")
 }
@@ -54,7 +58,7 @@ func TestReady(t *testing.T) {
 			request := httptest.NewRequest(http.MethodGet, "/readyz", nil)
 			response := httptest.NewRecorder()
 
-			NewRouter(test.ready).ServeHTTP(response, request)
+			NewRouter(RouterDependencies{Ready: test.ready}).ServeHTTP(response, request)
 
 			assertResponse(t, response.Result(), test.wantStatus, test.wantBody)
 		})
@@ -67,7 +71,7 @@ func TestHealthEndpointsRejectOtherMethods(t *testing.T) {
 			request := httptest.NewRequest(http.MethodPost, path, nil)
 			response := httptest.NewRecorder()
 
-			NewRouter(func(context.Context) error { return nil }).ServeHTTP(response, request)
+			NewRouter(RouterDependencies{Ready: func(context.Context) error { return nil }}).ServeHTTP(response, request)
 
 			if response.Code != http.StatusMethodNotAllowed {
 				t.Errorf("status = %d, want %d", response.Code, http.StatusMethodNotAllowed)
@@ -80,7 +84,7 @@ func TestHomeRendersFrontendFoundation(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/", nil)
 	response := httptest.NewRecorder()
 
-	NewRouter(func(context.Context) error { return nil }).ServeHTTP(response, request)
+	NewRouter(RouterDependencies{Ready: func(context.Context) error { return nil }}).ServeHTTP(response, request)
 
 	result := response.Result()
 	defer result.Body.Close()
@@ -111,6 +115,27 @@ func TestHomeRendersFrontendFoundation(t *testing.T) {
 	}
 }
 
+func TestHomeRendersAuthenticatedViewer(t *testing.T) {
+	authentication := &routerAuthentication{account: user.User{DisplayName: "Ada Player", Role: user.RoleAdmin}}
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	response := httptest.NewRecorder()
+
+	NewRouter(RouterDependencies{
+		Ready:          func(context.Context) error { return nil },
+		Authentication: authentication,
+	}).ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d", response.Code)
+	}
+	for _, want := range []string{"Ada Player", "admin", `action="/auth/logout"`} {
+		if !strings.Contains(response.Body.String(), want) {
+			t.Errorf("body does not contain %q", want)
+		}
+	}
+}
+
 func TestPatternFragments(t *testing.T) {
 	tests := []struct {
 		path string
@@ -125,7 +150,7 @@ func TestPatternFragments(t *testing.T) {
 			request := httptest.NewRequest(http.MethodGet, test.path, nil)
 			response := httptest.NewRecorder()
 
-			NewRouter(func(context.Context) error { return nil }).ServeHTTP(response, request)
+			NewRouter(RouterDependencies{Ready: func(context.Context) error { return nil }}).ServeHTTP(response, request)
 
 			result := response.Result()
 			defer result.Body.Close()
@@ -160,7 +185,7 @@ func TestEmbeddedAssetsAreServed(t *testing.T) {
 			request := httptest.NewRequest(http.MethodGet, path, nil)
 			response := httptest.NewRecorder()
 
-			NewRouter(func(context.Context) error { return nil }).ServeHTTP(response, request)
+			NewRouter(RouterDependencies{Ready: func(context.Context) error { return nil }}).ServeHTTP(response, request)
 
 			if response.Code != http.StatusOK {
 				t.Errorf("status = %d, want %d", response.Code, http.StatusOK)
@@ -189,4 +214,22 @@ func assertResponse(t *testing.T, response *http.Response, wantStatus int, wantB
 	if string(body) != wantBody {
 		t.Errorf("body = %q, want %q", body, wantBody)
 	}
+}
+
+type routerAuthentication struct {
+	account user.User
+}
+
+func (*routerAuthentication) Available() bool { return true }
+
+func (*routerAuthentication) BeginLogin() (auth.LoginFlow, error) { return auth.LoginFlow{}, nil }
+
+func (*routerAuthentication) CompleteLogin(context.Context, string, string, string) (user.User, auth.BrowserSession, error) {
+	return user.User{}, auth.BrowserSession{}, nil
+}
+
+func (*routerAuthentication) Logout(context.Context, string) error { return nil }
+
+func (a *routerAuthentication) Authenticate(context.Context, string) (user.User, error) {
+	return a.account, nil
 }

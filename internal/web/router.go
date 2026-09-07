@@ -11,6 +11,8 @@ import (
 	"github.com/convention-x-treme/lansurfer/internal/web/assets"
 	"github.com/convention-x-treme/lansurfer/internal/web/branding"
 	"github.com/convention-x-treme/lansurfer/internal/web/components"
+	"github.com/convention-x-treme/lansurfer/internal/web/handler"
+	webmiddleware "github.com/convention-x-treme/lansurfer/internal/web/middleware"
 	"github.com/convention-x-treme/lansurfer/internal/web/pages"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -21,21 +23,49 @@ const readinessTimeout = time.Second
 // ReadyCheck reports whether dependencies required to serve traffic are ready.
 type ReadyCheck func(context.Context) error
 
+type Authentication interface {
+	handler.Authentication
+	webmiddleware.Authenticator
+}
+
+type RouterDependencies struct {
+	Ready          ReadyCheck
+	Authentication Authentication
+	SecureCookies  bool
+}
+
 // NewRouter constructs the HTTP router.
-func NewRouter(ready ReadyCheck) http.Handler {
+func NewRouter(dependencies RouterDependencies) http.Handler {
 	brand := branding.Default()
+	authenticationHandler := handler.NewAuthentication(dependencies.Authentication, brand, dependencies.SecureCookies)
 	router := chi.NewRouter()
 	router.Use(middleware.RequestID)
 	router.Use(middleware.Recoverer)
 
 	router.Handle("/assets/*", http.StripPrefix("/assets/", assets.Handler()))
-	router.Get("/", componentHandler(pages.Home(brand)))
+	router.With(webmiddleware.Authentication(dependencies.Authentication, dependencies.SecureCookies)).Get("/", homeHandler(brand, dependencies.Authentication))
+	router.Get("/auth/login", authenticationHandler.Login)
+	router.Get("/auth/callback", authenticationHandler.Callback)
+	router.Post("/auth/logout", authenticationHandler.Logout)
 	router.Get("/ui/patterns/empty", componentHandler(components.EmptyState(brand)))
 	router.Get("/ui/patterns/error", componentHandler(components.ErrorState()))
 	router.Get("/healthz", healthHandler)
-	router.Get("/readyz", readinessHandler(ready))
+	router.Get("/readyz", readinessHandler(dependencies.Ready))
 
 	return router
+}
+
+func homeHandler(brand branding.Brand, authentication Authentication) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		navigation := components.NavigationState{LoginAvailable: authentication != nil && authentication.Available()}
+		if currentUser, ok := webmiddleware.CurrentUser(r.Context()); ok {
+			navigation.Viewer = &components.Viewer{
+				DisplayName: currentUser.DisplayName,
+				Role:        string(currentUser.Role),
+			}
+		}
+		componentHandler(pages.Home(brand, navigation)).ServeHTTP(w, r)
+	}
 }
 
 func healthHandler(w http.ResponseWriter, _ *http.Request) {

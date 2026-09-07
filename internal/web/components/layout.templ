@@ -2,7 +2,17 @@ package components
 
 import "github.com/convention-x-treme/lansurfer/internal/web/branding"
 
-templ Layout(brand branding.Brand, title string) {
+type Viewer struct {
+	DisplayName string
+	Role string
+}
+
+type NavigationState struct {
+	Viewer *Viewer
+	LoginAvailable bool
+}
+
+templ Layout(brand branding.Brand, title string, navigation NavigationState) {
 	<!doctype html>
 	<html lang="en" data-theme="lansurfer-dark">
 		<head>
@@ -15,7 +25,7 @@ templ Layout(brand branding.Brand, title string) {
 		</head>
 		<body class="bg-base-100 text-base-content antialiased">
 			<a class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-warning focus:px-4 focus:py-2 focus:text-warning-content" href="#main-content">Skip to content</a>
-			@Navigation(brand)
+			@Navigation(brand, navigation)
 			<main id="main-content">
 				{ children... }
 			</main>
@@ -24,7 +34,7 @@ templ Layout(brand branding.Brand, title string) {
 	</html>
 }
 
-templ Navigation(brand branding.Brand) {
+templ Navigation(brand branding.Brand, state NavigationState) {
 	<header class="border-b border-base-300 bg-base-200/95 shadow-sm">
 		<nav class="navbar page-shell min-h-18 px-0" aria-label="Primary navigation">
 			<div class="navbar-start">
@@ -39,6 +49,20 @@ templ Navigation(brand branding.Brand) {
 			</div>
 			<div class="navbar-end gap-2">
 				<button type="button" class="btn btn-ghost btn-sm" data-theme-toggle aria-label="Use light theme" title="Use light theme">Light</button>
+				if state.Viewer != nil {
+					<details class="dropdown dropdown-end">
+						<summary class="btn btn-ghost btn-sm" aria-label="Open user menu">{ state.Viewer.DisplayName }</summary>
+						<div class="dropdown-content z-20 mt-3 w-56 rounded-box border border-base-300 bg-base-200 p-3 shadow-xl">
+							<p class="truncate font-semibold">{ state.Viewer.DisplayName }</p>
+							<p class="data-text mt-1 text-xs uppercase text-base-content/60">{ state.Viewer.Role }</p>
+							<form method="post" action="/auth/logout" class="mt-3">
+								<button type="submit" class="btn btn-outline btn-sm w-full">Log out</button>
+							</form>
+						</div>
+					</details>
+				} else if state.LoginAvailable {
+					<a class="btn btn-primary btn-sm" href="/auth/login">Log in</a>
+				}
 				<details class="dropdown dropdown-end md:hidden">
 					<summary class="btn btn-ghost btn-sm" aria-label="Open navigation">Menu</summary>
 					<ul class="menu dropdown-content z-20 mt-3 w-56 rounded-box border border-base-300 bg-base-200 p-2 shadow-xl">
