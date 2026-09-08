@@ -195,7 +195,9 @@ func TestGameSubscriptionPersistence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("register user: %v", err)
 	}
-	catalog := game.NewService(gamepostgres.NewStore(pool))
+	gameStore := gamepostgres.NewStore(pool)
+	catalog := game.NewService(gameStore)
+	subscriptions := game.NewSubscriptionService(gameStore)
 	warcraft, err := catalog.Create(t.Context(), "Warcraft III", "warcraft-3")
 	if err != nil {
 		t.Fatalf("create game: %v", err)
@@ -208,7 +210,6 @@ func TestGameSubscriptionPersistence(t *testing.T) {
 		t.Fatalf("create second game: %v", err)
 	}
 
-	subscriptions := game.NewSubscriptionService(gamepostgres.NewStore(pool))
 	if err := subscriptions.Follow(t.Context(), account.ID, warcraft.ID); err != nil {
 		t.Fatalf("follow game: %v", err)
 	}
@@ -267,13 +268,18 @@ func TestGameRequestWorkflowAndConcurrentCapacity(t *testing.T) {
 	if err := events.SetCurrent(t.Context(), currentEvent.ID); err != nil {
 		t.Fatalf("set current event: %v", err)
 	}
-	catalog := game.NewService(gamepostgres.NewStore(pool))
+	gameStore := gamepostgres.NewStore(pool)
+	catalog := game.NewService(gameStore)
+	subscriptions := game.NewSubscriptionService(gameStore)
 	selectedGame, err := catalog.Create(t.Context(), "Warcraft III", "warcraft-3")
 	if err != nil {
 		t.Fatalf("create game: %v", err)
 	}
+	if err := subscriptions.Follow(t.Context(), firstJoiner.ID, selectedGame.ID); err != nil {
+		t.Fatalf("follow selected game: %v", err)
+	}
 
-	requests := gamerequest.NewService(gamerequestpostgres.NewStore(pool), catalog, events)
+	requests := gamerequest.NewService(gamerequestpostgres.NewStore(pool), catalog, events, nil)
 	maximum := int32(2)
 	created, err := requests.Create(t.Context(), creator.ID, selectedGame.ID, &maximum, startsAt, "Concurrent capacity test")
 	if err != nil {
@@ -322,6 +328,10 @@ func TestGameRequestWorkflowAndConcurrentCapacity(t *testing.T) {
 	}
 	if detail.MemberCount != 2 || len(detail.Members) != 2 || !detail.ViewerJoined {
 		t.Fatalf("request after joins = %#v", detail)
+	}
+	activeForFollower, err := readStore.ListActive(t.Context(), firstJoiner.ID)
+	if err != nil || len(activeForFollower) != 1 || !activeForFollower[0].ViewerSubscribed {
+		t.Fatalf("request subscription projection = %#v, %v", activeForFollower, err)
 	}
 	if err := requests.Leave(t.Context(), created.ID, creator.ID); !errors.Is(err, gamerequest.ErrCreatorCannotLeave) {
 		t.Fatalf("creator leave error = %v", err)

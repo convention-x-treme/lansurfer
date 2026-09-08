@@ -27,23 +27,39 @@ templ GameRequestList(brand branding.Brand, navigation components.NavigationStat
 			if notice != "" {
 				<div role="status" class="alert alert-info mt-6"><span>{ notice }</span></div>
 			}
+			@GameRequestListContent(requests, "")
+		</section>
+	}
+}
+
+templ GameRequestListContent(requests []requestquery.Request, highlightedID string) {
+	<div id="game-request-list" data-game-request-list aria-live="polite">
 			if len(requests) == 0 {
 				<div class="card mt-8 border border-base-300 bg-base-200"><div class="card-body"><h2 class="card-title">No active Game Requests</h2><p>Be the first to look for players at the current Event.</p><div class="card-actions"><a class="btn btn-primary btn-sm" href="/game-requests/new">Create Game Request</a></div></div></div>
 			} else {
 				<div class="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
 					for _, request := range requests {
-						@GameRequestCard(request)
+						@GameRequestCard(request, highlightedID)
 					}
 				</div>
 			}
-		</section>
+	</div>
+	if gameName, followed := followedHighlight(requests, highlightedID); followed {
+		<div hx-swap-oob="beforeend:#live-notices" role="status" class="alert alert-info shadow-lg" data-live-toast>
+			<span>New Game Request for { gameName }, a game you follow.</span>
+			<button type="button" class="btn btn-ghost btn-sm" data-dismiss-live-toast aria-label="Dismiss notification">Dismiss</button>
+		</div>
 	}
 }
 
-templ GameRequestCard(request requestquery.Request) {
-	<article class="card border border-base-300 bg-base-200 shadow-sm">
+templ GameRequestCard(request requestquery.Request, highlightedID string) {
+	<article class={ gameRequestCardClass(request, highlightedID) } data-game-request-id={ request.ID }>
 		<div class="card-body gap-4">
-			<div><p class="data-text text-xs uppercase tracking-wider text-secondary">{ request.EventName }</p><h2 class="card-title mt-1 text-2xl"><a class="link-hover" href={ "/game-requests/" + request.ID }>{ request.GameName }</a></h2><p class="mt-1 text-sm text-base-content/65">Created by { request.CreatorName }</p></div>
+			<div><p class="data-text text-xs uppercase tracking-wider text-secondary">{ request.EventName }</p><h2 class="card-title mt-1 text-2xl"><a class="link-hover" href={ "/game-requests/" + request.ID }>{ request.GameName }</a></h2><p class="mt-1 text-sm text-base-content/65">Created by { request.CreatorName }</p>
+				if request.ID == highlightedID && request.ViewerSubscribed {
+					<span class="badge badge-info mt-2">New · followed game</span>
+				}
+			</div>
 			<div class="flex flex-wrap gap-2"><span class={ playerBadgeClass(request) }>{ playerCount(request) }</span><span class="badge badge-warning">{ startLabel(request.StartsAt) }</span></div>
 			if request.Description != "" {
 				<p class="line-clamp-3 text-base-content/80">{ request.Description }</p>
@@ -100,7 +116,13 @@ templ GameRequestDetail(brand branding.Brand, navigation components.NavigationSt
 			if message != "" {
 				<div role="alert" class="alert alert-error mt-6"><span>{ message }</span></div>
 			}
-			<article class="card mt-6 border border-base-300 bg-base-200 shadow-sm"><div class="card-body gap-6">
+			@GameRequestDetailContent(request, viewerID)
+		</div></section>
+	}
+}
+
+templ GameRequestDetailContent(request requestquery.Request, viewerID string) {
+	<article id="game-request-detail" data-game-request-detail data-game-request-id={ request.ID } class="card mt-6 border border-base-300 bg-base-200 shadow-sm"><div class="card-body gap-6">
 				<div><div class="flex flex-wrap items-center gap-2"><span class="data-text text-sm uppercase tracking-wider text-secondary">{ request.EventName }</span><span class="badge badge-outline">{ string(request.Status) }</span></div><h1 class="mt-2 text-3xl font-bold">{ request.GameName }</h1><p class="mt-2 text-base-content/65">Created by { request.CreatorName }</p></div>
 				<div class="flex flex-wrap gap-2"><span class={ playerBadgeClass(request) }>{ playerCount(request) }</span><span class="badge badge-warning">{ startLabel(request.StartsAt) }</span></div>
 				if request.Description != "" {
@@ -127,9 +149,7 @@ templ GameRequestDetail(brand branding.Brand, navigation components.NavigationSt
 						<span class="badge badge-outline">Full</span>
 					}
 				</div>
-			</div></article>
-		</div></section>
-	}
+	</div></article>
 }
 
 templ GameRequestError(brand branding.Brand, navigation components.NavigationState) {
@@ -142,3 +162,5 @@ func requestFull(request requestquery.Request) bool { return request.MaxPlayers 
 func playerCount(request requestquery.Request) string { if request.MaxPlayers == nil { return fmt.Sprintf("%d players", request.MemberCount) }; return fmt.Sprintf("%d / %d players", request.MemberCount, *request.MaxPlayers) }
 func playerBadgeClass(request requestquery.Request) string { if requestFull(request) { return "badge badge-neutral data-text" }; if request.MaxPlayers != nil && request.MemberCount+1 == int64(*request.MaxPlayers) { return "badge badge-accent data-text" }; return "badge badge-primary data-text" }
 func startLabel(startsAt time.Time) string { if startsAt.Before(time.Now().Add(2 * time.Minute)) { return "Starts now" }; return "Starts " + startsAt.UTC().Format("Jan 2, 15:04 UTC") }
+func gameRequestCardClass(request requestquery.Request, highlightedID string) string { if request.ID == highlightedID && request.ViewerSubscribed { return "card border-2 border-info bg-base-200 shadow-lg" }; return "card border border-base-300 bg-base-200 shadow-sm" }
+func followedHighlight(requests []requestquery.Request, highlightedID string) (string, bool) { for _, request := range requests { if request.ID == highlightedID && request.ViewerSubscribed { return request.GameName, true } }; return "", false }

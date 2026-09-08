@@ -135,7 +135,7 @@ func TestHomeRendersAuthenticatedViewer(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d", response.Code)
 	}
-	for _, want := range []string{"Ada Player", "admin", `action="/auth/logout"`} {
+	for _, want := range []string{"Ada Player", "admin", `action="/auth/logout"`, `data-realtime-url="/events/game-requests"`} {
 		if !strings.Contains(response.Body.String(), want) {
 			t.Errorf("body does not contain %q", want)
 		}
@@ -334,6 +334,44 @@ func TestGameRequestsRequireAuthentication(t *testing.T) {
 	}
 }
 
+func TestRealtimeRequiresAuthentication(t *testing.T) {
+	events := make(chan gamerequest.Event)
+	close(events)
+	request := httptest.NewRequest(http.MethodGet, "/events/game-requests", nil)
+	response := httptest.NewRecorder()
+
+	NewRouter(RouterDependencies{
+		Ready:    func(context.Context) error { return nil },
+		Realtime: &routerRealtime{events: events},
+	}).ServeHTTP(response, request)
+
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusUnauthorized)
+	}
+}
+
+func TestRealtimeRefreshHighlightsFollowedGame(t *testing.T) {
+	queries := &routerGameRequestQueries{items: []requestquery.Request{{
+		ID: "request-1", EventName: "CXT 2027", GameName: "Warcraft III",
+		CreatorID: "creator-1", CreatorName: "Grace", StartsAt: time.Now(),
+		Status: gamerequest.StatusOpen, MemberCount: 1, ViewerSubscribed: true,
+	}}}
+	request := httptest.NewRequest(http.MethodGet, "/game-requests/refresh?highlight=request-1", nil)
+	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	response := httptest.NewRecorder()
+
+	gameRequestTestRouter(&routerGameRequests{}, queries).ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d", response.Code)
+	}
+	for _, want := range []string{`id="game-request-list"`, "New · followed game", `hx-swap-oob="beforeend:#live-notices"`} {
+		if !strings.Contains(response.Body.String(), want) {
+			t.Errorf("body does not contain %q: %q", want, response.Body.String())
+		}
+	}
+}
+
 func TestGameRequestBrowserWorkflow(t *testing.T) {
 	commands := &routerGameRequests{}
 	queries := &routerGameRequestQueries{
@@ -511,6 +549,12 @@ func (r *routerGameRequests) Cancel(_ context.Context, requestID, userID string)
 type routerGameRequestQueries struct {
 	items   []requestquery.Request
 	options requestquery.CreationOptions
+}
+
+type routerRealtime struct{ events <-chan gamerequest.Event }
+
+func (r *routerRealtime) Subscribe() (<-chan gamerequest.Event, func()) {
+	return r.events, func() {}
 }
 
 func (r *routerGameRequestQueries) ListActive(context.Context, string) ([]requestquery.Request, error) {

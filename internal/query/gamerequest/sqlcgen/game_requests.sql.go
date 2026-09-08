@@ -63,12 +63,15 @@ SELECT gr.id::text AS request_id, e.name AS event_name,
        gr.max_players, gr.starts_at, gr.description, gr.status,
        gr.created_at, gr.updated_at,
        count(m.user_id) AS member_count,
-       bool_or(m.user_id = $1::uuid) AS viewer_joined
+       bool_or(m.user_id = $1::uuid) AS viewer_joined,
+       bool_or(gs.user_id IS NOT NULL) AS viewer_subscribed
 FROM game_requests gr
 JOIN events e ON e.id = gr.event_id
 JOIN games g ON g.id = gr.game_id
 JOIN users u ON u.id = gr.creator_id
 JOIN game_request_members m ON m.game_request_id = gr.id
+LEFT JOIN game_subscriptions gs ON gs.game_id = gr.game_id
+  AND gs.user_id = $1::uuid
 WHERE gr.id = $2::uuid
 GROUP BY gr.id, e.name, g.name, u.display_name
 `
@@ -79,19 +82,20 @@ type GetGameRequestParams struct {
 }
 
 type GetGameRequestRow struct {
-	RequestID    string
-	EventName    string
-	GameName     string
-	CreatorID    string
-	CreatorName  string
-	MaxPlayers   pgtype.Int4
-	StartsAt     pgtype.Timestamptz
-	Description  string
-	Status       string
-	CreatedAt    pgtype.Timestamptz
-	UpdatedAt    pgtype.Timestamptz
-	MemberCount  int64
-	ViewerJoined bool
+	RequestID        string
+	EventName        string
+	GameName         string
+	CreatorID        string
+	CreatorName      string
+	MaxPlayers       pgtype.Int4
+	StartsAt         pgtype.Timestamptz
+	Description      string
+	Status           string
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
+	MemberCount      int64
+	ViewerJoined     bool
+	ViewerSubscribed bool
 }
 
 func (q *Queries) GetGameRequest(ctx context.Context, arg GetGameRequestParams) (GetGameRequestRow, error) {
@@ -111,6 +115,7 @@ func (q *Queries) GetGameRequest(ctx context.Context, arg GetGameRequestParams) 
 		&i.UpdatedAt,
 		&i.MemberCount,
 		&i.ViewerJoined,
+		&i.ViewerSubscribed,
 	)
 	return i, err
 }
@@ -122,31 +127,35 @@ SELECT gr.id::text AS request_id, e.name AS event_name,
        gr.max_players, gr.starts_at, gr.description, gr.status,
        gr.created_at, gr.updated_at,
        count(m.user_id) AS member_count,
-       bool_or(m.user_id = $1::uuid) AS viewer_joined
+       bool_or(m.user_id = $1::uuid) AS viewer_joined,
+       bool_or(gs.user_id IS NOT NULL) AS viewer_subscribed
 FROM game_requests gr
 JOIN events e ON e.id = gr.event_id
 JOIN games g ON g.id = gr.game_id
 JOIN users u ON u.id = gr.creator_id
 JOIN game_request_members m ON m.game_request_id = gr.id
+LEFT JOIN game_subscriptions gs ON gs.game_id = gr.game_id
+  AND gs.user_id = $1::uuid
 WHERE gr.status = 'open' AND e.is_current
 GROUP BY gr.id, e.name, g.name, u.display_name
 ORDER BY gr.starts_at, gr.created_at, gr.id
 `
 
 type ListActiveGameRequestsRow struct {
-	RequestID    string
-	EventName    string
-	GameName     string
-	CreatorID    string
-	CreatorName  string
-	MaxPlayers   pgtype.Int4
-	StartsAt     pgtype.Timestamptz
-	Description  string
-	Status       string
-	CreatedAt    pgtype.Timestamptz
-	UpdatedAt    pgtype.Timestamptz
-	MemberCount  int64
-	ViewerJoined bool
+	RequestID        string
+	EventName        string
+	GameName         string
+	CreatorID        string
+	CreatorName      string
+	MaxPlayers       pgtype.Int4
+	StartsAt         pgtype.Timestamptz
+	Description      string
+	Status           string
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
+	MemberCount      int64
+	ViewerJoined     bool
+	ViewerSubscribed bool
 }
 
 func (q *Queries) ListActiveGameRequests(ctx context.Context, viewerID pgtype.UUID) ([]ListActiveGameRequestsRow, error) {
@@ -172,6 +181,7 @@ func (q *Queries) ListActiveGameRequests(ctx context.Context, viewerID pgtype.UU
 			&i.UpdatedAt,
 			&i.MemberCount,
 			&i.ViewerJoined,
+			&i.ViewerSubscribed,
 		); err != nil {
 			return nil, err
 		}

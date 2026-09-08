@@ -55,6 +55,16 @@ func (h *GameRequests) List(w http.ResponseWriter, r *http.Request) {
 	render(w, r, http.StatusOK, pages.GameRequestList(h.brand, requestNavigation(r), requests, notice(r)))
 }
 
+func (h *GameRequests) RefreshList(w http.ResponseWriter, r *http.Request) {
+	account, _ := webmiddleware.CurrentUser(r.Context())
+	requests, err := h.queries.ListActive(r.Context(), account.ID)
+	if err != nil {
+		http.Error(w, "refresh game requests", http.StatusInternalServerError)
+		return
+	}
+	render(w, r, http.StatusOK, pages.GameRequestListContent(requests, r.URL.Query().Get("highlight")))
+}
+
 func (h *GameRequests) New(w http.ResponseWriter, r *http.Request) {
 	options, err := h.queries.CreationOptions(r.Context())
 	if err != nil {
@@ -95,6 +105,20 @@ func (h *GameRequests) View(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	render(w, r, http.StatusOK, pages.GameRequestDetail(h.brand, requestNavigation(r), request, account.ID, "", notice(r)))
+}
+
+func (h *GameRequests) RefreshView(w http.ResponseWriter, r *http.Request) {
+	account, _ := webmiddleware.CurrentUser(r.Context())
+	request, err := h.queries.ByID(r.Context(), chi.URLParam(r, "requestID"), account.ID)
+	if errors.Is(err, gamerequest.ErrNotFound) {
+		http.Error(w, "game request not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		http.Error(w, "refresh game request", http.StatusInternalServerError)
+		return
+	}
+	render(w, r, http.StatusOK, pages.GameRequestDetailContent(request, account.ID))
 }
 
 func (h *GameRequests) Join(w http.ResponseWriter, r *http.Request) {

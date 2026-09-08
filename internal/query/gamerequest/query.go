@@ -15,19 +15,20 @@ import (
 )
 
 type Request struct {
-	ID           string
-	EventName    string
-	GameName     string
-	CreatorID    string
-	CreatorName  string
-	MaxPlayers   *int32
-	StartsAt     time.Time
-	Description  string
-	Status       domain.Status
-	CreatedAt    time.Time
-	MemberCount  int64
-	ViewerJoined bool
-	Members      []Member
+	ID               string
+	EventName        string
+	GameName         string
+	CreatorID        string
+	CreatorName      string
+	MaxPlayers       *int32
+	StartsAt         time.Time
+	Description      string
+	Status           domain.Status
+	CreatedAt        time.Time
+	MemberCount      int64
+	ViewerJoined     bool
+	ViewerSubscribed bool
+	Members          []Member
 }
 
 type Member struct {
@@ -67,7 +68,7 @@ func (s *Store) ListActive(ctx context.Context, viewerID string) ([]Request, err
 	result := make([]Request, 0, len(rows))
 	for _, row := range rows {
 		result = append(result, requestFromFields(row.RequestID, row.EventName, row.GameName, row.CreatorID, row.CreatorName,
-			row.MaxPlayers, row.StartsAt, row.Description, row.Status, row.CreatedAt, row.MemberCount, row.ViewerJoined))
+			row.MaxPlayers, row.StartsAt, row.Description, row.Status, row.CreatedAt, row.MemberCount, row.ViewerJoined, row.ViewerSubscribed))
 	}
 	return result, nil
 }
@@ -89,7 +90,7 @@ func (s *Store) ByID(ctx context.Context, id, viewerID string) (Request, error) 
 		return Request{}, fmt.Errorf("get game request: %w", err)
 	}
 	request := requestFromFields(row.RequestID, row.EventName, row.GameName, row.CreatorID, row.CreatorName,
-		row.MaxPlayers, row.StartsAt, row.Description, row.Status, row.CreatedAt, row.MemberCount, row.ViewerJoined)
+		row.MaxPlayers, row.StartsAt, row.Description, row.Status, row.CreatedAt, row.MemberCount, row.ViewerJoined, row.ViewerSubscribed)
 	members, err := s.queries.ListGameRequestMembers(ctx, databaseID)
 	if err != nil {
 		return Request{}, fmt.Errorf("list game request members: %w", err)
@@ -122,12 +123,13 @@ func (s *Store) CreationOptions(ctx context.Context) (CreationOptions, error) {
 
 func requestFromFields(id, eventName, gameName, creatorID, creatorName string, maxPlayers pgtype.Int4,
 	startsAt pgtype.Timestamptz, description, status string, createdAt pgtype.Timestamptz,
-	memberCount int64, viewerJoined bool,
+	memberCount int64, viewerJoined, viewerSubscribed bool,
 ) Request {
 	return Request{
 		ID: id, EventName: eventName, GameName: gameName, CreatorID: creatorID, CreatorName: creatorName,
 		MaxPlayers: int4Pointer(maxPlayers), StartsAt: startsAt.Time, Description: description,
-		Status: domain.Status(status), CreatedAt: createdAt.Time, MemberCount: memberCount, ViewerJoined: viewerJoined,
+		Status: domain.Status(status), CreatedAt: createdAt.Time, MemberCount: memberCount,
+		ViewerJoined: viewerJoined, ViewerSubscribed: viewerSubscribed,
 		Members: []Member{},
 	}
 }

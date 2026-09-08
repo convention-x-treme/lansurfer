@@ -19,6 +19,7 @@ import (
 	gamerequestpostgres "github.com/convention-x-treme/lansurfer/internal/gamerequest/postgres"
 	"github.com/convention-x-treme/lansurfer/internal/platform/config"
 	"github.com/convention-x-treme/lansurfer/internal/platform/postgres"
+	"github.com/convention-x-treme/lansurfer/internal/platform/sse"
 	gamerequestquery "github.com/convention-x-treme/lansurfer/internal/query/gamerequest"
 	"github.com/convention-x-treme/lansurfer/internal/user"
 	userpostgres "github.com/convention-x-treme/lansurfer/internal/user/postgres"
@@ -74,7 +75,8 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	gameStore := gamepostgres.NewStore(pool)
 	gameService := game.NewService(gameStore)
 	gameSubscriptions := game.NewSubscriptionService(gameStore)
-	gameRequests := gamerequest.NewService(gamerequestpostgres.NewStore(pool), gameService, eventService)
+	realtime := sse.NewBroker()
+	gameRequests := gamerequest.NewService(gamerequestpostgres.NewStore(pool), gameService, eventService, realtime)
 	gameRequestQueries := gamerequestquery.NewStore(pool)
 
 	server := &http.Server{
@@ -87,6 +89,7 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 			Subscriptions:  gameSubscriptions,
 			GameRequests:   gameRequests,
 			RequestQueries: gameRequestQueries,
+			Realtime:       realtime,
 			SecureCookies:  strings.HasPrefix(cfg.BaseURL, "https://"),
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
@@ -108,6 +111,7 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	case <-ctx.Done():
 		logger.Info("shutting down HTTP server")
 	}
+	realtime.Close()
 
 	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancelShutdown()

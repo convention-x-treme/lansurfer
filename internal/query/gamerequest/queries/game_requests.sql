@@ -5,12 +5,15 @@ SELECT gr.id::text AS request_id, e.name AS event_name,
        gr.max_players, gr.starts_at, gr.description, gr.status,
        gr.created_at, gr.updated_at,
        count(m.user_id) AS member_count,
-       bool_or(m.user_id = sqlc.arg(viewer_id)::uuid) AS viewer_joined
+       bool_or(m.user_id = sqlc.arg(viewer_id)::uuid) AS viewer_joined,
+       bool_or(gs.user_id IS NOT NULL) AS viewer_subscribed
 FROM game_requests gr
 JOIN events e ON e.id = gr.event_id
 JOIN games g ON g.id = gr.game_id
 JOIN users u ON u.id = gr.creator_id
 JOIN game_request_members m ON m.game_request_id = gr.id
+LEFT JOIN game_subscriptions gs ON gs.game_id = gr.game_id
+  AND gs.user_id = sqlc.arg(viewer_id)::uuid
 WHERE gr.status = 'open' AND e.is_current
 GROUP BY gr.id, e.name, g.name, u.display_name
 ORDER BY gr.starts_at, gr.created_at, gr.id;
@@ -22,12 +25,15 @@ SELECT gr.id::text AS request_id, e.name AS event_name,
        gr.max_players, gr.starts_at, gr.description, gr.status,
        gr.created_at, gr.updated_at,
        count(m.user_id) AS member_count,
-       bool_or(m.user_id = sqlc.arg(viewer_id)::uuid) AS viewer_joined
+       bool_or(m.user_id = sqlc.arg(viewer_id)::uuid) AS viewer_joined,
+       bool_or(gs.user_id IS NOT NULL) AS viewer_subscribed
 FROM game_requests gr
 JOIN events e ON e.id = gr.event_id
 JOIN games g ON g.id = gr.game_id
 JOIN users u ON u.id = gr.creator_id
 JOIN game_request_members m ON m.game_request_id = gr.id
+LEFT JOIN game_subscriptions gs ON gs.game_id = gr.game_id
+  AND gs.user_id = sqlc.arg(viewer_id)::uuid
 WHERE gr.id = sqlc.arg(id)::uuid
 GROUP BY gr.id, e.name, g.name, u.display_name;
 

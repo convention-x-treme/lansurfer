@@ -10,7 +10,8 @@ import (
 
 func TestCreateValidatesAndUsesOwnedLookups(t *testing.T) {
 	repository := &recordingRepository{}
-	service := NewService(repository, staticGames(true), staticEvent("event-1"))
+	publisher := &recordingPublisher{}
+	service := NewService(repository, staticGames(true), staticEvent("event-1"), publisher)
 	startsAt := time.Date(2027, time.May, 1, 18, 0, 0, 0, time.UTC)
 	maximum := int32(4)
 
@@ -21,6 +22,9 @@ func TestCreateValidatesAndUsesOwnedLookups(t *testing.T) {
 	if created.EventID != "event-1" || created.GameID != "game-1" || created.CreatorID != "user-1" ||
 		created.Description != "Casual players welcome." || created.Status != StatusOpen {
 		t.Fatalf("created request = %#v", created)
+	}
+	if len(publisher.events) != 1 || publisher.events[0] != (Event{Type: EventCreated, RequestID: "request-1", GameID: "game-1"}) {
+		t.Fatalf("published event = %#v", publisher.events)
 	}
 
 	invalidMaximum := int32(0)
@@ -37,26 +41,71 @@ func TestCreateValidatesAndUsesOwnedLookups(t *testing.T) {
 
 func TestCreateRequiresActiveGameAndCurrentEvent(t *testing.T) {
 	startsAt := time.Now()
-	if _, err := NewService(&recordingRepository{}, staticGames(false), staticEvent("event-1")).Create(
+	if _, err := NewService(&recordingRepository{}, staticGames(false), staticEvent("event-1"), nil).Create(
 		t.Context(), "user-1", "game-1", nil, startsAt, "",
 	); !errors.Is(err, ErrGameUnavailable) {
 		t.Errorf("inactive game error = %v", err)
 	}
-	if _, err := NewService(&recordingRepository{}, staticGames(true), staticEvent("")).Create(
+	if _, err := NewService(&recordingRepository{}, staticGames(true), staticEvent(""), nil).Create(
 		t.Context(), "user-1", "game-1", nil, startsAt, "",
 	); !errors.Is(err, ErrNoCurrentEvent) {
 		t.Errorf("missing current event error = %v", err)
 	}
 }
 
-type recordingRepository struct{ created GameRequest }
+func TestPublishesSuccessfulLifecycleChangesOnly(t *testing.T) {
+	repository := &recordingRepository{}
+	publisher := &recordingPublisher{}
+	service := NewService(repository, staticGames(true), staticEvent("event-1"), publisher)
+
+	if err := service.Join(t.Context(), "request-1", "user-1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.Leave(t.Context(), "request-1", "user-1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.Close(t.Context(), "request-1", "user-1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.Cancel(t.Context(), "request-2", "user-1"); err != nil {
+		t.Fatal(err)
+	}
+
+	want := []Event{
+		{Type: EventJoined, RequestID: "request-1"},
+		{Type: EventLeft, RequestID: "request-1"},
+		{Type: EventClosed, RequestID: "request-1"},
+		{Type: EventCancelled, RequestID: "request-2"},
+	}
+	if len(publisher.events) != len(want) {
+		t.Fatalf("events = %#v", publisher.events)
+	}
+	for index := range want {
+		if publisher.events[index] != want[index] {
+			t.Errorf("event %d = %#v, want %#v", index, publisher.events[index], want[index])
+		}
+	}
+
+	repository.joinErr = ErrFull
+	if err := service.Join(t.Context(), "request-3", "user-1"); !errors.Is(err, ErrFull) {
+		t.Fatalf("Join() error = %v", err)
+	}
+	if len(publisher.events) != len(want) {
+		t.Error("failed change published an event")
+	}
+}
+
+type recordingRepository struct {
+	created GameRequest
+	joinErr error
+}
 
 func (r *recordingRepository) Create(_ context.Context, request GameRequest) (GameRequest, error) {
 	r.created = request
 	request.ID = "request-1"
 	return request, nil
 }
-func (*recordingRepository) Join(context.Context, string, string) error              { return nil }
+func (r *recordingRepository) Join(context.Context, string, string) error            { return r.joinErr }
 func (*recordingRepository) Leave(context.Context, string, string) error             { return nil }
 func (*recordingRepository) SetStatus(context.Context, string, string, Status) error { return nil }
 
@@ -67,3 +116,7 @@ func (g staticGames) ActiveExists(context.Context, string) (bool, error) { retur
 type staticEvent string
 
 func (e staticEvent) Current(context.Context) (string, error) { return string(e), nil }
+
+type recordingPublisher struct{ events []Event }
+
+func (p *recordingPublisher) Publish(event Event) { p.events = append(p.events, event) }

@@ -34,6 +34,30 @@ const (
 	StatusCancelled Status = "cancelled"
 )
 
+// EventType identifies a completed GameRequest change that may update read-only
+// delivery concerns such as the realtime web experience.
+type EventType string
+
+const (
+	EventCreated   EventType = "GameRequestCreated"
+	EventJoined    EventType = "GameRequestJoined"
+	EventLeft      EventType = "GameRequestLeft"
+	EventClosed    EventType = "GameRequestClosed"
+	EventCancelled EventType = "GameRequestCancelled"
+)
+
+type Event struct {
+	Type      EventType `json:"type"`
+	RequestID string    `json:"requestId"`
+	GameID    string    `json:"gameId,omitempty"`
+}
+
+// EventPublisher is implemented by delivery infrastructure. Publishing is a
+// best-effort signal: PostgreSQL remains the source of truth for refreshed UI.
+type EventPublisher interface {
+	Publish(Event)
+}
+
 type GameRequest struct {
 	ID          string
 	EventID     string
@@ -68,10 +92,11 @@ type Service struct {
 	repository Repository
 	games      GameLookup
 	events     EventLookup
+	publisher  EventPublisher
 }
 
-func NewService(repository Repository, games GameLookup, events EventLookup) *Service {
-	return &Service{repository: repository, games: games, events: events}
+func NewService(repository Repository, games GameLookup, events EventLookup, publisher EventPublisher) *Service {
+	return &Service{repository: repository, games: games, events: events, publisher: publisher}
 }
 
 func (s *Service) Create(ctx context.Context, creatorID, gameID string, maxPlayers *int32, startsAt time.Time, description string) (GameRequest, error) {
@@ -99,24 +124,50 @@ func (s *Service) Create(ctx context.Context, creatorID, gameID string, maxPlaye
 	if eventID == "" {
 		return GameRequest{}, ErrNoCurrentEvent
 	}
-	return s.repository.Create(ctx, GameRequest{
+	created, err := s.repository.Create(ctx, GameRequest{
 		EventID: eventID, GameID: gameID, CreatorID: creatorID,
 		MaxPlayers: maxPlayers, StartsAt: startsAt, Description: description, Status: StatusOpen,
 	})
+	if err == nil {
+		s.publish(Event{Type: EventCreated, RequestID: created.ID, GameID: created.GameID})
+	}
+	return created, err
 }
 
 func (s *Service) Join(ctx context.Context, requestID, userID string) error {
-	return s.repository.Join(ctx, requestID, userID)
+	err := s.repository.Join(ctx, requestID, userID)
+	if err == nil {
+		s.publish(Event{Type: EventJoined, RequestID: requestID})
+	}
+	return err
 }
 
 func (s *Service) Leave(ctx context.Context, requestID, userID string) error {
-	return s.repository.Leave(ctx, requestID, userID)
+	err := s.repository.Leave(ctx, requestID, userID)
+	if err == nil {
+		s.publish(Event{Type: EventLeft, RequestID: requestID})
+	}
+	return err
 }
 
 func (s *Service) Close(ctx context.Context, requestID, userID string) error {
-	return s.repository.SetStatus(ctx, requestID, userID, StatusClosed)
+	return s.setStatus(ctx, requestID, userID, StatusClosed, EventClosed)
 }
 
 func (s *Service) Cancel(ctx context.Context, requestID, userID string) error {
-	return s.repository.SetStatus(ctx, requestID, userID, StatusCancelled)
+	return s.setStatus(ctx, requestID, userID, StatusCancelled, EventCancelled)
+}
+
+func (s *Service) setStatus(ctx context.Context, requestID, userID string, status Status, eventType EventType) error {
+	err := s.repository.SetStatus(ctx, requestID, userID, status)
+	if err == nil {
+		s.publish(Event{Type: eventType, RequestID: requestID})
+	}
+	return err
+}
+
+func (s *Service) publish(event Event) {
+	if s.publisher != nil {
+		s.publisher.Publish(event)
+	}
 }
