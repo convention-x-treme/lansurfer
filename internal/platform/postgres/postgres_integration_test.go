@@ -12,6 +12,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"os"
+	"sync"
 	"testing"
 	"testing/fstest"
 	"time"
@@ -22,6 +23,9 @@ import (
 	eventpostgres "github.com/convention-x-treme/lansurfer/internal/event/postgres"
 	"github.com/convention-x-treme/lansurfer/internal/game"
 	gamepostgres "github.com/convention-x-treme/lansurfer/internal/game/postgres"
+	"github.com/convention-x-treme/lansurfer/internal/gamerequest"
+	gamerequestpostgres "github.com/convention-x-treme/lansurfer/internal/gamerequest/postgres"
+	gamerequestquery "github.com/convention-x-treme/lansurfer/internal/query/gamerequest"
 	"github.com/convention-x-treme/lansurfer/internal/user"
 	userpostgres "github.com/convention-x-treme/lansurfer/internal/user/postgres"
 	"github.com/jackc/pgx/v5"
@@ -234,6 +238,123 @@ func TestGameSubscriptionPersistence(t *testing.T) {
 	}
 }
 
+func TestGameRequestWorkflowAndConcurrentCapacity(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+
+	users := user.NewService(userpostgres.NewStore(pool))
+	creator, err := users.Register(t.Context(), "Creator")
+	if err != nil {
+		t.Fatalf("register creator: %v", err)
+	}
+	firstJoiner, err := users.Register(t.Context(), "First Joiner")
+	if err != nil {
+		t.Fatalf("register first joiner: %v", err)
+	}
+	secondJoiner, err := users.Register(t.Context(), "Second Joiner")
+	if err != nil {
+		t.Fatalf("register second joiner: %v", err)
+	}
+
+	events := event.NewService(eventpostgres.NewStore(pool))
+	startsAt := time.Now().UTC().Add(time.Hour).Truncate(time.Microsecond)
+	currentEvent, err := events.Create(t.Context(), "CXT Test", startsAt.Add(-time.Hour), startsAt.Add(48*time.Hour))
+	if err != nil {
+		t.Fatalf("create event: %v", err)
+	}
+	if err := events.SetCurrent(t.Context(), currentEvent.ID); err != nil {
+		t.Fatalf("set current event: %v", err)
+	}
+	catalog := game.NewService(gamepostgres.NewStore(pool))
+	selectedGame, err := catalog.Create(t.Context(), "Warcraft III", "warcraft-3")
+	if err != nil {
+		t.Fatalf("create game: %v", err)
+	}
+
+	requests := gamerequest.NewService(gamerequestpostgres.NewStore(pool), catalog, events)
+	maximum := int32(2)
+	created, err := requests.Create(t.Context(), creator.ID, selectedGame.ID, &maximum, startsAt, "Concurrent capacity test")
+	if err != nil {
+		t.Fatalf("create game request: %v", err)
+	}
+
+	start := make(chan struct{})
+	type joinResult struct {
+		userID string
+		err    error
+	}
+	results := make(chan joinResult, 2)
+	var wait sync.WaitGroup
+	for _, userID := range []string{firstJoiner.ID, secondJoiner.ID} {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			<-start
+			results <- joinResult{userID: userID, err: requests.Join(t.Context(), created.ID, userID)}
+		}()
+	}
+	close(start)
+	wait.Wait()
+	close(results)
+	succeeded, full := 0, 0
+	joinedUserID := ""
+	for result := range results {
+		switch {
+		case result.err == nil:
+			succeeded++
+			joinedUserID = result.userID
+		case errors.Is(result.err, gamerequest.ErrFull):
+			full++
+		default:
+			t.Fatalf("concurrent join error = %v", result.err)
+		}
+	}
+	if succeeded != 1 || full != 1 {
+		t.Fatalf("concurrent joins: succeeded = %d, full = %d", succeeded, full)
+	}
+
+	readStore := gamerequestquery.NewStore(pool)
+	detail, err := readStore.ByID(t.Context(), created.ID, creator.ID)
+	if err != nil {
+		t.Fatalf("read game request: %v", err)
+	}
+	if detail.MemberCount != 2 || len(detail.Members) != 2 || !detail.ViewerJoined {
+		t.Fatalf("request after joins = %#v", detail)
+	}
+	if err := requests.Leave(t.Context(), created.ID, creator.ID); !errors.Is(err, gamerequest.ErrCreatorCannotLeave) {
+		t.Fatalf("creator leave error = %v", err)
+	}
+	if err := requests.Leave(t.Context(), created.ID, joinedUserID); err != nil {
+		t.Fatalf("member leave: %v", err)
+	}
+	detail, err = readStore.ByID(t.Context(), created.ID, creator.ID)
+	if err != nil || detail.MemberCount != 1 {
+		t.Fatalf("request after leave = %#v, %v", detail, err)
+	}
+	if err := requests.Close(t.Context(), created.ID, firstJoiner.ID); !errors.Is(err, gamerequest.ErrNotCreator) {
+		t.Fatalf("non-creator close error = %v", err)
+	}
+	if err := requests.Close(t.Context(), created.ID, creator.ID); err != nil {
+		t.Fatalf("creator close: %v", err)
+	}
+	if err := requests.Join(t.Context(), created.ID, secondJoiner.ID); !errors.Is(err, gamerequest.ErrNotOpen) {
+		t.Fatalf("join closed request error = %v", err)
+	}
+	unlimited, err := requests.Create(t.Context(), creator.ID, selectedGame.ID, nil, startsAt, "No limit")
+	if err != nil {
+		t.Fatalf("create unlimited game request: %v", err)
+	}
+	if err := requests.Cancel(t.Context(), unlimited.ID, creator.ID); err != nil {
+		t.Fatalf("creator cancel: %v", err)
+	}
+	cancelled, err := readStore.ByID(t.Context(), unlimited.ID, creator.ID)
+	if err != nil || cancelled.Status != gamerequest.StatusCancelled {
+		t.Fatalf("cancelled request = %#v, %v", cancelled, err)
+	}
+}
+
 func TestMigrateAndReadyCheck(t *testing.T) {
 	pool := newTestPool(t)
 	logger := testLogger()
@@ -256,8 +377,8 @@ func TestMigrateAndReadyCheck(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get migration version: %v", err)
 	}
-	if version != 4 {
-		t.Errorf("migration version = %d, want 4", version)
+	if version != 5 {
+		t.Errorf("migration version = %d, want 5", version)
 	}
 
 	if err := migrateFS(t.Context(), pool, migrationFS, logger); err != nil {

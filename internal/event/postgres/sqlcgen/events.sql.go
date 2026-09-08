@@ -57,6 +57,17 @@ func (q *Queries) CreateEvent(ctx context.Context, arg CreateEventParams) (Creat
 	return i, err
 }
 
+const currentEventID = `-- name: CurrentEventID :one
+SELECT id::text FROM events WHERE is_current
+`
+
+func (q *Queries) CurrentEventID(ctx context.Context) (string, error) {
+	row := q.db.QueryRow(ctx, currentEventID)
+	var id string
+	err := row.Scan(&id)
+	return id, err
+}
+
 const listEvents = `-- name: ListEvents :many
 SELECT id::text, name, starts_at, ends_at, is_current, created_at, updated_at
 FROM events

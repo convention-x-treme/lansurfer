@@ -14,6 +14,8 @@ import (
 	"github.com/convention-x-treme/lansurfer/internal/auth"
 	"github.com/convention-x-treme/lansurfer/internal/event"
 	"github.com/convention-x-treme/lansurfer/internal/game"
+	"github.com/convention-x-treme/lansurfer/internal/gamerequest"
+	requestquery "github.com/convention-x-treme/lansurfer/internal/query/gamerequest"
 	"github.com/convention-x-treme/lansurfer/internal/user"
 	webmiddleware "github.com/convention-x-treme/lansurfer/internal/web/middleware"
 )
@@ -318,6 +320,70 @@ func TestMyGamesRendersOnlySubscriptions(t *testing.T) {
 	}
 }
 
+func TestGameRequestsRequireAuthentication(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "/game-requests", nil)
+	response := httptest.NewRecorder()
+
+	NewRouter(RouterDependencies{
+		Ready:        func(context.Context) error { return nil },
+		GameRequests: &routerGameRequests{}, RequestQueries: &routerGameRequestQueries{},
+	}).ServeHTTP(response, request)
+
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusUnauthorized)
+	}
+}
+
+func TestGameRequestBrowserWorkflow(t *testing.T) {
+	commands := &routerGameRequests{}
+	queries := &routerGameRequestQueries{
+		items: []requestquery.Request{{
+			ID: "request-1", EventName: "CXT 2027", GameName: "Warcraft III",
+			CreatorID: "creator-1", CreatorName: "Grace", StartsAt: time.Now(),
+			Status: gamerequest.StatusOpen, MemberCount: 1,
+		}},
+		options: requestquery.CreationOptions{
+			EventID: "event-1", EventName: "CXT 2027",
+			Games: []requestquery.GameOption{{ID: "game-1", Name: "Warcraft III"}},
+		},
+	}
+	router := gameRequestTestRouter(commands, queries)
+
+	list := httptest.NewRequest(http.MethodGet, "/game-requests", nil)
+	list.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	listResponse := httptest.NewRecorder()
+	router.ServeHTTP(listResponse, list)
+	if listResponse.Code != http.StatusOK {
+		t.Fatalf("list status = %d", listResponse.Code)
+	}
+	for _, want := range []string{"Active Game Requests", "Warcraft III", `action="/game-requests/request-1/join"`} {
+		if !strings.Contains(listResponse.Body.String(), want) {
+			t.Errorf("list body does not contain %q", want)
+		}
+	}
+
+	form := url.Values{"game_id": {"game-1"}, "max_players": {"4"}, "description": {"Casual players"}}
+	create := httptest.NewRequest(http.MethodPost, "/game-requests", strings.NewReader(form.Encode()))
+	create.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	create.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	createResponse := httptest.NewRecorder()
+	router.ServeHTTP(createResponse, create)
+	if createResponse.Code != http.StatusSeeOther || createResponse.Header().Get("Location") != "/game-requests/request-created?notice=request-created" {
+		t.Fatalf("create response = %d %q", createResponse.Code, createResponse.Header().Get("Location"))
+	}
+	if commands.created.CreatorID != "user-1" || commands.created.GameID != "game-1" || commands.created.MaxPlayers == nil || *commands.created.MaxPlayers != 4 {
+		t.Fatalf("created request = %#v", commands.created)
+	}
+
+	join := httptest.NewRequest(http.MethodPost, "/game-requests/request-1/join", nil)
+	join.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	joinResponse := httptest.NewRecorder()
+	router.ServeHTTP(joinResponse, join)
+	if joinResponse.Code != http.StatusSeeOther || commands.joined != "request-1/user-1" {
+		t.Fatalf("join response = %d, command = %q", joinResponse.Code, commands.joined)
+	}
+}
+
 func assertResponse(t *testing.T, response *http.Response, wantStatus int, wantBody string) {
 	t.Helper()
 	defer response.Body.Close()
@@ -360,6 +426,16 @@ func gameTestRouter(subscriptions *routerSubscriptions) http.Handler {
 	})
 }
 
+func gameRequestTestRouter(commands *routerGameRequests, queries *routerGameRequestQueries) http.Handler {
+	return NewRouter(RouterDependencies{
+		Ready: func(context.Context) error { return nil },
+		Authentication: &routerAuthentication{account: user.User{
+			ID: "user-1", DisplayName: "Ada Player", Role: user.RoleUser,
+		}},
+		GameRequests: commands, RequestQueries: queries,
+	})
+}
+
 type routerEvents struct{ created event.Event }
 
 func (*routerEvents) List(context.Context) ([]event.Event, error) { return nil, nil }
@@ -398,6 +474,58 @@ type routerSubscriptions struct {
 	search      string
 	followed    string
 	unfollowed  string
+}
+
+type routerGameRequests struct {
+	created   gamerequest.GameRequest
+	joined    string
+	left      string
+	closed    string
+	cancelled string
+}
+
+func (r *routerGameRequests) Create(_ context.Context, creatorID, gameID string, maximum *int32, startsAt time.Time, description string) (gamerequest.GameRequest, error) {
+	r.created = gamerequest.GameRequest{
+		ID: "request-created", CreatorID: creatorID, GameID: gameID, MaxPlayers: maximum,
+		StartsAt: startsAt, Description: description, Status: gamerequest.StatusOpen,
+	}
+	return r.created, nil
+}
+func (r *routerGameRequests) Join(_ context.Context, requestID, userID string) error {
+	r.joined = requestID + "/" + userID
+	return nil
+}
+func (r *routerGameRequests) Leave(_ context.Context, requestID, userID string) error {
+	r.left = requestID + "/" + userID
+	return nil
+}
+func (r *routerGameRequests) Close(_ context.Context, requestID, userID string) error {
+	r.closed = requestID + "/" + userID
+	return nil
+}
+func (r *routerGameRequests) Cancel(_ context.Context, requestID, userID string) error {
+	r.cancelled = requestID + "/" + userID
+	return nil
+}
+
+type routerGameRequestQueries struct {
+	items   []requestquery.Request
+	options requestquery.CreationOptions
+}
+
+func (r *routerGameRequestQueries) ListActive(context.Context, string) ([]requestquery.Request, error) {
+	return r.items, nil
+}
+func (r *routerGameRequestQueries) ByID(_ context.Context, id, _ string) (requestquery.Request, error) {
+	for _, item := range r.items {
+		if item.ID == id {
+			return item, nil
+		}
+	}
+	return requestquery.Request{}, gamerequest.ErrNotFound
+}
+func (r *routerGameRequestQueries) CreationOptions(context.Context) (requestquery.CreationOptions, error) {
+	return r.options, nil
 }
 
 func (r *routerSubscriptions) Browse(_ context.Context, _, search string) ([]game.SubscriptionGame, error) {

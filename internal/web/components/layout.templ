@@ -49,7 +49,11 @@ templ Navigation(brand branding.Brand, state NavigationState) {
 					} else {
 						<li><span class="cursor-not-allowed opacity-55" aria-disabled="true">Games</span></li>
 					}
-					<li><span class="cursor-not-allowed opacity-55" aria-disabled="true">Game Requests</span></li>
+					if state.Viewer != nil {
+						<li><a href="/game-requests">Game Requests</a></li>
+					} else {
+						<li><span class="cursor-not-allowed opacity-55" aria-disabled="true">Game Requests</span></li>
+					}
 					if state.Viewer != nil && state.Viewer.Role == "admin" {
 						<li><a href="/admin/games">Admin</a></li>
 					}
@@ -81,7 +85,11 @@ templ Navigation(brand branding.Brand, state NavigationState) {
 						} else {
 							<li><span class="cursor-not-allowed opacity-55" aria-disabled="true">Games</span></li>
 						}
-						<li><span class="cursor-not-allowed opacity-55" aria-disabled="true">Game Requests</span></li>
+						if state.Viewer != nil {
+							<li><a href="/game-requests">Game Requests</a></li>
+						} else {
+							<li><span class="cursor-not-allowed opacity-55" aria-disabled="true">Game Requests</span></li>
+						}
 						if state.Viewer != nil && state.Viewer.Role == "admin" {
 							<li><a href="/admin/games">Admin games</a></li>
 							<li><a href="/admin/events">Admin events</a></li>

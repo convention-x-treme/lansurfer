@@ -54,7 +54,8 @@ func TestSubscriptionSearchValidationAndWrites(t *testing.T) {
 
 type recordingRepository struct{ createdSlug, alias string }
 
-func (*recordingRepository) List(context.Context, string) ([]Game, error) { return nil, nil }
+func (*recordingRepository) List(context.Context, string) ([]Game, error)       { return nil, nil }
+func (*recordingRepository) ActiveExists(context.Context, string) (bool, error) { return true, nil }
 func (r *recordingRepository) Create(_ context.Context, name, slug string) (Game, error) {
 	r.createdSlug = slug
 	return Game{Name: name, Slug: slug}, nil

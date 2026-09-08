@@ -14,8 +14,8 @@ Follow the [development workflow](../AGENTS.md#workflow-and-documentation) and c
 - [x] Milestone 3 — Authentication and Users
 - [x] Milestone 4 — Events and Local Game Catalog
 - [x] Milestone 5 — Game Subscriptions
-- [ ] **Current:** Milestone 6 — Core GameRequest Workflow
-- [ ] Milestone 7 — SSE Realtime Experience
+- [x] Milestone 6 — Core GameRequest Workflow
+- [ ] **Current:** Milestone 7 — SSE Realtime Experience
 - [ ] Milestone 8 — Prototype UX and Hardening
 - [ ] Milestone 9 — Open Source Self-Hosting Release
 

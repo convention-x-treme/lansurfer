@@ -29,6 +29,7 @@ type Event struct {
 
 type Repository interface {
 	List(context.Context) ([]Event, error)
+	Current(context.Context) (string, error)
 	Create(context.Context, string, time.Time, time.Time) (Event, error)
 	Update(context.Context, string, string, time.Time, time.Time) (Event, error)
 	SetCurrent(context.Context, string) error
@@ -44,6 +45,10 @@ func NewService(repository Repository) *Service {
 
 func (s *Service) List(ctx context.Context) ([]Event, error) {
 	return s.repository.List(ctx)
+}
+
+func (s *Service) Current(ctx context.Context) (string, error) {
+	return s.repository.Current(ctx)
 }
 
 func (s *Service) Create(ctx context.Context, name string, startsAt, endsAt time.Time) (Event, error) {

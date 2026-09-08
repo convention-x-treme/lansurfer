@@ -35,6 +35,17 @@ func (s *Store) List(ctx context.Context) ([]event.Event, error) {
 	return result, nil
 }
 
+func (s *Store) Current(ctx context.Context) (string, error) {
+	id, err := s.queries.CurrentEventID(ctx)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("find current event: %w", err)
+	}
+	return id, nil
+}
+
 func (s *Store) Create(ctx context.Context, name string, startsAt, endsAt time.Time) (event.Event, error) {
 	row, err := s.queries.CreateEvent(ctx, sqlcgen.CreateEventParams{
 		Name:     name,

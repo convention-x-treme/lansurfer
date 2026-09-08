@@ -55,6 +55,7 @@ type SubscriptionGame struct {
 
 type Repository interface {
 	List(context.Context, string) ([]Game, error)
+	ActiveExists(context.Context, string) (bool, error)
 	Create(context.Context, string, string) (Game, error)
 	Update(context.Context, string, string, string) (Game, error)
 	SetActive(context.Context, string, bool) error
@@ -111,6 +112,10 @@ func (s *Service) List(ctx context.Context, search string) ([]Game, error) {
 		return nil, err
 	}
 	return s.repository.List(ctx, search)
+}
+
+func (s *Service) ActiveExists(ctx context.Context, id string) (bool, error) {
+	return s.repository.ActiveExists(ctx, id)
 }
 
 func validateSearch(search string) (string, error) {

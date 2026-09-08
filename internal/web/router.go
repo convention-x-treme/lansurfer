@@ -34,6 +34,8 @@ type RouterDependencies struct {
 	Events         handler.EventAdministration
 	Games          handler.GameAdministration
 	Subscriptions  handler.GameSubscriptions
+	GameRequests   handler.GameRequestCommands
+	RequestQueries handler.GameRequestQueries
 	SecureCookies  bool
 }
 
@@ -43,6 +45,7 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 	authenticationHandler := handler.NewAuthentication(dependencies.Authentication, brand, dependencies.SecureCookies)
 	administrationHandler := handler.NewAdministration(dependencies.Events, dependencies.Games, brand)
 	gamesHandler := handler.NewGames(dependencies.Subscriptions, brand)
+	gameRequestsHandler := handler.NewGameRequests(dependencies.GameRequests, dependencies.RequestQueries, brand)
 	router := chi.NewRouter()
 	router.Use(middleware.RequestID)
 	router.Use(middleware.Recoverer)
@@ -58,6 +61,19 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 				games.Get("/mine", gamesHandler.MyGames)
 				games.Post("/{gameID}/follow", gamesHandler.Follow)
 				games.Post("/{gameID}/unfollow", gamesHandler.Unfollow)
+			})
+		}
+		if dependencies.GameRequests != nil && dependencies.RequestQueries != nil {
+			authenticated.Route("/game-requests", func(requests chi.Router) {
+				requests.Use(handler.RequireAuthentication)
+				requests.Get("/", gameRequestsHandler.List)
+				requests.Get("/new", gameRequestsHandler.New)
+				requests.Post("/", gameRequestsHandler.Create)
+				requests.Get("/{requestID}", gameRequestsHandler.View)
+				requests.Post("/{requestID}/join", gameRequestsHandler.Join)
+				requests.Post("/{requestID}/leave", gameRequestsHandler.Leave)
+				requests.Post("/{requestID}/close", gameRequestsHandler.Close)
+				requests.Post("/{requestID}/cancel", gameRequestsHandler.Cancel)
 			})
 		}
 		if dependencies.Events != nil && dependencies.Games != nil {

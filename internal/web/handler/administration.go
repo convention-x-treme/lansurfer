@@ -290,6 +290,8 @@ func notice(r *http.Request) string {
 		return "Alias added."
 	case "alias-removed":
 		return "Alias removed."
+	case "request-created":
+		return "Game Request created."
 	default:
 		return ""
 	}

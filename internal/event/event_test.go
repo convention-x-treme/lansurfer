@@ -38,7 +38,8 @@ func TestCreateValidatesEvent(t *testing.T) {
 
 type recordingRepository struct{ createdName string }
 
-func (*recordingRepository) List(context.Context) ([]Event, error) { return nil, nil }
+func (*recordingRepository) List(context.Context) ([]Event, error)   { return nil, nil }
+func (*recordingRepository) Current(context.Context) (string, error) { return "event-1", nil }
 func (r *recordingRepository) Create(_ context.Context, name string, startsAt, endsAt time.Time) (Event, error) {
 	r.createdName = name
 	return Event{Name: name, StartsAt: startsAt, EndsAt: endsAt}, nil

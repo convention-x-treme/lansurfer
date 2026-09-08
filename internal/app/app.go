@@ -15,8 +15,11 @@ import (
 	eventpostgres "github.com/convention-x-treme/lansurfer/internal/event/postgres"
 	"github.com/convention-x-treme/lansurfer/internal/game"
 	gamepostgres "github.com/convention-x-treme/lansurfer/internal/game/postgres"
+	"github.com/convention-x-treme/lansurfer/internal/gamerequest"
+	gamerequestpostgres "github.com/convention-x-treme/lansurfer/internal/gamerequest/postgres"
 	"github.com/convention-x-treme/lansurfer/internal/platform/config"
 	"github.com/convention-x-treme/lansurfer/internal/platform/postgres"
+	gamerequestquery "github.com/convention-x-treme/lansurfer/internal/query/gamerequest"
 	"github.com/convention-x-treme/lansurfer/internal/user"
 	userpostgres "github.com/convention-x-treme/lansurfer/internal/user/postgres"
 	"github.com/convention-x-treme/lansurfer/internal/web"
@@ -71,6 +74,8 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	gameStore := gamepostgres.NewStore(pool)
 	gameService := game.NewService(gameStore)
 	gameSubscriptions := game.NewSubscriptionService(gameStore)
+	gameRequests := gamerequest.NewService(gamerequestpostgres.NewStore(pool), gameService, eventService)
+	gameRequestQueries := gamerequestquery.NewStore(pool)
 
 	server := &http.Server{
 		Addr: cfg.ListenAddr,
@@ -80,6 +85,8 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 			Events:         eventService,
 			Games:          gameService,
 			Subscriptions:  gameSubscriptions,
+			GameRequests:   gameRequests,
+			RequestQueries: gameRequestQueries,
 			SecureCookies:  strings.HasPrefix(cfg.BaseURL, "https://"),
 		}),
 		ReadHeaderTimeout: 5 * time.Second,

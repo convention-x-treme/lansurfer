@@ -50,6 +50,18 @@ func (s *Store) List(ctx context.Context, search string) ([]game.Game, error) {
 	return result, nil
 }
 
+func (s *Store) ActiveExists(ctx context.Context, id string) (bool, error) {
+	databaseID, err := parseUUID(id)
+	if err != nil {
+		return false, nil
+	}
+	exists, err := s.queries.ActiveGameExists(ctx, databaseID)
+	if err != nil {
+		return false, fmt.Errorf("check active game: %w", err)
+	}
+	return exists, nil
+}
+
 func (s *Store) Create(ctx context.Context, name, slug string) (game.Game, error) {
 	row, err := s.queries.CreateGame(ctx, sqlcgen.CreateGameParams{Name: name, Slug: slug})
 	if isUniqueViolation(err) {
