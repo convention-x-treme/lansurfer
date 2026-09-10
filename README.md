@@ -29,7 +29,7 @@ The original use case is **CXT**, a LAN party with around **400 participants**. 
 
 ## 🏄 How it works
 
-The first prototype will focus on a simple browser-based flow:
+The completed prototype establishes a simple browser-based flow:
 
 1. **Follow your games.** Pick the games you'd like to play and find them again in My Games.
 2. **Find players.** Create a Game Request with a start time, an optional player limit, and a short description.
@@ -66,17 +66,17 @@ An otter with a headset and a surfboard feels right at home here: social, at eas
 
 The otter brings a little personality to LANsurfer's ocean-inspired identity. In the application, the wording stays familiar: games, players, events, and joining a game.
 
-The [visual branding guide](docs/BRANDING.md) defines the palette, typography, mascot usage, and dark/light interface direction for the first prototype.
+The [visual branding guide](docs/BRANDING.md) defines the palette, typography, mascot usage, dark/light interface direction, and the limited 1.0 instance-identity boundary.
 
 ## 🗺️ Project status
 
-The **web-only v0.1 prototype** is ready for a controlled LAN-event pilot. It includes generic OIDC login, Event and game administration, game subscriptions, Game Requests, concurrency-safe joining, and live SSE updates on desktop and mobile browsers. The next milestone packages and documents it for a general open-source self-hosting release.
+The **web-only prototype milestones are complete**. The implemented application includes generic OIDC login, Event and Game administration, Game subscriptions, Game Requests, concurrency-safe joining, and live SSE updates on desktop and mobile browsers.
 
-The [roadmap](docs/ROADMAP.md#progress) tracks completed work and what's next. The [product definition](docs/PRODUCT.md#5-v01-scope) describes the first release in detail.
+Planning is now focused on the 1.0 self-hosting release. [Milestone 9](docs/ROADMAP.md#milestone-9--player-profiles-and-multi-provider-identity) is current; the remaining milestones add Event participation and Open Play, Clans, optional IGDB import, instance identity, durable Web Push/Discord delivery, and production distribution. These are planned features and are not yet implemented.
 
-Discord, Web Push, external game catalogs, and a separate Ready-to-Play status are possibilities for later. They are outside the first prototype. The design and database may still change during development.
+The [roadmap](docs/ROADMAP.md#progress) tracks progress and acceptance criteria. The [product definition](docs/PRODUCT.md#5-release-scope) distinguishes the implemented prototype from the approved 1.0 scope and explicit post-1.0 deferrals. The design and database may still change before the stable release.
 
-## 🐳 Try the development foundation
+## 🐳 Run the current prototype
 
 With this repository checked out and Docker with Docker Compose installed, start LANsurfer and PostgreSQL:
 

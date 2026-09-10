@@ -1,6 +1,6 @@
 # LANsurfer Branding
 
-This document defines the fixed visual identity for LANsurfer v0.1. It extracts the compatible visual direction from the [LANsurfer Branding & UI/UX concept](<LANsurfer Branding & UI_UX v2 by Claude Design.pdf>) while preserving the product terminology and scope in [PRODUCT.md](PRODUCT.md).
+This document defines LANsurfer's fixed visual system through 1.0. It extracts the compatible visual direction from the [LANsurfer Branding & UI/UX concept](<LANsurfer Branding & UI_UX v2 by Claude Design.pdf>) while preserving the product terminology and scope in [PRODUCT.md](PRODUCT.md). The 1.0 instance-identity fields described below do not turn the visual system into a configurable theme.
 
 The concept PDF is design input, not a source of product requirements. When the two disagree, `PRODUCT.md`, [ROADMAP.md](ROADMAP.md), and [AGENTS.md](../AGENTS.md) remain authoritative.
 
@@ -16,7 +16,7 @@ Always write the product name as `LANsurfer`, including the lowercase `surfer`. 
 
 ## Color system
 
-The palette is fixed for v0.1. Templates and styles must consume centralized semantic tokens instead of repeating hexadecimal values.
+The palette is fixed through 1.0. Templates and styles must consume centralized semantic tokens instead of repeating hexadecimal values.
 
 | Token | Value | Intended role |
 | --- | --- | --- |
@@ -69,7 +69,7 @@ Use **JetBrains Mono** for compact data where aligned character shapes improve s
 
 Bundle production webfonts with the application and serve them from embedded assets. Runtime font CDNs are not allowed. Provide system sans-serif and monospace fallbacks so content remains usable while fonts load or if they fail.
 
-## Logo and lockup
+## LANsurfer logo and lockup
 
 The concept establishes a Montserrat ExtraBold wordmark and tagline lockup, but explicitly identifies its signet as unfinished. Until an approved signet asset exists:
 
@@ -78,7 +78,20 @@ The concept establishes a Montserrat ExtraBold wordmark and tagline lockup, but 
 - do not use the mascot as a substitute favicon or signet;
 - keep at least the height of the wordmark's capital `L` as clear space around a future lockup.
 
-The eventual signet must remain recognizable at 32 px, work with no more than two blues plus optional Golden Hour, and have a one-color version suitable for print, stamps, merchandise, and sponsor walls. Logo assets should be stored once and referenced through the centralized brand definition.
+The eventual LANsurfer signet must remain recognizable at 32 px, work with no more than two blues plus optional Golden Hour, and have a one-color version suitable for print, stamps, merchandise, and sponsor walls. Product logo assets should be stored once and referenced through the centralized brand definition.
+
+### Instance identity in 1.0
+
+An administrator may add an instance display name, welcome text, contact link, logo, and application icon. These values identify the hosting community; they do not replace the LANsurfer product identity.
+
+- Keep visible **Powered by LANsurfer** attribution.
+- Continue to use this document's palette, typography, component semantics, accessibility rules, and light/dark presentations.
+- Accept only a validated PNG logo up to 2 MiB and 2048×1024 pixels.
+- Accept only a validated square PNG icon from 192 to 512 pixels and up to 512 KiB.
+- Store uploaded identity assets in PostgreSQL and serve them from LANsurfer.
+- When an icon or logo is absent, omit missing manifest icons and use the generated instance monogram where the UI needs an identity mark.
+
+Instance identity is not Event-specific. It does not permit custom colors, fonts, CSS, remote branding assets, removal of LANsurfer attribution, or a theme editor.
 
 ## Mascot
 
@@ -123,24 +136,25 @@ Apply the visual language to the product's established terms:
 - Errors use Coral with a clear message. Informational feedback uses Aqua Wave or Surf Blue.
 - Badges and metadata stay visually quieter than titles and primary actions.
 
-The same component hierarchy may later be reused for in-app live-update notices. This does not add Web Push, Discord, or a persistent notification feature to v0.1.
+The same component hierarchy is used for in-browser live updates and may support the planned 1.0 Web Push and Discord settings. Durable delivery does not add a persistent in-app notification inbox.
 
 ## Voice and terminology boundary
 
 Brand personality may appear in marketing headlines and occasional supporting copy, but users must not learn a surf vocabulary to operate LANsurfer. Do not rename Game Requests to Waves, Players to Crew, available places to Spots, or Join to Catch in navigation, controls, code, or persistence.
 
-The following ideas shown in the source concept are not adopted by this visual guide and remain deferred unless the product documents are explicitly changed:
+The following ideas shown in the source concept are not adopted by this visual guide:
 
-- Web Push and Discord bot delivery
 - a separate Ready-to-Play state
-- configurable instance branding or a YAML theme file
-- additional social login providers
-- ticket and seat claims
+- a YAML theme file or full theme customization
+- Discord bot/gateway interactions
+- ticket claims or venue maps
 - a waitlist
-- internationalization as a v0.1 deliverable
+- internationalization as a 1.0 deliverable
 
 ## Implementation boundary
 
-Keep the fixed brand definition near the web composition layer as one small value/object containing the name, tagline, semantic colors, and asset paths. Tailwind/DaisyUI theme values, CSS custom properties, and templ components should derive from that definition or its generated/static stylesheet rather than introduce parallel constants.
+Keep the fixed LANsurfer brand definition near the web composition layer as one small value/object containing the product name, tagline, semantic colors, and built-in asset paths. Tailwind/DaisyUI theme values, CSS custom properties, and templ components should derive from that definition or its generated/static stylesheet rather than introduce parallel constants.
 
-Brand values are not environment configuration and must not be stored in PostgreSQL for v0.1. Future instance branding remains a separate post-v0.1 concern.
+Fixed brand values are not environment configuration or mutable PostgreSQL state. The limited instance identity fields are separate PostgreSQL product data with the validation rules above.
+
+The approved remote IGDB cover host is a catalog-content exception, not a branding exception. It does not permit remote logos, icons, fonts, theme assets, or arbitrary images.
