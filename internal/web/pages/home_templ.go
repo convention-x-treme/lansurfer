@@ -92,30 +92,37 @@ func Home(brand branding.Brand, navigation components.NavigationState) templ.Com
 				return templ_7745c5c3_Err
 			}
 			if navigation.Viewer == nil && navigation.LoginAvailable {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "<a class=\"btn btn-primary\" href=\"/auth/login\">Log in to LANsurfer</a> ")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "<a class=\"btn btn-primary\" href=\"/auth/login\">Log in to LANsurfer</a>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			} else if navigation.Viewer != nil {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<a class=\"btn btn-primary\" href=\"/games\">Browse games</a> ")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<a class=\"btn btn-primary\" href=\"/game-requests\">Browse Game Requests</a> <a class=\"btn btn-outline\" href=\"/game-requests/new\">Create Game Request</a>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			} else {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<a class=\"btn btn-primary\" href=\"#patterns\">Explore the interface</a> ")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<a class=\"btn btn-primary\" href=\"#how-it-works\">See how it works</a>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "<a class=\"btn btn-ghost\" href=\"/healthz\">Service health</a></div></div><div class=\"card border border-base-300 bg-base-200 shadow-xl\"><div class=\"card-body gap-5\"><p class=\"data-text text-sm font-semibold uppercase tracking-widest text-secondary\">Built for the LAN</p><h2 class=\"card-title text-2xl\">Fast, obvious, and local</h2><p class=\"text-base-content/75\">The foundation uses ordinary links, forms, and server-rendered fragments. JavaScript enhances the experience without owning product behavior.</p><div class=\"flex flex-wrap gap-2\" aria-label=\"Frontend technologies\"><span class=\"badge badge-outline\">templ</span> <span class=\"badge badge-outline\">HTMX</span> <span class=\"badge badge-outline\">Tailwind CSS</span> <span class=\"badge badge-outline\">DaisyUI</span></div></div></div></div></section><section id=\"patterns\" class=\"page-shell py-16\" aria-labelledby=\"patterns-title\"><div class=\"max-w-2xl\"><p class=\"data-text text-sm font-semibold uppercase tracking-widest text-secondary\">Server-rendered patterns</p><h2 id=\"patterns-title\" class=\"mt-2 text-3xl font-bold\">Useful states before product complexity</h2><p class=\"mt-3 text-base-content/75\">These controls request HTML fragments from Go. HTMX swaps only the preview while the page remains server rendered.</p></div><div class=\"mt-6 flex flex-wrap gap-3\" role=\"group\" aria-label=\"Preview interface states\"><button type=\"button\" class=\"btn btn-primary\" hx-get=\"/ui/patterns/empty\" hx-target=\"#pattern-preview\" hx-swap=\"innerHTML\" hx-indicator=\"#pattern-loading\">Show empty state</button> <button type=\"button\" class=\"btn btn-outline\" hx-get=\"/ui/patterns/error\" hx-target=\"#pattern-preview\" hx-swap=\"innerHTML\" hx-indicator=\"#pattern-loading\">Show error state</button> <span id=\"pattern-loading\" class=\"loading loading-spinner loading-sm htmx-indicator self-center\" aria-label=\"Loading\"></span></div><div id=\"pattern-preview\" class=\"mt-6\" aria-live=\"polite\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "</div></div><div class=\"card border border-base-300 bg-base-200 shadow-xl\"><div class=\"card-body gap-5\"><p class=\"data-text text-sm font-semibold uppercase tracking-widest text-secondary\">Built for the LAN</p><h2 class=\"card-title text-2xl\">From “anyone up for it?” to a full group</h2><p class=\"text-base-content/75\">See who is looking for players right now, join with one tap, and watch the player count update live.</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = components.EmptyState(brand).Render(ctx, templ_7745c5c3_Buffer)
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
+			if navigation.Viewer != nil {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "<a class=\"btn btn-primary\" href=\"/game-requests\">Find a group</a>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			} else if navigation.LoginAvailable {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "<a class=\"btn btn-primary\" href=\"/auth/login\">Log in to find a group</a>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "</div></section>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "</div></div></div></section><section id=\"how-it-works\" class=\"page-shell py-16\" aria-labelledby=\"how-it-works-title\"><div class=\"max-w-2xl\"><p class=\"data-text text-sm font-semibold uppercase tracking-widest text-secondary\">Three quick steps</p><h2 id=\"how-it-works-title\" class=\"mt-2 text-3xl font-bold\">Get a group together</h2></div><ol class=\"mt-8 grid gap-4 md:grid-cols-3\"><li class=\"card border border-base-300 bg-base-200\"><div class=\"card-body\"><span class=\"badge badge-primary data-text\">1</span><h3 class=\"card-title\">Follow your games</h3><p class=\"text-base-content/75\">Keep the games you care about close at hand.</p></div></li><li class=\"card border border-base-300 bg-base-200\"><div class=\"card-body\"><span class=\"badge badge-primary data-text\">2</span><h3 class=\"card-title\">Find players</h3><p class=\"text-base-content/75\">Create a Game Request now or schedule it for later.</p></div></li><li class=\"card border border-base-300 bg-base-200\"><div class=\"card-body\"><span class=\"badge badge-primary data-text\">3</span><h3 class=\"card-title\">Join and play</h3><p class=\"text-base-content/75\">Join a request and see the group update live.</p></div></li></ol></section>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

@@ -15,7 +15,7 @@ Hundreds of players. Dozens of games. And somewhere in the room, someone else is
 
 [The idea](#-what-is-lansurfer) · [How it works](#-how-it-works) · [Project status](#-project-status) · [Get involved](#-get-involved)
 
-> 🚧 **Early development:** the backend, server-rendered frontend, and generic OIDC login are in place. The player-facing game workflows described below are planned for later milestones.
+> 🚧 **Prototype:** the core player and administrator workflows are implemented and hardened for a controlled LAN-event pilot. Packaging and operator documentation for the first general self-hosting release are still in progress.
 
 ## 🎮 What is LANsurfer?
 
@@ -35,7 +35,7 @@ The first prototype will focus on a simple browser-based flow:
 2. **Find players.** Create a Game Request with a start time, an optional player limit, and a short description.
 3. **Join a game.** Browse requests, see who's still looking for players, and join in. Live updates keep player counts and new requests visible in the browser.
 
-A request could look like this — an illustration of the planned experience:
+A request looks like this:
 
 ```text
 Warcraft III
@@ -70,7 +70,7 @@ The [visual branding guide](docs/BRANDING.md) defines the palette, typography, m
 
 ## 🗺️ Project status
 
-We're building toward a **web-only v0.1 prototype** to try at a real LAN event. The backend, database, responsive web foundation, and OIDC login are implemented. Following games and creating or joining requests are still ahead.
+The **web-only v0.1 prototype** is ready for a controlled LAN-event pilot. It includes generic OIDC login, Event and game administration, game subscriptions, Game Requests, concurrency-safe joining, and live SSE updates on desktop and mobile browsers. The next milestone packages and documents it for a general open-source self-hosting release.
 
 The [roadmap](docs/ROADMAP.md#progress) tracks completed work and what's next. The [product definition](docs/PRODUCT.md#5-v01-scope) describes the first release in detail.
 
@@ -84,7 +84,7 @@ With this repository checked out and Docker with Docker Compose installed, start
 docker compose up --build
 ```
 
-This starts the application, including automatic database migrations and the responsive LANsurfer foundation page. Open <http://localhost:8080> or check that the service is running:
+This starts the application, including automatic database migrations and the responsive LANsurfer web UI. Open <http://localhost:8080> or check that the service is running:
 
 ```sh
 curl http://localhost:8080/healthz
@@ -112,6 +112,14 @@ LANSURFER_OIDC_CLIENT_SECRET=
 Set the issuer URL itself rather than its `/.well-known/openid-configuration` endpoint; LANsurfer discovers that endpoint automatically. The client secret is optional for public PKCE clients and required when the provider configures a confidential client. For an exposed deployment, use an HTTPS base URL; LANsurfer then marks its opaque session and login-flow cookies `Secure`. The identity provider subject is linked to a separate local LANsurfer user, and matching email addresses are never used to merge accounts.
 
 For the local Keycloak client, enable **Standard flow**, leave **Client authentication** disabled, require the `S256` PKCE method, and configure `http://localhost:8080/auth/callback` as the exact valid redirect URI. A production server deployment should normally use a confidential client with client authentication enabled and provide its secret through `LANSURFER_OIDC_CLIENT_SECRET`.
+
+When LANsurfer runs behind a reverse proxy, set `LANSURFER_BASE_URL` to the
+public HTTPS origin. Set `LANSURFER_TRUSTED_PROXIES` to a comma-separated list
+of the proxy IP addresses or CIDR ranges only when client-IP logging should use
+`X-Forwarded-For` (for example, `10.20.0.5,10.21.0.0/16`). LANsurfer ignores
+forwarded client addresses from every other peer; do not use a broad range that
+includes untrusted clients. Proxy TLS headers do not control cookie security—the
+public HTTPS `LANSURFER_BASE_URL` does.
 
 ### Promote the first administrator
 

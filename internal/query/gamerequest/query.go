@@ -48,6 +48,11 @@ type CreationOptions struct {
 	Games     []GameOption
 }
 
+type EventContext struct {
+	ID   string
+	Name string
+}
+
 type Store struct {
 	queries *sqlcgen.Queries
 }
@@ -119,6 +124,17 @@ func (s *Store) CreationOptions(ctx context.Context) (CreationOptions, error) {
 		options.Games = append(options.Games, GameOption{ID: game.ID, Name: game.Name})
 	}
 	return options, nil
+}
+
+func (s *Store) CurrentEvent(ctx context.Context) (EventContext, error) {
+	event, err := s.queries.CurrentEventForGameRequest(ctx)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return EventContext{}, nil
+	}
+	if err != nil {
+		return EventContext{}, fmt.Errorf("find current event: %w", err)
+	}
+	return EventContext{ID: event.ID, Name: event.Name}, nil
 }
 
 func requestFromFields(id, eventName, gameName, creatorID, creatorName string, maxPlayers pgtype.Int4,

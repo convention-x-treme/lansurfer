@@ -38,6 +38,7 @@ func (h *Games) Browse(w http.ResponseWriter, r *http.Request) {
 			h.renderBrowse(w, r, http.StatusUnprocessableEntity, nil, search, "Search must be 120 characters or fewer.")
 			return
 		}
+		webmiddleware.LogError(r, "browse game catalog", err)
 		h.renderError(w, r)
 		return
 	}
@@ -48,6 +49,7 @@ func (h *Games) MyGames(w http.ResponseWriter, r *http.Request) {
 	account, _ := webmiddleware.CurrentUser(r.Context())
 	items, err := h.subscriptions.MyGames(r.Context(), account.ID)
 	if err != nil {
+		webmiddleware.LogError(r, "load followed games", err)
 		h.renderError(w, r)
 		return
 	}
@@ -101,6 +103,7 @@ func (h *Games) renderMutationError(w http.ResponseWriter, r *http.Request, caus
 		http.Error(w, "game not found", http.StatusNotFound)
 		return
 	}
+	webmiddleware.LogError(r, "update game subscription", cause)
 	http.Error(w, "update game subscription", http.StatusInternalServerError)
 }
 

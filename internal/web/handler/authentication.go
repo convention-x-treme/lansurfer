@@ -49,6 +49,7 @@ func (h *AuthenticationHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 	flow, err := h.authentication.BeginLogin()
 	if err != nil {
+		webmiddleware.LogError(r, "start OIDC login", err)
 		h.renderError(w, r, http.StatusInternalServerError, "Login could not be started. Please try again.")
 		return
 	}
@@ -90,6 +91,7 @@ func (h *AuthenticationHandler) Callback(w http.ResponseWriter, r *http.Request)
 			h.renderError(w, r, http.StatusUnauthorized, "Login could not be completed. Please start again.")
 			return
 		}
+		webmiddleware.LogError(r, "complete OIDC login", err)
 		h.renderError(w, r, http.StatusInternalServerError, "Login could not be completed. Please try again.")
 		return
 	}
@@ -100,6 +102,7 @@ func (h *AuthenticationHandler) Callback(w http.ResponseWriter, r *http.Request)
 func (h *AuthenticationHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	if cookie, err := r.Cookie(webmiddleware.SessionCookieName); err == nil && h.authentication != nil {
 		if err := h.authentication.Logout(r.Context(), cookie.Value); err != nil {
+			webmiddleware.LogError(r, "revoke authentication session", err)
 			h.renderError(w, r, http.StatusInternalServerError, "Logout could not be completed. Please try again.")
 			return
 		}
@@ -142,6 +145,7 @@ func (h *AuthenticationHandler) renderError(w http.ResponseWriter, r *http.Reque
 func render(w http.ResponseWriter, r *http.Request, status int, component templ.Component) {
 	var rendered bytes.Buffer
 	if err := component.Render(r.Context(), &rendered); err != nil {
+		webmiddleware.LogError(r, "render HTML response", err)
 		http.Error(w, "render page", http.StatusInternalServerError)
 		return
 	}

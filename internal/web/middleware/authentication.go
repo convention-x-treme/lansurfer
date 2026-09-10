@@ -32,6 +32,7 @@ func Authentication(authenticator Authenticator, secureCookies bool) func(http.H
 				return
 			}
 			if err != nil {
+				LogError(r, "authenticate browser session", err)
 				http.Error(w, "invalid session cookie", http.StatusBadRequest)
 				return
 			}

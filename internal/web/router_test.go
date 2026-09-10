@@ -109,7 +109,7 @@ func TestHomeRendersFrontendFoundation(t *testing.T) {
 		"Find your crew. Catch the next game.",
 		`href="/assets/app.css"`,
 		`src="/assets/app.js"`,
-		`hx-get="/ui/patterns/empty"`,
+		`id="how-it-works"`,
 		`data-theme-toggle`,
 	} {
 		if !strings.Contains(string(body), want) {
@@ -229,6 +229,7 @@ func TestAdminCanCreateEvent(t *testing.T) {
 	request := httptest.NewRequest(http.MethodPost, "/admin/events", strings.NewReader(form.Encode()))
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	addCSRF(request)
 	response := httptest.NewRecorder()
 
 	router.ServeHTTP(response, request)
@@ -295,6 +296,7 @@ func TestAuthenticatedUserCanBrowseAndFollowGames(t *testing.T) {
 	follow := httptest.NewRequest(http.MethodPost, "/games/game-1/follow", nil)
 	follow.Header.Set("HX-Request", "true")
 	follow.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	addCSRF(follow)
 	followResponse := httptest.NewRecorder()
 	router.ServeHTTP(followResponse, follow)
 	if followResponse.Code != http.StatusOK || subscriptions.followed != "user-1/game-1" {
@@ -399,11 +401,23 @@ func TestGameRequestBrowserWorkflow(t *testing.T) {
 			t.Errorf("list body does not contain %q", want)
 		}
 	}
+	if !strings.Contains(listResponse.Body.String(), "Current Event: <strong>CXT 2027</strong>") {
+		t.Errorf("list does not show current Event context: %q", listResponse.Body.String())
+	}
+
+	newRequest := httptest.NewRequest(http.MethodGet, "/game-requests/new?game_id=game-1", nil)
+	newRequest.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	newResponse := httptest.NewRecorder()
+	router.ServeHTTP(newResponse, newRequest)
+	if newResponse.Code != http.StatusOK || !strings.Contains(newResponse.Body.String(), `value="game-1" selected`) {
+		t.Errorf("preselected creation form = %d %q", newResponse.Code, newResponse.Body.String())
+	}
 
 	form := url.Values{"game_id": {"game-1"}, "max_players": {"4"}, "description": {"Casual players"}}
 	create := httptest.NewRequest(http.MethodPost, "/game-requests", strings.NewReader(form.Encode()))
 	create.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	create.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	addCSRF(create)
 	createResponse := httptest.NewRecorder()
 	router.ServeHTTP(createResponse, create)
 	if createResponse.Code != http.StatusSeeOther || createResponse.Header().Get("Location") != "/game-requests/request-created?notice=request-created" {
@@ -415,6 +429,7 @@ func TestGameRequestBrowserWorkflow(t *testing.T) {
 
 	join := httptest.NewRequest(http.MethodPost, "/game-requests/request-1/join", nil)
 	join.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	addCSRF(join)
 	joinResponse := httptest.NewRecorder()
 	router.ServeHTTP(joinResponse, join)
 	if joinResponse.Code != http.StatusSeeOther || commands.joined != "request-1/user-1" {
@@ -439,6 +454,12 @@ func assertResponse(t *testing.T, response *http.Response, wantStatus int, wantB
 	if string(body) != wantBody {
 		t.Errorf("body = %q, want %q", body, wantBody)
 	}
+}
+
+func addCSRF(request *http.Request) {
+	const token = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+	request.AddCookie(&http.Cookie{Name: "lansurfer_csrf", Value: token})
+	request.Header.Set("X-CSRF-Token", token)
 }
 
 type routerAuthentication struct {
@@ -570,6 +591,9 @@ func (r *routerGameRequestQueries) ByID(_ context.Context, id, _ string) (reques
 }
 func (r *routerGameRequestQueries) CreationOptions(context.Context) (requestquery.CreationOptions, error) {
 	return r.options, nil
+}
+func (r *routerGameRequestQueries) CurrentEvent(context.Context) (requestquery.EventContext, error) {
+	return requestquery.EventContext{ID: r.options.EventID, Name: r.options.EventName}, nil
 }
 
 func (r *routerSubscriptions) Browse(_ context.Context, _, search string) ([]game.SubscriptionGame, error) {

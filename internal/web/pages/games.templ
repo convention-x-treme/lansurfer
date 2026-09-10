@@ -72,7 +72,12 @@ templ MyGames(brand branding.Brand, navigation components.NavigationState, games
 
 templ GameSubscriptionCard(item game.SubscriptionGame, myGames bool) {
 	<article class="card border border-base-300 bg-base-200 shadow-sm">
-		<div class="card-body"><div><h2 class="card-title text-2xl">{ item.Name }</h2><p class="data-text mt-1 text-sm text-base-content/60">{ item.Slug }</p></div><div class="card-actions mt-3 justify-end">@GameFollowControl(item.ID, item.Subscribed, myGames)</div></div>
+		<div class="card-body"><div><h2 class="card-title text-2xl">{ item.Name }</h2><p class="data-text mt-1 text-sm text-base-content/60">{ item.Slug }</p></div><div class="card-actions mt-3 justify-end">
+			if item.Subscribed {
+				<a class="btn btn-primary btn-sm" href={ "/game-requests/new?game_id=" + item.ID }>Find Players</a>
+			}
+			@GameFollowControl(item.ID, item.Subscribed, myGames)
+		</div></div>
 	</article>
 }
 
@@ -81,6 +86,7 @@ templ GameFollowControl(gameID string, subscribed, myGames bool) {
 		<div class="flex items-center gap-2">
 			<span class="badge badge-primary">Following</span>
 			<form method="post" action={ "/games/" + gameID + "/unfollow" } hx-post={ "/games/" + gameID + "/unfollow" } hx-target="closest article" hx-swap="outerHTML">
+				@components.CSRFInput()
 				<input type="hidden" name="view" value="mine"/>
 				<button class="btn btn-outline btn-sm" type="submit">Unfollow</button>
 			</form>
@@ -89,11 +95,13 @@ templ GameFollowControl(gameID string, subscribed, myGames bool) {
 		<div class="flex items-center gap-2">
 			<span class="badge badge-primary">Following</span>
 			<form method="post" action={ "/games/" + gameID + "/unfollow" } hx-post={ "/games/" + gameID + "/unfollow" } hx-target="closest div" hx-swap="outerHTML">
+				@components.CSRFInput()
 				<button class="btn btn-outline btn-sm" type="submit">Unfollow</button>
 			</form>
 		</div>
 	} else {
 		<form method="post" action={ "/games/" + gameID + "/follow" } hx-post={ "/games/" + gameID + "/follow" } hx-target="this" hx-swap="outerHTML">
+			@components.CSRFInput()
 			<button class="btn btn-primary btn-sm" type="submit">Follow Game</button>
 		</form>
 	}

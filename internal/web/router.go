@@ -4,7 +4,9 @@ package web
 import (
 	"bytes"
 	"context"
+	"log/slog"
 	"net/http"
+	"net/netip"
 	"time"
 
 	"github.com/a-h/templ"
@@ -38,6 +40,8 @@ type RouterDependencies struct {
 	RequestQueries handler.GameRequestQueries
 	Realtime       handler.GameRequestEvents
 	SecureCookies  bool
+	Logger         *slog.Logger
+	TrustedProxies []netip.Prefix
 }
 
 // NewRouter constructs the HTTP router.
@@ -50,7 +54,10 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 	realtimeHandler := handler.NewRealtime(dependencies.Realtime)
 	router := chi.NewRouter()
 	router.Use(middleware.RequestID)
+	router.Use(webmiddleware.RequestLogging(dependencies.Logger, dependencies.TrustedProxies))
 	router.Use(middleware.Recoverer)
+	router.Use(webmiddleware.SecurityHeaders(dependencies.SecureCookies))
+	router.Use(webmiddleware.CSRF(dependencies.SecureCookies))
 
 	router.Handle("/assets/*", http.StripPrefix("/assets/", assets.Handler()))
 	router.Group(func(authenticated chi.Router) {
@@ -135,6 +142,7 @@ func readinessHandler(ready ReadyCheck) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		if err := ready(ctx); err != nil {
+			webmiddleware.LogError(r, "readiness check failed", err)
 			http.Error(w, "not ready", http.StatusServiceUnavailable)
 			return
 		}
@@ -147,6 +155,7 @@ func componentHandler(component templ.Component) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var rendered bytes.Buffer
 		if err := component.Render(r.Context(), &rendered); err != nil {
+			webmiddleware.LogError(r, "render HTML component", err)
 			http.Error(w, "render page", http.StatusInternalServerError)
 			return
 		}

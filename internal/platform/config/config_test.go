@@ -44,6 +44,7 @@ func TestLoadReadsConfiguredValues(t *testing.T) {
 	t.Setenv("LANSURFER_OIDC_ISSUER", " https://id.example.test/realms/lan ")
 	t.Setenv("LANSURFER_OIDC_CLIENT_ID", " lansurfer ")
 	t.Setenv("LANSURFER_OIDC_CLIENT_SECRET", " secret ")
+	t.Setenv("LANSURFER_TRUSTED_PROXIES", " 10.20.0.5, 10.21.0.0/16 ")
 
 	cfg, err := Load()
 	if err != nil {
@@ -61,6 +62,20 @@ func TestLoadReadsConfiguredValues(t *testing.T) {
 	if cfg.OIDC == nil || cfg.OIDC.Issuer != "https://id.example.test/realms/lan" ||
 		cfg.OIDC.ClientID != "lansurfer" || cfg.OIDC.ClientSecret != "secret" {
 		t.Errorf("OIDC = %#v", cfg.OIDC)
+	}
+	if len(cfg.TrustedProxies) != 2 || cfg.TrustedProxies[0].String() != "10.20.0.5/32" || cfg.TrustedProxies[1].String() != "10.21.0.0/16" {
+		t.Errorf("TrustedProxies = %#v", cfg.TrustedProxies)
+	}
+}
+
+func TestLoadRejectsInvalidTrustedProxy(t *testing.T) {
+	clearOptionalEnvironment(t)
+	t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
+	t.Setenv("LANSURFER_TRUSTED_PROXIES", "10.0.0.1,not-an-address")
+
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "LANSURFER_TRUSTED_PROXIES") {
+		t.Fatalf("Load() error = %v, want invalid trusted proxy error", err)
 	}
 }
 
@@ -109,6 +124,7 @@ func clearOptionalEnvironment(t *testing.T) {
 		"LANSURFER_OIDC_ISSUER",
 		"LANSURFER_OIDC_CLIENT_ID",
 		"LANSURFER_OIDC_CLIENT_SECRET",
+		"LANSURFER_TRUSTED_PROXIES",
 	} {
 		t.Setenv(name, "")
 	}

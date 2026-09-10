@@ -51,7 +51,7 @@ func NewAdministration(events EventAdministration, games GameAdministration, bra
 func (h *Administration) Events(w http.ResponseWriter, r *http.Request) {
 	items, err := h.events.List(r.Context())
 	if err != nil {
-		h.renderAdminError(w, r)
+		h.renderAdminError(w, r, err)
 		return
 	}
 	render(w, r, http.StatusOK, pages.AdminEvents(h.brand, adminNavigation(r), items, "", notice(r)))
@@ -97,7 +97,7 @@ func (h *Administration) Games(w http.ResponseWriter, r *http.Request) {
 			render(w, r, http.StatusUnprocessableEntity, pages.AdminGames(h.brand, adminNavigation(r), nil, search, "Search must be 120 characters or fewer.", ""))
 			return
 		}
-		h.renderAdminError(w, r)
+		h.renderAdminError(w, r, err)
 		return
 	}
 	render(w, r, http.StatusOK, pages.AdminGames(h.brand, adminNavigation(r), items, search, "", notice(r)))
@@ -187,12 +187,12 @@ func eventForm(r *http.Request) (string, time.Time, time.Time, error) {
 func (h *Administration) renderEventsWithError(w http.ResponseWriter, r *http.Request, cause error) {
 	status := adminErrorStatus(cause)
 	if status == http.StatusInternalServerError {
-		h.renderAdminError(w, r)
+		h.renderAdminError(w, r, cause)
 		return
 	}
 	items, err := h.events.List(r.Context())
 	if err != nil {
-		h.renderAdminError(w, r)
+		h.renderAdminError(w, r, err)
 		return
 	}
 	render(w, r, status, pages.AdminEvents(h.brand, adminNavigation(r), items, adminMessage(cause), ""))
@@ -201,18 +201,19 @@ func (h *Administration) renderEventsWithError(w http.ResponseWriter, r *http.Re
 func (h *Administration) renderGamesWithError(w http.ResponseWriter, r *http.Request, cause error) {
 	status := adminErrorStatus(cause)
 	if status == http.StatusInternalServerError {
-		h.renderAdminError(w, r)
+		h.renderAdminError(w, r, cause)
 		return
 	}
 	items, err := h.games.List(r.Context(), "")
 	if err != nil {
-		h.renderAdminError(w, r)
+		h.renderAdminError(w, r, err)
 		return
 	}
 	render(w, r, status, pages.AdminGames(h.brand, adminNavigation(r), items, "", adminMessage(cause), ""))
 }
 
-func (h *Administration) renderAdminError(w http.ResponseWriter, r *http.Request) {
+func (h *Administration) renderAdminError(w http.ResponseWriter, r *http.Request, cause error) {
+	webmiddleware.LogError(r, "serve administration request", cause)
 	render(w, r, http.StatusInternalServerError, pages.AdminError(h.brand, adminNavigation(r)))
 }
 

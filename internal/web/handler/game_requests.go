@@ -32,6 +32,7 @@ type GameRequestQueries interface {
 	ListActive(context.Context, string) ([]requestquery.Request, error)
 	ByID(context.Context, string, string) (requestquery.Request, error)
 	CreationOptions(context.Context) (requestquery.CreationOptions, error)
+	CurrentEvent(context.Context) (requestquery.EventContext, error)
 }
 
 type GameRequests struct {
@@ -47,18 +48,26 @@ func NewGameRequests(commands GameRequestCommands, queries GameRequestQueries, b
 
 func (h *GameRequests) List(w http.ResponseWriter, r *http.Request) {
 	account, _ := webmiddleware.CurrentUser(r.Context())
-	requests, err := h.queries.ListActive(r.Context(), account.ID)
+	eventContext, err := h.queries.CurrentEvent(r.Context())
 	if err != nil {
+		webmiddleware.LogError(r, "load current Event for Game Requests", err)
 		h.renderError(w, r)
 		return
 	}
-	render(w, r, http.StatusOK, pages.GameRequestList(h.brand, requestNavigation(r), requests, notice(r)))
+	requests, err := h.queries.ListActive(r.Context(), account.ID)
+	if err != nil {
+		webmiddleware.LogError(r, "list active Game Requests", err)
+		h.renderError(w, r)
+		return
+	}
+	render(w, r, http.StatusOK, pages.GameRequestList(h.brand, requestNavigation(r), eventContext, requests, notice(r)))
 }
 
 func (h *GameRequests) RefreshList(w http.ResponseWriter, r *http.Request) {
 	account, _ := webmiddleware.CurrentUser(r.Context())
 	requests, err := h.queries.ListActive(r.Context(), account.ID)
 	if err != nil {
+		webmiddleware.LogError(r, "refresh active Game Requests", err)
 		http.Error(w, "refresh game requests", http.StatusInternalServerError)
 		return
 	}
@@ -68,10 +77,12 @@ func (h *GameRequests) RefreshList(w http.ResponseWriter, r *http.Request) {
 func (h *GameRequests) New(w http.ResponseWriter, r *http.Request) {
 	options, err := h.queries.CreationOptions(r.Context())
 	if err != nil {
+		webmiddleware.LogError(r, "load Game Request creation options", err)
 		h.renderError(w, r)
 		return
 	}
-	render(w, r, http.StatusOK, pages.NewGameRequest(h.brand, requestNavigation(r), options, pages.GameRequestForm{}, ""))
+	form := pages.GameRequestForm{GameID: strings.TrimSpace(r.URL.Query().Get("game_id"))}
+	render(w, r, http.StatusOK, pages.NewGameRequest(h.brand, requestNavigation(r), options, form, ""))
 }
 
 func (h *GameRequests) Create(w http.ResponseWriter, r *http.Request) {
@@ -87,6 +98,7 @@ func (h *GameRequests) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	options, optionsErr := h.queries.CreationOptions(r.Context())
 	if optionsErr != nil {
+		webmiddleware.LogError(r, "reload Game Request creation options", optionsErr)
 		h.renderError(w, r)
 		return
 	}
@@ -101,6 +113,7 @@ func (h *GameRequests) View(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
+		webmiddleware.LogError(r, "load Game Request", err)
 		h.renderError(w, r)
 		return
 	}
@@ -115,6 +128,7 @@ func (h *GameRequests) RefreshView(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
+		webmiddleware.LogError(r, "refresh Game Request", err)
 		http.Error(w, "refresh game request", http.StatusInternalServerError)
 		return
 	}
@@ -154,6 +168,7 @@ func (h *GameRequests) changeMembership(w http.ResponseWriter, r *http.Request, 
 func (h *GameRequests) renderChangeError(w http.ResponseWriter, r *http.Request, requestID, viewerID string, cause error) {
 	status := gameRequestErrorStatus(cause)
 	if status == http.StatusInternalServerError {
+		webmiddleware.LogError(r, "change Game Request", cause)
 		h.renderError(w, r)
 		return
 	}
@@ -163,6 +178,7 @@ func (h *GameRequests) renderChangeError(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	if err != nil {
+		webmiddleware.LogError(r, "reload Game Request after command error", err)
 		h.renderError(w, r)
 		return
 	}
@@ -175,7 +191,8 @@ func (h *GameRequests) parseCreateForm(r *http.Request) (pages.GameRequestForm, 
 	}
 	form := pages.GameRequestForm{
 		GameID: r.FormValue("game_id"), MaxPlayers: strings.TrimSpace(r.FormValue("max_players")),
-		StartsAt: strings.TrimSpace(r.FormValue("starts_at")), Description: r.FormValue("description"),
+		StartsAt: strings.TrimSpace(r.FormValue("starts_at")), TimezoneOffset: strings.TrimSpace(r.FormValue("timezone_offset")),
+		Description: r.FormValue("description"),
 	}
 	var maxPlayers *int32
 	if form.MaxPlayers != "" {
@@ -188,11 +205,20 @@ func (h *GameRequests) parseCreateForm(r *http.Request) (pages.GameRequestForm, 
 	}
 	startsAt := h.now().UTC()
 	if form.StartsAt != "" {
-		parsed, err := time.ParseInLocation(gameRequestTimeLayout, form.StartsAt, time.UTC)
+		offsetMinutes := int64(0)
+		if form.TimezoneOffset != "" {
+			value, err := strconv.ParseInt(form.TimezoneOffset, 10, 16)
+			if err != nil || value < -14*60 || value > 14*60 {
+				return form, maxPlayers, time.Time{}, gamerequest.ErrInvalidStartsAt
+			}
+			offsetMinutes = value
+		}
+		location := time.FixedZone("browser-local", int(-offsetMinutes*60))
+		parsed, err := time.ParseInLocation(gameRequestTimeLayout, form.StartsAt, location)
 		if err != nil {
 			return form, maxPlayers, time.Time{}, gamerequest.ErrInvalidStartsAt
 		}
-		startsAt = parsed
+		startsAt = parsed.UTC()
 	}
 	return form, maxPlayers, startsAt, nil
 }

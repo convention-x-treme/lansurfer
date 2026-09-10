@@ -33,6 +33,10 @@ function applyTheme(theme: Theme): void {
 
 applyTheme(preferredTheme());
 
+document.querySelectorAll<HTMLInputElement>("[data-timezone-offset]").forEach((input) => {
+  input.value = String(new Date().getTimezoneOffset());
+});
+
 document.querySelector<HTMLButtonElement>("[data-theme-toggle]")?.addEventListener("click", () => {
   const nextTheme = document.documentElement.dataset.theme === darkTheme ? lightTheme : darkTheme;
   try {
@@ -83,6 +87,13 @@ document.addEventListener("click", (event) => {
   const target = event.target;
   if (target instanceof Element && target.closest("[data-dismiss-live-toast]")) {
     target.closest("[data-live-toast]")?.remove();
+  }
+});
+
+document.addEventListener("submit", (event) => {
+  const form = event.target;
+  if (form instanceof HTMLFormElement && form.dataset.confirm && !window.confirm(form.dataset.confirm)) {
+    event.preventDefault();
   }
 });
 

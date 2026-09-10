@@ -4,6 +4,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/netip"
 	"net/url"
 	"os"
 	"strings"
@@ -22,10 +23,11 @@ type OIDC struct {
 
 // Config contains the technical settings required by the application foundation.
 type Config struct {
-	DatabaseURL string
-	ListenAddr  string
-	BaseURL     string
-	OIDC        *OIDC
+	DatabaseURL    string
+	ListenAddr     string
+	BaseURL        string
+	OIDC           *OIDC
+	TrustedProxies []netip.Prefix
 }
 
 // Load reads configuration from environment variables.
@@ -55,12 +57,40 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 
+	trustedProxies, err := loadTrustedProxies()
+	if err != nil {
+		return Config{}, err
+	}
+
 	return Config{
-		DatabaseURL: databaseURL,
-		ListenAddr:  listenAddr,
-		BaseURL:     baseURL,
-		OIDC:        oidc,
+		DatabaseURL:    databaseURL,
+		ListenAddr:     listenAddr,
+		BaseURL:        baseURL,
+		OIDC:           oidc,
+		TrustedProxies: trustedProxies,
 	}, nil
+}
+
+func loadTrustedProxies() ([]netip.Prefix, error) {
+	value := strings.TrimSpace(os.Getenv("LANSURFER_TRUSTED_PROXIES"))
+	if value == "" {
+		return nil, nil
+	}
+	parts := strings.Split(value, ",")
+	proxies := make([]netip.Prefix, 0, len(parts))
+	for _, part := range parts {
+		entry := strings.TrimSpace(part)
+		prefix, err := netip.ParsePrefix(entry)
+		if err != nil {
+			ip, ipErr := netip.ParseAddr(entry)
+			if ipErr != nil {
+				return nil, fmt.Errorf("LANSURFER_TRUSTED_PROXIES entry %q must be an IP address or CIDR prefix", entry)
+			}
+			prefix = netip.PrefixFrom(ip, ip.BitLen())
+		}
+		proxies = append(proxies, prefix.Masked())
+	}
+	return proxies, nil
 }
 
 func loadOIDC() (*OIDC, error) {

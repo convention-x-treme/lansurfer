@@ -27,6 +27,7 @@ templ AdminEvents(brand branding.Brand, navigation components.NavigationState, e
 			}
 			<div class="mt-8 grid gap-8 lg:grid-cols-[minmax(18rem,0.7fr)_minmax(0,1.3fr)]">
 				<form method="post" action="/admin/events" class="card h-fit border border-base-300 bg-base-200 shadow-sm">
+					@components.CSRFInput()
 					<div class="card-body">
 						<h2 class="card-title">Create event</h2>
 						@EventFields("", time.Time{}, time.Time{})
@@ -45,10 +46,11 @@ templ AdminEvents(brand branding.Brand, navigation components.NavigationState, e
 									if item.IsCurrent {
 										<span class="badge badge-primary">Current event</span>
 									} else {
-										<form method="post" action={ "/admin/events/" + item.ID + "/current" }><button class="btn btn-outline btn-sm" type="submit">Make current</button></form>
+										<form method="post" action={ "/admin/events/" + item.ID + "/current" }>@components.CSRFInput()<button class="btn btn-outline btn-sm" type="submit">Make current</button></form>
 									}
 								</div>
 								<form method="post" action={ "/admin/events/" + item.ID } class="mt-3 grid gap-4 sm:grid-cols-2">
+									@components.CSRFInput()
 									@EventFields(item.Name, item.StartsAt, item.EndsAt)
 									<div class="sm:col-span-2 flex justify-end"><button class="btn btn-outline btn-sm" type="submit">Save event</button></div>
 								</form>
@@ -87,6 +89,7 @@ templ AdminGames(brand branding.Brand, navigation components.NavigationState, ga
 			<div class="mt-8 grid gap-8 xl:grid-cols-[minmax(18rem,0.55fr)_minmax(0,1.45fr)]">
 				<div class="space-y-5">
 					<form method="post" action="/admin/games" class="card border border-base-300 bg-base-200 shadow-sm">
+						@components.CSRFInput()
 						<div class="card-body">
 							<h2 class="card-title">Add game</h2>
 							@GameFields("", "")
@@ -126,12 +129,14 @@ templ AdminGameCard(item game.Game) {
 				}
 			</div>
 			<form method="post" action={ "/admin/games/" + item.ID } class="mt-3 grid gap-4 sm:grid-cols-2">
+				@components.CSRFInput()
 				@GameFields(item.Name, item.Slug)
 				<div class="sm:col-span-2 flex flex-wrap justify-end gap-2">
 					<button class="btn btn-outline btn-sm" type="submit">Save game</button>
 				</div>
 			</form>
-			<form method="post" action={ "/admin/games/" + item.ID + "/active" } class="flex justify-end">
+			<form method="post" action={ "/admin/games/" + item.ID + "/active" } class="flex justify-end" data-confirm={ gameActiveConfirmation(item.Active) }>
+				@components.CSRFInput()
 				if item.Active {
 					<input type="hidden" name="active" value="false"/><button class="btn btn-error btn-sm" type="submit">Deactivate game</button>
 				} else {
@@ -141,8 +146,9 @@ templ AdminGameCard(item game.Game) {
 			<div class="divider my-1">Aliases</div>
 			<div class="flex flex-wrap gap-2">
 				for _, alias := range item.Aliases {
-					<form method="post" action={ "/admin/games/" + item.ID + "/aliases/" + alias.ID + "/remove" }>
-						<button class="badge badge-outline h-auto gap-1 py-2" type="submit" aria-label={ "Remove alias " + alias.Value }>{ alias.Value } <span aria-hidden="true">×</span></button>
+					<form method="post" action={ "/admin/games/" + item.ID + "/aliases/" + alias.ID + "/remove" } data-confirm={ "Remove the alias " + alias.Value + "?" }>
+						@components.CSRFInput()
+						<button class="badge badge-outline h-auto min-h-11 gap-1 py-2" type="submit" aria-label={ "Remove alias " + alias.Value }>{ alias.Value } <span aria-hidden="true">×</span></button>
 					</form>
 				}
 				if len(item.Aliases) == 0 {
@@ -150,6 +156,7 @@ templ AdminGameCard(item game.Game) {
 				}
 			</div>
 			<form method="post" action={ "/admin/games/" + item.ID + "/aliases" } class="flex flex-col gap-2 sm:flex-row">
+				@components.CSRFInput()
 				<label class="sr-only" for={ "alias-" + item.ID }>New alias</label>
 				<input id={ "alias-" + item.ID } class="input input-bordered input-sm flex-1" name="alias" maxlength="120" placeholder="Add search alias" required/>
 				<button class="btn btn-outline btn-sm" type="submit">Add alias</button>
@@ -172,4 +179,9 @@ templ AdminError(brand branding.Brand, navigation components.NavigationState) {
 func adminDateTime(value time.Time) string {
 	if value.IsZero() { return "" }
 	return value.UTC().Format("2006-01-02T15:04")
+}
+
+func gameActiveConfirmation(active bool) string {
+	if active { return "Deactivate this game? Existing Game Requests are not changed." }
+	return ""
 }

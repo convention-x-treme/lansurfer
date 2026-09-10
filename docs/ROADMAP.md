@@ -16,8 +16,8 @@ Follow the [development workflow](../AGENTS.md#workflow-and-documentation) and c
 - [x] Milestone 5 — Game Subscriptions
 - [x] Milestone 6 — Core GameRequest Workflow
 - [x] Milestone 7 — SSE Realtime Experience
-- [ ] **Current:** Milestone 8 — Prototype UX and Hardening
-- [ ] Milestone 9 — Open Source Self-Hosting Release
+- [x] Milestone 8 — Prototype UX and Hardening
+- [ ] **Current:** Milestone 9 — Open Source Self-Hosting Release
 
 Future milestones remain deferred until the v0.1 roadmap is complete.
 

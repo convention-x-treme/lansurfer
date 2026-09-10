@@ -91,9 +91,13 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 			RequestQueries: gameRequestQueries,
 			Realtime:       realtime,
 			SecureCookies:  strings.HasPrefix(cfg.BaseURL, "https://"),
+			Logger:         logger,
+			TrustedProxies: cfg.TrustedProxies,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
 		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    64 << 10,
 	}
 
 	serverErrors := make(chan error, 1)
