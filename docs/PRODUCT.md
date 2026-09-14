@@ -14,7 +14,7 @@ LANsurfer should answer that question with as little friction as possible. It is
 
 ## 2. Core Product Flow
 
-1. A player signs in and chooses a public Game Nick.
+1. A player signs in through generic OIDC or Discord and chooses a public Game Nick.
 2. They follow Games they are interested in.
 3. They create a Game Request.
 4. Other relevant players see the request in the browser or through an enabled notification transport.
@@ -35,6 +35,10 @@ Players should understand the UI without learning LANsurfer-specific terminology
 ### Event focused
 
 LANsurfer 1.0 should work especially well when the people using an installation already share the same physical LAN party or gaming event.
+
+### Low-friction onboarding
+
+An event must not require every attendee to already have an account with the operator's identity provider. Generic OIDC and Discord are independent login choices in 1.0.
 
 ### Self-hosted and open
 
@@ -89,7 +93,7 @@ The 1.0 release adds, in roadmap order:
 
 - a focused single-event operating model in which Game Requests are instance-wide rather than scoped through Event membership
 - public player profiles, per-Game handles, and a unique Game Nick
-- generic OIDC authentication as the supported external login path
+- independent generic OIDC and Discord authentication with explicit account linking
 - optional administrator-controlled IGDB import and rich Game metadata
 - basic per-instance identity and an installable web shell
 - durable Web Push and one instance-level Discord delivery integration without a persistent inbox
@@ -104,7 +108,7 @@ These are possible directions, not commitments to a particular release:
 - multiple Events in one installation, Event membership, invitations, managers, seats, lifecycle/history, and Open Play
 - Game Requests scoped to an Event, Clan, or another concrete parent when a real use case justifies it
 - Clans, Clan ownership, rosters, invitations, and primary-Clan identity
-- Discord login, multiple authentication providers, and explicit account linking
+- additional authentication providers beyond OIDC and Discord
 - per-Event notification settings or multiple Discord destinations
 
 Do not create generic abstractions in 1.0 merely to make these possibilities easier later.
@@ -137,13 +141,17 @@ LANsurfer owns a local User record. External identities authenticate that user b
 
 ### Authentication
 
-- Generic OpenID Connect remains the supported external authentication mechanism for 1.0.
+- Generic OpenID Connect remains provider-neutral.
+- Discord OAuth2 authorization-code login is a separate supported provider with its own callback.
+- An account may be OIDC-only, Discord-only, or explicitly linked to both.
+- Linking and unlinking require an explicit signed-in account flow.
+- At least one identity must remain linked.
+- Never merge identities or accounts based only on email.
+- Authentication and linking flows are short-lived, one-use, and bound to their initiating browser, provider, operation, and signed-in user where applicable.
 - LANsurfer stores no local passwords and does not use browser JWT sessions.
 - Local user IDs, explicit revocable PostgreSQL sessions, and opaque cookies remain the account/session model.
-- Discord login, multiple linked providers, linking/unlinking flows, and other additional authentication providers are post-1.0 candidates.
-- Accounts must never be implicitly merged based only on email.
 
-Discord notification delivery is independent from authentication and does not imply Discord login.
+Discord authentication and Discord notification delivery are separate integrations.
 
 ## 7. Roles and Management Boundaries
 
@@ -234,6 +242,7 @@ The 1.0 durable notification system has Web Push and Discord transports. Externa
 
 ### Discord delivery
 
+- Discord notification delivery is separate from Discord authentication.
 - One Discord destination may be configured for the LANsurfer instance through Discord's `webhook.incoming` OAuth flow; users do not paste webhooks.
 - Global administrators configure the destination.
 - LANsurfer creates one message per Game Request and edits it as membership or status changes.
@@ -254,7 +263,7 @@ Possible future work may include:
 - Event-scoped Game Requests
 - Clans with ownership, membership, invitations, rosters, and primary-Clan display
 - Clan-aware Game Request discovery or scoping when a concrete need exists
-- multiple authentication providers and explicit provider linking
+- authentication providers beyond OIDC and Discord
 
 These features must not shape 1.0 through speculative generic abstractions. If they become scheduled, their concrete domain model should be designed against the actual use case at that time.
 
@@ -301,13 +310,13 @@ LANsurfer 1.0 succeeds when an operator can reliably run one self-hosted LAN/eve
 Operators can reliably install, configure, back up, restore, and upgrade LANsurfer, and signed-in players can:
 
 1. maintain a public Game Nick and useful profile without exposing provider data
-2. authenticate through the supported OIDC setup
+2. authenticate through either generic OIDC or Discord, with explicit account linking when desired
 3. discover Games and instance-wide Game Requests without joining or selecting an Event/Clan/context
 4. create and join capacity-safe Game Requests from desktop and mobile browsers
 5. receive only the durable notifications they have enabled and are eligible to receive
 6. continue core workflows when optional external providers are unavailable
 
-A 1.0 release must not require Event switching, Open Play, Clans, Discord login, multi-provider account linking, or a generic Game Request context framework.
+A 1.0 release must not require Event switching, Open Play, Clans, or a generic Game Request context framework.
 
 ## 17. Product Decisions Left to Implementation
 
