@@ -28,6 +28,7 @@ templ Layout(brand branding.Brand, title string, navigation NavigationState) {
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
 			<meta name="description" content={ brand.Tagline }/>
 			<title>{ title } · { brand.Name }</title>
+			@FontPreloads(brand)
 			<link rel="stylesheet" href={ brand.Assets.Stylesheet }/>
 			<script src={ brand.Assets.Script } defer></script>
 		</head>
@@ -66,6 +67,7 @@ templ AuthLayout(brand branding.Brand, title string) {
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
 			<meta name="description" content={ brand.Tagline }/>
 			<title>{ title } · { brand.Name }</title>
+			@FontPreloads(brand)
 			<link rel="stylesheet" href={ brand.Assets.Stylesheet }/>
 			<script src={ brand.Assets.Script } defer></script>
 		</head>
@@ -179,6 +181,14 @@ templ CSRFInput() {
 // styling, because the sidebar, mobile drawer, and login panel each differ.
 templ OperatorAttribution(class string) {
 	<p class={ class }>Powered by <a class="link whitespace-nowrap text-base-content/75" href={ branding.OperatorURL } target="_blank" rel="noopener noreferrer">{ branding.OperatorName }</a></p>
+}
+
+// FontPreloads starts the webfont requests while the parser is still in the
+// head so text is laid out with the brand font instead of reflowing once the
+// font arrives. crossorigin matches the CORS mode of font-face requests.
+templ FontPreloads(brand branding.Brand) {
+	<link rel="preload" as="font" type="font/woff2" crossorigin="anonymous" href={ templ.SafeURL(brand.Assets.PrimaryFont) }/>
+	<link rel="preload" as="font" type="font/woff2" crossorigin="anonymous" href={ templ.SafeURL(brand.Assets.DataFont) }/>
 }
 
 templ Footer(brand branding.Brand) {

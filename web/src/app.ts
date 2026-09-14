@@ -1,5 +1,9 @@
 import htmx from "htmx.org";
 
+// htmx injects an inline <style> for its indicator classes on startup, which the
+// Content-Security-Policy blocks. app.css defines those classes itself.
+htmx.config.includeIndicatorStyles = false;
+
 const themeStorageKey = "lansurfer-theme";
 const darkTheme = "lansurfer-dark";
 const lightTheme = "lansurfer-light";
