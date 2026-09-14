@@ -37,14 +37,24 @@ The prototype schema and behavior are an input to the 1.0 migration path, not a 
 
 Tracks A–F may run concurrently. A dependency blocks only the dependent integration work, not unrelated work inside the track.
 
-| Track | Scope | Status | Hard dependencies |
+| Track | Scope | Planning status | Integration dependencies |
 | --- | --- | --- | --- |
-| **A** | Single-Event Core | Active | None |
-| **B** | Player Identity & Authentication | Active | None |
+| **A** | Single-Event Core | Prioritized | None for core work; Track B for final public-player-identity rendering |
+| **B** | Player Identity & Authentication | Prioritized | None |
 | **C** | Game Catalog & IGDB | Ready | None |
 | **D** | Instance Identity & PWA | Ready | None |
-| **E** | Durable Notifications | Ready with integration dependencies | Track A for GameRequest outbox hookup; Track D for browser Web Push integration |
+| **E** | Durable Notifications | Ready with integration dependencies | Track A for GameRequest outbox hookup; Track D for browser Web Push integration; Track B only for any public-player-identity rendering |
 | **F** | Distribution & Operations | Ready | Final backup/restore and upgrade validation depend on completed persistent migrations from the other tracks |
+
+### Planning status and delivery evidence
+
+**Prioritized** and **Ready** describe planning, not verified implementation progress. Record a responsible owner and a linked delivery issue/PR before marking work **In progress**. **Integration ready** requires demonstrated track-local outcomes, agreed contracts, and a linked list of cross-track checks still pending. **Done** additionally requires merged work and passing applicable integration checks. No owner, delivery date, or completion percentage is inferred from a track description.
+
+Review checkpoint: **2026-09-15**, against `main` at [`e356791`](https://github.com/convention-x-treme/lansurfer/commit/e356791affdef6a2eb4968c1256c17be870e8407). For example, the [Game Request service at this revision](https://github.com/convention-x-treme/lansurfer/blob/e356791affdef6a2eb4968c1256c17be870e8407/internal/gamerequest/gamerequest.go) still requires a current Event during creation. The single-event target is therefore not evidence that Track A is delivered.
+
+Prefer early risk reduction in Track A's migration and interaction reliability, Track B's onboarding/privacy boundary, and Track F's deployment/restore rehearsals. This is a prioritization recommendation, not a new serial dependency: Tracks C, D, and E can still advance independently as described below.
+
+Keep delivery slices small enough to review separately. Each implementation issue/PR should identify its owner, scope, required contracts, acceptance evidence, and remaining risks. Coordinate migration numbering, shared templates, and composition-root changes before parallel branches alter the same areas. Final release scope and staffing decisions are recorded under [Review decisions and backlog alignment](#review-decisions-and-backlog-alignment).
 
 ### Cross-track contracts
 
@@ -54,6 +64,7 @@ Keep cross-track contracts deliberately small so parallel work does not collapse
    - Track A owns Game Request writes and the transactional outbox integration point.
    - Track E may build workers, retry behavior, transport models, and adapters in parallel.
    - Final outbox persistence/hookup must use Track A's stabilized Game Request write paths and must commit notification intent in the same PostgreSQL transaction as the originating request change.
+   - Agree on stable work/request identifiers, change kinds, and ordering/replay behavior in the contract PR. Failed or rolled-back domain changes must not leave notification intent behind; the in-memory SSE publisher is not a durable handoff.
 
 2. **Track B internal contract: authentication → onboarding**
    - OIDC and Discord both resolve to the same local LANsurfer User model.
@@ -69,6 +80,11 @@ Keep cross-track contracts deliberately small so parallel work does not collapse
    - Build/release automation, binaries, images, checksums, SBOMs, provenance, health/version commands, and baseline operations documentation may be developed early.
    - Final prototype-to-1.0 upgrade, backup/restore, and rollback-limit validation wait until the persistent schema changes from the other tracks have settled.
 
+5. **Track B → Tracks A/E: public player identity**
+   - Track B owns the local-user/Game Nick contract. Request views, and any delivery presentation that includes player identity, consume public fields rather than authentication-provider names or emails.
+   - Only that final rendering integration depends on Track B; core request writes, notification workers, and Discord destination setup do not wait for Discord login.
+   - Web Push remains identity-free under its existing payload rules. This contract does not authorize adding player data to push payloads or expanding Discord message content.
+
 # Track A — Single-Event Core
 
 ## Goal
@@ -78,6 +94,8 @@ Align the prototype with the focused 1.0 deployment model so the installation it
 ## Can proceed in parallel with
 
 Tracks B, C, D, F and most of Track E.
+
+Final public-player-identity rendering consumes Track B’s contract; core migration and Game Request behavior do not wait for it.
 
 ## Expected outcomes
 
@@ -92,6 +110,13 @@ Tracks B, C, D, F and most of Track E.
 ## Acceptance
 
 The complete Game Request flow works without Event/Clan/context selection or membership, existing prototype requests survive the migration path, capacity invariants remain concurrency-safe, and Track E has a stable transactional integration point for notification intent.
+
+### Verification evidence
+
+- Exercise a fresh installation with no Event setup and populated prototype fixtures with absent/current/historical Event states. Preserve request IDs, creators, memberships, status, and timestamps; document the treatment of legacy Event data instead of silently resetting it.
+- Cover duplicate and overlapping joins/leaves, competing joins for the last spot, and close/cancel races. Existing creator and capacity rules must hold independently of browser-side guards.
+- Investigate [#15](https://github.com/convention-x-treme/lansurfer/issues/15) and retain an evidence-backed reproduction and regression test for the discovered hang. Verify that failed, aborted, timed-out, and conflicting mutations release pending UI state and that SSE/HTMX overlap does not leave the interface stuck. A debounce alone is not proof of a fix.
+- At the A/E integration boundary, prove that a rollback leaves neither the domain change nor its outbox work, while a committed change retains notification intent across a restart before delivery.
 
 # Track B — Player Identity & Authentication
 
@@ -131,6 +156,13 @@ All other tracks. Profile/Game Nick work and Discord-provider work may also proc
 
 A new or upgraded user can authenticate through either OIDC or Discord, explicitly link both when desired, is never implicitly merged by email, and can complete Game Nick onboarding and use profiles without exposing provider data.
 
+### Verification evidence
+
+- Exercise OIDC-only, Discord-only, and both-provider configurations, plus upgraded users reaching onboarding through an existing session. Preserve the local user and its existing Game subscriptions and request relationships.
+- Reject expired/replayed flow state, wrong-browser/provider/operation callbacks, attempts to link an identity already owned by another account, and concurrent unlink attempts that would remove the last identity.
+- Test case-insensitive Game Nick collisions, including concurrent claims, and the profile's owner/non-owner/administrator visibility boundaries.
+- Check rendered pages, fragments, and live-update/public read models for provider-name/email leakage; changing the profile page alone is not sufficient.
+
 # Track C — Game Catalog & IGDB
 
 ## Goal
@@ -169,6 +201,12 @@ Do not add another catalog provider or a local cover proxy/cache in this track.
 
 An administrator can safely preview and control imports and refreshes. Locally managed data is never silently overwritten or merged, and disabling or losing IGDB does not break core workflows.
 
+### Verification evidence
+
+- Deny provider-management actions to non-administrators. Test conflicting external-ID attachments, repeated imports, field-level refresh selection, and a local edit made between preview and confirmation.
+- Exercise unconfigured credentials, timeouts, rate limits, and malformed/provider-error responses while local catalog and Game Request flows remain usable.
+- Verify the fixed cover host/CSP boundary, no-referrer behavior, attribution, and local placeholder for missing or blocked covers. IGDB is not a prerequisite for local Game discovery or following.
+
 # Track D — Instance Identity & PWA
 
 ## Goal
@@ -196,6 +234,12 @@ No hard dependency to start. The service-worker registration/lifecycle contract 
 
 An administrator can safely configure identity fields and valid images, browsers can install the site with stable manifest identity, customization cannot replace the fixed design system or obscure LANsurfer attribution, and Track E has a stable browser service-worker integration point.
 
+### Verification evidence
+
+- Test unauthorized updates, malformed PNGs, and byte/dimension limits; confirm that valid identity assets survive backup/restore without remote storage.
+- Record installation and update behavior on the agreed browser/device matrix, including absent icons and identity changes. The manifest's application identity must remain stable.
+- Verify service-worker update/logout behavior so private content is not exposed through stale cached responses. Unsupported installation or push capabilities must leave ordinary browser workflows usable; no offline application support is added.
+
 # Track E — Durable Notifications
 
 ## Goal
@@ -206,10 +250,11 @@ Deliver relevant Game Request changes beyond the open browser without coupling e
 
 The notification module, worker model, delivery/retry persistence, Web Push backend adapter, and Discord delivery adapter may start immediately.
 
-Two integration points are intentionally delayed:
+The following integration work waits for its specific contract:
 
 - **GameRequest outbox hookup depends on Track A** stabilizing the Game Request write/persistence paths.
 - **Browser Web Push integration depends on Track D** stabilizing service-worker registration/lifecycle behavior.
+- **Public-player-identity rendering depends on Track B** only where such identity is included; identity-free Web Push and transport work do not.
 
 Discord notification delivery is independent from Discord login in Track B.
 
@@ -247,7 +292,15 @@ Discord notification delivery is independent from Discord login in Track B.
 
 ## Acceptance
 
-Outbox persistence survives restarts, retries are bounded and observable, push targeting and payload privacy are tested, Discord messages remain synchronized, external outages never prevent Game Request actions, and the two stated cross-track contracts are integrated without crossing module ownership boundaries.
+Outbox persistence survives restarts, retries are bounded and observable, push targeting and payload privacy are tested, Discord messages remain synchronized, external outages never prevent Game Request actions, and the applicable cross-track contracts are integrated without crossing module ownership boundaries.
+
+### Verification evidence
+
+- Exercise worker interruption, abandoned work recovery, duplicate work, and out-of-order updates. Retried Discord edits must not overwrite a newer request state with an older one.
+- Cover the case where a provider accepts a send but its response is lost. Preserve the one-message-per-request objective, document/test the recovery path, and expose uncertain delivery rather than claiming success or assuming exactly-once external delivery.
+- Test 429 handling, capped retries, exhausted/permanent failures, and authorized manual retry. Document retry budgets, stale-work handling, and delivery-record retention; diagnostics must not disclose webhook credentials or push subscription secrets.
+- Recheck push eligibility before delayed sends/retries, including unfollow, toggle-off, and creator exclusion. Remove permanently expired subscriptions as specified in the architecture; test payload privacy on every send path.
+- Demonstrate that disabled or failing outbound transports do not prevent Game Request actions. Keep the Game Request outbox distinct from any separately approved request activity history.
 
 # Track F — Distribution & Operations
 
@@ -276,9 +329,16 @@ Release automation and most operator tooling can begin immediately. Final upgrad
 
 Release artifacts are reproducible and verifiable, the documented Compose deployment starts from an empty host, backup/restore is exercised, and a populated prototype installation upgrades without data loss after the integration schema is finalized.
 
+### Verification evidence
+
+- Record the source revision, pinned build inputs, repeat-build comparison, binary/image architectures, checksums, SBOMs, attestations, and artifact-verification steps. Confirm that prereleases do not move stable image tags.
+- Run the documented clean-host installation and first-admin flow without relying on a developer checkout, unlisted tools, or an exposed PostgreSQL port.
+- Restore a populated database and required encryption/VAPID keys into a clean deployment. Check profiles, Game subscriptions, requests/memberships, identity assets, and notification references, not merely that PostgreSQL starts.
+- Exercise the documented prototype upgrade and migration-failure/restart path. A failed migration must prevent HTTP startup; recovery and rollback documentation must explain restoring a compatible backup rather than automatically running DOWN migrations or assuming an older binary accepts the new schema.
+
 # 1.0 Integration Gate
 
-The Integration Gate begins when the individual track acceptance criteria are substantially complete. It is not a separate feature track; it is where the independently developed work is proven together.
+Run cross-track integration checks as soon as their contracts land, rather than postponing integration testing until feature work ends. The formal Integration Gate passes only when the required track outcomes and evidence are complete. It is not a separate feature track; it proves the independently developed work together.
 
 ## Depends on
 
@@ -301,6 +361,14 @@ Tracks A–F reaching their required integration-ready state.
 
 All cross-track contracts are exercised by relevant domain, PostgreSQL, HTTP, browser-facing, and release/operations tests. No integration blocker requires redesigning the product back into a shared multi-Event/community service.
 
+### Gate evidence and blocker policy
+
+- Link the tested revision/artifact, test commands/results, migration fixture, configuration variants, and browser/device matrix in the integration tracking issue or release PR. Document repeatable manual checks where provider/browser automation is impractical; this does not authorize a new testing framework.
+- Exercise both a locally usable installation with optional integrations disabled and the enabled-provider combinations. Optional operator configuration does not make the corresponding approved 1.0 capability optional to deliver.
+- Agree the pilot/load envelope and acceptance targets before running the final rehearsal: concurrent sessions/SSE connections, active requests, request bursts, response/update latency, and recovery after provider outages. [README.md](../README.md) describes approximately 400 CXT attendees; that is context, not a measured concurrency or throughput target.
+- Treat data loss, authentication/authorization bypass, provider-private-data exposure, capacity violations, and reproducible persistent hangs in core workflows as release blockers. Record unresolved failures explicitly; a feature-complete checklist or a documentation PR cannot close them.
+- Record the release decision owner and results of the agreed pilot/rehearsal. Dates and numerical thresholds remain open under [Review decisions and backlog alignment](#review-decisions-and-backlog-alignment); do not invent a successful pilot or a release commitment.
+
 # 1.0 Release Candidate and Stable Release Gate
 
 ## Depends on
@@ -310,6 +378,7 @@ The 1.0 Integration Gate being green.
 ## Expected outcomes
 
 - Publish `v1.0.0-rc.1` with complete migration, operations, security, privacy, authentication-provider, catalog-provider, and notification-provider documentation.
+- Before cutting the candidate, reconcile the accepted/deferred scope decisions and link the release evidence and decision owner. Unapproved proposals remain unscheduled; including an issue in the backlog does not silently expand 1.0.
 - After the release candidate, accept only release blockers, security fixes, migration fixes, and documentation corrections.
 - Re-run the integrated OIDC/Discord onboarding, player profile, instance-wide Game Request, provider-failure, notification-retry, backup/restore, and prototype-to-1.0 upgrade paths.
 - Verify that no 1.0 workflow requires Event selection/membership, Open Play, Clans, or another Game Request parent context.
@@ -320,6 +389,31 @@ The 1.0 Integration Gate being green.
 ## Acceptance
 
 All track and Integration Gate acceptance criteria remain green in a release build, documentation matches observable behavior, signed artifacts are available for both supported architectures, and no release blockers remain.
+
+# Review decisions and backlog alignment
+
+Review snapshot: **2026-09-15**. The following issues need explicit placement or delivery tracking; their existence is not proof of implementation or approval for 1.0. This review preserves the approved Tracks A–F and does not schedule additional product features.
+
+| Issue | Relationship to the roadmap | Disposition in this review |
+| --- | --- | --- |
+| [#15 — interaction hangs](https://github.com/convention-x-treme/lansurfer/issues/15) | Track A and Integration Gate reliability | Prioritize investigation/regression evidence within existing core-quality work; not resolved by this document. |
+| [#12 — request search and filters](https://github.com/convention-x-treme/lansurfer/issues/12) | Track A discovery; tag filters only if #10 is approved | Explicit 1.0 inclusion/deferral decision needed for the issue's proposed feature set. Baseline discovery remains required. |
+| [#11 — English/German i18n](https://github.com/convention-x-treme/lansurfer/issues/11) | Cross-track presentation, validation, accessibility copy, and contributor guidance | Scope decision needed; if included, agree the shared message/locale contract early without introducing localization into domain values. |
+| [#10 — curated request tags](https://github.com/convention-x-treme/lansurfer/issues/10) | Track A request vocabulary and optional #12 filters | Scope decision needed, including final vocabulary and selection limit; neither is fixed by this review. |
+| [#13 — trending/current interest](https://github.com/convention-x-treme/lansurfer/issues/13) | Focused read models; #12 navigation/search integration; optional Track C covers | Scope decision needed. Request-based ranking and persisted search-interest tracking are distinct choices, not an automatic analytics commitment. |
+| [#14 — request activity history](https://github.com/convention-x-treme/lansurfer/issues/14) | Track A transactional lifecycle writes and Track B public identity | Scope decision needed. If included, coordinate with A/E; durable activity retention is not interchangeable with delivery outbox retention and is not a notification inbox. |
+| [#7 — optional dotenv](https://github.com/convention-x-treme/lansurfer/issues/7), [#8 — development database modes](https://github.com/convention-x-treme/lansurfer/issues/8) | Contributor workflow adjacent to Track F | Track separately from production-release acceptance; these do not change the production configuration model. |
+
+## Decisions needed
+
+| ID | Question for the product/release owner | Until answered |
+| --- | --- | --- |
+| D1 — scope | Which of #10–#14 belong in 1.0, which are deferred, and which are only pilot experiments? For #13, decide request-based trends separately from search-interest persistence. | No additions are authorized by this review. Keep the existing approved 1.0 scope; prioritize #15 as core-quality work. |
+| D2 — pilot and timing | Is there a target LAN/pilot date, and what must be available for that pilot? Is that a pilot subset or the full 1.0 release? | No invented deadline or automatic scope reduction. A reduced pilot does not redefine the stable-release gate. |
+| D3 — operating envelope | What peak concurrent usage, hardware/network conditions, and desktop/mobile browser combinations should be supported, and what measurable response/recovery targets determine acceptance? | The approximately 400-attendee use case is not treated as a load-test result. Agree the envelope before the final rehearsal. |
+| D4 — ownership and capacity | Who owns each active delivery slice, how much implementation/review capacity is available, and who makes the final release decision? | No assumed assignments or dates. Parallel tracks permit concurrency; they do not imply six staffed teams. |
+
+Record decisions with an owner, date, and linked issue/PR. When a candidate is approved, update the relevant track, acceptance criteria, and `PRODUCT.md` (and `ARCHITECTURE.md` when needed) together before implementation. Unresolved candidate proposals do not block unrelated work in already approved tracks.
 
 # Post-1.0 candidates — not scheduled
 
@@ -349,7 +443,7 @@ Possible future work includes:
 - Clan invitations and rosters
 - a primary Clan/tag on player profiles
 - administrator safety controls
-- Clan-aware discovery or Game Request scoping if a concrete use case is approved
+- Clan-aware discovery or Game Request scoping when a concrete use case is approved
 
 Clan posts, chat, private Clan LFG, and custom roles remain out of scope unless separately approved.
 
