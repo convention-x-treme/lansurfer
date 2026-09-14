@@ -8,9 +8,11 @@
 /coverage.out
 *.test
 /node_modules/
+__debug_bin*
 
 # Editors and operating systems
 .idea/
 .vscode/
+.zed/
 .DS_Store
 Thumbs.db
