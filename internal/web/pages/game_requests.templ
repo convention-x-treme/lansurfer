@@ -215,7 +215,7 @@ templ GameRequestDetail(brand branding.Brand, navigation components.NavigationSt
 
 templ GameRequestDetailContent(request requestquery.Request, viewerID string) {
 	<div id="game-request-detail" data-game-request-detail data-game-request-id={ request.ID } class="detail-layout">
-		<div class="grid min-w-0 gap-4">
+		<div class="grid min-w-0 content-start gap-4">
 			<article class={ requestHeroClass(request) }>
 				<div class="game-abbreviation game-abbreviation-lg" aria-hidden="true">{ gameAbbreviation(request.GameName) }</div>
 				<div class="min-w-0 flex-1">
@@ -229,6 +229,14 @@ templ GameRequestDetailContent(request requestquery.Request, viewerID string) {
 							<span>·</span><span>{ request.EventName }</span>
 						}
 					</p>
+					<div class="mt-4 max-w-[70ch]">
+						<p class="section-label">Description</p>
+						if request.Description == "" {
+							<p class="mt-2 text-base-content/50">No description.</p>
+						} else {
+							<p class="mt-2 whitespace-pre-wrap text-base-content/80">{ request.Description }</p>
+						}
+					</div>
 				</div>
 				<div class="flex shrink-0 items-center gap-2">
 					if request.Status == gamerequest.StatusOpen && request.CreatorID != viewerID && request.ViewerJoined {
@@ -238,7 +246,7 @@ templ GameRequestDetailContent(request requestquery.Request, viewerID string) {
 					}
 				</div>
 			</article>
-			<section class="surface-panel flex min-h-[27rem] flex-col" aria-labelledby="players-title">
+			<section class="surface-panel" aria-labelledby="players-title">
 				<div class="flex flex-wrap items-baseline justify-between gap-3"><h2 id="players-title" class="text-xl font-bold">Players</h2><p class="data-text text-xs text-base-content/60">{ placesSummary(request) }</p></div>
 				<ul class="mt-4 grid gap-3">
 					for _, member := range request.Members {
@@ -253,19 +261,15 @@ templ GameRequestDetailContent(request requestquery.Request, viewerID string) {
 						<li class="last-place-row"><span class="avatar-placeholder avatar-placeholder-outline" aria-hidden="true">+</span><strong class="text-[var(--brand-sunset)]">Last place open</strong><span class="data-text ml-auto text-xs text-base-content/55">joins update live</span></li>
 					}
 				</ul>
-				<div class="mt-auto grid gap-6 border-t border-base-300 pt-5 sm:grid-cols-[minmax(0,1fr)_14rem]">
-					<div><p class="section-label">Description</p>
-						if request.Description == "" {
-							<p class="mt-2 text-base-content/50">No description.</p>
-						} else {
-							<p class="mt-2 whitespace-pre-wrap text-base-content/80">{ request.Description }</p>
-						}
-					</div>
-					<div><p class="section-label">Max players</p><p class="data-text mt-2 text-sm text-base-content/75">{ maximumPlayersLabel(request) }</p></div>
-				</div>
 			</section>
 		</div>
 		<aside class="grid content-start gap-4" aria-label="Game Request context">
+			if request.Status == gamerequest.StatusOpen && request.CreatorID == viewerID {
+				<section class="rail-panel border-warning/50"><p class="section-label text-warning">Host actions</p><div class="mt-4 grid gap-3">
+					<form method="post" action={ "/game-requests/" + request.ID + "/close" } data-confirm="Close this Game Request? Players will no longer be able to join.">@components.CSRFInput()<button class="btn btn-outline w-full" type="submit">Close for new players</button></form>
+					<form method="post" action={ "/game-requests/" + request.ID + "/cancel" } data-confirm="Cancel this Game Request? This cannot be reopened.">@components.CSRFInput()<button class="btn btn-error w-full" type="submit">Cancel Game Request</button></form>
+				</div></section>
+			}
 			<section class="rail-panel"><p class="section-label">Game</p><h2 class="mt-3 text-xl font-bold">{ request.GameName }</h2><p class="mt-2 text-sm text-base-content/60">{ request.EventName }</p><a class="link mt-4 inline-block text-sm text-primary no-underline" href="/games">Browse games →</a></section>
 			<section class="rail-panel"><p class="section-label">Activity</p><ol class="mt-4 grid gap-3">
 				for _, member := range request.Members {
@@ -278,12 +282,6 @@ templ GameRequestDetailContent(request requestquery.Request, viewerID string) {
 					</span></li>
 				}
 			</ol><p class="mt-5 text-xs leading-relaxed text-base-content/50">Player counts and membership update live.</p></section>
-			if request.Status == gamerequest.StatusOpen && request.CreatorID == viewerID {
-				<section class="rail-panel border-warning/50"><p class="section-label text-warning">Host actions</p><div class="mt-4 grid gap-3">
-					<form method="post" action={ "/game-requests/" + request.ID + "/close" } data-confirm="Close this Game Request? Players will no longer be able to join.">@components.CSRFInput()<button class="btn btn-outline w-full" type="submit">Close for new players</button></form>
-					<form method="post" action={ "/game-requests/" + request.ID + "/cancel" } data-confirm="Cancel this Game Request? This cannot be reopened.">@components.CSRFInput()<button class="btn btn-error w-full" type="submit">Cancel Game Request</button></form>
-				</div></section>
-			}
 		</aside>
 	</div>
 }
@@ -491,13 +489,6 @@ func placesSummary(request requestquery.Request) string {
 		return fmt.Sprintf("%d of %d · 1 place left", request.MemberCount, *request.MaxPlayers)
 	}
 	return fmt.Sprintf("%d of %d · %d places left", request.MemberCount, *request.MaxPlayers, left)
-}
-
-func maximumPlayersLabel(request requestquery.Request) string {
-	if request.MaxPlayers == nil {
-		return "Open round"
-	}
-	return fmt.Sprintf("%d", *request.MaxPlayers)
 }
 
 func memberTimeLabel(member requestquery.Member, request requestquery.Request) string {

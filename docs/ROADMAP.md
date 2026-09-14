@@ -194,7 +194,7 @@ No hard dependency to start. The service-worker registration/lifecycle contract 
 
 - Store a per-instance display name, welcome text, contact link, logo, and application icon in PostgreSQL.
 - Limit configuration to global administrators.
-- Retain LANsurfer colors, typography, accessibility rules, and a visible “Powered by LANsurfer” attribution.
+- Retain LANsurfer colors, typography, accessibility rules, and the fixed “Powered by Convention-X-Treme” operator attribution.
 - Accept a PNG logo up to 2 MiB and 2048×1024 pixels.
 - Accept a square PNG icon from 192 to 512 pixels and up to 512 KiB.
 - Store uploaded identity assets in PostgreSQL; do not depend on remote asset hosts.

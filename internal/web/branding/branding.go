@@ -3,6 +3,14 @@ package branding
 
 //go:generate go run ./cmd/brandcss -output ../../../web/src/brand.generated.css
 
+// Operator attribution. Every "Powered by …" credit in the interface renders
+// from these two values, so deploying changes only this file. This is the
+// operating community, not the LANsurfer product identity.
+const (
+	OperatorName = "Convention-X-Treme"
+	OperatorURL  = "https://www.convention-x-treme.de"
+)
+
 // Brand is the fixed product identity consumed by the web layer and asset
 // generator. It is deliberately application data rather than configuration.
 type Brand struct {

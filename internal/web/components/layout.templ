@@ -103,7 +103,7 @@ templ DesktopNavigation(brand branding.Brand, state NavigationState) {
 				@LogoutControl()
 				@ThemeToggle()
 			</div>
-			<p class="px-2 text-xs text-base-content/55">Powered by { brand.Name }</p>
+			@OperatorAttribution("px-2 text-xs text-base-content/55")
 		</div>
 	</aside>
 }
@@ -128,7 +128,7 @@ templ MobileNavigation(brand branding.Brand, state NavigationState) {
 						@LogoutControl()
 						@ThemeToggle()
 					</div>
-					<p class="px-2 text-xs text-base-content/55">Powered by { brand.Name }</p>
+					@OperatorAttribution("px-2 text-xs text-base-content/55")
 				</div>
 			</nav>
 		</details>
@@ -172,6 +172,13 @@ templ ThemeToggle() {
 
 templ CSRFInput() {
 	<input type="hidden" name="csrf_token" value={ webmiddleware.CSRFToken(ctx) }/>
+}
+
+// OperatorAttribution renders the fixed "Powered by …" credit that links to the
+// operating community's site. class carries the surrounding context's text
+// styling, because the sidebar, mobile drawer, and login panel each differ.
+templ OperatorAttribution(class string) {
+	<p class={ class }>Powered by <a class="link whitespace-nowrap text-base-content/75" href={ branding.OperatorURL } target="_blank" rel="noopener noreferrer">{ branding.OperatorName }</a></p>
 }
 
 templ Footer(brand branding.Brand) {

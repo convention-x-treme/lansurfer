@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -114,6 +115,7 @@ func TestRootRendersLoginLandingPage(t *testing.T) {
 		"Continue with your CXT account",
 		"CXT IdP",
 		"Continue with Discord",
+		`href="https://www.convention-x-treme.de"`,
 		`href="/assets/app.css"`,
 		`src="/assets/app.js"`,
 		`data-theme-toggle`,
@@ -122,10 +124,14 @@ func TestRootRendersLoginLandingPage(t *testing.T) {
 			t.Errorf("body does not contain %q", want)
 		}
 	}
-	if strings.Contains(string(body), "https://") {
-		t.Error("login page unexpectedly contains a runtime external dependency")
+	if remoteAssetPattern.Match(body) {
+		t.Error("login page unexpectedly loads a remote runtime asset")
 	}
 }
+
+// remoteAssetPattern matches elements that fetch remote content at runtime.
+// Outbound anchors to the operating community are not runtime dependencies.
+var remoteAssetPattern = regexp.MustCompile(`(?i)<(?:script|link|img|iframe|source|video|audio|embed)\b[^>]*\b(?:src|href)\s*=\s*["']https?://`)
 
 func TestHomeRendersAuthenticatedViewer(t *testing.T) {
 	authentication := &routerAuthentication{account: user.User{DisplayName: "Ada Player", Role: user.RoleAdmin}}

@@ -95,14 +95,14 @@ The eventual LANsurfer signet must remain recognizable at 32 px, work with no mo
 
 An administrator may add an instance display name, welcome text, contact link, logo, and application icon. These values identify the hosting community; they do not replace the LANsurfer product identity.
 
-- Keep visible **Powered by LANsurfer** attribution.
+- Keep the fixed **Powered by Convention-X-Treme** operator attribution visible. It is not an instance-identity field and is not admin-editable.
 - Continue to use this document's palette, typography, component semantics, accessibility rules, and light/dark presentations.
 - Accept only a validated PNG logo up to 2 MiB and 2048×1024 pixels.
 - Accept only a validated square PNG icon from 192 to 512 pixels and up to 512 KiB.
 - Store uploaded identity assets in PostgreSQL and serve them from LANsurfer.
 - When an icon or logo is absent, omit missing manifest icons and use the generated instance monogram where the UI needs an identity mark.
 
-Instance identity is not Event-specific. It does not permit custom colors, fonts, CSS, remote branding assets, removal of LANsurfer attribution, or a theme editor.
+Instance identity is not Event-specific. It does not permit custom colors, fonts, CSS, remote branding assets, removal of the operator attribution, or a theme editor.
 
 ## Mascot
 
@@ -164,7 +164,9 @@ The design system does not introduce or imply:
 
 ## Implementation boundary
 
-Keep the fixed LANsurfer brand definition near the web composition layer as one small value/object containing the product name, tagline, semantic colors, and built-in asset paths. Tailwind/DaisyUI theme values, CSS custom properties, and templ components should derive from that definition or its generated/static stylesheet rather than introduce parallel constants.
+Keep the fixed LANsurfer brand definition near the web composition layer as one small value/object containing the product name, tagline, semantic colors, the operating community's name and public URL used by the **Powered by …** attribution, and built-in asset paths. Tailwind/DaisyUI theme values, CSS custom properties, and templ components should derive from that definition or its generated/static stylesheet rather than introduce parallel constants.
+
+Every **Powered by …** credit in the interface renders from the operator name and URL in that definition. Changing the credited community is a single-value change there, not a template edit.
 
 Fixed brand values are not environment configuration or mutable PostgreSQL state. The limited instance identity fields are separate PostgreSQL product data with the validation rules above.
 
