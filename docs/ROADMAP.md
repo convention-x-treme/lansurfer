@@ -1,8 +1,10 @@
 # LANsurfer Roadmap
 
-This roadmap carries LANsurfer from its completed web prototype to a focused 1.0 self-hosting release. Milestones describe product outcomes and architectural boundaries; implementation details remain governed by [PRODUCT.md](PRODUCT.md), [ARCHITECTURE.md](ARCHITECTURE.md), and [AGENTS.md](../AGENTS.md).
+This roadmap carries LANsurfer from its completed web prototype to a focused 1.0 self-hosting release. The 1.0 work is organized as **parallel development tracks**, not a linear sequence of feature milestones. Track dependencies describe the points where work must converge; otherwise tracks may advance independently.
 
-Do not implement later milestones for completeness. Finish and verify the current milestone before advancing the progress marker.
+Product behavior and scope remain governed by [PRODUCT.md](PRODUCT.md). Technical decisions and module boundaries remain governed by [ARCHITECTURE.md](ARCHITECTURE.md) and [AGENTS.md](../AGENTS.md).
+
+Do not implement post-1.0 candidates for completeness. Within 1.0, work may proceed in any track whose stated dependencies are satisfied.
 
 ## 1.0 direction
 
@@ -13,45 +15,71 @@ For 1.0:
 - Game Requests are instance-wide product objects. Creating, discovering, and joining a request must not require selecting or joining an Event, Clan, or other parent context.
 - Do not introduce a generic `context`, polymorphic parent, or similar abstraction merely to prepare for future Event/Clan scoping.
 - Multi-Event participation, Open Play, Event membership/access boundaries, Clans, and other persistent shared-service/community features are outside the 1.0 scope.
-- Generic OIDC and Discord OAuth2 are independent supported login paths for 1.0 so an event can onboard players who do not already have an account with the operator's identity provider. Accounts may explicitly link both providers.
+- Generic OIDC and Discord OAuth2 are independent supported login paths so an event can onboard players who do not already have an account with the operator's identity provider. Accounts may explicitly link both providers.
 - Features that directly improve a self-hosted single-event installation remain in scope: player identity, local/rich Game catalog, instance identity, optional outbound notifications, installability, release artifacts, upgrades, backup, and operations.
 
 Post-1.0 items are intentionally **not scheduled to a version**. They are collected below so they do not influence 1.0 implementation prematurely.
 
-## Progress
+## Completed prototype baseline
 
-- [x] Prototype milestones 0–8 — foundation, authentication, catalog, Events, Game Requests, realtime updates, UX, and hardening
-- [ ] **Current:** Milestone 9 — Single-Event Model, Player Identity, and Discord Login
-- [ ] Milestone 10 — IGDB Catalog Import and Rich Game Metadata
-- [ ] Milestone 11 — Instance Identity and Installable Web Shell
-- [ ] Milestone 12 — Durable Notifications, Web Push, and Discord Delivery
-- [ ] Milestone 13 — Production Distribution and Operations
-- [ ] Milestone 14 — 1.0 RC and Stable Release
-
-There are no date or real-event pilot gates. Each milestone advances when its acceptance criteria and relevant tests are complete.
-
-## Completed prototype (milestones 0–8)
-
-The prototype established:
+The completed prototype established:
 
 - a Go modular monolith with PostgreSQL, migrations, sqlc, templ, HTMX, Tailwind, and DaisyUI
 - generic OIDC login, local users, revocable PostgreSQL sessions, opaque cookies, and global administrator promotion
-- Event and local Game catalog administration, aliases, external-ID storage, and game subscriptions
+- Event and local Game catalog administration, aliases, external-ID storage, and Game subscriptions
 - Game Request creation, joining, leaving, cancellation, expiration, and transaction-safe capacity enforcement
 - SSE-driven live updates with polling fallback
 - embedded production assets, responsive desktop/mobile UX, security controls, integration coverage, and self-hosting foundations
 
 The prototype schema and behavior are an input to the 1.0 migration path, not a promise that every prototype interface or relationship remains part of the 1.0 product model.
 
-# Milestone 9 — Single-Event Model, Player Identity, and Discord Login
+## Development model
+
+Tracks A–F may run concurrently. A dependency blocks only the dependent integration work, not unrelated work inside the track.
+
+| Track | Scope | Status | Hard dependencies |
+| --- | --- | --- | --- |
+| **A** | Single-Event Core | Active | None |
+| **B** | Player Identity & Authentication | Active | None |
+| **C** | Game Catalog & IGDB | Ready | None |
+| **D** | Instance Identity & PWA | Ready | None |
+| **E** | Durable Notifications | Ready with integration dependencies | Track A for GameRequest outbox hookup; Track D for browser Web Push integration |
+| **F** | Distribution & Operations | Ready | Final backup/restore and upgrade validation depend on completed persistent migrations from the other tracks |
+
+### Cross-track contracts
+
+Keep cross-track contracts deliberately small so parallel work does not collapse back into one shared implementation branch.
+
+1. **Track A → Track E: Game Request notification contract**
+   - Track A owns Game Request writes and the transactional outbox integration point.
+   - Track E may build workers, retry behavior, transport models, and adapters in parallel.
+   - Final outbox persistence/hookup must use Track A's stabilized Game Request write paths and must commit notification intent in the same PostgreSQL transaction as the originating request change.
+
+2. **Track B internal contract: authentication → onboarding**
+   - OIDC and Discord both resolve to the same local LANsurfer User model.
+   - Game Nick onboarding is provider-independent and runs after successful authentication when required.
+   - Discord login, OIDC login, linking, and profile work may be developed in parallel as long as they preserve that boundary.
+
+3. **Track D → Track E: service worker contract**
+   - Track D owns the installable web shell, manifest, service-worker registration, lifecycle, and update behavior.
+   - Track E owns Web Push subscriptions, permission UX, payloads, and delivery.
+   - Browser Web Push integration waits for the Track D service-worker contract; backend Web Push work does not.
+
+4. **Track F consumes all tracks only at release validation**
+   - Build/release automation, binaries, images, checksums, SBOMs, provenance, health/version commands, and baseline operations documentation may be developed early.
+   - Final prototype-to-1.0 upgrade, backup/restore, and rollback-limit validation wait until the persistent schema changes from the other tracks have settled.
+
+# Track A — Single-Event Core
 
 ## Goal
 
-Align the prototype with the focused 1.0 deployment model, give players a stable public identity, and make onboarding practical even when attendees do not have an account with the event operator's identity provider.
+Align the prototype with the focused 1.0 deployment model so the installation itself is the event context and Game Requests no longer depend on Event membership or selection.
+
+## Can proceed in parallel with
+
+Tracks B, C, D, F and most of Track E.
 
 ## Expected outcomes
-
-### Single-event request model
 
 - Treat the LANsurfer installation itself as the 1.0 event context.
 - Let signed-in players discover, create, join, leave, close, and cancel Game Requests without selecting or joining an Event, Open Play, Clan, or other parent context.
@@ -59,6 +87,23 @@ Align the prototype with the focused 1.0 deployment model, give players a stable
 - Preserve existing prototype Game Requests during migration while removing any user-visible requirement to select an Event or satisfy Event membership/lifecycle rules.
 - Keep migration and persistence details explicit in the architecture; do not add a generic context abstraction for future flexibility.
 - Do not add Event switching, Event invitations, seats, Event rosters, Event-scoped access control, Open Play, or Event lifecycle/history workflows in 1.0.
+- Stabilize the Game Request write paths and transactional boundaries that Track E will use for durable notification outbox records.
+
+## Acceptance
+
+The complete Game Request flow works without Event/Clan/context selection or membership, existing prototype requests survive the migration path, capacity invariants remain concurrency-safe, and Track E has a stable transactional integration point for notification intent.
+
+# Track B — Player Identity & Authentication
+
+## Goal
+
+Give players a stable public identity and make onboarding practical even when attendees do not have an account with the event operator's identity provider.
+
+## Can proceed in parallel with
+
+All other tracks. Profile/Game Nick work and Discord-provider work may also proceed in parallel inside this track if they share the provider-independent onboarding contract.
+
+## Expected outcomes
 
 ### Player profile
 
@@ -80,16 +125,21 @@ Align the prototype with the focused 1.0 deployment model, give players a stable
 - Never merge accounts based only on email.
 - Persist short-lived, one-use authentication/link flow state that binds the initiating browser, provider, operation, and signed-in user where applicable.
 - Keep local user IDs, revocable PostgreSQL sessions, opaque cookies, and the existing no-local-password model.
+- Route both providers through the same provider-independent Game Nick onboarding decision after authentication.
 
 ## Acceptance
 
-A new or upgraded user can enter the application after choosing a valid Game Nick, use profiles and per-Game handles without exposing provider data, and use the full Game Request flow without selecting or joining any Event/Clan/context. Players can authenticate with either OIDC or Discord, explicitly link both when desired, and are never implicitly merged by email. Existing prototype requests survive the migration path.
+A new or upgraded user can authenticate through either OIDC or Discord, explicitly link both when desired, is never implicitly merged by email, and can complete Game Nick onboarding and use profiles without exposing provider data.
 
-# Milestone 10 — IGDB Catalog Import and Rich Game Metadata
+# Track C — Game Catalog & IGDB
 
 ## Goal
 
 Make catalog administration faster and Game presentation richer while keeping LANsurfer's local catalog authoritative and optional-provider behavior resilient.
+
+## Dependencies
+
+No hard dependency on another 1.0 track. Showing new metadata inside Game Request read models/cards may be integrated after the relevant Track A UI/read-model changes settle.
 
 ## Expected outcomes
 
@@ -113,17 +163,21 @@ IGDB covers may load directly from `images.igdb.com`. This is a narrow exception
 - operator/user documentation that a viewer's IP address is disclosed to IGDB when a remote cover loads
 - graceful degradation limited to cover presentation
 
-Do not add another catalog provider or a local cover proxy/cache in this milestone.
+Do not add another catalog provider or a local cover proxy/cache in this track.
 
 ## Acceptance
 
 An administrator can safely preview and control imports and refreshes. Locally managed data is never silently overwritten or merged, and disabling or losing IGDB does not break core workflows.
 
-# Milestone 11 — Instance Identity and Installable Web Shell
+# Track D — Instance Identity & PWA
 
 ## Goal
 
-Let an operator identify their LANsurfer installation for the specific LAN party or event it serves, while retaining the product's fixed, accessible visual system and making the site installable as a web app.
+Let an operator identify the installation for the LAN party or event it serves while retaining the fixed, accessible visual system and making the site installable as a web app.
+
+## Dependencies
+
+No hard dependency to start. The service-worker registration/lifecycle contract produced here is a prerequisite for Track E's browser-side Web Push integration.
 
 ## Expected outcomes
 
@@ -135,17 +189,29 @@ Let an operator identify their LANsurfer installation for the specific LAN party
 - Store uploaded identity assets in PostgreSQL; do not depend on remote asset hosts.
 - Serve a dynamic web app manifest with a stable application ID, stable start URL, and standalone display mode.
 - Omit manifest icons when none are configured and use a generated monogram fallback in the normal UI.
-- Add the minimal service-worker shell needed for installation and the later Web Push milestone; do not promise offline application behavior.
+- Add the minimal service-worker shell needed for installation and Web Push; do not promise offline application behavior.
+- Define service-worker registration, lifecycle, and update behavior so Track E can attach push handling without owning the shell.
 
 ## Acceptance
 
-An administrator can safely configure identity fields and valid images, browsers can install the site with stable manifest identity, and customization cannot replace the fixed design system or obscure LANsurfer attribution.
+An administrator can safely configure identity fields and valid images, browsers can install the site with stable manifest identity, customization cannot replace the fixed design system or obscure LANsurfer attribution, and Track E has a stable browser service-worker integration point.
 
-# Milestone 12 — Durable Notifications, Web Push, and Discord Delivery
+# Track E — Durable Notifications
 
 ## Goal
 
 Deliver relevant Game Request changes beyond the open browser without coupling external transport failures to core user actions and without requiring multi-Event concepts.
+
+## Parallel work and dependencies
+
+The notification module, worker model, delivery/retry persistence, Web Push backend adapter, and Discord delivery adapter may start immediately.
+
+Two integration points are intentionally delayed:
+
+- **GameRequest outbox hookup depends on Track A** stabilizing the Game Request write/persistence paths.
+- **Browser Web Push integration depends on Track D** stabilizing service-worker registration/lifecycle behavior.
+
+Discord notification delivery is independent from Discord login in Track B.
 
 ## Expected outcomes
 
@@ -181,13 +247,17 @@ Deliver relevant Game Request changes beyond the open browser without coupling e
 
 ## Acceptance
 
-Outbox persistence survives restarts, retries are bounded and observable, push targeting and payload privacy are tested, Discord messages remain synchronized, and external outages never prevent Game Request actions.
+Outbox persistence survives restarts, retries are bounded and observable, push targeting and payload privacy are tested, Discord messages remain synchronized, external outages never prevent Game Request actions, and the two stated cross-track contracts are integrated without crossing module ownership boundaries.
 
-# Milestone 13 — Production Distribution and Operations
+# Track F — Distribution & Operations
 
 ## Goal
 
 Make LANsurfer reproducibly installable, upgradable, backed up, and diagnosable by self-hosting operators running a single-event instance.
+
+## Parallel work and dependencies
+
+Release automation and most operator tooling can begin immediately. Final upgrade/backup validation depends on the persistent schema from Tracks A–E being stable enough to represent the intended 1.0 state.
 
 ## Expected outcomes
 
@@ -204,28 +274,52 @@ Make LANsurfer reproducibly installable, upgradable, backed up, and diagnosable 
 
 ## Acceptance
 
-Release artifacts are reproducible and verifiable, the documented Compose deployment starts from an empty host, backup/restore is exercised, and a populated prototype installation upgrades without data loss.
+Release artifacts are reproducible and verifiable, the documented Compose deployment starts from an empty host, backup/restore is exercised, and a populated prototype installation upgrades without data loss after the integration schema is finalized.
 
-# Milestone 14 — 1.0 RC and Stable Release
+# 1.0 Integration Gate
 
-## Goal
+The Integration Gate begins when the individual track acceptance criteria are substantially complete. It is not a separate feature track; it is where the independently developed work is proven together.
 
-Freeze the focused 1.0 feature set, validate the complete supported deployment and upgrade paths, and publish a stable release.
+## Depends on
+
+Tracks A–F reaching their required integration-ready state.
+
+## Required integration checks
+
+- OIDC-only, Discord-only, and explicitly linked-account authentication all reach the same provider-independent Game Nick onboarding and local User model.
+- Player profiles and Game handles work with both authentication paths without exposing provider-private data.
+- Game Requests are fully instance-wide and preserve concurrency/capacity behavior after the prototype migration.
+- Game Request writes produce durable notification intent atomically where required, without transport failures affecting the originating action.
+- Web Push works through the Track D service worker and respects follow/toggle/privacy rules.
+- Discord delivery remains separate from Discord authentication and keeps one instance-level message synchronized per Game Request.
+- IGDB failure/unconfiguration does not break the local Game catalog or Game Request workflows.
+- Instance identity, manifest, service worker, CSP, and remote-cover exception coexist correctly.
+- A populated prototype installation upgrades through all 1.0 migrations without data loss.
+- Production build, Compose deployment, backup/restore, and documented operator flows are exercised against the integrated application.
+
+## Acceptance
+
+All cross-track contracts are exercised by relevant domain, PostgreSQL, HTTP, browser-facing, and release/operations tests. No integration blocker requires redesigning the product back into a shared multi-Event/community service.
+
+# 1.0 Release Candidate and Stable Release Gate
+
+## Depends on
+
+The 1.0 Integration Gate being green.
 
 ## Expected outcomes
 
 - Publish `v1.0.0-rc.1` with complete migration, operations, security, privacy, authentication-provider, catalog-provider, and notification-provider documentation.
 - After the release candidate, accept only release blockers, security fixes, migration fixes, and documentation corrections.
-- Exercise OIDC-only, Discord-only, and explicitly linked-account authentication.
-- Exercise Game Nick onboarding, player profiles, the instance-wide Game Request flow, catalog-provider failure, notification retries, backup/restore, and prototype-to-1.0 upgrade paths.
+- Re-run the integrated OIDC/Discord onboarding, player profile, instance-wide Game Request, provider-failure, notification-retry, backup/restore, and prototype-to-1.0 upgrade paths.
 - Verify that no 1.0 workflow requires Event selection/membership, Open Play, Clans, or another Game Request parent context.
 - Verify accessibility, responsive behavior, Content Security Policy, secret handling, rate limits, and production asset embedding.
 - Publish `v1.0.0` when release-candidate blockers are resolved.
-- Update [SECURITY.md](../SECURITY.md) from its pre-stable policy to the supported 1.0 policy as part of the release, not during planning.
+- Update [SECURITY.md](../SECURITY.md) from its pre-stable policy to the supported 1.0 policy as part of the release, not during feature development.
 
 ## Acceptance
 
-All earlier milestone acceptance criteria remain green in a release build, documentation matches observable behavior, signed artifacts are available for both supported architectures, and no release blockers remain.
+All track and Integration Gate acceptance criteria remain green in a release build, documentation matches observable behavior, signed artifacts are available for both supported architectures, and no release blockers remain.
 
 # Post-1.0 candidates — not scheduled
 
