@@ -1,4 +1,4 @@
-// Package branding contains LANsurfer's fixed v0.1 brand definition.
+// Package branding contains LANsurfer's fixed brand definition.
 package branding
 
 //go:generate go run ./cmd/brandcss -output ../../../web/src/brand.generated.css
@@ -34,7 +34,7 @@ type Assets struct {
 	DataFont    string
 }
 
-// Default returns the fixed LANsurfer v0.1 brand.
+// Default returns the fixed LANsurfer brand.
 func Default() Brand {
 	return Brand{
 		Name:    "LANsurfer",
