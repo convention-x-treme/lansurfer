@@ -89,7 +89,7 @@ The prototype is an input to the 1.0 migration path. Prototype relationships and
 
 ### Planned 1.0 scope
 
-The 1.0 release adds, in roadmap order:
+The 1.0 release delivers these capabilities through parallel roadmap tracks:
 
 - a focused single-event operating model in which Game Requests are instance-wide rather than scoped through Event membership
 - public player profiles, per-Game handles, and a unique Game Nick
@@ -99,7 +99,7 @@ The 1.0 release adds, in roadmap order:
 - durable Web Push and one instance-level Discord delivery integration without a persistent inbox
 - production release artifacts, operational documentation, and a tested prototype-to-1.0 upgrade path
 
-The authoritative order and acceptance criteria are in the [roadmap](ROADMAP.md#progress). A planned feature is not implemented merely because it is described here.
+The authoritative track scope, dependencies, acceptance criteria, Integration Gate, and release gates are in the [roadmap](ROADMAP.md#development-model). A planned feature is not implemented merely because it is described here.
 
 ### Post-1.0 candidates — not scheduled
 
