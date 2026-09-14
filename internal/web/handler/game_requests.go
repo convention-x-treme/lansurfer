@@ -71,7 +71,8 @@ func (h *GameRequests) RefreshList(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "refresh game requests", http.StatusInternalServerError)
 		return
 	}
-	render(w, r, http.StatusOK, pages.GameRequestListContent(requests, r.URL.Query().Get("highlight")))
+	navigation := requestNavigation(r)
+	render(w, r, http.StatusOK, pages.GameRequestListContent(h.brand, requests, navigation.Viewer, r.URL.Query().Get("highlight")))
 }
 
 func (h *GameRequests) New(w http.ResponseWriter, r *http.Request) {
@@ -81,7 +82,7 @@ func (h *GameRequests) New(w http.ResponseWriter, r *http.Request) {
 		h.renderError(w, r)
 		return
 	}
-	form := pages.GameRequestForm{GameID: strings.TrimSpace(r.URL.Query().Get("game_id"))}
+	form := pages.GameRequestForm{GameID: strings.TrimSpace(r.URL.Query().Get("game_id")), StartPreset: "now"}
 	render(w, r, http.StatusOK, pages.NewGameRequest(h.brand, requestNavigation(r), options, form, ""))
 }
 
@@ -158,6 +159,16 @@ func (h *GameRequests) changeMembership(w http.ResponseWriter, r *http.Request, 
 		h.renderChangeError(w, r, requestID, account.ID, err)
 		return
 	}
+	if r.Header.Get("HX-Request") == "true" && r.FormValue("return_to") == "list" {
+		request, err := h.queries.ByID(r.Context(), requestID, account.ID)
+		if err != nil {
+			webmiddleware.LogError(r, "reload Game Request after command", err)
+			h.renderError(w, r)
+			return
+		}
+		render(w, r, http.StatusOK, pages.GameRequestRow(request, account.ID, ""))
+		return
+	}
 	target := "/game-requests/" + requestID
 	if r.FormValue("return_to") == "list" {
 		target = "/game-requests"
@@ -170,6 +181,12 @@ func (h *GameRequests) renderChangeError(w http.ResponseWriter, r *http.Request,
 	if status == http.StatusInternalServerError {
 		webmiddleware.LogError(r, "change Game Request", cause)
 		h.renderError(w, r)
+		return
+	}
+	if r.Header.Get("HX-Request") == "true" && r.FormValue("return_to") == "list" {
+		w.Header().Set("HX-Retarget", "#live-notices")
+		w.Header().Set("HX-Reswap", "beforeend")
+		render(w, r, http.StatusOK, pages.GameRequestActionError(gameRequestMessage(cause)))
 		return
 	}
 	request, err := h.queries.ByID(r.Context(), requestID, viewerID)
@@ -191,8 +208,10 @@ func (h *GameRequests) parseCreateForm(r *http.Request) (pages.GameRequestForm, 
 	}
 	form := pages.GameRequestForm{
 		GameID: r.FormValue("game_id"), MaxPlayers: strings.TrimSpace(r.FormValue("max_players")),
-		StartsAt: strings.TrimSpace(r.FormValue("starts_at")), TimezoneOffset: strings.TrimSpace(r.FormValue("timezone_offset")),
-		Description: r.FormValue("description"),
+		StartPreset: strings.TrimSpace(r.FormValue("start_preset")), StartDate: strings.TrimSpace(r.FormValue("start_date")),
+		StartTime: strings.TrimSpace(r.FormValue("start_time")), StartsAt: strings.TrimSpace(r.FormValue("starts_at")),
+		TimezoneOffset: strings.TrimSpace(r.FormValue("timezone_offset")),
+		Description:    r.FormValue("description"),
 	}
 	var maxPlayers *int32
 	if form.MaxPlayers != "" {
@@ -204,23 +223,44 @@ func (h *GameRequests) parseCreateForm(r *http.Request) (pages.GameRequestForm, 
 		maxPlayers = &parsed
 	}
 	startsAt := h.now().UTC()
-	if form.StartsAt != "" {
-		offsetMinutes := int64(0)
-		if form.TimezoneOffset != "" {
-			value, err := strconv.ParseInt(form.TimezoneOffset, 10, 16)
-			if err != nil || value < -14*60 || value > 14*60 {
-				return form, maxPlayers, time.Time{}, gamerequest.ErrInvalidStartsAt
-			}
-			offsetMinutes = value
+	var startErr error
+	switch form.StartPreset {
+	case "", "now":
+		if form.StartPreset == "" && form.StartsAt != "" {
+			startsAt, startErr = parseBrowserTime(form.StartsAt, form.TimezoneOffset)
 		}
-		location := time.FixedZone("browser-local", int(-offsetMinutes*60))
-		parsed, err := time.ParseInLocation(gameRequestTimeLayout, form.StartsAt, location)
-		if err != nil {
+	case "15", "30", "60":
+		minutes, _ := strconv.Atoi(form.StartPreset)
+		startsAt = h.now().Add(time.Duration(minutes) * time.Minute).UTC()
+	case "custom":
+		if form.StartDate == "" || form.StartTime == "" {
 			return form, maxPlayers, time.Time{}, gamerequest.ErrInvalidStartsAt
 		}
-		startsAt = parsed.UTC()
+		startsAt, startErr = parseBrowserTime(form.StartDate+"T"+form.StartTime, form.TimezoneOffset)
+	default:
+		return form, maxPlayers, time.Time{}, gamerequest.ErrInvalidStartsAt
+	}
+	if startErr != nil {
+		return form, maxPlayers, time.Time{}, gamerequest.ErrInvalidStartsAt
 	}
 	return form, maxPlayers, startsAt, nil
+}
+
+func parseBrowserTime(value, timezoneOffset string) (time.Time, error) {
+	offsetMinutes := int64(0)
+	if timezoneOffset != "" {
+		parsed, err := strconv.ParseInt(timezoneOffset, 10, 16)
+		if err != nil || parsed < -14*60 || parsed > 14*60 {
+			return time.Time{}, gamerequest.ErrInvalidStartsAt
+		}
+		offsetMinutes = parsed
+	}
+	location := time.FixedZone("browser-local", int(-offsetMinutes*60))
+	parsed, err := time.ParseInLocation(gameRequestTimeLayout, value, location)
+	if err != nil {
+		return time.Time{}, gamerequest.ErrInvalidStartsAt
+	}
+	return parsed.UTC(), nil
 }
 
 func (h *GameRequests) redirect(w http.ResponseWriter, r *http.Request, target string) {
@@ -238,7 +278,7 @@ func (h *GameRequests) renderError(w http.ResponseWriter, r *http.Request) {
 
 func requestNavigation(r *http.Request) components.NavigationState {
 	account, _ := webmiddleware.CurrentUser(r.Context())
-	return components.NavigationState{Viewer: &components.Viewer{DisplayName: account.DisplayName, Role: string(account.Role)}}
+	return components.NavigationState{Viewer: &components.Viewer{ID: account.ID, DisplayName: account.DisplayName, Role: string(account.Role)}, Section: "game-requests"}
 }
 
 func gameRequestErrorStatus(err error) int {

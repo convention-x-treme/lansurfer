@@ -53,7 +53,7 @@ func (h *Games) MyGames(w http.ResponseWriter, r *http.Request) {
 		h.renderError(w, r)
 		return
 	}
-	render(w, r, http.StatusOK, pages.MyGames(h.brand, gameNavigation(r), items))
+	render(w, r, http.StatusOK, pages.MyGames(h.brand, gameNavigation(r, "my-games"), items))
 }
 
 func (h *Games) Follow(w http.ResponseWriter, r *http.Request) {
@@ -79,7 +79,7 @@ func (h *Games) renderBrowse(w http.ResponseWriter, r *http.Request, status int,
 		render(w, r, status, pages.GameCatalogResults(items, search, message))
 		return
 	}
-	render(w, r, status, pages.GameCatalog(h.brand, gameNavigation(r), items, search, message))
+	render(w, r, status, pages.GameCatalog(h.brand, gameNavigation(r, "games"), items, search, message))
 }
 
 func (h *Games) mutationSuccess(w http.ResponseWriter, r *http.Request, subscribed bool) {
@@ -108,13 +108,14 @@ func (h *Games) renderMutationError(w http.ResponseWriter, r *http.Request, caus
 }
 
 func (h *Games) renderError(w http.ResponseWriter, r *http.Request) {
-	render(w, r, http.StatusInternalServerError, pages.GameCatalogError(h.brand, gameNavigation(r)))
+	render(w, r, http.StatusInternalServerError, pages.GameCatalogError(h.brand, gameNavigation(r, "games")))
 }
 
-func gameNavigation(r *http.Request) components.NavigationState {
+func gameNavigation(r *http.Request, section string) components.NavigationState {
 	account, _ := webmiddleware.CurrentUser(r.Context())
 	return components.NavigationState{
-		Viewer: &components.Viewer{DisplayName: account.DisplayName, Role: string(account.Role)},
+		Viewer:  &components.Viewer{ID: account.ID, DisplayName: account.DisplayName, Role: string(account.Role)},
+		Section: section,
 	}
 }
 

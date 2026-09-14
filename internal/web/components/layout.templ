@@ -1,9 +1,15 @@
 package components
 
-import "github.com/convention-x-treme/lansurfer/internal/web/branding"
-import webmiddleware "github.com/convention-x-treme/lansurfer/internal/web/middleware"
+import (
+	"strings"
+	"unicode/utf8"
+
+	"github.com/convention-x-treme/lansurfer/internal/web/branding"
+	webmiddleware "github.com/convention-x-treme/lansurfer/internal/web/middleware"
+)
 
 type Viewer struct {
+	ID string
 	DisplayName string
 	Role string
 }
@@ -11,6 +17,7 @@ type Viewer struct {
 type NavigationState struct {
 	Viewer *Viewer
 	LoginAvailable bool
+	Section string
 }
 
 templ Layout(brand branding.Brand, title string, navigation NavigationState) {
@@ -26,85 +33,141 @@ templ Layout(brand branding.Brand, title string, navigation NavigationState) {
 		</head>
 		<body class="bg-base-100 text-base-content antialiased">
 			<a class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-warning focus:px-4 focus:py-2 focus:text-warning-content" href="#main-content">Skip to content</a>
-			@Navigation(brand, navigation)
 			if navigation.Viewer != nil {
-				<div data-realtime-url="/events/game-requests"></div>
-				<div id="live-notices" class="pointer-events-none fixed right-4 top-4 z-50 grid w-[min(24rem,calc(100%-2rem))] gap-3 [&>*]:pointer-events-auto" aria-live="polite"></div>
+				<div class="app-shell">
+					@DesktopNavigation(brand, navigation)
+					<div class="min-w-0">
+						@MobileNavigation(brand, navigation)
+						<div data-realtime-url="/events/game-requests"></div>
+						<div id="live-notices" class="pointer-events-none fixed right-4 top-20 z-50 grid w-[min(24rem,calc(100%-2rem))] gap-3 [&>*]:pointer-events-auto" aria-live="polite"></div>
+						<main id="main-content" class="min-w-0">
+							{ children... }
+						</main>
+					</div>
+				</div>
+			} else {
+				<div class="flex min-h-screen flex-col">
+					@PublicHeader(brand, navigation)
+					<main id="main-content" class="flex-1">
+						{ children... }
+					</main>
+					@Footer(brand)
+				</div>
 			}
-			<main id="main-content">
-				{ children... }
-			</main>
-			@Footer(brand)
 		</body>
 	</html>
 }
 
-templ Navigation(brand branding.Brand, state NavigationState) {
-	<header class="border-b border-base-300 bg-base-200/95 shadow-sm">
-		<nav class="navbar page-shell min-h-18 px-0" aria-label="Primary navigation">
-			<div class="navbar-start">
-				<a class="brand-wordmark text-2xl text-primary" href="/" aria-label={ brand.Name + " home" }>{ brand.Name }</a>
-			</div>
-			<div class="navbar-center hidden md:flex">
-				<ul class="menu menu-horizontal gap-1 px-1">
-					<li><a class="menu-active" href="/" aria-current="page">Home</a></li>
-					if state.Viewer != nil {
-						<li><a href="/games">Games</a></li>
-						<li><a href="/games/mine">My Games</a></li>
-					} else {
-						<li><span class="cursor-not-allowed opacity-55" aria-disabled="true">Games</span></li>
-					}
-					if state.Viewer != nil {
-						<li><a href="/game-requests">Game Requests</a></li>
-					} else {
-						<li><span class="cursor-not-allowed opacity-55" aria-disabled="true">Game Requests</span></li>
-					}
-					if state.Viewer != nil && state.Viewer.Role == "admin" {
-						<li><a href="/admin/games">Admin</a></li>
-					}
-				</ul>
-			</div>
-			<div class="navbar-end gap-2">
-				<button type="button" class="btn btn-ghost btn-sm" data-theme-toggle aria-label="Use light theme" title="Use light theme">Light</button>
-				if state.Viewer != nil {
-					<details class="dropdown dropdown-end">
-						<summary class="btn btn-ghost btn-sm" aria-label="Open user menu">{ state.Viewer.DisplayName }</summary>
-						<div class="dropdown-content z-20 mt-3 w-56 rounded-box border border-base-300 bg-base-200 p-3 shadow-xl">
-							<p class="truncate font-semibold">{ state.Viewer.DisplayName }</p>
-							<p class="data-text mt-1 text-xs uppercase text-base-content/60">{ state.Viewer.Role }</p>
-							<form method="post" action="/auth/logout" class="mt-3">
-								@CSRFInput()
-								<button type="submit" class="btn btn-outline btn-sm w-full">Log out</button>
-							</form>
-						</div>
-					</details>
-				} else if state.LoginAvailable {
+templ AuthLayout(brand branding.Brand, title string) {
+	<!doctype html>
+	<html lang="en" data-theme="lansurfer-dark">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<meta name="description" content={ brand.Tagline }/>
+			<title>{ title } · { brand.Name }</title>
+			<link rel="stylesheet" href={ brand.Assets.Stylesheet }/>
+			<script src={ brand.Assets.Script } defer></script>
+		</head>
+		<body class="bg-base-100 text-base-content antialiased">
+			<a class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-warning focus:px-4 focus:py-2 focus:text-warning-content" href="#main-content">Skip to content</a>
+			<header class="auth-header"><a class="brand-wordmark text-xl text-base-content" href="/"><span>LAN</span><span class="text-primary">surfer</span></a>@ThemeToggle()</header>
+			<main id="main-content">{ children... }</main>
+		</body>
+	</html>
+}
+
+templ PublicHeader(brand branding.Brand, state NavigationState) {
+	<header class="border-b border-base-300 bg-base-100/95">
+		<nav class="page-shell flex min-h-16 items-center justify-between gap-4" aria-label="Primary navigation">
+			<a class="brand-wordmark text-xl text-primary" href="/" aria-label={ brand.Name + " home" }>{ brand.Name }</a>
+			<div class="flex items-center gap-2">
+				@ThemeToggle()
+				if state.LoginAvailable {
 					<a class="btn btn-primary btn-sm" href="/auth/login">Log in</a>
 				}
-				<details class="dropdown dropdown-end md:hidden">
-					<summary class="btn btn-ghost btn-sm" aria-label="Open navigation">Menu</summary>
-					<ul class="menu dropdown-content z-20 mt-3 w-56 rounded-box border border-base-300 bg-base-200 p-2 shadow-xl">
-						<li><a class="menu-active" href="/" aria-current="page">Home</a></li>
-						if state.Viewer != nil {
-							<li><a href="/games">Games</a></li>
-							<li><a href="/games/mine">My Games</a></li>
-						} else {
-							<li><span class="cursor-not-allowed opacity-55" aria-disabled="true">Games</span></li>
-						}
-						if state.Viewer != nil {
-							<li><a href="/game-requests">Game Requests</a></li>
-						} else {
-							<li><span class="cursor-not-allowed opacity-55" aria-disabled="true">Game Requests</span></li>
-						}
-						if state.Viewer != nil && state.Viewer.Role == "admin" {
-							<li><a href="/admin/games">Admin games</a></li>
-							<li><a href="/admin/events">Admin events</a></li>
-						}
-					</ul>
-				</details>
 			</div>
 		</nav>
 	</header>
+}
+
+templ DesktopNavigation(brand branding.Brand, state NavigationState) {
+	<aside class="app-sidebar hidden lg:flex" aria-label="Application navigation">
+		<a class="brand-wordmark px-2 text-xl text-base-content" href="/game-requests" aria-label={ brand.Name + " Game Requests" }>
+			<span>LAN</span><span class="text-primary">surfer</span>
+		</a>
+		@NavigationLinks(state)
+		<div class="mt-auto grid gap-3">
+			@ViewerPanel(state.Viewer)
+			<div class="flex items-center justify-between gap-2 px-2">
+				@LogoutControl()
+				@ThemeToggle()
+			</div>
+			<p class="px-2 text-xs text-base-content/55">Powered by { brand.Name }</p>
+		</div>
+	</aside>
+}
+
+templ MobileNavigation(brand branding.Brand, state NavigationState) {
+	<header class="mobile-header lg:hidden">
+		<details class="mobile-drawer" data-mobile-navigation>
+			<summary class="btn btn-ghost btn-sm" aria-label="Open navigation">
+				<span aria-hidden="true">☰</span>
+				<span class="brand-wordmark">{ brand.Name }</span>
+			</summary>
+			<div class="mobile-drawer-backdrop" data-close-navigation></div>
+			<nav class="mobile-drawer-panel" aria-label="Mobile navigation">
+				<div class="flex items-center justify-between">
+					<span class="brand-wordmark text-xl"><span>LAN</span><span class="text-primary">surfer</span></span>
+					<button class="btn btn-ghost btn-sm" type="button" data-close-navigation aria-label="Close navigation">×</button>
+				</div>
+				@NavigationLinks(state)
+				<div class="mt-auto grid gap-3">
+					@ViewerPanel(state.Viewer)
+					<div class="flex items-center justify-between gap-2 px-2">
+						@LogoutControl()
+						@ThemeToggle()
+					</div>
+					<p class="px-2 text-xs text-base-content/55">Powered by { brand.Name }</p>
+				</div>
+			</nav>
+		</details>
+	</header>
+}
+
+templ NavigationLinks(state NavigationState) {
+	<ul class="app-navigation">
+		<li>@NavigationLink("/game-requests", "Game Requests", "game-requests", state.Section)</li>
+		<li>@NavigationLink("/games", "Games", "games", state.Section)</li>
+		<li>@NavigationLink("/games/mine", "My Games", "my-games", state.Section)</li>
+		if state.Viewer != nil && state.Viewer.Role == "admin" {
+			<li>@NavigationLink("/admin/games", "Administration", "administration", state.Section)</li>
+		}
+	</ul>
+}
+
+templ NavigationLink(href, label, section, current string) {
+	<a class={ navigationLinkClass(section == current) } href={ templ.SafeURL(href) } aria-current={ navigationCurrent(section == current) }>{ label }</a>
+}
+
+templ ViewerPanel(viewer *Viewer) {
+	if viewer != nil {
+		<div class="viewer-panel">
+			<span class="avatar-placeholder" aria-hidden="true">{ ViewerInitial(viewer.DisplayName) }</span>
+			<span class="min-w-0"><strong class="block truncate text-sm">{ viewer.DisplayName }</strong><span class="data-text block text-xs text-primary">{ viewerRole(viewer.Role) }</span></span>
+		</div>
+	}
+}
+
+templ LogoutControl() {
+	<form method="post" action="/auth/logout">
+		@CSRFInput()
+		<button type="submit" class="btn btn-ghost btn-sm px-0 text-base-content/65">Log out</button>
+	</form>
+}
+
+templ ThemeToggle() {
+	<button type="button" class="btn btn-ghost btn-sm btn-square" data-theme-toggle aria-label="Use light theme" title="Use light theme"><span data-theme-icon aria-hidden="true">☾</span></button>
 }
 
 templ CSRFInput() {
@@ -118,4 +181,34 @@ templ Footer(brand branding.Brand) {
 			<p>{ brand.Tagline }</p>
 		</div>
 	</footer>
+}
+
+func navigationLinkClass(active bool) string {
+	if active {
+		return "app-navigation-link app-navigation-link-active"
+	}
+	return "app-navigation-link"
+}
+
+func navigationCurrent(active bool) string {
+	if active {
+		return "page"
+	}
+	return "false"
+}
+
+func ViewerInitial(name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "?"
+	}
+	runeValue, _ := utf8.DecodeRuneInString(name)
+	return strings.ToUpper(string(runeValue))
+}
+
+func viewerRole(role string) string {
+	if role == "admin" {
+		return "Organizer"
+	}
+	return "Player"
 }

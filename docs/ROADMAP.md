@@ -45,7 +45,7 @@ Tracks A–G may run concurrently. A dependency blocks only the dependent integr
 | **D** | Instance Identity & PWA | Ready | None |
 | **E** | Durable Notifications | Ready with integration dependencies | Track A for GameRequest outbox hookup; Track D for browser Web Push integration; Track G for notification settings and permission presentation |
 | **F** | Distribution & Operations | Ready | Final backup/restore and upgrade validation depend on completed persistent migrations from Tracks A–E; final release validation depends on Track G's production UI assets |
-| **G** | UI Kit Adoption | Ready with surface-integration dependencies | None for tokens, shell, components, and current flows; final feature-surface integration depends only on the affected contracts from Tracks A–E |
+| **G** | UI Kit Adoption | Active — current surfaces adopted; dependent integrations pending | None for tokens, shell, components, and current flows; final feature-surface integration depends only on the affected contracts from Tracks A–E |
 
 ### Cross-track contracts
 
@@ -307,6 +307,12 @@ Final integration waits only where another track changes the affected user-visib
 - **Track C** supplies optional catalog metadata and cover states for catalog and Game Request detail presentation.
 - **Track D** supplies instance identity data and assets for placement in the shared shell.
 - **Track E** supplies notification settings, permission, delivery-status, and retry states for presentation with the shared components.
+
+## Implementation status
+
+The reusable shell, mapped brand tokens, responsive navigation/drawer, login, signed-in home redirect, dense Game Request list, loading/empty/error states, composer, detail view, in-row HTMX actions, SSE feedback, and dark/light presentation are implemented for the current application contracts. Existing authenticated administration and catalog routes now inherit the same shell and token system.
+
+Track G remains active while its final feature integrations wait on their owning tracks: Track A must remove the prototype Event context from Game Request contracts; Track B must supply provider choices, onboarding, and profile state; Track C must supply catalog cover and metadata states; Track D must supply configurable instance identity; and Track E must supply notification settings and browser-permission state. These dependencies do not block further work within their respective tracks.
 
 ## Expected outcomes
 

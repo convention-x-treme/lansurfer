@@ -37,6 +37,35 @@ func TestParseCreateFormUsesBrowserTimezone(t *testing.T) {
 	}
 }
 
+func TestParseCreateFormSupportsStartPresets(t *testing.T) {
+	now := time.Date(2027, 5, 1, 8, 0, 0, 0, time.UTC)
+	handler := &GameRequests{now: func() time.Time { return now }}
+	request := httptest.NewRequest(http.MethodPost, "/game-requests", strings.NewReader(url.Values{
+		"game_id": {"game-1"}, "start_preset": {"30"},
+	}.Encode()))
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	_, _, startsAt, err := handler.parseCreateForm(request)
+	if err != nil {
+		t.Fatalf("parseCreateForm() error = %v", err)
+	}
+	if want := now.Add(30 * time.Minute); !startsAt.Equal(want) {
+		t.Errorf("startsAt = %s, want %s", startsAt, want)
+	}
+}
+
+func TestParseCreateFormRequiresCompleteCustomStart(t *testing.T) {
+	handler := &GameRequests{now: time.Now}
+	request := httptest.NewRequest(http.MethodPost, "/game-requests", strings.NewReader(url.Values{
+		"game_id": {"game-1"}, "start_preset": {"custom"}, "start_date": {"2027-05-01"},
+	}.Encode()))
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	if _, _, _, err := handler.parseCreateForm(request); !errors.Is(err, gamerequest.ErrInvalidStartsAt) {
+		t.Fatalf("parseCreateForm() error = %v", err)
+	}
+}
+
 func TestGameRequestErrorStatus(t *testing.T) {
 	tests := []struct {
 		err  error

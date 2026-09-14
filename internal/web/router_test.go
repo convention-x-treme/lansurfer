@@ -132,13 +132,8 @@ func TestHomeRendersAuthenticatedViewer(t *testing.T) {
 		Authentication: authentication,
 	}).ServeHTTP(response, request)
 
-	if response.Code != http.StatusOK {
+	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/game-requests" {
 		t.Fatalf("status = %d", response.Code)
-	}
-	for _, want := range []string{"Ada Player", "admin", `action="/auth/logout"`, `data-realtime-url="/events/game-requests"`} {
-		if !strings.Contains(response.Body.String(), want) {
-			t.Errorf("body does not contain %q", want)
-		}
 	}
 }
 
@@ -147,7 +142,7 @@ func TestPatternFragments(t *testing.T) {
 		path string
 		want string
 	}{
-		{path: "/ui/patterns/empty", want: "No Game Requests yet"},
+		{path: "/ui/patterns/empty", want: "Quiet out there. Start something?"},
 		{path: "/ui/patterns/error", want: "Something went wrong"},
 	}
 
@@ -367,7 +362,7 @@ func TestRealtimeRefreshHighlightsFollowedGame(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d", response.Code)
 	}
-	for _, want := range []string{`id="game-request-list"`, "New · followed game", `hx-swap-oob="beforeend:#live-notices"`} {
+	for _, want := range []string{`id="game-request-list"`, "request-row-incoming", "New Game Request for Warcraft III", `hx-swap-oob="beforeend:#live-notices"`} {
 		if !strings.Contains(response.Body.String(), want) {
 			t.Errorf("body does not contain %q: %q", want, response.Body.String())
 		}
@@ -396,12 +391,12 @@ func TestGameRequestBrowserWorkflow(t *testing.T) {
 	if listResponse.Code != http.StatusOK {
 		t.Fatalf("list status = %d", listResponse.Code)
 	}
-	for _, want := range []string{"Active Game Requests", "Warcraft III", `action="/game-requests/request-1/join"`} {
+	for _, want := range []string{"Game Requests", "Warcraft III", `class="request-row"`, `hx-post="/game-requests/request-1/join"`} {
 		if !strings.Contains(listResponse.Body.String(), want) {
 			t.Errorf("list body does not contain %q", want)
 		}
 	}
-	if !strings.Contains(listResponse.Body.String(), "Current Event: <strong>CXT 2027</strong>") {
+	if !strings.Contains(listResponse.Body.String(), "Live <span>· CXT 2027</span>") {
 		t.Errorf("list does not show current Event context: %q", listResponse.Body.String())
 	}
 
@@ -434,6 +429,18 @@ func TestGameRequestBrowserWorkflow(t *testing.T) {
 	router.ServeHTTP(joinResponse, join)
 	if joinResponse.Code != http.StatusSeeOther || commands.joined != "request-1/user-1" {
 		t.Fatalf("join response = %d, command = %q", joinResponse.Code, commands.joined)
+	}
+
+	queries.items[0].ViewerJoined = true
+	htmxJoin := httptest.NewRequest(http.MethodPost, "/game-requests/request-1/join", strings.NewReader(url.Values{"return_to": {"list"}}.Encode()))
+	htmxJoin.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	htmxJoin.Header.Set("HX-Request", "true")
+	htmxJoin.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	addCSRF(htmxJoin)
+	htmxResponse := httptest.NewRecorder()
+	router.ServeHTTP(htmxResponse, htmxJoin)
+	if htmxResponse.Code != http.StatusOK || !strings.Contains(htmxResponse.Body.String(), ">Leave</button>") {
+		t.Fatalf("htmx join response = %d %q", htmxResponse.Code, htmxResponse.Body.String())
 	}
 }
 

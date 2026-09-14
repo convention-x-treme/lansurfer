@@ -5,20 +5,38 @@ import (
 	"github.com/convention-x-treme/lansurfer/internal/web/components"
 )
 
+templ Login(brand branding.Brand, loginAvailable bool) {
+	@components.AuthLayout(brand, "Log in") {
+		<section class="auth-stage">
+			<img class="auth-mascot" src={ brand.Assets.Mascot } alt="LANsurfer otter ready to help players find a game"/>
+			<div class="auth-panel">
+				<p class="section-label text-primary">Welcome to LANsurfer</p>
+				<h1 class="mt-4 text-3xl font-bold leading-tight">Find your crew.<br/>Catch the next game.</h1>
+				<p class="mt-4 text-base-content/65">Sign in with the account you already have. LANsurfer never stores a password.</p>
+				if loginAvailable {
+					<a class="btn btn-primary mt-7 w-full justify-between" href="/auth/oidc"><span>Continue with your account</span><span class="data-text text-xs opacity-70">OpenID Connect</span></a>
+					<p class="mt-3 text-center text-xs text-base-content/50">Uses the identity provider configured for this instance.</p>
+				} else {
+					<div role="alert" class="alert alert-warning mt-7"><span>Login is not configured for this LANsurfer instance.</span></div>
+				}
+				<p class="mt-8 text-center text-xs text-base-content/50">Powered by { brand.Name }</p>
+			</div>
+		</section>
+	}
+}
+
 templ AuthenticationError(brand branding.Brand, message string, loginAvailable bool) {
-	@components.Layout(brand, "Login problem", components.NavigationState{LoginAvailable: loginAvailable}) {
-		<section class="page-shell flex min-h-[28rem] items-center py-16">
-			<div role="alert" class="card w-full border border-error bg-base-200 shadow-xl">
-				<div class="card-body">
-					<p class="data-text text-sm font-semibold uppercase tracking-widest text-error">Authentication</p>
-					<h1 class="card-title text-3xl">Login could not be completed</h1>
-					<p class="max-w-2xl text-base-content/75">{ message }</p>
-					<div class="card-actions mt-4">
-						if loginAvailable {
-							<a class="btn btn-primary" href="/auth/login">Start login again</a>
-						}
-						<a class="btn btn-ghost" href="/">Return home</a>
-					</div>
+	@components.AuthLayout(brand, "Login problem") {
+		<section class="auth-stage">
+			<div role="alert" class="auth-panel border-error">
+				<p class="section-label text-error">Authentication</p>
+				<h1 class="mt-4 text-3xl font-bold">Login could not be completed</h1>
+				<p class="mt-4 text-base-content/70">{ message }</p>
+				<div class="mt-7 flex flex-wrap gap-3">
+					if loginAvailable {
+						<a class="btn btn-primary" href="/auth/login">Start login again</a>
+					}
+					<a class="btn btn-ghost" href="/">Return home</a>
 				</div>
 			</div>
 		</section>

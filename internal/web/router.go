@@ -107,6 +107,7 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 		}
 	})
 	router.Get("/auth/login", authenticationHandler.Login)
+	router.Get("/auth/oidc", authenticationHandler.BeginLogin)
 	router.Get("/auth/callback", authenticationHandler.Callback)
 	router.Post("/auth/logout", authenticationHandler.Logout)
 	router.Get("/ui/patterns/empty", componentHandler(components.EmptyState(brand)))
@@ -120,11 +121,9 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 func homeHandler(brand branding.Brand, authentication Authentication) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		navigation := components.NavigationState{LoginAvailable: authentication != nil && authentication.Available()}
-		if currentUser, ok := webmiddleware.CurrentUser(r.Context()); ok {
-			navigation.Viewer = &components.Viewer{
-				DisplayName: currentUser.DisplayName,
-				Role:        string(currentUser.Role),
-			}
+		if _, ok := webmiddleware.CurrentUser(r.Context()); ok {
+			http.Redirect(w, r, "/game-requests", http.StatusSeeOther)
+			return
 		}
 		componentHandler(pages.Home(brand, navigation)).ServeHTTP(w, r)
 	}

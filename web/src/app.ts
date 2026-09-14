@@ -22,13 +22,13 @@ function preferredTheme(): Theme {
 function applyTheme(theme: Theme): void {
   document.documentElement.dataset.theme = theme;
 
-  const button = document.querySelector<HTMLButtonElement>("[data-theme-toggle]");
-  if (button) {
+  document.querySelectorAll<HTMLButtonElement>("[data-theme-toggle]").forEach((button) => {
     const isDark = theme === darkTheme;
     button.setAttribute("aria-label", isDark ? "Use light theme" : "Use dark theme");
     button.setAttribute("title", isDark ? "Use light theme" : "Use dark theme");
-    button.textContent = isDark ? "Light" : "Dark";
-  }
+    const icon = button.querySelector<HTMLElement>("[data-theme-icon]");
+    if (icon) icon.textContent = isDark ? "☾" : "☀";
+  });
 }
 
 applyTheme(preferredTheme());
@@ -37,14 +37,22 @@ document.querySelectorAll<HTMLInputElement>("[data-timezone-offset]").forEach((i
   input.value = String(new Date().getTimezoneOffset());
 });
 
-document.querySelector<HTMLButtonElement>("[data-theme-toggle]")?.addEventListener("click", () => {
-  const nextTheme = document.documentElement.dataset.theme === darkTheme ? lightTheme : darkTheme;
-  try {
-    window.localStorage.setItem(themeStorageKey, nextTheme);
-  } catch {
-    // A blocked storage API should not prevent an in-page theme change.
-  }
-  applyTheme(nextTheme);
+document.querySelectorAll<HTMLButtonElement>("[data-theme-toggle]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const nextTheme = document.documentElement.dataset.theme === darkTheme ? lightTheme : darkTheme;
+    try {
+      window.localStorage.setItem(themeStorageKey, nextTheme);
+    } catch {
+      // A blocked storage API should not prevent an in-page theme change.
+    }
+    applyTheme(nextTheme);
+  });
+});
+
+const description = document.querySelector<HTMLTextAreaElement>("[data-description]");
+const descriptionCount = document.querySelector<HTMLElement>("[data-description-count]");
+description?.addEventListener("input", () => {
+  if (descriptionCount) descriptionCount.textContent = `${Array.from(description.value).length} / 1000`;
 });
 
 type GameRequestEvent = {
@@ -74,6 +82,7 @@ function refreshGameRequests(event: GameRequestEvent): void {
 const realtime = document.querySelector<HTMLElement>("[data-realtime-url]");
 if (realtime?.dataset.realtimeUrl) {
   const events = new EventSource(realtime.dataset.realtimeUrl);
+  events.addEventListener("open", () => document.querySelector("[data-live-connection-alert]")?.remove());
   events.addEventListener("game-request", (message) => {
     try {
       refreshGameRequests(JSON.parse(message.data) as GameRequestEvent);
@@ -81,12 +90,24 @@ if (realtime?.dataset.realtimeUrl) {
       // A malformed or stale signal can be ignored; the next event refreshes current state.
     }
   });
+  events.addEventListener("error", () => {
+    if (document.querySelector("[data-live-connection-alert]")) return;
+    const notice = document.createElement("div");
+    notice.className = "alert alert-warning";
+    notice.dataset.liveConnectionAlert = "";
+    notice.setAttribute("role", "status");
+    notice.textContent = "Live connection lost. Retrying…";
+    document.querySelector("#live-notices")?.append(notice);
+  });
 }
 
 document.addEventListener("click", (event) => {
   const target = event.target;
   if (target instanceof Element && target.closest("[data-dismiss-live-toast]")) {
     target.closest("[data-live-toast]")?.remove();
+  }
+  if (target instanceof Element && target.closest("[data-close-navigation]")) {
+    target.closest<HTMLDetailsElement>("[data-mobile-navigation]")?.removeAttribute("open");
   }
 });
 
@@ -99,6 +120,15 @@ document.addEventListener("submit", (event) => {
 
 document.addEventListener("htmx:oobAfterSwap", () => {
   document.querySelectorAll<HTMLElement>("[data-live-toast]").forEach((toast) => {
+    const targetID = toast.dataset.visibilityTarget;
+    const target = targetID ? document.querySelector(`#game-request-${CSS.escape(targetID)}`) : null;
+    if (target) {
+      const bounds = target.getBoundingClientRect();
+      if (bounds.top >= 0 && bounds.bottom <= window.innerHeight) {
+        toast.remove();
+        return;
+      }
+    }
     window.setTimeout(() => toast.remove(), 8000);
   });
 });

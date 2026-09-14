@@ -2,7 +2,9 @@ package pages
 
 import (
 	"fmt"
+	"strings"
 	"time"
+	"unicode"
 
 	"github.com/convention-x-treme/lansurfer/internal/gamerequest"
 	requestquery "github.com/convention-x-treme/lansurfer/internal/query/gamerequest"
@@ -13,6 +15,9 @@ import (
 type GameRequestForm struct {
 	GameID string
 	MaxPlayers string
+	StartPreset string
+	StartDate string
+	StartTime string
 	StartsAt string
 	TimezoneOffset string
 	Description string
@@ -20,159 +25,502 @@ type GameRequestForm struct {
 
 templ GameRequestList(brand branding.Brand, navigation components.NavigationState, event requestquery.EventContext, requests []requestquery.Request, notice string) {
 	@components.Layout(brand, "Game Requests", navigation) {
-		<section class="page-shell py-10">
-			<div class="flex flex-wrap items-end justify-between gap-4">
-				<div><p class="data-text text-sm font-semibold uppercase tracking-widest text-secondary">Looking for players</p><h1 class="mt-2 text-3xl font-bold">Active Game Requests</h1>
-					if event.ID != "" {
-						<p class="mt-2 text-base-content/70">Current Event: <strong>{ event.Name }</strong></p>
-					} else {
-						<p class="mt-2 text-base-content/70">No current Event is configured.</p>
+		<header class="request-status-bar">
+			<div class="flex flex-wrap items-center gap-x-5 gap-y-1">
+				<span class="data-text flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-primary"><span class="live-dot"></span>Live
+					if event.Name != "" {
+						<span>· { event.Name }</span>
 					}
-				</div>
-				<a class="btn btn-primary" href="/game-requests/new">Create Game Request</a>
+				</span>
+				<span class="data-text text-xs text-base-content/60">{ fmt.Sprintf("%d players in open requests", playersInRequests(requests)) }</span>
 			</div>
-			if notice != "" {
-				<div role="status" class="alert alert-info mt-6"><span>{ notice }</span></div>
-			}
-			if event.ID == "" {
-				<div role="status" class="alert alert-warning mt-6"><span>An administrator must select a current Event before players can create Game Requests.</span></div>
-			}
-			@GameRequestListContent(requests, "")
+			<a class="btn btn-primary btn-sm" href="/game-requests/new">Create Game Request</a>
+		</header>
+		<section class="app-page">
+			<div class="request-layout">
+				<div class="min-w-0">
+					<div class="mb-5 flex flex-wrap items-end justify-between gap-3">
+						<div>
+							<h1 class="text-3xl font-bold">Game Requests</h1>
+							<p class="mt-1 text-sm text-base-content/65">Find a group and join from the list.</p>
+						</div>
+						<p class="data-text text-xs text-base-content/55">places · start</p>
+					</div>
+					if notice != "" {
+						<div role="status" class="alert alert-info mb-4"><span>{ notice }</span></div>
+					}
+					if event.ID == "" {
+						<div role="status" class="alert alert-warning mb-4"><span>An administrator must select a current Event before players can create Game Requests.</span></div>
+					}
+					@GameRequestListContent(brand, requests, navigation.Viewer, "")
+				</div>
+				<aside class="request-rail" aria-label="Game Request summary">
+					<section class="rail-panel">
+						<p class="section-label">At a glance</p>
+						<dl class="mt-4 grid gap-3">
+							<div class="flex items-baseline justify-between gap-4"><dt>Open requests</dt><dd class="data-text text-primary">{ fmt.Sprint(len(requests)) }</dd></div>
+							<div class="flex items-baseline justify-between gap-4"><dt>Players</dt><dd class="data-text text-primary">{ fmt.Sprint(playersInRequests(requests)) }</dd></div>
+						</dl>
+					</section>
+					<section class="rail-panel">
+						<p class="section-label">Live updates</p>
+						<p class="mt-3 text-sm leading-relaxed text-base-content/65">New requests, places, and status changes update automatically.</p>
+					</section>
+				</aside>
+			</div>
 		</section>
 	}
 }
 
-templ GameRequestListContent(requests []requestquery.Request, highlightedID string) {
-	<div id="game-request-list" data-game-request-list aria-live="polite">
+templ GameRequestListContent(brand branding.Brand, requests []requestquery.Request, viewer *components.Viewer, highlightedID string) {
+	<div id="game-request-list" data-game-request-list aria-live="polite" aria-busy="false">
+		<div class="request-list-skeleton" aria-hidden="true">
+			for range 3 {
+				<div class="request-skeleton-row"><span></span><span></span><span></span></div>
+			}
+		</div>
+		<div class="request-list-content">
 			if len(requests) == 0 {
-				<div class="card mt-8 border border-base-300 bg-base-200"><div class="card-body"><h2 class="card-title">No active Game Requests</h2><p>Be the first to look for players at the current Event.</p><div class="card-actions"><a class="btn btn-primary btn-sm" href="/game-requests/new">Create Game Request</a></div></div></div>
+				<section class="request-empty" aria-labelledby="empty-request-title">
+					<img src={ brand.Assets.Mascot } alt=""/>
+					<div>
+						<h2 id="empty-request-title" class="text-2xl font-bold">Quiet out there. Start something?</h2>
+						<p class="mt-2 max-w-xl text-base-content/70">No open requests right now. Post one so other players can join.</p>
+						<a class="btn btn-primary btn-sm mt-5" href="/game-requests/new">Create Game Request</a>
+					</div>
+				</section>
 			} else {
-				<div class="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+				<div class="mb-3 flex items-center justify-between gap-4">
+					<p class="section-label">{ fmt.Sprintf("%d open requests", len(requests)) }</p>
+					<span class="sr-only">Player places and start times follow each game name.</span>
+				</div>
+				<div class="request-list">
 					for _, request := range requests {
-						@GameRequestCard(request, highlightedID)
+						@GameRequestRow(request, viewerID(viewer), highlightedID)
 					}
 				</div>
 			}
+		</div>
 	</div>
 	if gameName, followed := followedHighlight(requests, highlightedID); followed {
-		<div hx-swap-oob="beforeend:#live-notices" role="status" class="alert alert-info shadow-lg" data-live-toast>
-			<span>New Game Request for { gameName }, a game you follow.</span>
+		<div hx-swap-oob="beforeend:#live-notices" role="status" class="alert alert-info" data-live-toast data-visibility-target={ highlightedID }>
+			<span>New Game Request for { gameName }.</span>
 			<button type="button" class="btn btn-ghost btn-sm" data-dismiss-live-toast aria-label="Dismiss notification">Dismiss</button>
 		</div>
 	}
 }
 
-templ GameRequestCard(request requestquery.Request, highlightedID string) {
-	<article class={ gameRequestCardClass(request, highlightedID) } data-game-request-id={ request.ID }>
-		<div class="card-body gap-4">
-			<div><p class="data-text text-xs uppercase tracking-wider text-secondary">{ request.EventName }</p><h2 class="card-title mt-1 text-2xl"><a class="link-hover" href={ "/game-requests/" + request.ID }>{ request.GameName }</a></h2><p class="mt-1 text-sm text-base-content/65">Created by { request.CreatorName }</p>
-				if request.ID == highlightedID && request.ViewerSubscribed {
-					<span class="badge badge-info mt-2">New · followed game</span>
-				}
-			</div>
-			<div class="flex flex-wrap gap-2"><span class={ playerBadgeClass(request) }>{ playerCount(request) }</span><span class="badge badge-warning">{ startLabel(request.StartsAt) }</span></div>
-			if request.Description != "" {
-				<p class="line-clamp-3 text-base-content/80">{ request.Description }</p>
+templ GameRequestRow(request requestquery.Request, viewerID, highlightedID string) {
+	<article id={ "game-request-" + request.ID } class={ gameRequestRowClass(request, highlightedID) } data-game-request-id={ request.ID }>
+		<a class="request-row-main" href={ "/game-requests/" + request.ID }>
+			<span class="game-abbreviation" aria-hidden="true">{ gameAbbreviation(request.GameName) }</span>
+			<span class="min-w-0 truncate font-bold">{ request.GameName }</span>
+			if request.CreatorID == viewerID {
+				<span class="badge badge-warning badge-sm hidden sm:inline-flex">Host</span>
+			} else if request.ViewerJoined {
+				<span class="badge badge-info badge-sm hidden sm:inline-flex">Joined</span>
+			} else if lastPlace(request) {
+				<span class="badge badge-sm hidden border-0 bg-[var(--brand-sunset)] text-[var(--brand-deep-ocean)] sm:inline-flex">Last place</span>
 			}
-			<div class="card-actions mt-auto justify-end">
-				<a class="btn btn-ghost btn-sm" href={ "/game-requests/" + request.ID }>View</a>
-				if request.Status == gamerequest.StatusOpen && !request.ViewerJoined && !requestFull(request) {
-					<form method="post" action={ "/game-requests/" + request.ID + "/join" }>@components.CSRFInput()<input type="hidden" name="return_to" value="list"/><button class="btn btn-primary btn-sm" type="submit">Join</button></form>
-				} else if request.ViewerJoined {
-					<span class="badge badge-primary self-center">Joined</span>
-				}
-			</div>
+		</a>
+		<span class={ playerCountClass(request) } aria-label={ playerCountAccessible(request) }>{ playerCount(request) }</span>
+		<time class={ startTimeClass(request.StartsAt) } datetime={ request.StartsAt.Format(time.RFC3339) }>{ startLabel(request.StartsAt) }</time>
+		<div class="request-row-action">
+			if request.Status != gamerequest.StatusOpen {
+				<span class="btn btn-ghost btn-sm pointer-events-none text-base-content/50">{ requestActionLabel(request) }</span>
+			} else if request.CreatorID == viewerID {
+				<a class="btn btn-outline btn-sm" href={ "/game-requests/" + request.ID }>View</a>
+			} else if request.ViewerJoined {
+				<form method="post" action={ "/game-requests/" + request.ID + "/leave" } hx-post={ "/game-requests/" + request.ID + "/leave" } hx-target="closest article" hx-swap="outerHTML">
+					@components.CSRFInput()
+					<input type="hidden" name="return_to" value="list"/>
+					<button class="btn btn-outline btn-sm" type="submit">Leave</button>
+				</form>
+			} else if requestFull(request) {
+				<span class="btn btn-ghost btn-sm pointer-events-none text-base-content/50">Full</span>
+			} else {
+				<form method="post" action={ "/game-requests/" + request.ID + "/join" } hx-post={ "/game-requests/" + request.ID + "/join" } hx-target="closest article" hx-swap="outerHTML">
+					@components.CSRFInput()
+					<input type="hidden" name="return_to" value="list"/>
+					<button class={ joinButtonClass(request) } type="submit">Join</button>
+				</form>
+			}
 		</div>
 	</article>
 }
 
 templ NewGameRequest(brand branding.Brand, navigation components.NavigationState, options requestquery.CreationOptions, form GameRequestForm, message string) {
 	@components.Layout(brand, "Create Game Request", navigation) {
-		<section class="page-shell py-10"><div class="mx-auto max-w-2xl">
-			<a class="link link-hover text-sm" href="/game-requests">← Back to Game Requests</a>
-			<p class="data-text mt-6 text-sm font-semibold uppercase tracking-widest text-secondary">Find players</p><h1 class="mt-2 text-3xl font-bold">Create Game Request</h1>
-			if message != "" {
-				<div role="alert" class="alert alert-error mt-6"><span>{ message }</span></div>
-			}
-			if options.EventID == "" {
-				<div class="card mt-8 border border-base-300 bg-base-200"><div class="card-body"><h2 class="card-title">No current Event</h2><p>An administrator must select a current Event before Game Requests can be created.</p></div></div>
-			} else if len(options.Games) == 0 {
-				<div class="card mt-8 border border-base-300 bg-base-200"><div class="card-body"><h2 class="card-title">No active games</h2><p>An administrator must add or activate a game first.</p></div></div>
-			} else {
-				<form method="post" action="/game-requests" class="card mt-8 border border-base-300 bg-base-200 shadow-sm"><div class="card-body gap-5">
-					@components.CSRFInput()
-					<p>Event: <strong>{ options.EventName }</strong></p>
-					<label class="form-control"><span class="label-text mb-2 font-semibold">Game</span><select class="select select-bordered" name="game_id" required><option value="" disabled selected?={ form.GameID == "" }>Choose a game</option>
-						for _, game := range options.Games {
-							<option value={ game.ID } selected?={ form.GameID == game.ID }>{ game.Name }</option>
-						}
-					</select></label>
-					<label class="form-control"><span class="label-text mb-2 font-semibold">Maximum players <span class="font-normal text-base-content/60">(optional, includes you)</span></span><input class="input input-bordered" type="number" name="max_players" min="1" max="2147483647" inputmode="numeric" value={ form.MaxPlayers } placeholder="No limit"/></label>
-					<label class="form-control"><span class="label-text mb-2 font-semibold">Scheduled start <span class="font-normal text-base-content/60">(optional)</span></span><input class="input input-bordered" type="datetime-local" name="starts_at" value={ form.StartsAt }/><span class="mt-2 text-sm text-base-content/60">Uses your browser's local time. Leave blank to start now.</span></label>
-					<input type="hidden" name="timezone_offset" value={ form.TimezoneOffset } data-timezone-offset/>
-					<label class="form-control"><span class="label-text mb-2 font-semibold">Description <span class="font-normal text-base-content/60">(optional)</span></span><textarea class="textarea textarea-bordered min-h-28" name="description" maxlength="1000" placeholder="Anything players should know">{ form.Description }</textarea></label>
-					<div class="card-actions justify-end"><a class="btn btn-ghost" href="/game-requests">Cancel</a><button class="btn btn-primary" type="submit">Create Game Request</button></div>
-				</div></form>
-			}
-		</div></section>
+		<section class="app-page py-6 sm:py-10">
+			<div class="composer-panel">
+				<div>
+					<div><p class="section-label">New Game Request</p><h1 class="mt-2 text-3xl font-bold">Who's up for a round?</h1></div>
+				</div>
+				if message != "" {
+					<div role="alert" class="alert alert-error mt-6"><span>{ message }</span></div>
+				}
+				if options.EventID == "" {
+					<div role="status" class="alert alert-warning mt-6"><span>An administrator must select a current Event before Game Requests can be created.</span></div>
+				} else if len(options.Games) == 0 {
+					<div role="status" class="alert alert-warning mt-6"><span>An administrator must add or activate a game first.</span></div>
+				} else {
+					<form method="post" action="/game-requests" class="mt-8 grid gap-7">
+						@components.CSRFInput()
+						<label class="grid gap-2"><span class="section-label">01 · Game</span><select class="select select-bordered w-full" name="game_id" required><option value="" disabled selected?={ form.GameID == "" }>Choose a game</option>
+							for _, game := range options.Games {
+								<option value={ game.ID } selected?={ form.GameID == game.ID }>{ game.Name }</option>
+							}
+						</select></label>
+						<div class="grid gap-6 md:grid-cols-[10rem_minmax(0,1fr)]">
+							<label class="grid content-start gap-2"><span class="section-label">02 · Max players</span><input class="input input-bordered data-text w-full text-lg" type="number" name="max_players" min="1" max="2147483647" inputmode="numeric" value={ form.MaxPlayers } placeholder="No limit"/></label>
+							<fieldset class="grid gap-3" data-start-options>
+								<legend class="section-label mb-2">03 · Start</legend>
+								<div class="flex flex-wrap gap-2">
+									@StartChoice("now", "Now", form.StartPreset)
+									@StartChoice("15", "in 15 min", form.StartPreset)
+									@StartChoice("30", "in 30 min", form.StartPreset)
+									@StartChoice("60", "in 1 h", form.StartPreset)
+									@StartChoice("custom", "Pick date & time", form.StartPreset)
+								</div>
+								<div class="custom-start-fields gap-3 rounded-xl bg-base-100 p-4 sm:grid-cols-2" data-custom-start>
+									<label class="grid gap-2"><span class="section-label">Date</span><input class="input input-bordered data-text w-full" type="date" name="start_date" value={ form.StartDate }/></label>
+									<label class="grid gap-2"><span class="section-label">Time</span><input class="input input-bordered data-text w-full" type="time" name="start_time" value={ form.StartTime }/></label>
+								</div>
+							</fieldset>
+						</div>
+						<input type="hidden" name="timezone_offset" value={ form.TimezoneOffset } data-timezone-offset/>
+						<label class="grid gap-2"><span class="section-label">04 · Description <span class="text-base-content/45">optional</span></span><textarea class="textarea textarea-bordered min-h-28" name="description" maxlength="1000" placeholder="Anything players should know" data-description>{ form.Description }</textarea><span class="data-text flex justify-between gap-4 text-xs text-base-content/55"><span>Leave max players empty for an open round.</span><span data-description-count>{ fmt.Sprintf("%d / 1000", len([]rune(form.Description))) }</span></span></label>
+						<div class="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-end"><a class="btn btn-ghost" href="/game-requests">Cancel</a><button class="btn btn-primary sm:min-w-64" type="submit">Create Game Request</button></div>
+					</form>
+				}
+			</div>
+		</section>
 	}
+}
+
+templ StartChoice(value, label, selected string) {
+	<label class="start-choice"><input class="sr-only" type="radio" name="start_preset" value={ value } checked?={ startPreset(selected) == value }/><span>{ label }</span></label>
 }
 
 templ GameRequestDetail(brand branding.Brand, navigation components.NavigationState, request requestquery.Request, viewerID, message, notice string) {
 	@components.Layout(brand, request.GameName, navigation) {
-		<section class="page-shell py-10"><div class="mx-auto max-w-3xl">
-			<a class="link link-hover text-sm" href="/game-requests">← Back to Game Requests</a>
+		<header class="request-detail-bar">
+			<a class="link text-primary no-underline" href="/game-requests">← Game Requests</a>
+			<span class="data-text text-xs text-base-content/55">created { clockLabel(request.CreatedAt) }
+				if request.EventName != "" {
+					<span>· { request.EventName }</span>
+				}
+			</span>
+		</header>
+		<section class="app-page py-6 sm:py-8">
 			if notice != "" {
-				<div role="status" class="alert alert-info mt-6"><span>{ notice }</span></div>
+				<div role="status" class="alert alert-info mb-4"><span>{ notice }</span></div>
 			}
 			if message != "" {
-				<div role="alert" class="alert alert-error mt-6"><span>{ message }</span></div>
+				<div role="alert" class="alert alert-error mb-4"><span>{ message }</span></div>
 			}
 			@GameRequestDetailContent(request, viewerID)
-		</div></section>
+		</section>
 	}
 }
 
 templ GameRequestDetailContent(request requestquery.Request, viewerID string) {
-	<article id="game-request-detail" data-game-request-detail data-game-request-id={ request.ID } class="card mt-6 border border-base-300 bg-base-200 shadow-sm"><div class="card-body gap-6">
-				<div><div class="flex flex-wrap items-center gap-2"><span class="data-text text-sm uppercase tracking-wider text-secondary">{ request.EventName }</span><span class="badge badge-outline">{ string(request.Status) }</span></div><h1 class="mt-2 text-3xl font-bold">{ request.GameName }</h1><p class="mt-2 text-base-content/65">Created by { request.CreatorName }</p></div>
-				<div class="flex flex-wrap gap-2"><span class={ playerBadgeClass(request) }>{ playerCount(request) }</span><span class="badge badge-warning">{ startLabel(request.StartsAt) }</span></div>
-				if request.Description != "" {
-					<p class="whitespace-pre-wrap text-base-content/85">{ request.Description }</p>
-				}
-				<div><h2 class="text-xl font-bold">Players</h2><ul class="mt-3 grid gap-2 sm:grid-cols-2">
-					for _, member := range request.Members {
-						<li class="rounded-lg border border-base-300 px-4 py-3">{ member.DisplayName }
-							if member.ID == request.CreatorID {
-								<span class="badge badge-outline ml-2">Creator</span>
-							}
-						</li>
-					}
-				</ul></div>
-				<div class="card-actions justify-end border-t border-base-300 pt-5">
-					if request.Status == gamerequest.StatusOpen && request.CreatorID == viewerID {
-						<form method="post" action={ "/game-requests/" + request.ID + "/close" } data-confirm="Close this Game Request? Players will no longer be able to join.">@components.CSRFInput()<button class="btn btn-outline" type="submit">Close Game Request</button></form>
-						<form method="post" action={ "/game-requests/" + request.ID + "/cancel" } data-confirm="Cancel this Game Request? This cannot be reopened.">@components.CSRFInput()<button class="btn btn-error" type="submit">Cancel Game Request</button></form>
-					} else if request.Status == gamerequest.StatusOpen && request.ViewerJoined {
+	<div id="game-request-detail" data-game-request-detail data-game-request-id={ request.ID } class="detail-layout">
+		<div class="grid min-w-0 gap-4">
+			<article class={ requestHeroClass(request) }>
+				<div class="game-abbreviation game-abbreviation-lg" aria-hidden="true">{ gameAbbreviation(request.GameName) }</div>
+				<div class="min-w-0 flex-1">
+					<div class="flex flex-wrap items-center gap-2"><h1 class="text-3xl font-bold">{ request.GameName }</h1><span class="badge badge-info badge-sm">{ strings.ToUpper(string(request.Status)) }</span>
+						if lastPlace(request) {
+							<span class="badge badge-sm border-0 bg-[var(--brand-sunset)] text-[var(--brand-deep-ocean)]">Last place</span>
+						}
+					</div>
+					<p class="data-text mt-3 flex flex-wrap gap-x-3 gap-y-1 text-sm text-base-content/65"><strong class={ playerCountClass(request) }>{ playerCount(request) }</strong><span>players</span><span>·</span><span>{ startLongLabel(request.StartsAt) }</span>
+						if request.EventName != "" {
+							<span>·</span><span>{ request.EventName }</span>
+						}
+					</p>
+				</div>
+				<div class="flex shrink-0 items-center gap-2">
+					if request.Status == gamerequest.StatusOpen && request.CreatorID != viewerID && request.ViewerJoined {
 						<form method="post" action={ "/game-requests/" + request.ID + "/leave" }>@components.CSRFInput()<button class="btn btn-outline" type="submit">Leave</button></form>
-					} else if request.Status == gamerequest.StatusOpen && !requestFull(request) {
-						<form method="post" action={ "/game-requests/" + request.ID + "/join" }>@components.CSRFInput()<button class="btn btn-primary" type="submit">Join</button></form>
-					} else if requestFull(request) {
-						<span class="badge badge-outline">Full</span>
+					} else if request.Status == gamerequest.StatusOpen && request.CreatorID != viewerID && !requestFull(request) {
+						<form method="post" action={ "/game-requests/" + request.ID + "/join" }>@components.CSRFInput()<button class={ detailJoinButtonClass(request) } type="submit">Join</button></form>
 					}
 				</div>
-	</div></article>
+			</article>
+			<section class="surface-panel flex min-h-[27rem] flex-col" aria-labelledby="players-title">
+				<div class="flex flex-wrap items-baseline justify-between gap-3"><h2 id="players-title" class="text-xl font-bold">Players</h2><p class="data-text text-xs text-base-content/60">{ placesSummary(request) }</p></div>
+				<ul class="mt-4 grid gap-3">
+					for _, member := range request.Members {
+						<li class="member-row"><span class="avatar-placeholder" aria-hidden="true">{ components.ViewerInitial(member.DisplayName) }</span><span class="min-w-0 flex-1 truncate font-semibold">{ member.DisplayName }</span>
+							if member.ID == request.CreatorID {
+								<span class="badge badge-warning badge-sm">Host</span>
+							}
+							<time class="data-text text-xs text-base-content/55" datetime={ member.JoinedAt.Format(time.RFC3339) }>{ memberTimeLabel(member, request) }</time>
+						</li>
+					}
+					if lastPlace(request) {
+						<li class="last-place-row"><span class="avatar-placeholder avatar-placeholder-outline" aria-hidden="true">+</span><strong class="text-[var(--brand-sunset)]">Last place open</strong><span class="data-text ml-auto text-xs text-base-content/55">joins update live</span></li>
+					}
+				</ul>
+				<div class="mt-auto grid gap-6 border-t border-base-300 pt-5 sm:grid-cols-[minmax(0,1fr)_14rem]">
+					<div><p class="section-label">Description</p>
+						if request.Description == "" {
+							<p class="mt-2 text-base-content/50">No description.</p>
+						} else {
+							<p class="mt-2 whitespace-pre-wrap text-base-content/80">{ request.Description }</p>
+						}
+					</div>
+					<div><p class="section-label">Max players</p><p class="data-text mt-2 text-sm text-base-content/75">{ maximumPlayersLabel(request) }</p></div>
+				</div>
+			</section>
+		</div>
+		<aside class="grid content-start gap-4" aria-label="Game Request context">
+			<section class="rail-panel"><p class="section-label">Game</p><h2 class="mt-3 text-xl font-bold">{ request.GameName }</h2><p class="mt-2 text-sm text-base-content/60">{ request.EventName }</p><a class="link mt-4 inline-block text-sm text-primary no-underline" href="/games">Browse games →</a></section>
+			<section class="rail-panel"><p class="section-label">Activity</p><ol class="mt-4 grid gap-3">
+				for _, member := range request.Members {
+					<li class="flex gap-3 text-sm"><time class="data-text text-xs text-base-content/55">{ clockLabel(member.JoinedAt) }</time><span>{ member.DisplayName }
+						if member.ID == request.CreatorID {
+							<span> created the request</span>
+						} else {
+							<span> joined</span>
+						}
+					</span></li>
+				}
+			</ol><p class="mt-5 text-xs leading-relaxed text-base-content/50">Player counts and membership update live.</p></section>
+			if request.Status == gamerequest.StatusOpen && request.CreatorID == viewerID {
+				<section class="rail-panel border-warning/50"><p class="section-label text-warning">Host actions</p><div class="mt-4 grid gap-3">
+					<form method="post" action={ "/game-requests/" + request.ID + "/close" } data-confirm="Close this Game Request? Players will no longer be able to join.">@components.CSRFInput()<button class="btn btn-outline w-full" type="submit">Close for new players</button></form>
+					<form method="post" action={ "/game-requests/" + request.ID + "/cancel" } data-confirm="Cancel this Game Request? This cannot be reopened.">@components.CSRFInput()<button class="btn btn-error w-full" type="submit">Cancel Game Request</button></form>
+				</div></section>
+			}
+		</aside>
+	</div>
 }
 
 templ GameRequestError(brand branding.Brand, navigation components.NavigationState) {
 	@components.Layout(brand, "Game Requests unavailable", navigation) {
-		<section class="page-shell py-16"><div role="alert" class="alert alert-error"><div><h1 class="font-bold">Game Requests could not be loaded</h1><p>Try the request again.</p></div></div></section>
+		<section class="app-page py-16"><div role="alert" class="alert alert-error"><div><h1 class="font-bold">Game Requests could not be loaded</h1><p>Try the request again.</p></div><a class="btn btn-sm" href="/game-requests">Retry</a></div></section>
 	}
 }
 
-func requestFull(request requestquery.Request) bool { return request.MaxPlayers != nil && request.MemberCount >= int64(*request.MaxPlayers) }
-func playerCount(request requestquery.Request) string { if request.MaxPlayers == nil { return fmt.Sprintf("%d players", request.MemberCount) }; return fmt.Sprintf("%d / %d players", request.MemberCount, *request.MaxPlayers) }
-func playerBadgeClass(request requestquery.Request) string { if requestFull(request) { return "badge badge-neutral data-text" }; if request.MaxPlayers != nil && request.MemberCount+1 == int64(*request.MaxPlayers) { return "badge badge-accent data-text" }; return "badge badge-primary data-text" }
-func startLabel(startsAt time.Time) string { if startsAt.Before(time.Now().Add(2 * time.Minute)) { return "Starts now" }; return "Starts " + startsAt.UTC().Format("Jan 2, 15:04 UTC") }
-func gameRequestCardClass(request requestquery.Request, highlightedID string) string { if request.ID == highlightedID && request.ViewerSubscribed { return "card border-2 border-info bg-base-200 shadow-lg" }; return "card border border-base-300 bg-base-200 shadow-sm" }
-func followedHighlight(requests []requestquery.Request, highlightedID string) (string, bool) { for _, request := range requests { if request.ID == highlightedID && request.ViewerSubscribed { return request.GameName, true } }; return "", false }
+templ GameRequestActionError(message string) {
+	<div role="alert" class="alert alert-error" data-live-toast><span>{ message }</span><button type="button" class="btn btn-ghost btn-sm" data-dismiss-live-toast aria-label="Dismiss error">Dismiss</button></div>
+}
+
+func requestFull(request requestquery.Request) bool {
+	return request.MaxPlayers != nil && request.MemberCount >= int64(*request.MaxPlayers)
+}
+
+func lastPlace(request requestquery.Request) bool {
+	return request.MaxPlayers != nil && request.Status == gamerequest.StatusOpen && request.MemberCount+1 == int64(*request.MaxPlayers)
+}
+
+func playerCount(request requestquery.Request) string {
+	if request.MaxPlayers == nil {
+		return fmt.Sprintf("%d/∞", request.MemberCount)
+	}
+	return fmt.Sprintf("%d/%d", request.MemberCount, *request.MaxPlayers)
+}
+
+func playerCountAccessible(request requestquery.Request) string {
+	if request.MaxPlayers == nil {
+		return fmt.Sprintf("%d players, no limit", request.MemberCount)
+	}
+	return fmt.Sprintf("%d of %d players", request.MemberCount, *request.MaxPlayers)
+}
+
+func playerCountClass(request requestquery.Request) string {
+	if requestFull(request) {
+		return "data-text font-bold text-base-content/55"
+	}
+	if lastPlace(request) {
+		return "data-text font-bold text-[var(--brand-sunset)]"
+	}
+	return "data-text font-bold text-primary"
+}
+
+func joinButtonClass(request requestquery.Request) string {
+	if lastPlace(request) {
+		return "btn btn-sm border-0 bg-[var(--brand-sunset)] text-[var(--brand-deep-ocean)] hover:bg-[color-mix(in_srgb,var(--brand-sunset)_85%,white)]"
+	}
+	return "btn btn-primary btn-sm"
+}
+
+func detailJoinButtonClass(request requestquery.Request) string {
+	if lastPlace(request) {
+		return "btn border-0 bg-[var(--brand-sunset)] text-[var(--brand-deep-ocean)] hover:bg-[color-mix(in_srgb,var(--brand-sunset)_85%,white)]"
+	}
+	return "btn btn-primary"
+}
+
+func gameRequestRowClass(request requestquery.Request, highlightedID string) string {
+	classes := "request-row"
+	if request.ID == highlightedID {
+		classes += " request-row-incoming"
+	}
+	if request.ViewerJoined {
+		classes += " request-row-joined"
+	}
+	if lastPlace(request) {
+		classes += " request-row-last"
+	}
+	return classes
+}
+
+func requestHeroClass(request requestquery.Request) string {
+	if lastPlace(request) {
+		return "request-hero request-hero-last"
+	}
+	return "request-hero"
+}
+
+func startTimeClass(startsAt time.Time) string {
+	if startsAt.Before(time.Now().Add(2 * time.Minute)) {
+		return "data-text text-xs text-[var(--brand-sunset)]"
+	}
+	return "data-text text-xs text-base-content/60"
+}
+
+func startLabel(startsAt time.Time) string {
+	remaining := time.Until(startsAt)
+	if remaining <= 2*time.Minute {
+		return "now"
+	}
+	if remaining < time.Hour {
+		return fmt.Sprintf("in %d min", max(1, int(remaining.Round(time.Minute)/time.Minute)))
+	}
+	if remaining < 24*time.Hour {
+		return fmt.Sprintf("in %d h", max(1, int(remaining.Round(time.Hour)/time.Hour)))
+	}
+	return startsAt.Local().Format("Jan 2")
+}
+
+func startLongLabel(startsAt time.Time) string {
+	if startsAt.Before(time.Now().Add(2 * time.Minute)) {
+		return "starts now"
+	}
+	return "starts " + startLabel(startsAt)
+}
+
+func clockLabel(value time.Time) string {
+	if value.IsZero() {
+		return "—"
+	}
+	return value.Local().Format("15:04")
+}
+
+func gameAbbreviation(name string) string {
+	words := strings.Fields(name)
+	if len(words) == 0 {
+		return "?"
+	}
+	if len(words) == 1 {
+		runes := []rune(words[0])
+		if len(runes) > 3 {
+			runes = runes[:3]
+		}
+		return strings.ToUpper(string(runes))
+	}
+	result := make([]rune, 0, 3)
+	for _, word := range words {
+		if roman := romanDigit(word); roman != 0 {
+			result = append(result, roman)
+		} else {
+			for _, value := range word {
+				if unicode.IsLetter(value) || unicode.IsDigit(value) {
+					result = append(result, unicode.ToUpper(value))
+					break
+				}
+			}
+		}
+		if len(result) == 3 {
+			break
+		}
+	}
+	return string(result)
+}
+
+func romanDigit(word string) rune {
+	switch strings.ToUpper(strings.TrimSpace(word)) {
+	case "I":
+		return '1'
+	case "II":
+		return '2'
+	case "III":
+		return '3'
+	case "IV":
+		return '4'
+	case "V":
+		return '5'
+	default:
+		return 0
+	}
+}
+
+func playersInRequests(requests []requestquery.Request) int64 {
+	var total int64
+	for _, request := range requests {
+		total += request.MemberCount
+	}
+	return total
+}
+
+func followedHighlight(requests []requestquery.Request, highlightedID string) (string, bool) {
+	for _, request := range requests {
+		if request.ID == highlightedID && request.ViewerSubscribed {
+			return request.GameName, true
+		}
+	}
+	return "", false
+}
+
+func viewerID(viewer *components.Viewer) string {
+	if viewer == nil {
+		return ""
+	}
+	return viewer.ID
+}
+
+func startPreset(value string) string {
+	if value == "" {
+		return "now"
+	}
+	return value
+}
+
+func placesSummary(request requestquery.Request) string {
+	if request.MaxPlayers == nil {
+		return fmt.Sprintf("%d players · open round", request.MemberCount)
+	}
+	left := int64(*request.MaxPlayers) - request.MemberCount
+	if left < 0 {
+		left = 0
+	}
+	if left == 1 {
+		return fmt.Sprintf("%d of %d · 1 place left", request.MemberCount, *request.MaxPlayers)
+	}
+	return fmt.Sprintf("%d of %d · %d places left", request.MemberCount, *request.MaxPlayers, left)
+}
+
+func maximumPlayersLabel(request requestquery.Request) string {
+	if request.MaxPlayers == nil {
+		return "Open round"
+	}
+	return fmt.Sprintf("%d", *request.MaxPlayers)
+}
+
+func memberTimeLabel(member requestquery.Member, request requestquery.Request) string {
+	if member.ID == request.CreatorID {
+		return "created " + clockLabel(request.CreatedAt)
+	}
+	return "joined " + clockLabel(member.JoinedAt)
+}
+
+func requestActionLabel(request requestquery.Request) string {
+	if request.Status == gamerequest.StatusCancelled {
+		return "Cancelled"
+	}
+	return "Closed"
+}
