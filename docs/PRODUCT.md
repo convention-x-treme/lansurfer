@@ -287,7 +287,7 @@ The remote IGDB-cover exception concerns catalog content and does not permit rem
 
 ## 15. Self-Hosting and Release Experience
 
-The supported production deployment requires only LANsurfer and PostgreSQL. Migrations run before HTTP startup and a migration failure prevents startup. DOWN migrations never run automatically.
+The supported production deployment requires only LANsurfer and PostgreSQL as local runtime services. Migrations run before HTTP startup and a migration failure prevents startup. DOWN migrations never run automatically.
 
 The 1.0 distribution includes:
 
