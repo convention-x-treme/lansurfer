@@ -21,8 +21,11 @@ func TestLoginRendersProviderChoice(t *testing.T) {
 
 	handler.Login(response, httptest.NewRequest(http.MethodGet, "/auth/login", nil))
 
-	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `href="/auth/oidc"`) {
-		t.Fatalf("response = %d %q", response.Code, response.Body.String())
+	body := response.Body.String()
+	for _, want := range []string{`href="/auth/oidc"`, "Continue with your CXT account", "CXT IdP", "Continue with Discord", "disabled"} {
+		if response.Code != http.StatusOK || !strings.Contains(body, want) {
+			t.Fatalf("response = %d %q", response.Code, body)
+		}
 	}
 }
 

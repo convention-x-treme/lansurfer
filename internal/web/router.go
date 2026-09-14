@@ -62,7 +62,7 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 	router.Handle("/assets/*", http.StripPrefix("/assets/", assets.Handler()))
 	router.Group(func(authenticated chi.Router) {
 		authenticated.Use(webmiddleware.Authentication(dependencies.Authentication, dependencies.SecureCookies))
-		authenticated.Get("/", homeHandler(brand, dependencies.Authentication))
+		authenticated.Get("/", rootHandler(brand, dependencies.Authentication))
 		if dependencies.Subscriptions != nil {
 			authenticated.Route("/games", func(games chi.Router) {
 				games.Use(handler.RequireAuthentication)
@@ -118,14 +118,13 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 	return router
 }
 
-func homeHandler(brand branding.Brand, authentication Authentication) http.HandlerFunc {
+func rootHandler(brand branding.Brand, authentication Authentication) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		navigation := components.NavigationState{LoginAvailable: authentication != nil && authentication.Available()}
 		if _, ok := webmiddleware.CurrentUser(r.Context()); ok {
 			http.Redirect(w, r, "/game-requests", http.StatusSeeOther)
 			return
 		}
-		componentHandler(pages.Home(brand, navigation)).ServeHTTP(w, r)
+		componentHandler(pages.Login(brand, authentication != nil && authentication.Available())).ServeHTTP(w, r)
 	}
 }
 

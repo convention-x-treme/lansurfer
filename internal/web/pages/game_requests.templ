@@ -25,26 +25,15 @@ type GameRequestForm struct {
 
 templ GameRequestList(brand branding.Brand, navigation components.NavigationState, event requestquery.EventContext, requests []requestquery.Request, notice string) {
 	@components.Layout(brand, "Game Requests", navigation) {
-		<header class="request-status-bar">
-			<div class="flex flex-wrap items-center gap-x-5 gap-y-1">
-				<span class="data-text flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-primary"><span class="live-dot"></span>Live
-					if event.Name != "" {
-						<span>· { event.Name }</span>
-					}
-				</span>
-				<span class="data-text text-xs text-base-content/60">{ fmt.Sprintf("%d players in open requests", playersInRequests(requests)) }</span>
-			</div>
-			<a class="btn btn-primary btn-sm" href="/game-requests/new">Create Game Request</a>
-		</header>
 		<section class="app-page">
 			<div class="request-layout">
 				<div class="min-w-0">
-					<div class="mb-5 flex flex-wrap items-end justify-between gap-3">
+					<div class="mb-5 flex flex-wrap items-center justify-between gap-3">
 						<div>
 							<h1 class="text-3xl font-bold">Game Requests</h1>
 							<p class="mt-1 text-sm text-base-content/65">Find a group and join from the list.</p>
 						</div>
-						<p class="data-text text-xs text-base-content/55">places · start</p>
+						<a class="btn btn-primary btn-sm" href="/game-requests/new">Create Game Request</a>
 					</div>
 					if notice != "" {
 						<div role="status" class="alert alert-info mb-4"><span>{ notice }</span></div>
@@ -345,14 +334,14 @@ func joinButtonClass(request requestquery.Request) string {
 	if lastPlace(request) {
 		return "btn btn-sm border-0 bg-[var(--brand-sunset)] text-[var(--brand-deep-ocean)] hover:bg-[color-mix(in_srgb,var(--brand-sunset)_85%,white)]"
 	}
-	return "btn btn-primary btn-sm"
+	return "btn btn-success btn-sm"
 }
 
 func detailJoinButtonClass(request requestquery.Request) string {
 	if lastPlace(request) {
 		return "btn border-0 bg-[var(--brand-sunset)] text-[var(--brand-deep-ocean)] hover:bg-[color-mix(in_srgb,var(--brand-sunset)_85%,white)]"
 	}
-	return "btn btn-primary"
+	return "btn btn-success"
 }
 
 func gameRequestRowClass(request requestquery.Request, highlightedID string) string {

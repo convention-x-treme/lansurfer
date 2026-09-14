@@ -179,7 +179,6 @@
     padding: 1.5rem 1rem 3rem;
   }
 
-  .request-status-bar,
   .request-detail-bar {
     display: flex;
     min-height: 4.5rem;
@@ -188,13 +187,6 @@
     gap: 1rem;
     border-bottom: 1px solid var(--color-base-300);
     padding: 0.75rem 1rem;
-  }
-
-  .live-dot {
-    width: 0.5rem;
-    height: 0.5rem;
-    border-radius: 999px;
-    background: var(--brand-sunset);
   }
 
   .request-layout,
@@ -492,7 +484,6 @@
     grid-template-columns: 15.5rem minmax(0, 1fr);
   }
 
-  .request-status-bar,
   .request-detail-bar {
     padding-inline: 1.5rem;
   }
@@ -531,10 +522,6 @@
   .request-row-action {
     grid-column: 2;
     grid-row: 1 / span 2;
-  }
-
-  .request-status-bar {
-    align-items: flex-start;
   }
 
   .request-row {

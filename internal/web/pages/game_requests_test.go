@@ -43,3 +43,19 @@ func TestGameRequestRowLetsJoinedViewerLeaveFullRequest(t *testing.T) {
 		t.Fatalf("row actions = %q", body)
 	}
 }
+
+func TestGameRequestRowUsesPositiveJoinAction(t *testing.T) {
+	request := requestquery.Request{
+		ID:          "request-1",
+		GameName:    "Warcraft III",
+		MemberCount: 1,
+		Status:      gamerequest.StatusOpen,
+	}
+	var rendered bytes.Buffer
+	if err := GameRequestRow(request, "viewer-1", "").Render(context.Background(), &rendered); err != nil {
+		t.Fatalf("render GameRequestRow: %v", err)
+	}
+	if body := rendered.String(); !strings.Contains(body, `class="btn btn-success btn-sm"`) {
+		t.Fatalf("row action = %q", body)
+	}
+}

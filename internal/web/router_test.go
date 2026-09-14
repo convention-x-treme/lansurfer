@@ -86,11 +86,15 @@ func TestHealthEndpointsRejectOtherMethods(t *testing.T) {
 	}
 }
 
-func TestHomeRendersFrontendFoundation(t *testing.T) {
+func TestRootRendersLoginLandingPage(t *testing.T) {
+	authentication := &routerAuthentication{}
 	request := httptest.NewRequest(http.MethodGet, "/", nil)
 	response := httptest.NewRecorder()
 
-	NewRouter(RouterDependencies{Ready: func(context.Context) error { return nil }}).ServeHTTP(response, request)
+	NewRouter(RouterDependencies{
+		Ready:          func(context.Context) error { return nil },
+		Authentication: authentication,
+	}).ServeHTTP(response, request)
 
 	result := response.Result()
 	defer result.Body.Close()
@@ -107,9 +111,11 @@ func TestHomeRendersFrontendFoundation(t *testing.T) {
 	for _, want := range []string{
 		"LANsurfer",
 		"Find your crew. Catch the next game.",
+		"Continue with your CXT account",
+		"CXT IdP",
+		"Continue with Discord",
 		`href="/assets/app.css"`,
 		`src="/assets/app.js"`,
-		`id="how-it-works"`,
 		`data-theme-toggle`,
 	} {
 		if !strings.Contains(string(body), want) {
@@ -117,7 +123,7 @@ func TestHomeRendersFrontendFoundation(t *testing.T) {
 		}
 	}
 	if strings.Contains(string(body), "https://") {
-		t.Error("home page unexpectedly contains a runtime external dependency")
+		t.Error("login page unexpectedly contains a runtime external dependency")
 	}
 }
 
@@ -396,8 +402,10 @@ func TestGameRequestBrowserWorkflow(t *testing.T) {
 			t.Errorf("list body does not contain %q", want)
 		}
 	}
-	if !strings.Contains(listResponse.Body.String(), "Live <span>· CXT 2027</span>") {
-		t.Errorf("list does not show current Event context: %q", listResponse.Body.String())
+	for _, unwanted := range []string{"places · start", "Live <span>· CXT 2027</span>"} {
+		if strings.Contains(listResponse.Body.String(), unwanted) {
+			t.Errorf("list body unexpectedly contains %q", unwanted)
+		}
 	}
 
 	newRequest := httptest.NewRequest(http.MethodGet, "/game-requests/new?game_id=game-1", nil)
