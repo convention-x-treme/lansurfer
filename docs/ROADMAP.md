@@ -1,6 +1,6 @@
 # LANsurfer Roadmap
 
-This roadmap carries LANsurfer from its completed web prototype to a focused 1.0 self-hosting release. The 1.0 work is organized as **parallel development tracks**, not a linear sequence of feature milestones. Track dependencies describe the points where work must converge; otherwise tracks may advance independently.
+This roadmap carries LANsurfer from its completed web prototype to a focused 1.0 self-hosting release. The 1.0 work is organized as **parallel development tracks**, not a linear sequence of feature milestones. Track dependencies describe the points where work must converge; otherwise tracks may advance independently. The prototype UI is also an input rather than a fixed interface: Track G adopts the target UI kit in [`docs/ui-kit`](ui-kit/README.md) and replaces the prototype presentation without changing the approved product model.
 
 Product behavior and scope remain governed by [PRODUCT.md](PRODUCT.md). Technical decisions and module boundaries remain governed by [ARCHITECTURE.md](ARCHITECTURE.md) and [AGENTS.md](../AGENTS.md).
 
@@ -16,7 +16,7 @@ For 1.0:
 - Do not introduce a generic `context`, polymorphic parent, or similar abstraction merely to prepare for future Event/Clan scoping.
 - Multi-Event participation, Open Play, Event membership/access boundaries, Clans, and other persistent shared-service/community features are outside the 1.0 scope.
 - Generic OIDC and Discord OAuth2 are independent supported login paths so an event can onboard players who do not already have an account with the operator's identity provider. Accounts may explicitly link both providers.
-- Features that directly improve a self-hosted single-event installation remain in scope: player identity, local/rich Game catalog, instance identity, optional outbound notifications, installability, release artifacts, upgrades, backup, and operations.
+- Features that directly improve a self-hosted single-event installation remain in scope: player identity, local/rich Game catalog, instance identity, optional outbound notifications, installability, adoption of the fixed LANsurfer UI kit, release artifacts, upgrades, backup, and operations.
 
 Post-1.0 items are intentionally **not scheduled to a version**. They are collected below so they do not influence 1.0 implementation prematurely.
 
@@ -35,7 +35,7 @@ The prototype schema and behavior are an input to the 1.0 migration path, not a 
 
 ## Development model
 
-Tracks A–F may run concurrently. A dependency blocks only the dependent integration work, not unrelated work inside the track.
+Tracks A–G may run concurrently. A dependency blocks only the dependent integration work, not unrelated work inside the track.
 
 | Track | Scope | Status | Hard dependencies |
 | --- | --- | --- | --- |
@@ -43,8 +43,9 @@ Tracks A–F may run concurrently. A dependency blocks only the dependent integr
 | **B** | Player Identity & Authentication | Active | None |
 | **C** | Game Catalog & IGDB | Ready | None |
 | **D** | Instance Identity & PWA | Ready | None |
-| **E** | Durable Notifications | Ready with integration dependencies | Track A for GameRequest outbox hookup; Track D for browser Web Push integration |
-| **F** | Distribution & Operations | Ready | Final backup/restore and upgrade validation depend on completed persistent migrations from the other tracks |
+| **E** | Durable Notifications | Ready with integration dependencies | Track A for GameRequest outbox hookup; Track D for browser Web Push integration; Track G for notification settings and permission presentation |
+| **F** | Distribution & Operations | Ready | Final backup/restore and upgrade validation depend on completed persistent migrations from Tracks A–E; final release validation depends on Track G's production UI assets |
+| **G** | UI Kit Adoption | Ready with surface-integration dependencies | None for tokens, shell, components, and current flows; final feature-surface integration depends only on the affected contracts from Tracks A–E |
 
 ### Cross-track contracts
 
@@ -61,13 +62,21 @@ Keep cross-track contracts deliberately small so parallel work does not collapse
    - Discord login, OIDC login, linking, and profile work may be developed in parallel as long as they preserve that boundary.
 
 3. **Track D → Track E: service worker contract**
-   - Track D owns the installable web shell, manifest, service-worker registration, lifecycle, and update behavior.
+   - Track D owns the web app manifest plus service-worker registration, lifecycle, and update behavior. Track G separately owns the visual application shell.
    - Track E owns Web Push subscriptions, permission UX, payloads, and delivery.
    - Browser Web Push integration waits for the Track D service-worker contract; backend Web Push work does not.
 
-4. **Track F consumes all tracks only at release validation**
+4. **Tracks A–E ↔ Track G: web presentation contract**
+   - [`BRANDING.md`](BRANDING.md) and [`docs/ui-kit`](ui-kit/README.md) jointly govern design: the branding guide owns brand semantics, tokens, themes, accessibility, and asset rules; the UI kit owns the represented screen composition, component dimensions, states, and interactions. `PRODUCT.md`, `ROADMAP.md`, `ARCHITECTURE.md`, and `AGENTS.md` remain authoritative if either design source implies different product behavior, terminology, technology, module ownership, or scope.
+   - Track G owns the shared web shell, design-token implementation, reusable presentation components, and adoption of the represented login and Game Request surfaces. Each feature track continues to own its domain behavior, writes, queries/read models, handler contracts, and domain-error translation.
+   - Track G may build against existing contracts and representative states immediately. Final integration of a changed feature surface waits only for the affected track's user-visible behavior and read/command contract to stabilize.
+   - Tracks A–E consume Track G's established components and interaction vocabulary for new screens instead of creating parallel component systems or copying visual constants.
+   - The standalone UI-kit artifact is design input, not a runtime dependency. Production remains templ/HTMX SSR with Tailwind, DaisyUI, limited progressive TypeScript, embedded assets, and no internal JSON API created solely for the UI.
+
+5. **Track F consumes all tracks only at release validation**
    - Build/release automation, binaries, images, checksums, SBOMs, provenance, health/version commands, and baseline operations documentation may be developed early.
-   - Final prototype-to-1.0 upgrade, backup/restore, and rollback-limit validation wait until the persistent schema changes from the other tracks have settled.
+   - Final prototype-to-1.0 upgrade, backup/restore, and rollback-limit validation wait until the persistent schema changes from Tracks A–E have settled.
+   - Final release builds also wait for Track G's production styles, scripts, fonts, and other approved UI assets to be generated, embedded, and verified without runtime build tooling or unapproved remote content.
 
 # Track A — Single-Event Core
 
@@ -77,7 +86,7 @@ Align the prototype with the focused 1.0 deployment model so the installation it
 
 ## Can proceed in parallel with
 
-Tracks B, C, D, F and most of Track E.
+Tracks B, C, D, F, G and most of Track E.
 
 ## Expected outcomes
 
@@ -88,10 +97,11 @@ Tracks B, C, D, F and most of Track E.
 - Keep migration and persistence details explicit in the architecture; do not add a generic context abstraction for future flexibility.
 - Do not add Event switching, Event invitations, seats, Event rosters, Event-scoped access control, Open Play, or Event lifecycle/history workflows in 1.0.
 - Stabilize the Game Request write paths and transactional boundaries that Track E will use for durable notification outbox records.
+- Supply Track G with instance-wide Game Request read/command contracts and HTMX fragment outcomes without placing presentation rules in the domain module.
 
 ## Acceptance
 
-The complete Game Request flow works without Event/Clan/context selection or membership, existing prototype requests survive the migration path, capacity invariants remain concurrency-safe, and Track E has a stable transactional integration point for notification intent.
+The complete Game Request flow works without Event/Clan/context selection or membership, existing prototype requests survive the migration path, capacity invariants remain concurrency-safe, Track E has a stable transactional integration point for notification intent, and Track G can render the flow without Event-derived UI state.
 
 # Track B — Player Identity & Authentication
 
@@ -126,10 +136,11 @@ All other tracks. Profile/Game Nick work and Discord-provider work may also proc
 - Persist short-lived, one-use authentication/link flow state that binds the initiating browser, provider, operation, and signed-in user where applicable.
 - Keep local user IDs, revocable PostgreSQL sessions, opaque cookies, and the existing no-local-password model.
 - Route both providers through the same provider-independent Game Nick onboarding decision after authentication.
+- Expose provider availability, authentication errors, and onboarding decisions to Track G through server-rendered page state; Track B owns the security behavior while Track G owns its presentation.
 
 ## Acceptance
 
-A new or upgraded user can authenticate through either OIDC or Discord, explicitly link both when desired, is never implicitly merged by email, and can complete Game Nick onboarding and use profiles without exposing provider data.
+A new or upgraded user can authenticate through either OIDC or Discord, explicitly link both when desired, is never implicitly merged by email, and can complete Game Nick onboarding and use profiles without exposing provider data. The login and onboarding contracts can be rendered through Track G without provider-specific presentation logic bypassing Track B.
 
 # Track C — Game Catalog & IGDB
 
@@ -139,7 +150,7 @@ Make catalog administration faster and Game presentation richer while keeping LA
 
 ## Dependencies
 
-No hard dependency on another 1.0 track. Showing new metadata inside Game Request read models/cards may be integrated after the relevant Track A UI/read-model changes settle.
+No hard dependency on another 1.0 track. Rendering new metadata waits only for the affected Track A read model and Track G presentation component to stabilize.
 
 ## Expected outcomes
 
@@ -149,7 +160,7 @@ No hard dependency on another 1.0 track. Showing new metadata inside Game Reques
 - Preview search results before creating a local Game or explicitly attaching the external ID to an existing Game.
 - Never merge automatically by name.
 - Preview refresh changes and require field-level selection before overwriting local data; local edits remain authoritative.
-- Show covers and metadata in the Game catalog and Game Request cards/details.
+- Show covers and metadata in the Game catalog and Game Request details. Keep the Track G Game Request list as dense rows; use the kit's abbreviation treatment there rather than turning the list back into a cover-card grid.
 - Keep core catalog search, local edits, and Game Request behavior usable when IGDB is unavailable or unconfigured.
 - Display required IGDB attribution and document the provider terms and credential setup.
 
@@ -167,7 +178,7 @@ Do not add another catalog provider or a local cover proxy/cache in this track.
 
 ## Acceptance
 
-An administrator can safely preview and control imports and refreshes. Locally managed data is never silently overwritten or merged, and disabling or losing IGDB does not break core workflows.
+An administrator can safely preview and control imports and refreshes. Locally managed data is never silently overwritten or merged, disabling or losing IGDB does not break core workflows, and rich catalog presentation integrates with Track G without reducing the scanability of the Game Request list.
 
 # Track D — Instance Identity & PWA
 
@@ -177,7 +188,7 @@ Let an operator identify the installation for the LAN party or event it serves w
 
 ## Dependencies
 
-No hard dependency to start. The service-worker registration/lifecycle contract produced here is a prerequisite for Track E's browser-side Web Push integration.
+No hard dependency to start. The service-worker registration/lifecycle contract produced here is a prerequisite for Track E's browser-side Web Push integration. Final placement of instance identity in the application shell uses Track G's shell contract.
 
 ## Expected outcomes
 
@@ -191,10 +202,11 @@ No hard dependency to start. The service-worker registration/lifecycle contract 
 - Omit manifest icons when none are configured and use a generated monogram fallback in the normal UI.
 - Add the minimal service-worker shell needed for installation and Web Push; do not promise offline application behavior.
 - Define service-worker registration, lifecycle, and update behavior so Track E can attach push handling without owning the shell.
+- Supply validated instance identity and fallback data to Track G; Track D owns configuration and assets while Track G owns their responsive, accessible placement in the fixed application shell.
 
 ## Acceptance
 
-An administrator can safely configure identity fields and valid images, browsers can install the site with stable manifest identity, customization cannot replace the fixed design system or obscure LANsurfer attribution, and Track E has a stable browser service-worker integration point.
+An administrator can safely configure identity fields and valid images, browsers can install the site with stable manifest identity, customization cannot replace Track G's fixed design system or obscure LANsurfer attribution, and Track E has a stable browser service-worker integration point.
 
 # Track E — Durable Notifications
 
@@ -206,10 +218,11 @@ Deliver relevant Game Request changes beyond the open browser without coupling e
 
 The notification module, worker model, delivery/retry persistence, Web Push backend adapter, and Discord delivery adapter may start immediately.
 
-Two integration points are intentionally delayed:
+Three integration points are intentionally delayed:
 
 - **GameRequest outbox hookup depends on Track A** stabilizing the Game Request write/persistence paths.
 - **Browser Web Push integration depends on Track D** stabilizing service-worker registration/lifecycle behavior.
+- **Notification settings and permission presentation depend on Track G** stabilizing the shared shell and relevant form, alert, status, and progressive-enhancement components. Backend transport work does not.
 
 Discord notification delivery is independent from Discord login in Track B.
 
@@ -247,7 +260,7 @@ Discord notification delivery is independent from Discord login in Track B.
 
 ## Acceptance
 
-Outbox persistence survives restarts, retries are bounded and observable, push targeting and payload privacy are tested, Discord messages remain synchronized, external outages never prevent Game Request actions, and the two stated cross-track contracts are integrated without crossing module ownership boundaries.
+Outbox persistence survives restarts, retries are bounded and observable, push targeting and payload privacy are tested, Discord messages remain synchronized, external outages never prevent Game Request actions, and the three stated cross-track contracts are integrated without crossing module ownership boundaries or introducing a competing UI vocabulary.
 
 # Track F — Distribution & Operations
 
@@ -257,7 +270,7 @@ Make LANsurfer reproducibly installable, upgradable, backed up, and diagnosable 
 
 ## Parallel work and dependencies
 
-Release automation and most operator tooling can begin immediately. Final upgrade/backup validation depends on the persistent schema from Tracks A–E being stable enough to represent the intended 1.0 state.
+Release automation and most operator tooling can begin immediately. Final upgrade/backup validation depends on the persistent schema from Tracks A–E being stable enough to represent the intended 1.0 state. Final production-asset validation depends on Track G.
 
 ## Expected outcomes
 
@@ -271,10 +284,55 @@ Release automation and most operator tooling can begin immediately. Final upgrad
 - Document every configuration value, administrator bootstrap, backup/restore, encryption and VAPID key backup, upgrades, and rollback limitations.
 - Keep migrations forward-only and test upgrading a populated prototype schema to the 1.0 single-event model.
 - Document the supported upgrade path for each release. Do not promise arbitrary direct upgrades across all 1.x releases.
+- Build and embed Track G's generated CSS, progressive TypeScript, bundled fonts, and approved image assets so the deployed application needs no frontend build tools or unapproved runtime CDN.
 
 ## Acceptance
 
-Release artifacts are reproducible and verifiable, the documented Compose deployment starts from an empty host, backup/restore is exercised, and a populated prototype installation upgrades without data loss after the integration schema is finalized.
+Release artifacts are reproducible and verifiable, the documented Compose deployment starts from an empty host, backup/restore is exercised, a populated prototype installation upgrades without data loss after the integration schema is finalized, and the adopted UI works from embedded production assets alone.
+
+# Track G — UI Kit Adoption
+
+## Goal
+
+Replace the current prototype presentation with the UI system defined by [`docs/ui-kit/README.md`](ui-kit/README.md) and [`docs/ui-kit/index.html`](ui-kit/index.html), while preserving LANsurfer's approved 1.0 behavior, fixed brand, SSR architecture, accessibility requirements, and low-dependency operation.
+
+## Parallel work and dependencies
+
+Design-token mapping, shared components, the application shell, and adoption of current login and Game Request flows may start immediately. Track G must not wait for unrelated work in Tracks A–E.
+
+Final integration waits only where another track changes the affected user-visible contract:
+
+- **Track A** supplies the instance-wide Game Request behavior and final read/command contracts.
+- **Track B** supplies provider availability, authentication outcomes, and provider-independent onboarding state.
+- **Track C** supplies optional catalog metadata and cover states for catalog and Game Request detail presentation.
+- **Track D** supplies instance identity data and assets for placement in the shared shell.
+- **Track E** supplies notification settings, permission, delivery-status, and retry states for presentation with the shared components.
+
+## Expected outcomes
+
+### System adoption
+
+- Treat `BRANDING.md` and the UI kit as the joint design authority: the branding guide governs brand semantics and constraints, while the kit governs the screens, component dimensions, states, and interactions it defines.
+- Translate the standalone reference into reusable templ components and Tailwind/DaisyUI styles. Do not ship the kit's bundled HTML/runtime as the application, introduce an SPA, or create an internal JSON API for it.
+- Keep LANsurfer's semantic brand values centralized and map the kit to those values instead of duplicating hexadecimal colors or creating a second theme definition.
+- Deliver the kit's dark event-floor presentation and an equally complete light presentation using the fixed semantics in `BRANDING.md`; the absence of light frames in the current kit is not permission to omit light mode.
+- Establish one consistent application shell and reusable navigation, dense request row, detail, composer, button, badge, form-control, alert, toast, skeleton, empty-state, and responsive drawer patterns for current and upcoming 1.0 screens.
+- Define complete hover, focus, active, disabled, loading, success, warning, and error behavior where applicable. Preserve semantic HTML, visible keyboard focus, useful accessible names and live regions, sufficient contrast, reduced-motion behavior, and native browser behavior before progressive enhancement.
+- Keep fonts, scripts, styles, and approved images local and production-embedded. The UI kit does not expand the approved IGDB remote-cover exception.
+
+### Prototype replacement
+
+- Present **Game Requests** as the signed-in home surface and navigation term; remove **Dashboard** as a product label.
+- Adopt the represented login, Game Request list, arrival/skeleton/empty/alert states, create composer, mobile drawer, and Game Request detail views on their documented routes.
+- Replace prototype request-card grids with dense, scan-friendly rows showing the Game abbreviation, available-place count, relative start time, and primary Join/Leave action; keep full information on the detail view.
+- Swap Join to Leave in the affected row after a successful action. Do not show a toast for an in-viewport state change; reserve toasts for errors and relevant changes outside the current viewport.
+- Use **places** for available capacity and **max players** for the form field. Do not introduce seat, voice, mode, waitlist, or other fields absent from the 1.0 domain model.
+- Preserve ordinary HTTP behavior and server-rendered validation without JavaScript. Use HTMX for focused fragment replacement, SSE for live arrival/change states, and TypeScript only for browser-specific progressive enhancement such as the mobile drawer or viewport-aware notifications.
+- Apply the established shell, tokens, components, and interaction rules to the remaining supported prototype and 1.0 routes as their owning tracks deliver them; feature-specific surfaces must not create a competing visual system.
+
+## Acceptance
+
+The production login and complete Game Request flow match the UI kit's hierarchy, density, terminology, states, and responsive behavior without expanding the domain model. The remaining supported routes use the same shell and component vocabulary. Dark and light presentations retain all information and actions; desktop, mobile, keyboard, screen-reader, reduced-motion, HTMX/SSE, server-validation, and no-JavaScript paths are verified at appropriate layers. Production assets are embedded, and feature-track integrations preserve their owning module and handler/query boundaries.
 
 # 1.0 Integration Gate
 
@@ -282,7 +340,7 @@ The Integration Gate begins when the individual track acceptance criteria are su
 
 ## Depends on
 
-Tracks A–F reaching their required integration-ready state.
+Tracks A–G reaching their required integration-ready state.
 
 ## Required integration checks
 
@@ -294,6 +352,8 @@ Tracks A–F reaching their required integration-ready state.
 - Discord delivery remains separate from Discord authentication and keeps one instance-level message synchronized per Game Request.
 - IGDB failure/unconfiguration does not break the local Game catalog or Game Request workflows.
 - Instance identity, manifest, service worker, CSP, and remote-cover exception coexist correctly.
+- The UI-kit implementation makes Game Requests the signed-in home surface, preserves dense row interactions and documented state behavior, and presents integrated Track B–E features through the same accessible component system in both themes.
+- No UI-kit artifact introduces seat, voice, mode, waitlist, Dashboard, Event selection, or another product concept excluded from the 1.0 model.
 - A populated prototype installation upgrades through all 1.0 migrations without data loss.
 - Production build, Compose deployment, backup/restore, and documented operator flows are exercised against the integrated application.
 
@@ -313,7 +373,7 @@ The 1.0 Integration Gate being green.
 - After the release candidate, accept only release blockers, security fixes, migration fixes, and documentation corrections.
 - Re-run the integrated OIDC/Discord onboarding, player profile, instance-wide Game Request, provider-failure, notification-retry, backup/restore, and prototype-to-1.0 upgrade paths.
 - Verify that no 1.0 workflow requires Event selection/membership, Open Play, Clans, or another Game Request parent context.
-- Verify accessibility, responsive behavior, Content Security Policy, secret handling, rate limits, and production asset embedding.
+- Verify UI-kit adoption in dark and light presentations, accessibility, responsive behavior, Content Security Policy, secret handling, rate limits, and production asset embedding.
 - Publish `v1.0.0` when release-candidate blockers are resolved.
 - Update [SECURITY.md](../SECURITY.md) from its pre-stable policy to the supported 1.0 policy as part of the release, not during feature development.
 

@@ -1,8 +1,21 @@
 # LANsurfer Branding
 
-This document defines LANsurfer's fixed visual system through 1.0. It extracts the compatible visual direction from the [LANsurfer Branding & UI/UX concept](<LANsurfer Branding & UI_UX v2 by Claude Design.pdf>) while preserving the product terminology and scope in [PRODUCT.md](PRODUCT.md). The 1.0 instance-identity fields described below do not turn the visual system into a configurable theme.
+This document and the [`docs/ui-kit`](ui-kit/README.md) references together define LANsurfer's design system through 1.0. This document owns the fixed brand foundation, semantic colors, typography, theme behavior, accessibility rules, asset policy, voice, and instance-identity boundaries. The UI kit owns the target screen hierarchy, layout, component dimensions, states, and interactions for the surfaces it represents.
 
-The concept PDF is design input, not a source of product requirements. When the two disagree, `PRODUCT.md`, [ROADMAP.md](ROADMAP.md), and [AGENTS.md](../AGENTS.md) remain authoritative.
+Both sources are required design guidance. New UI work must follow this document and adopt the UI kit rather than treating the completed prototype as the visual reference. If the two design sources appear to conflict, preserve this document's semantic tokens, accessibility rules, and equal dark/light support while following the UI kit's represented composition and interaction model; resolve a genuine conflict by updating both sources together.
+
+Neither design source may redefine product behavior, domain terminology, approved scope, technology, or module ownership. [PRODUCT.md](PRODUCT.md), [ROADMAP.md](ROADMAP.md), [ARCHITECTURE.md](ARCHITECTURE.md), and [AGENTS.md](../AGENTS.md) remain authoritative for those concerns.
+
+## UI kit relationship
+
+The UI kit consists of:
+
+- [`ui-kit/README.md`](ui-kit/README.md), which records the represented routes and explicit interaction and terminology decisions;
+- [`ui-kit/index.html`](ui-kit/index.html), which provides the visual frames for login, Game Request list and states, creation, mobile behavior, details, and component tokens.
+
+The standalone HTML is a design reference, not production application code or a runtime dependency. Translate it into the approved templ/HTMX, Tailwind, and DaisyUI frontend architecture, with TypeScript limited to progressive enhancement. Extend the same tokens and component vocabulary to supported screens not yet represented by a frame instead of inventing a parallel visual system.
+
+The current kit is dark-first and shows a 1440 px desktop composition, but implementations must also provide the mobile behavior indicated by the kit and the equally supported light presentation required below. A missing frame is not permission to omit an interaction state, responsive behavior, or accessibility requirement.
 
 ## Brand foundation
 
@@ -32,8 +45,6 @@ The palette is fixed through 1.0. Templates and styles must consume centralized 
 
 Use the ocean blues for the majority of the interface. Sunset, Coral, and Golden Hour are semantic accents, not decorative alternatives to the primary color.
 
-The concept includes a blue-to-Sunset wave gradient. Reserve it for occasional key visuals or marketing artwork. Do not use it for ordinary buttons, text, cards, or page backgrounds, and do not invent fixed stops until an approved production asset defines them.
-
 ### Accessible color use
 
 - Use Deep Ocean text on Surf Blue, Aqua Wave, Sea Foam, Golden Hour, Sunset, and Coral fills. White Sand text does not have sufficient contrast on those colors for normal-sized text.
@@ -49,13 +60,13 @@ The concept includes a blue-to-Sunset wave gradient. Reserve it for occasional k
 Use **Montserrat** throughout the interface:
 
 - 800 ExtraBold: marketing headlines and the wordmark
-- 700 Bold: screen and card titles
+- 700 Bold: screen, row, and detail titles
 - 600 SemiBold: buttons and active navigation
 - 500 Medium: body copy and labels
 
 ### Data typeface
 
-Use **JetBrains Mono** for compact data where aligned character shapes improve scanning, such as player counts, times, seat references, tags, and configuration snippets. Do not use it for paragraphs or ordinary navigation.
+Use **JetBrains Mono** for compact data where aligned character shapes improve scanning, such as player and place counts, times, tags, and configuration snippets. Do not use it for paragraphs or ordinary navigation.
 
 ### UI scale
 
@@ -71,10 +82,10 @@ Bundle production webfonts with the application and serve them from embedded ass
 
 ## LANsurfer logo and lockup
 
-The concept establishes a Montserrat ExtraBold wordmark and tagline lockup, but explicitly identifies its signet as unfinished. Until an approved signet asset exists:
+Use a Montserrat ExtraBold wordmark and the canonical tagline for the LANsurfer lockup. No production signet has been approved. Until one exists:
 
 - use the `LANsurfer` wordmark as text;
-- do not treat a concept-page placeholder as the production logo or favicon;
+- do not promote a prototype or UI-kit placeholder to the production logo or favicon;
 - do not use the mascot as a substitute favicon or signet;
 - keep at least the height of the wordmark's capital `L` as clear space around a future lockup.
 
@@ -123,7 +134,7 @@ Dark mode is the primary event-floor presentation, and light mode is an equal su
 - Semantic meanings for Golden Hour, Sunset, and Coral remain identical across themes.
 - Theme choice is a presentation preference, not configurable instance branding.
 
-Prefer clear cards, restrained borders, generous grouping, and high information density that remains readable at a glance. Ocean styling must not obscure the primary action or current event context.
+Follow the UI kit's choice of dense rows, detail surfaces, forms, and overlays for each task. Use restrained borders, clear grouping, and high information density that remains readable at a glance. Ocean styling must not obscure the primary action or instance identity.
 
 ## Component semantics
 
@@ -132,7 +143,7 @@ Apply the visual language to the product's established terms:
 - Primary buttons such as **Create Game Request** and **Join** use Surf Blue with Deep Ocean text.
 - Destructive actions such as **Cancel Game Request** use Coral and require an explicit text label.
 - A scheduled start time may use Golden Hour.
-- A player count uses JetBrains Mono; the last available place may use Sunset, and a full request uses a muted treatment.
+- Player and available-place counts use JetBrains Mono; the last available place may use Sunset, and a full request uses a muted treatment.
 - Errors use Coral with a clear message. Informational feedback uses Aqua Wave or Surf Blue.
 - Badges and metadata stay visually quieter than titles and primary actions.
 
@@ -142,7 +153,7 @@ The same component hierarchy is used for in-browser live updates and may support
 
 Brand personality may appear in marketing headlines and occasional supporting copy, but users must not learn a surf vocabulary to operate LANsurfer. Do not rename Game Requests to Waves, Players to Crew, available places to Spots, or Join to Catch in navigation, controls, code, or persistence.
 
-The following ideas shown in the source concept are not adopted by this visual guide:
+The design system does not introduce or imply:
 
 - a separate Ready-to-Play state
 - a YAML theme file or full theme customization

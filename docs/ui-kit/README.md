@@ -22,10 +22,10 @@ Target design for login and Game Requests. Dark first, desktop 1440, English as 
 - Join changes the row to "Leave"; no toast. Toasts are only for errors and things outside the current viewport.
 - Vocabulary: **places** for available spots, **max players** for the field. "Seat" is not used.
 - Status: `open` / `closed` / `cancelled`; no waitlist, no mode, no voice field. This matches `internal/gamerequest` and `internal/query/gamerequest`.
+- Seat and voice-channel concepts are excluded because they do not exist in the approved 1.0 model; visual references must not add them implicitly.
 - Sunset (`#FF6B35`) is the semantic color for "last place" and "now", but is not a `--color-*` in the DaisyUI theme: consume it through the central brand definition.
 - Muted inks (`#8DA9BF`, `#C7DCEA`) are blends of White Sand and Deep Ocean, not standalone palette colors.
 
 ## Open
 
-- Seat and voice channel were part of the concept, but do not exist in the model. If they should be added, they need fields on the request or user.
 - According to BRANDING.md, light mode is equally supported, but it is not yet represented in the kit.
