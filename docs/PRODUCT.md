@@ -2,9 +2,11 @@
 
 ## 1. Product Summary
 
-LANsurfer is an open-source, self-hosted Looking-for-Group application for LAN parties, gaming events, and gaming communities.
+LANsurfer is an open-source, self-hosted Looking-for-Group application for LAN parties and gaming events.
 
-At a large LAN event, the problem is usually not that there are too few players in the building. The problem is discovering:
+The 1.0 product is deliberately focused on a simple operating model: **one LANsurfer installation serves one LAN party or gaming event context**. LANsurfer is not trying to be a shared multi-community online service in 1.0.
+
+At a LAN event, the problem is usually not that there are too few players in the building. The problem is discovering:
 
 > Who wants to play the same game as me right now?
 
@@ -13,11 +15,12 @@ LANsurfer should answer that question with as little friction as possible. It is
 ## 2. Core Product Flow
 
 1. A player signs in and chooses a public Game Nick.
-2. They join an Event or use Open Play.
-3. They follow Games they are interested in.
-4. They create a Game Request.
-5. Other relevant players see the request in the browser or through an enabled notification transport.
-6. Players join and then start playing together.
+2. They follow Games they are interested in.
+3. They create a Game Request.
+4. Other relevant players see the request in the browser or through an enabled notification transport.
+5. Players join and then start playing together.
+
+The LANsurfer installation itself provides the event context in 1.0. Players do not need to select or join an Event, Clan, Open Play space, or other parent context before using Game Requests.
 
 ## 3. Product Principles
 
@@ -29,9 +32,9 @@ Creating a request should take only a few seconds. Joining should require very l
 
 Players should understand the UI without learning LANsurfer-specific terminology.
 
-### Local and community focused
+### Event focused
 
-LANsurfer should work especially well when players already share a physical Event or gaming community.
+LANsurfer 1.0 should work especially well when the people using an installation already share the same physical LAN party or gaming event.
 
 ### Self-hosted and open
 
@@ -39,31 +42,30 @@ LAN parties and clubs should be able to operate their own open-source instance w
 
 ### Private by default
 
-Expose only the identity and Event information needed for players to find one another. Authentication-provider data is account data, not a public profile.
+Expose only the identity information needed for players to find one another. Authentication-provider data is account data, not a public profile.
 
 ### Maintainable
 
-Avoid features that require disproportionate technical complexity before they are proven useful.
+Avoid features and abstractions that require disproportionate technical complexity before they are proven useful. Do not prebuild generic context or shared-service infrastructure for hypothetical post-1.0 features.
 
 ## 4. Terminology
 
 LANsurfer branding may use surf-related visuals and marketing language, but product and domain terminology remains simple.
 
-Use:
+Use in 1.0:
 
 - Game
-- Event
-- Open Play
 - Game Request
 - Player
 - Game Nick
-- Clan
 - Join and Leave
 - Follow Game and My Games
 
-Do not use Wave, Crew, Spot, or Space as required product/domain concepts. “Crew” may remain in marketing copy such as the tagline.
+Do not use Wave, Crew, Spot, Space, or a generic Context as required product/domain concepts. “Crew” may remain in marketing copy such as the tagline.
 
-Use explicit domain names in code and the database, including `User`, `Identity`, `AuthSession`, `Game`, `GameAlias`, `GameExternalID`, `GameSubscription`, `Event`, `EventMembership`, `GameRequest`, `GameRequestMember`, `Clan`, `ClanMembership`, and notification delivery concepts. Surf metaphors are reserved for branding and marketing copy.
+Use explicit domain names in code and the database. Surf metaphors are reserved for branding and marketing copy.
+
+Event and Clan terminology may be introduced later only when concrete post-1.0 product work is scheduled.
 
 ## 5. Release Scope
 
@@ -79,25 +81,39 @@ The web-only prototype implemented:
 - server-side rendered templ/HTMX pages and SSE live updates
 - responsive UI feedback, embedded production assets, migrations, and Compose-based development deployment
 
+The prototype is an input to the 1.0 migration path. Prototype relationships and interfaces are not automatically part of the final 1.0 product model.
+
 ### Planned 1.0 scope
 
 The 1.0 release adds, in roadmap order:
 
+- a focused single-event operating model in which Game Requests are instance-wide rather than scoped through Event membership
 - public player profiles, per-Game handles, and a unique Game Nick
-- independent generic OIDC and Discord login identities with explicit account linking
-- Event membership, invitations, Event management, seats, history, and Open Play
-- Clans with ownership, invitations, rosters, and primary-Clan display
+- generic OIDC authentication as the supported external login path
 - optional administrator-controlled IGDB import and rich Game metadata
 - basic per-instance identity and an installable web shell
-- durable Web Push and per-Event Discord delivery without a persistent inbox
+- durable Web Push and one instance-level Discord delivery integration without a persistent inbox
 - production release artifacts, operational documentation, and a tested prototype-to-1.0 upgrade path
 
 The authoritative order and acceptance criteria are in the [roadmap](ROADMAP.md#progress). A planned feature is not implemented merely because it is described here.
 
-### Explicitly deferred beyond 1.0
+### Post-1.0 candidates — not scheduled
 
+These are possible directions, not commitments to a particular release:
+
+- multiple Events in one installation, Event membership, invitations, managers, seats, lifecycle/history, and Open Play
+- Game Requests scoped to an Event, Clan, or another concrete parent when a real use case justifies it
+- Clans, Clan ownership, rosters, invitations, and primary-Clan identity
+- Discord login, multiple authentication providers, and explicit account linking
+- per-Event notification settings or multiple Discord destinations
+
+Do not create generic abstractions in 1.0 merely to make these possibilities easier later.
+
+### Explicitly not planned
+
+- a generic polymorphic Game Request context/parent framework
 - persistent in-app notification inbox/history
-- generic reports, suspensions, and complex moderation beyond the narrow Clan administrator override
+- generic reports, suspensions, and complex moderation
 - Clan posts, chat, private Clan LFG, and custom roles
 - Game Request waitlists, ready checks, and comments
 - guest accounts, passkeys, and account self-deletion
@@ -115,22 +131,19 @@ LANsurfer owns a local User record. External identities authenticate that user b
 
 - Every player must choose a unique, case-insensitive Game Nick after first login. Existing prototype users complete this once after upgrade.
 - A profile can contain a short biography and multiple labeled handles per Game.
-- Any signed-in player can view another player's Game Nick, biography, primary and other Clans, followed Games, and Game handles.
+- Any signed-in player can view another player's Game Nick, biography, followed Games, and Game handles.
 - LANsurfer generates initials for profile imagery. Avatar uploads are not included.
-- Provider name and email are visible only to the account owner, not to other players, Event Managers, Clan owners, or global administrators through normal product UI.
+- Provider name and email are visible only to the account owner, not to other players or global administrators through normal product UI.
 
 ### Authentication
 
-- Generic OpenID Connect remains supported.
-- Discord OAuth2 authorization-code login is an independent provider with a provider-specific callback.
-- An account may be OIDC-only, Discord-only, or linked to both.
-- Linking and unlinking require an explicit signed-in account flow.
-- At least one identity must remain linked.
-- Never merge identities or accounts based only on email.
-- Authentication and linking flows are short-lived, one-use, and bound to their initiating browser, provider, operation, and signed-in user where applicable.
+- Generic OpenID Connect remains the supported external authentication mechanism for 1.0.
 - LANsurfer stores no local passwords and does not use browser JWT sessions.
+- Local user IDs, explicit revocable PostgreSQL sessions, and opaque cookies remain the account/session model.
+- Discord login, multiple linked providers, linking/unlinking flows, and other additional authentication providers are post-1.0 candidates.
+- Accounts must never be implicitly merged based only on email.
 
-Discord authentication and Discord notification delivery are separate integrations.
+Discord notification delivery is independent from authentication and does not imply Discord login.
 
 ## 7. Roles and Management Boundaries
 
@@ -139,48 +152,23 @@ Global application roles remain intentionally small:
 - `user`
 - `admin`
 
-A global administrator manages the catalog, instance identity, Open Play, and application-wide operations. Scheduled Events add participant and manager membership roles. Clans add owner and member roles. These scoped roles do not form a generic permission framework.
+A global administrator manages the Game catalog, instance identity, integrations, and application-wide operations.
 
-## 8. Events and Open Play
+1.0 does not add Event-scoped participant/manager roles, Clan roles, or a generic permission framework.
 
-An Event is an access, planning, and history boundary for Game Requests.
+## 8. Single-Event Instance Model
 
-### Event kinds and lifecycle
+A 1.0 LANsurfer installation represents one LAN party or gaming event context.
 
-- A `scheduled` Event has a name, public description, start, and end.
-- The instance has one singleton `open` Event, presented as **Open Play**.
-- Scheduled Event state is derived from time as upcoming, active, or ended; do not store an `is_current` switch.
-- Upcoming participants may create Game Requests only inside the Event's time window.
-- Ended Events are read-only history.
-- `GameRequest.EventID` remains required.
+- Players do not select an Event before using the application.
+- Players do not join an Event membership before seeing or creating Game Requests.
+- There is no Open Play fallback context in 1.0.
+- There is no Event switcher, Event invitation model, Event roster, seat assignment, Event lifecycle/history access model, or Event-scoped authorization in 1.0.
+- The configured instance name and welcome text may identify the LAN party or event being served.
 
-When scheduled Events overlap, use the player's remembered selection first, otherwise the active Event ending soonest, otherwise Open Play. Provide an Event switcher.
+The prototype contains Event data and Game Request/Event relationships. The 1.0 migration must preserve existing Game Requests while making Event selection/membership irrelevant to normal Game Request behavior. The exact persistence migration is an architectural decision; the product requirement is that a user never needs to understand or satisfy a hidden Event model to use 1.0.
 
-### Membership and visibility
-
-Event membership stores participant/manager role, notification setting, selection preference, and optional seat reference.
-
-- New users join Open Play with notifications muted by default and may leave, rejoin, mute, or unmute.
-- Participants may leave scheduled Events.
-- Any signed-in user may see a non-joined scheduled Event's name, schedule, and public description, but not its roster or Game Requests.
-- Event Managers edit their scheduled Event and manage its participants, managers, invitations, and notification integration.
-- Global administrators can access all Events and are the only managers of Open Play.
-
-### Invitations
-
-Event invitation links are named, reusable, revocable, and stored only as hashes. They may have an earlier expiry and use limit, and never remain valid after a scheduled Event ends.
-
-### Seats
-
-A scheduled Event membership may have an optional free-text seat reference. The participant or an Event Manager may edit it. It is case-insensitively unique within that Event and visible only to Event members. Venue maps and ticketing are not included.
-
-### Removal
-
-Removing a participant immediately denies Event access and begins a durable `removal_pending` cleanup. The Event module asks the Game Request module to cancel that player's owned open requests and remove their joined memberships. Cleanup is retried and audited before membership removal is finalized. Modules do not write one another's tables or share a cross-module transaction.
-
-### Prototype migration
-
-The 1.0 migration preserves all existing Game Requests. Every existing user joins every existing Event to preserve prototype access: global administrators become Event Managers and other users become participants. Every existing user also joins the new Open Play Event with notifications muted.
+Do not introduce a generic `context`, polymorphic parent, or similar abstraction solely to preserve future flexibility.
 
 ## 9. Game Catalog
 
@@ -202,7 +190,7 @@ With optional IGDB/Twitch credentials configured, they can:
 
 LANsurfer never auto-merges Games by name or silently overwrites local edits. If IGDB is unavailable or unconfigured, local catalog search/editing and Game Requests continue to work.
 
-IGDB attribution and operator setup/terms must be visible in the appropriate UI and documentation. Remote covers may load only from the approved `images.igdb.com` host with a fixed Content Security Policy allowlist, `Referrer-Policy: no-referrer`, and a local placeholder. Documentation must disclose that loading a remote cover exposes the viewer's IP address to IGDB. Local cover caching/proxying is deferred.
+IGDB attribution and operator setup/terms must be visible in the appropriate UI and documentation. Remote covers may load only from the approved `images.igdb.com` host with a fixed Content Security Policy allowlist, `Referrer-Policy: no-referrer`, and a local placeholder. Documentation must disclose that loading a remote cover exposes the viewer's IP address to IGDB. Local cover caching/proxying is not planned for 1.0.
 
 ## 10. Game Following and Handles
 
@@ -212,9 +200,11 @@ Game handles are separate profile data: a player may record multiple labeled han
 
 ## 11. Game Requests
 
-A Game Request means a player is looking for people to play a particular Game at an Event.
+A Game Request means a player is looking for people to play a particular Game on the LANsurfer instance.
 
-Core properties include Event, Game, creator, optional maximum players, start time, description, status, and timestamps. Initial statuses remain `open`, `closed`, and `cancelled`; fullness is derived from member count and maximum capacity.
+In 1.0, the installation itself provides the event context. A Game Request is not presented as belonging to a selectable Event, Clan, Open Play area, or generic parent context.
+
+Core properties include Game, creator, optional maximum players, start time, description, status, and timestamps. Initial statuses remain `open`, `closed`, and `cancelled`; fullness is derived from member count and maximum capacity.
 
 ### Behavior
 
@@ -224,8 +214,7 @@ Core properties include Event, Game, creator, optional maximum players, start ti
 - The creator closes or cancels their request instead of leaving as an ordinary member; ownership transfer is not included.
 - A player cannot join the same request twice.
 - Concurrent joins must never overfill a limited request.
-- Access and creation obey Event membership and lifecycle rules.
-- An ended Event exposes requests only as read-only history to its members.
+- Any signed-in player may discover and use current Game Requests according to the normal application rules; Event membership is not an access prerequisite.
 
 The primary UI should show Game, player count, start time, short description, and the Join action without forcing the player through a detail page.
 
@@ -239,32 +228,35 @@ The 1.0 durable notification system has Web Push and Discord transports. Externa
 
 - A player may register multiple labeled browser/device subscriptions.
 - Permission is requested only after feature detection and an explicit user gesture.
-- Global and per-Event toggles control delivery.
-- A new-request push is sent only when the recipient follows the Game, joined the unmuted Event, and is not the creator.
-- Payloads contain only the Game, Event/Open Play, time, and a deep link. They omit creator identity, description, roster, and member data.
+- A global toggle controls delivery; 1.0 does not add per-Event notification settings.
+- A new-request push is sent only when the recipient follows the Game, push is enabled, and the recipient is not the creator.
+- Payloads contain only the Game, time, and a deep link. The configured instance display name may provide event context. They omit creator identity, description, roster, and member data.
 
 ### Discord delivery
 
-- One Discord destination may be configured per Event through Discord's `webhook.incoming` OAuth flow; users do not paste webhooks.
-- Event Managers configure scheduled Events; global administrators configure Open Play.
+- One Discord destination may be configured for the LANsurfer instance through Discord's `webhook.incoming` OAuth flow; users do not paste webhooks.
+- Global administrators configure the destination.
 - LANsurfer creates one message per Game Request and edits it as membership or status changes.
 - Messages contain outbound links only. Discord commands, bot/gateway connections, and Discord-side writes are excluded.
 - User content is sanitized and mentions are disabled.
 - Stored webhook credentials are encrypted and never displayed back to an operator.
 
-## 13. Clans
+Per-Event Discord destinations and Event-scoped notification preferences are post-1.0 candidates.
 
-A Clan is a persistent group players can use for identity and discovery.
+## 13. Post-1.0 Social and Multi-Event Features
 
-- A player may join multiple Clans but own at most one.
-- Roles are owner and member only.
-- Owners manage the Clan, members, and invitations and must transfer ownership before leaving.
-- Invitations are named, reusable, revocable, hashed, use-limited, and expire within 30 days.
-- A player can choose one primary Clan; its tag appears beside their Game Nick and all memberships appear on their profile.
-- Any signed-in user can browse Clan pages and rosters.
-- Global administrators have audited safety controls to edit/archive a Clan, remove members, revoke invites, and transfer ownership.
+Multi-Event operation and persistent social/community structures are intentionally outside the 1.0 release.
 
-Clans do not include posts, chat, private Clan LFG, or custom roles.
+Possible future work may include:
+
+- scheduled Events and Open Play
+- Event membership, managers, invitations, rosters, seats, lifecycle/history, and access boundaries
+- Event-scoped Game Requests
+- Clans with ownership, membership, invitations, rosters, and primary-Clan display
+- Clan-aware Game Request discovery or scoping when a concrete need exists
+- multiple authentication providers and explicit provider linking
+
+These features must not shape 1.0 through speculative generic abstractions. If they become scheduled, their concrete domain model should be designed against the actual use case at that time.
 
 ## 14. Instance Identity and Branding
 
@@ -274,7 +266,9 @@ The product is called **LANsurfer**. Its tagline is:
 
 The fixed visual system uses an ocean-blue base, restrained warm semantic accents, Montserrat typography, JetBrains Mono for compact data, equal dark/light presentations, and a guide-like otter mascot. See the [Branding guide](BRANDING.md).
 
-For 1.0, a global administrator may configure a per-instance display name, welcome text, contact link, logo, and application icon. “Powered by LANsurfer” remains visible. This is instance identity, not a theme editor: colors, typography, accessibility behavior, and component semantics remain fixed.
+For 1.0, a global administrator may configure a per-instance display name, welcome text, contact link, logo, and application icon. These fields can identify the specific LAN party or gaming event served by the installation. “Powered by LANsurfer” remains visible.
+
+This is instance identity, not a theme editor: colors, typography, accessibility behavior, and component semantics remain fixed.
 
 Uploaded identity assets are validated PNG files stored in PostgreSQL:
 
@@ -302,15 +296,19 @@ TLS and the reverse proxy remain operator responsibilities. The project document
 
 ## 16. 1.0 Success Criteria
 
-LANsurfer 1.0 succeeds when operators can reliably install, configure, back up, restore, and upgrade it, and signed-in players can:
+LANsurfer 1.0 succeeds when an operator can reliably run one self-hosted LAN/event instance and players can use it without any shared-service or multi-Event concepts.
+
+Operators can reliably install, configure, back up, restore, and upgrade LANsurfer, and signed-in players can:
 
 1. maintain a public Game Nick and useful profile without exposing provider data
-2. authenticate through supported independent providers and explicitly link them
-3. discover and join Events, Open Play, Clans, Games, and Game Requests within their access boundaries
+2. authenticate through the supported OIDC setup
+3. discover Games and instance-wide Game Requests without joining or selecting an Event/Clan/context
 4. create and join capacity-safe Game Requests from desktop and mobile browsers
 5. receive only the durable notifications they have enabled and are eligible to receive
 6. continue core workflows when optional external providers are unavailable
 
+A 1.0 release must not require Event switching, Open Play, Clans, Discord login, multi-provider account linking, or a generic Game Request context framework.
+
 ## 17. Product Decisions Left to Implementation
 
-Layout, copy, pagination, route shape, and validation helpers are implementation details. Follow the [approval rules](../AGENTS.md#constraints-requiring-approval) for changes to technology, security, module boundaries, deployment, domain terminology, or approved 1.0 scope.
+Layout, copy, pagination, route shape, migration mechanics, and validation helpers are implementation details. Follow the [approval rules](../AGENTS.md#constraints-requiring-approval) for changes to technology, security, module boundaries, deployment, domain terminology, or approved 1.0 scope.
