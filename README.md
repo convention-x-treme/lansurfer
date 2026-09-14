@@ -104,7 +104,7 @@ LANsurfer uses generic OpenID Connect discovery and server-side PostgreSQL sessi
 ```sh
 LANSURFER_BASE_URL=http://localhost:8080
 LANSURFER_OIDC_ISSUER=https://auth.convention-x-treme.de/realms/local-dev
-LANSURFER_OIDC_CLIENT_ID=lansurfer
+LANSURFER_OIDC_CLIENT_ID=lansurver
 # Leave empty for the local public PKCE client.
 LANSURFER_OIDC_CLIENT_SECRET=
 ```
