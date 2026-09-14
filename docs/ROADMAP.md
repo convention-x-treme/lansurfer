@@ -1,20 +1,32 @@
 # LANsurfer Roadmap
 
-This roadmap carries LANsurfer from its completed web prototype to the 1.0 self-hosting release. Milestones describe product outcomes and architectural boundaries; implementation details remain governed by [PRODUCT.md](PRODUCT.md), [ARCHITECTURE.md](ARCHITECTURE.md), and [AGENTS.md](../AGENTS.md).
+This roadmap carries LANsurfer from its completed web prototype to a focused 1.0 self-hosting release. Milestones describe product outcomes and architectural boundaries; implementation details remain governed by [PRODUCT.md](PRODUCT.md), [ARCHITECTURE.md](ARCHITECTURE.md), and [AGENTS.md](../AGENTS.md).
 
 Do not implement later milestones for completeness. Finish and verify the current milestone before advancing the progress marker.
+
+## 1.0 direction
+
+LANsurfer 1.0 is optimized for a simple deployment model: **one LANsurfer installation serves one LAN party or gaming event context**.
+
+For 1.0:
+
+- Game Requests are instance-wide product objects. Creating, discovering, and joining a request must not require selecting or joining an Event, Clan, or other parent context.
+- Do not introduce a generic `context`, polymorphic parent, or similar abstraction merely to prepare for future Event/Clan scoping.
+- Multi-Event participation, Open Play, Event membership/access boundaries, Clans, and other persistent shared-service/community features are outside the 1.0 scope.
+- Generic OIDC remains the supported external authentication path for 1.0. Additional login providers and account linking are deferred until there is a concrete post-1.0 need.
+- Features that directly improve a self-hosted single-event installation remain in scope: player identity, local/rich Game catalog, instance identity, optional outbound notifications, installability, release artifacts, upgrades, backup, and operations.
+
+Post-1.0 items are intentionally **not scheduled to a version**. They are collected below so they do not influence 1.0 implementation prematurely.
 
 ## Progress
 
 - [x] Prototype milestones 0–8 — foundation, authentication, catalog, Events, Game Requests, realtime updates, UX, and hardening
-- [ ] **Current:** Milestone 9 — Player Profiles and Multi-Provider Identity
-- [ ] Milestone 10 — Event Participation and Open Play
-- [ ] Milestone 11 — Clans and Social Discovery
-- [ ] Milestone 12 — IGDB Catalog Import and Rich Game Metadata
-- [ ] Milestone 13 — Instance Identity and Installable Web Shell
-- [ ] Milestone 14 — Durable Notifications, Web Push, and Discord Delivery
-- [ ] Milestone 15 — Production Distribution and Operations
-- [ ] Milestone 16 — 1.0 RC and Stable Release
+- [ ] **Current:** Milestone 9 — Single-Event Model and Player Identity
+- [ ] Milestone 10 — IGDB Catalog Import and Rich Game Metadata
+- [ ] Milestone 11 — Instance Identity and Installable Web Shell
+- [ ] Milestone 12 — Durable Notifications, Web Push, and Discord Delivery
+- [ ] Milestone 13 — Production Distribution and Operations
+- [ ] Milestone 14 — 1.0 RC and Stable Release
 
 There are no date or real-event pilot gates. Each milestone advances when its acceptance criteria and relevant tests are complete.
 
@@ -29,117 +41,46 @@ The prototype established:
 - SSE-driven live updates with polling fallback
 - embedded production assets, responsive desktop/mobile UX, security controls, integration coverage, and self-hosting foundations
 
-The prototype schema and behavior are an input to the 1.0 migration path, not a promise that every prototype interface remains unchanged.
+The prototype schema and behavior are an input to the 1.0 migration path, not a promise that every prototype interface or relationship remains part of the 1.0 product model.
 
-# Milestone 9 — Player Profiles and Multi-Provider Identity
+# Milestone 9 — Single-Event Model and Player Identity
 
 ## Goal
 
-Give every player a stable LANsurfer identity while retaining provider-neutral authentication and allowing Discord as an independent login provider.
+Align the prototype with the focused 1.0 deployment model and give players a stable public identity that is useful during one LAN party or gaming event.
 
 ## Expected outcomes
+
+### Single-event request model
+
+- Treat the LANsurfer installation itself as the 1.0 event context.
+- Let signed-in players discover, create, join, leave, close, and cancel Game Requests without selecting or joining an Event, Open Play, Clan, or other parent context.
+- Treat Game Requests as instance-wide product objects in 1.0 behavior and UI.
+- Preserve existing prototype Game Requests during migration while removing any user-visible requirement to select an Event or satisfy Event membership/lifecycle rules.
+- Keep migration and persistence details explicit in the architecture; do not add a generic context abstraction for future flexibility.
+- Do not add Event switching, Event invitations, seats, Event rosters, Event-scoped access control, Open Play, or Event lifecycle/history workflows in 1.0.
 
 ### Player profile
 
 - Require a unique, case-insensitive public **Game Nick** after first login; upgraded prototype users choose one once.
 - Allow a short biography.
 - Allow multiple labeled player handles per Game.
-- Show Game Nick, biography, primary and other Clans, followed Games, and Game handles on a profile.
+- Show Game Nick, biography, followed Games, and Game handles on a profile.
 - Let any signed-in user view player profiles.
 - Generate initials for the profile image; do not add avatar uploads.
-- Keep provider identity name and email visible only to the account owner. Event Managers, Clan owners, and global administrators do not receive provider identity details through normal product UI.
+- Keep provider identity name and email visible only to the account owner. Global administrators do not receive provider identity details through normal product UI.
 
-### Authentication providers
+### Authentication scope
 
-- Keep generic OIDC authentication.
-- Add Discord OAuth2 authorization-code authentication as a separate provider with its own callback.
-- Support OIDC-only, Discord-only, and accounts linked to both.
-- Link and unlink providers only through an explicit signed-in account flow.
-- Require at least one linked identity at all times.
-- Never merge accounts based only on email.
-- Persist short-lived, one-use authentication/link flow state that binds the initiating browser, provider, operation, and signed-in user where applicable.
+- Keep generic OIDC authentication provider-neutral and supported for 1.0.
+- Keep local user IDs, revocable PostgreSQL sessions, opaque cookies, and the existing no-local-password model.
+- Do not add Discord login, multiple linked providers, provider linking/unlinking flows, or email-based account merging in 1.0.
 
 ## Acceptance
 
-A new or upgraded user cannot enter the application until they have chosen a valid Game Nick. Profiles and per-Game handles are usable without exposing provider data. OIDC and Discord accounts can be used independently or explicitly linked without implicit email merging.
+A new or upgraded user can enter the application after choosing a valid Game Nick, use profiles and per-Game handles without exposing provider data, and use the full Game Request flow without selecting or joining any Event/Clan/context. Existing prototype requests survive the migration path.
 
-# Milestone 10 — Event Participation and Open Play
-
-## Goal
-
-Make Events explicit participation and access boundaries while retaining an always-available place for informal play.
-
-## Expected outcomes
-
-### Event model and lifecycle
-
-- Add explicit Event kinds: `scheduled` and the singleton `open` Event.
-- Call the open Event **Open Play** in the UI. “Space” is not product or domain terminology.
-- Derive scheduled Event state from time as upcoming, active, or ended; do not store an `is_current` flag.
-- Keep `GameRequest.EventID` required.
-- Allow participants to plan requests for an upcoming Event only within its time window.
-- Make ended Events read-only history.
-- When scheduled Events overlap, select the remembered Event first; otherwise select the active Event ending soonest; otherwise select Open Play.
-- Provide an Event switcher.
-
-### Membership and access
-
-- Store Event membership with participant/manager role, notification setting, selection preference, and optional seat reference.
-- Join new users to Open Play with notifications muted by default; allow them to leave, rejoin, mute, and unmute.
-- Allow participants to leave scheduled Events themselves.
-- Allow any signed-in user to view only calendar information for Events they have not joined: name, schedule, and public description. Hide rosters and Game Requests.
-- Give Event Managers control of their scheduled Event, its participants, managers, and invitations.
-- Give global administrators access to every Event and sole management of Open Play.
-
-### Invitations and seats
-
-- Use named, reusable, revocable invitation links stored as hashes.
-- Support an earlier expiry and use limit; an invitation never remains valid after its scheduled Event ends.
-- Let participants or Event Managers set an optional free-text seat reference.
-- Enforce case-insensitive seat-reference uniqueness within a scheduled Event.
-- Show seats only to Event members. Do not add venue maps or ticketing.
-
-### Removal workflow
-
-- Removing a member immediately denies Event access and starts a durable `removal_pending` workflow.
-- The Event module durably asks the Game Request module to cancel open requests owned by the removed user and remove their joined memberships.
-- Retry failures, record an audit trail, and finalize removal only when cleanup completes.
-- Preserve module ownership: no cross-module table writes and no shared cross-module transaction.
-
-### Prototype migration
-
-- Preserve all existing Game Requests and their Event associations.
-- Add every existing user to every existing Event so existing global access is not silently lost; global administrators become Event Managers and other users become participants.
-- Create Open Play and join every existing user with notifications muted.
-
-## Acceptance
-
-Event access, request visibility, invitation use, seats, lifecycle rules, overlap selection, and concurrent removal cleanup behave consistently and are covered by domain and PostgreSQL tests.
-
-# Milestone 11 — Clans and Social Discovery
-
-## Goal
-
-Let players represent persistent social groups without turning LANsurfer into a chat or content platform.
-
-## Expected outcomes
-
-- Add a separate `clan` business module.
-- Allow multiple Clan memberships but only one Clan owned by a player.
-- Use only owner and member roles.
-- Let the owner edit the Clan, manage members and invitations, and transfer ownership.
-- Require ownership transfer before an owner can leave.
-- Use named, reusable, revocable, hashed invitations with use limits and a maximum 30-day expiry.
-- Let a player select one primary Clan and show its tag beside their Game Nick; list all memberships on the player profile.
-- Let all signed-in users browse Clan pages and rosters.
-- Give global administrators audited safety controls to edit or archive a Clan, remove members, revoke invites, or transfer ownership.
-- Do not add Clan posts, chat, private Clan LFG, or custom roles.
-
-## Acceptance
-
-Clan ownership and primary-Clan invariants hold under concurrent changes, invitations cannot be recovered from storage, and ordinary players can discover Clans without receiving moderation powers or private content features.
-
-# Milestone 12 — IGDB Catalog Import and Rich Game Metadata
+# Milestone 10 — IGDB Catalog Import and Rich Game Metadata
 
 ## Goal
 
@@ -173,11 +114,11 @@ Do not add another catalog provider or a local cover proxy/cache in this milesto
 
 An administrator can safely preview and control imports and refreshes. Locally managed data is never silently overwritten or merged, and disabling or losing IGDB does not break core workflows.
 
-# Milestone 13 — Instance Identity and Installable Web Shell
+# Milestone 11 — Instance Identity and Installable Web Shell
 
 ## Goal
 
-Let an operator identify their LANsurfer installation while retaining the product's fixed, accessible visual system and making the site installable as a web app.
+Let an operator identify their LANsurfer installation for the specific LAN party or event it serves, while retaining the product's fixed, accessible visual system and making the site installable as a web app.
 
 ## Expected outcomes
 
@@ -195,11 +136,11 @@ Let an operator identify their LANsurfer installation while retaining the produc
 
 An administrator can safely configure identity fields and valid images, browsers can install the site with stable manifest identity, and customization cannot replace the fixed design system or obscure LANsurfer attribution.
 
-# Milestone 14 — Durable Notifications, Web Push, and Discord Delivery
+# Milestone 12 — Durable Notifications, Web Push, and Discord Delivery
 
 ## Goal
 
-Deliver relevant Game Request changes beyond the open browser without coupling external transport failures to core user actions.
+Deliver relevant Game Request changes beyond the open browser without coupling external transport failures to core user actions and without requiring multi-Event concepts.
 
 ## Expected outcomes
 
@@ -218,15 +159,15 @@ Deliver relevant Game Request changes beyond the open browser without coupling e
 - Use VAPID and a small adapter around `github.com/marknefedov/go-webpush/v2`; adding this direct dependency is approved for the concrete Web Push need.
 - Support multiple labeled browser/device subscriptions per user.
 - Require feature detection and an explicit user gesture before requesting permission.
-- Provide global and per-Event push toggles.
-- Send a new-request push only when its Game is followed, the recipient joined the unmuted Event, and the recipient is not the creator.
-- Limit push content to Game, Event/Open Play, time, and a deep link. Do not include creator identity, description, roster, or other member information.
+- Provide a global push toggle. Do not add per-Event settings in 1.0.
+- Send a new-request push only when its Game is followed, push is enabled for the recipient, and the recipient is not the creator.
+- Limit push content to Game, time, and a deep link. The configured instance display name may be used as presentation context. Do not include creator identity, description, roster, or other member information.
 
 ### Discord delivery
 
-- Keep Discord delivery separate from Discord login.
-- Configure one Discord destination per Event through Discord's `webhook.incoming` OAuth flow; do not accept pasted webhooks or add a bot/gateway connection.
-- Let Event Managers configure their scheduled Events and global administrators configure Open Play.
+- Keep Discord delivery independent from authentication; Discord login is not required for this milestone.
+- Configure at most one Discord destination for the LANsurfer instance through Discord's `webhook.incoming` OAuth flow; do not accept pasted webhooks or add a bot/gateway connection.
+- Let global administrators configure the destination.
 - Encrypt webhook IDs and tokens at rest with AES-GCM using an operator-provided 32-byte data-encryption key; never reveal a stored secret.
 - Create one Discord message per Game Request with `wait=true`, store its message ID, and edit it when membership or status changes.
 - Provide outbound links only; Discord commands and Discord-side writes are out of scope.
@@ -237,11 +178,11 @@ Deliver relevant Game Request changes beyond the open browser without coupling e
 
 Outbox persistence survives restarts, retries are bounded and observable, push targeting and payload privacy are tested, Discord messages remain synchronized, and external outages never prevent Game Request actions.
 
-# Milestone 15 — Production Distribution and Operations
+# Milestone 13 — Production Distribution and Operations
 
 ## Goal
 
-Make LANsurfer reproducibly installable, upgradable, backed up, and diagnosable by self-hosting operators.
+Make LANsurfer reproducibly installable, upgradable, backed up, and diagnosable by self-hosting operators running a single-event instance.
 
 ## Expected outcomes
 
@@ -253,25 +194,25 @@ Make LANsurfer reproducibly installable, upgradable, backed up, and diagnosable 
 - Provide a production Compose example with a pinned LANsurfer image, PostgreSQL not exposed on the host, and only the application and database as required services.
 - Keep TLS and reverse-proxy operation as operator responsibilities and document safe example configuration.
 - Document every configuration value, administrator bootstrap, backup/restore, encryption and VAPID key backup, upgrades, and rollback limitations.
-- Keep migrations forward-only and test upgrading a populated prototype schema to the 1.0 schema.
+- Keep migrations forward-only and test upgrading a populated prototype schema to the 1.0 single-event model.
 - Document the supported upgrade path for each release. Do not promise arbitrary direct upgrades across all 1.x releases.
 
 ## Acceptance
 
 Release artifacts are reproducible and verifiable, the documented Compose deployment starts from an empty host, backup/restore is exercised, and a populated prototype installation upgrades without data loss.
 
-# Milestone 16 — 1.0 RC and Stable Release
+# Milestone 14 — 1.0 RC and Stable Release
 
 ## Goal
 
-Freeze the approved 1.0 feature set, validate the complete supported deployment and upgrade paths, and publish a stable release.
+Freeze the focused 1.0 feature set, validate the complete supported deployment and upgrade paths, and publish a stable release.
 
 ## Expected outcomes
 
-- Publish `v1.0.0-rc.1` with complete migration, operations, security, privacy, and provider documentation.
+- Publish `v1.0.0-rc.1` with complete migration, operations, security, privacy, catalog-provider, and notification-provider documentation.
 - After the release candidate, accept only release blockers, security fixes, migration fixes, and documentation corrections.
-- Exercise OIDC-only, Discord-only, and linked-account authentication.
-- Exercise Event membership/removal, Clan ownership, catalog-provider failure, notification retries, backup/restore, and prototype-to-1.0 upgrade paths.
+- Exercise generic OIDC authentication, Game Nick onboarding, player profiles, the instance-wide Game Request flow, catalog-provider failure, notification retries, backup/restore, and prototype-to-1.0 upgrade paths.
+- Verify that no 1.0 workflow requires Event selection/membership, Open Play, Clans, or another Game Request parent context.
 - Verify accessibility, responsive behavior, Content Security Policy, secret handling, rate limits, and production asset embedding.
 - Publish `v1.0.0` when release-candidate blockers are resolved.
 - Update [SECURITY.md](../SECURITY.md) from its pre-stable policy to the supported 1.0 policy as part of the release, not during planning.
@@ -280,12 +221,56 @@ Freeze the approved 1.0 feature set, validate the complete supported deployment 
 
 All earlier milestone acceptance criteria remain green in a release build, documentation matches observable behavior, signed artifacts are available for both supported architectures, and no release blockers remain.
 
-# Explicitly deferred beyond 1.0
+# Post-1.0 candidates — not scheduled
 
-The following must not influence current implementation unless the roadmap is explicitly changed:
+These items are useful possible directions, but they are **not assigned to a release and must not shape 1.0 abstractions or implementation unless the roadmap is explicitly changed**.
 
+## Multi-Event participation and contextual Game Requests
+
+Possible future work includes:
+
+- multiple scheduled Events in one LANsurfer installation
+- a persistent Open Play context
+- Event membership with participant/manager roles
+- Event invitations, rosters, seats, notification preferences, and access boundaries
+- upcoming/active/ended lifecycle and read-only history
+- Event selection and overlap behavior
+- context-scoped Game Requests
+- per-context Discord destinations and push settings
+- durable removal/cleanup workflows across Event and Game Request ownership boundaries
+
+If this work is scheduled later, design the concrete Event/Request relationship for that need. Do not prebuild a generic parent/context framework in 1.0.
+
+## Clans and persistent social discovery
+
+Possible future work includes:
+
+- Clan ownership and membership
+- Clan invitations and rosters
+- a primary Clan/tag on player profiles
+- administrator safety controls
+- Clan-aware discovery or Game Request scoping if a concrete use case is approved
+
+Clan posts, chat, private Clan LFG, and custom roles remain out of scope unless separately approved.
+
+## Multi-provider identity
+
+Possible future work includes:
+
+- Discord OAuth2 login as an independent provider
+- OIDC-only, Discord-only, and linked accounts
+- explicit provider linking and unlinking
+- one-use, browser-bound authentication/link flow state
+
+Never merge accounts based only on email. Discord notification delivery does not imply Discord login.
+
+# Explicitly not planned
+
+The following have no planned release and should not influence current implementation unless the roadmap is explicitly changed:
+
+- a generic polymorphic `context`/parent abstraction for Game Requests
 - a persistent in-app notification inbox
-- generic reports, suspensions, or a complex moderation system beyond the narrow audited Clan administrator override
+- generic reports, suspensions, or a complex moderation system
 - Clan posts, chat, private Clan LFG, or custom roles
 - Game Request waitlists, ready checks, or comments
 - guest accounts, passkeys, or account self-deletion
