@@ -8,6 +8,8 @@
 /coverage.out
 *.test
 /node_modules/
+/.playwright-cli/
+/output/playwright/
 __debug_bin*
 
 # Editors and operating systems
