@@ -2,7 +2,7 @@
 
 ## 1. Overview
 
-LANsurfer is a self-hosted web application for finding people to play games with at LAN parties, gaming events, and gaming communities.
+LANsurfer is a self-hosted web application for finding people to play games with at LAN parties and gaming events.
 
 The application is designed as a **modular monolith** with server-side rendering and minimal infrastructure.
 
@@ -43,7 +43,7 @@ PostgreSQL
 
 No Redis, queue, separate frontend runtime, or object storage is required.
 
-This document records both the implemented prototype baseline and the approved 1.0 target. The [roadmap progress marker](ROADMAP.md#progress) determines what is implemented now; target descriptions do not authorize work ahead of the current milestone.
+This document records both the implemented prototype baseline and the approved 1.0 target. The [roadmap development model](ROADMAP.md#development-model) defines which 1.0 tracks may proceed in parallel and where integration dependencies apply. Target descriptions do not authorize post-1.0 work.
 
 ---
 
@@ -152,12 +152,11 @@ Event Publisher
 
 For the prototype and single-instance 1.0 release, the SSE event broker may run in memory. Durable external notifications use a PostgreSQL outbox and do not make SSE durable.
 
-The event publishing abstraction should remain replaceable so PostgreSQL `LISTEN/NOTIFY` can be used later if multiple LANsurfer application instances are deployed.
+The event publishing abstraction should remain replaceable so PostgreSQL `LISTEN/NOTIFY` can be used later if multiple LANsurfer application instances are ever approved. Multi-instance/high-availability operation is not part of 1.0.
 
-WebSockets are not part of the initial architecture.
-Introducing them requires approval and a meaningful bidirectional use case.
+WebSockets are not part of the initial architecture. Introducing them requires approval and a meaningful bidirectional use case.
 
-### Durable external notifications (planned for Milestone 14)
+### Durable external notifications (Track E)
 
 Game Request writes and durable notification intent commit together in the Game Request module's PostgreSQL transaction. A background worker claims outbox work and calls narrow transport adapters owned by the notification module.
 
@@ -171,6 +170,8 @@ notification worker
   ├── Web Push adapter
   └── Discord webhook adapter
 ```
+
+Track E may implement the worker model, retries, delivery persistence, and transport adapters in parallel with Track A. The final outbox hookup waits for Track A to stabilize Game Request write paths and transaction boundaries.
 
 Persist delivery status, retry schedule, and external message references. External failure never fails or reverses the originating Game Request action. Honor `Retry-After` for HTTP 429 responses; use capped exponential backoff with jitter for network and 5xx failures; mark permanent or exhausted failures for authorized manual retry.
 
@@ -194,12 +195,13 @@ event
 gamerequest
 ```
 
-The approved 1.0 target adds these modules when their roadmap milestones begin:
+The approved 1.0 target adds:
 
 ```text
-clan
 notification
 ```
+
+The prototype `event` module may remain while Track A preserves/migrates legacy Event-linked data, but normal 1.0 Game Request behavior must not depend on Event selection, membership, lifecycle, or authorization. `clan` is post-1.0 and must not be introduced until that work is explicitly scheduled.
 
 Supporting technical areas:
 
@@ -210,7 +212,7 @@ platform
 app
 ```
 
-A likely initial structure is:
+A likely structure is:
 
 ```text
 cmd/
@@ -225,10 +227,9 @@ internal/
 ├── auth/
 ├── user/
 ├── game/
-├── event/
+├── event/         # prototype/migration compatibility only for 1.0
 ├── gamerequest/
-├── clan/          # planned for Milestone 11
-├── notification/  # planned for Milestone 14
+├── notification/  # Track E
 │
 ├── query/
 │
@@ -323,12 +324,9 @@ Owns:
 - game subscriptions
 - admin game catalog behavior
 
-### `event`
+### `event` (prototype compatibility)
 
-Owns:
-
-- LAN/gaming events
-- Event membership, scoped roles, invitations, seats, and removal workflow state
+Owns the existing prototype Event data while it remains in the schema. Track A decides the concrete forward migration needed to preserve prototype Game Requests while removing Event requirements from normal 1.0 behavior. Do not expand Event into new 1.0 membership, invitation, seat, lifecycle, or access-control features.
 
 ### `gamerequest`
 
@@ -340,20 +338,12 @@ Owns:
 - capacity rules
 - transactional notification outbox records describing Game Request changes
 
-### `clan` (planned)
+### `notification` (Track E)
 
 Owns:
 
-- Clans, ownership, and membership
-- Clan invitations
-- primary-Clan selection and audited administrator overrides
-
-### `notification` (planned)
-
-Owns:
-
-- Web Push subscriptions and preferences
-- per-Event Discord destinations
+- Web Push subscriptions and global preferences
+- the single instance-level Discord destination
 - delivery attempts, retries, and external message references
 
 The notification module consumes durable Game Request outbox work. It does not own or write Game Requests.
@@ -362,7 +352,7 @@ A module must not directly update another module's tables merely because they ar
 
 ---
 
-## 8. Cross-Module Communication
+## 8. Cross-Module and Cross-Track Communication
 
 When a module needs another module's behavior, prefer a small explicit interface.
 
@@ -392,7 +382,16 @@ or:
 gamerequest -> postgres generated queries
 ```
 
-The planned Event-member removal workflow is deliberately asynchronous across module boundaries. The Event module records `removal_pending`, denies access, and durably requests cleanup. The Game Request module cancels owned open requests and removes joined memberships, then acknowledges completion. Retries and an audit trail make partial failure visible; neither module writes the other's tables or relies on a shared transaction.
+Parallel roadmap tracks follow the same principle. Agree on the smallest stable contract and let each track own its implementation.
+
+The main 1.0 cross-track contracts are:
+
+- **Track A → Track E:** Track A owns Game Request write transactions; Track E consumes durable outbox records. Track E may develop workers/transports first, but final outbox persistence belongs inside Track A's transaction boundary.
+- **Track B internal:** OIDC and Discord identities both resolve to the same local User. Game Nick onboarding is provider-independent and happens after authentication when required.
+- **Track D → Track E:** Track D owns service-worker registration/lifecycle. Track E owns push permission, subscriptions, push handling, and payload behavior. Backend Web Push work does not need to wait for Track D.
+- **Track F:** release automation can proceed independently; only final migration/backup/restore validation waits for the persistent schema from the other tracks to settle.
+
+Do not solve these contracts by sharing persistence implementations or creating generic cross-track frameworks.
 
 ---
 
@@ -467,7 +466,7 @@ Examples:
 
 ---
 
-## 11. GameRequest Concurrency
+## 11. GameRequest and Identity Concurrency
 
 Joining a GameRequest is a concurrency-sensitive operation.
 
@@ -483,7 +482,9 @@ without protection.
 
 The exact SQL/locking strategy is intentionally left to implementation, but must be covered by PostgreSQL integration tests.
 
-The 1.0 Event and Clan additions introduce comparable invariants. Enforce case-insensitive Game Nick uniqueness, case-insensitive seat uniqueness within a scheduled Event, singleton Open Play, one owned Clan per player, one primary Clan membership, invitation use limits, and ownership transfer rules with appropriate constraints, transactions, and locks. Time-derived Event state must not rely on a mutable `is_current` column.
+The 1.0 identity work also requires case-insensitive Game Nick uniqueness to hold under concurrent onboarding/profile changes. Enforce this with an appropriate PostgreSQL constraint/index and test it at the persistence boundary.
+
+1.0 does not add Event-seat, Open Play, Clan ownership, Clan membership, or other post-1.0 invariants. Do not preserve those concepts through speculative constraints or abstractions.
 
 ---
 
@@ -527,6 +528,8 @@ docker compose up -d
 
 An updated binary should bring the schema forward automatically.
 
+Tracks may add independent forward migrations in parallel. Keep migrations narrowly scoped to the owning module/track and avoid modifying another track's tables except through an explicitly approved migration contract. Track F's final prototype-to-1.0 upgrade validation runs only after the integrated migration sequence is stable.
+
 ---
 
 ## 13. Authentication Architecture
@@ -538,7 +541,7 @@ LANsurfer User
       |
       +-- Identity: OIDC provider / subject
       |
-      +-- Identity: Discord provider / subject (planned for Milestone 9)
+      +-- Identity: Discord provider / subject (Track B)
 ```
 
 The implemented prototype mechanism is generic OIDC. The 1.0 target also supports Discord OAuth2 authorization-code login as an independent provider while retaining OIDC.
@@ -551,7 +554,9 @@ Do not automatically merge identities based solely on email addresses.
 
 Linking and unlinking are explicit authenticated account operations, and an account must retain at least one identity. Persist short-lived, one-use authentication/link flow records bound to the initiating browser, provider, operation, and current user where applicable. Keep the existing OIDC callback and use a provider-specific Discord callback.
 
-Provider names and email addresses are private account data. Normal player, Event Manager, Clan owner, and global administrator views must not expose them to anyone except the account owner.
+Both authentication providers resolve to the same local User/session model. After authentication, onboarding checks such as required Game Nick selection are provider-independent; provider-specific handlers must not duplicate user-profile business rules.
+
+Provider names and email addresses are private account data. Normal player and global administrator views must not expose them to anyone except the account owner.
 
 ---
 
@@ -600,10 +605,7 @@ LANSURFER_IGDB_CLIENT_ID
 LANSURFER_IGDB_CLIENT_SECRET
 ```
 
-`LANSURFER_OIDC_CLIENT_SECRET` is optional for public clients using PKCE and is
-required when the provider configures LANsurfer as a confidential client.
-Opaque browser session tokens are generated randomly and stored only as hashes;
-they do not require a separate application session secret.
+`LANSURFER_OIDC_CLIENT_SECRET` is optional for public clients using PKCE and is required when the provider configures LANsurfer as a confidential client. Opaque browser session tokens are generated randomly and stored only as hashes; they do not require a separate application session secret.
 
 Instance display data and uploaded identity assets are product state stored in PostgreSQL. Provider credentials, the 32-byte data-encryption key, and VAPID private key remain operator configuration and must not be stored as ordinary product settings.
 
@@ -611,15 +613,17 @@ Do not introduce a config file format unless a concrete requirement appears.
 
 ---
 
-## 16. Branding Architecture
+## 16. Branding and Installable Web Shell Architecture
 
 Keep the product name, tagline, semantic colors, and asset paths in one small centralized value/object near the web composition layer. Templates must consume it rather than repeat constants. Tailwind/DaisyUI theme definitions and CSS custom properties must map to the same semantic color roles in both dark and light modes.
 
 Bundle approved LANsurfer logos, mascot artwork, and Montserrat/JetBrains Mono webfonts with the production assets. They must be served from the embedded application; do not add a runtime font or branding CDN. The wordmark remains text until an approved production signet is available.
 
-The prototype branding is fixed application data. The 1.0 target adds PostgreSQL-backed instance display name, welcome text, contact link, logo, and icon, controlled by global administrators. Uploaded PNG assets are validated at the documented byte and pixel limits and stored in PostgreSQL. Colors, typography, accessibility behavior, component semantics, and visible “Powered by LANsurfer” attribution remain fixed.
+The prototype branding is fixed application data. Track D adds PostgreSQL-backed instance display name, welcome text, contact link, logo, and icon, controlled by global administrators. Uploaded PNG assets are validated at the documented byte and pixel limits and stored in PostgreSQL. Colors, typography, accessibility behavior, component semantics, and visible “Powered by LANsurfer” attribution remain fixed.
 
 Serve a dynamic manifest with a stable application ID and start URL. Omit icon entries when no valid icon is configured and use a generated monogram in the regular UI. A minimal service worker supports installation and later Web Push, not offline application guarantees.
+
+Track D owns service-worker registration, lifecycle, and update behavior. Track E attaches Web Push behavior to that contract rather than creating a competing service worker or independent registration path.
 
 See [Product branding](PRODUCT.md#14-instance-identity-and-branding) for the 1.0 customization boundary and the [visual branding guide](BRANDING.md) for canonical design tokens and usage rules.
 
@@ -659,11 +663,13 @@ Do not couple the primary `games` table to specific providers.
 
 Use a generic `game_external_ids` relation.
 
-The planned 1.0 implementation supplies an optional IGDB adapter authenticated with operator-provided Twitch credentials. Administrator actions search and preview provider results, then either create a local Game or explicitly attach an external ID. Refresh is also previewed and applies only administrator-selected fields. Never merge by name or silently overwrite local edits.
+Track C supplies an optional IGDB adapter authenticated with operator-provided Twitch credentials. Administrator actions search and preview provider results, then either create a local Game or explicitly attach an external ID. Refresh is also previewed and applies only administrator-selected fields. Never merge by name or silently overwrite local edits.
 
 The local model may store a summary, first release date, platform names, and one cover reference. Catalog and Game Request workflows must continue when IGDB is unconfigured or unavailable.
 
 IGDB covers are the only approved remote content exception. Allow images only from `images.igdb.com` in the Content Security Policy, set `Referrer-Policy: no-referrer`, and render a local placeholder on failure. Loading the cover still discloses the viewer's IP address to IGDB and must be documented. Do not generalize this into a remote-asset system or cover proxy/cache.
+
+Track C may implement the catalog/provider work independently. Rendering new metadata inside Game Request read models/cards may be integrated after Track A stabilizes the affected read-model/template surface.
 
 ---
 
@@ -707,8 +713,12 @@ Likely examples:
 - SSE connection handling
 - toast behavior
 - dialog helpers
+- installability/service-worker registration
+- Web Push permission/subscription progressive enhancement
 
 Do not implement domain/business decisions in TypeScript.
+
+When Tracks D and E both need browser changes, Track D owns the service-worker shell/lifecycle and Track E owns push-specific behavior. Keep the integration contract narrow to avoid parallel branches replacing the same browser infrastructure.
 
 ---
 
@@ -760,11 +770,11 @@ Provide:
 
 Additional observability is deferred.
 
-For 1.0, publish Linux amd64/arm64 binaries and a matching multi-architecture GHCR image using native Go tooling and pinned official Docker/GitHub Actions. Release outputs include checksums, SBOMs, and provenance attestations. Stable releases receive exact, major.minor, major, and `latest` tags; prereleases receive exact tags only.
+Track F may build release automation and operator tooling in parallel with feature tracks. For 1.0, publish Linux amd64/arm64 binaries and a matching multi-architecture GHCR image using native Go tooling and pinned official Docker/GitHub Actions. Release outputs include checksums, SBOMs, and provenance attestations. Stable releases receive exact, major.minor, major, and `latest` tags; prereleases receive exact tags only.
 
 The production Compose example pins the LANsurfer image, does not publish PostgreSQL to the host, and retains only the application and database as required services. TLS and reverse-proxy operation are documented operator responsibilities.
 
-Migrations remain forward-only. Test the populated prototype-to-1.0 upgrade, document backup/restore and key backup, and state the supported path for each release rather than promising arbitrary direct upgrades across all 1.x versions.
+Migrations remain forward-only. Final prototype-to-1.0 upgrade, backup/restore, and key-backup validation belong to the Integration Gate after persistent migrations from the feature tracks have settled. Document the supported path for each release rather than promising arbitrary direct upgrades across all 1.x versions.
 
 ---
 
@@ -773,6 +783,7 @@ Migrations remain forward-only. Test the populated prototype-to-1.0 upgrade, doc
 Important baseline controls:
 
 - OIDC state validation
+- Discord OAuth2 state validation
 - PKCE when applicable
 - secure session cookies
 - CSRF protection for browser writes
@@ -781,12 +792,12 @@ Important baseline controls:
 - security headers
 - careful trusted-proxy configuration
 - one-use, browser-bound authentication/link flow state
-- strict Event/Clan authorization and privacy-aware read models
+- provider identity privacy
 - fixed CSP allowlisting for the IGDB cover exception
 - encrypted Discord webhook credentials with key rotation/backup guidance
 - push payload data minimization
 
-Do not invent cryptographic constructions. Use established protocol behavior, Go standard-library AES-GCM for approved credential encryption, and the approved Web Push library behind narrow adapters. Secrets and raw invitation/session tokens must never be logged or stored in recoverable plaintext.
+Do not invent cryptographic constructions. Use established protocol behavior, Go standard-library AES-GCM for approved credential encryption, and the approved Web Push library behind narrow adapters. Secrets and raw session/authentication-flow tokens must never be logged or stored in recoverable plaintext.
 
 ---
 
@@ -800,8 +811,12 @@ A dependency rule tool such as `depguard` may be considered if it remains simple
 
 Architecture documentation alone should not be the only defense against accidental boundary erosion.
 
+Parallel-track development makes these boundaries more important: contracts may be shared, implementations and persistence ownership may not. CI should continue to catch boundary violations regardless of which track introduced them.
+
 ---
 
 ## 23. Architectural Decision Policy
 
 Follow the [approval rules](../AGENTS.md#constraints-requiring-approval). Document approved architectural changes here or in a short ADR, including the reason for the decision. Small internal implementation choices do not need an ADR.
+
+The roadmap's parallel tracks are planning boundaries, not new architectural layers. Do not create track packages, track-specific frameworks, or abstractions whose only purpose is coordinating project management.

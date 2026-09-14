@@ -2,7 +2,7 @@
 
 Thanks for helping make LANsurfer useful and maintainable.
 
-Before changing code, read [AGENTS.md](AGENTS.md). Consult the current [roadmap milestone](docs/ROADMAP.md#progress) and the sections of [the architecture](docs/ARCHITECTURE.md) and [product definition](docs/PRODUCT.md) relevant to your task.
+Before changing code, read [AGENTS.md](AGENTS.md). Consult the relevant [roadmap track and declared dependencies](docs/ROADMAP.md), plus the sections of [the architecture](docs/ARCHITECTURE.md) and [product definition](docs/PRODUCT.md) relevant to your task.
 
 ## Development setup
 
@@ -50,6 +50,7 @@ available workflows.
 ## Changes
 
 - Keep pull requests focused on one concrete problem.
+- Work only in 1.0 tracks whose declared dependencies are satisfied; do not implement blocked integration work or unscheduled post-1.0 candidates for completeness.
 - Add tests where regressions would matter.
 - Do not add dependencies for hypothetical future flexibility.
 - Update documentation when public behavior, configuration, or architecture changes.

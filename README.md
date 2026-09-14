@@ -64,7 +64,7 @@ Once the group is ready, it's time to launch the game.
 
 An otter with a headset and a surfboard feels right at home here: social, at ease in the water, and ready for the next game.
 
-The otter brings a little personality to LANsurfer's ocean-inspired identity. In the application, the wording stays familiar: games, players, events, and joining a game.
+The otter brings a little personality to LANsurfer's ocean-inspired identity. In the application, the wording stays familiar: games, players, and joining a game.
 
 The [visual branding guide](docs/BRANDING.md) defines the palette, typography, mascot usage, dark/light interface direction, and the limited 1.0 instance-identity boundary.
 
@@ -72,9 +72,9 @@ The [visual branding guide](docs/BRANDING.md) defines the palette, typography, m
 
 The **web-only prototype milestones are complete**. The implemented application includes generic OIDC login, Event and Game administration, Game subscriptions, Game Requests, concurrency-safe joining, and live SSE updates on desktop and mobile browsers.
 
-Planning is now focused on the 1.0 self-hosting release. [Milestone 9](docs/ROADMAP.md#milestone-9--player-profiles-and-multi-provider-identity) is current; the remaining milestones add Event participation and Open Play, Clans, optional IGDB import, instance identity, durable Web Push/Discord delivery, and production distribution. These are planned features and are not yet implemented.
+Planning is now focused on a simpler 1.0 self-hosting model: **one LANsurfer installation serves one LAN party or gaming event context**. The remaining 1.0 work is organized as parallel development tracks for the single-event core, player identity and authentication, IGDB catalog enrichment, instance identity/PWA, durable notifications, and production distribution/operations. Multi-Event participation, Open Play, and Clans are post-1.0 candidates rather than required 1.0 features.
 
-The [roadmap](docs/ROADMAP.md#progress) tracks progress and acceptance criteria. The [product definition](docs/PRODUCT.md#5-release-scope) distinguishes the implemented prototype from the approved 1.0 scope and explicit post-1.0 deferrals. The design and database may still change before the stable release.
+The [roadmap](docs/ROADMAP.md) tracks the parallel development model, dependencies, integration gate, and acceptance criteria. The [product definition](docs/PRODUCT.md#5-release-scope) distinguishes the implemented prototype from the approved 1.0 scope and post-1.0 candidates. The design and database may still change before the stable release.
 
 ## 🐳 Run the current prototype
 
