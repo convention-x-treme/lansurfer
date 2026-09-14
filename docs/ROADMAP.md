@@ -13,7 +13,7 @@ For 1.0:
 - Game Requests are instance-wide product objects. Creating, discovering, and joining a request must not require selecting or joining an Event, Clan, or other parent context.
 - Do not introduce a generic `context`, polymorphic parent, or similar abstraction merely to prepare for future Event/Clan scoping.
 - Multi-Event participation, Open Play, Event membership/access boundaries, Clans, and other persistent shared-service/community features are outside the 1.0 scope.
-- Generic OIDC remains the supported external authentication path for 1.0. Additional login providers and account linking are deferred until there is a concrete post-1.0 need.
+- Generic OIDC and Discord OAuth2 are independent supported login paths for 1.0 so an event can onboard players who do not already have an account with the operator's identity provider. Accounts may explicitly link both providers.
 - Features that directly improve a self-hosted single-event installation remain in scope: player identity, local/rich Game catalog, instance identity, optional outbound notifications, installability, release artifacts, upgrades, backup, and operations.
 
 Post-1.0 items are intentionally **not scheduled to a version**. They are collected below so they do not influence 1.0 implementation prematurely.
@@ -21,7 +21,7 @@ Post-1.0 items are intentionally **not scheduled to a version**. They are collec
 ## Progress
 
 - [x] Prototype milestones 0–8 — foundation, authentication, catalog, Events, Game Requests, realtime updates, UX, and hardening
-- [ ] **Current:** Milestone 9 — Single-Event Model and Player Identity
+- [ ] **Current:** Milestone 9 — Single-Event Model, Player Identity, and Discord Login
 - [ ] Milestone 10 — IGDB Catalog Import and Rich Game Metadata
 - [ ] Milestone 11 — Instance Identity and Installable Web Shell
 - [ ] Milestone 12 — Durable Notifications, Web Push, and Discord Delivery
@@ -43,11 +43,11 @@ The prototype established:
 
 The prototype schema and behavior are an input to the 1.0 migration path, not a promise that every prototype interface or relationship remains part of the 1.0 product model.
 
-# Milestone 9 — Single-Event Model and Player Identity
+# Milestone 9 — Single-Event Model, Player Identity, and Discord Login
 
 ## Goal
 
-Align the prototype with the focused 1.0 deployment model and give players a stable public identity that is useful during one LAN party or gaming event.
+Align the prototype with the focused 1.0 deployment model, give players a stable public identity, and make onboarding practical even when attendees do not have an account with the event operator's identity provider.
 
 ## Expected outcomes
 
@@ -70,15 +70,20 @@ Align the prototype with the focused 1.0 deployment model and give players a sta
 - Generate initials for the profile image; do not add avatar uploads.
 - Keep provider identity name and email visible only to the account owner. Global administrators do not receive provider identity details through normal product UI.
 
-### Authentication scope
+### Authentication providers
 
-- Keep generic OIDC authentication provider-neutral and supported for 1.0.
+- Keep generic OIDC authentication provider-neutral.
+- Add Discord OAuth2 authorization-code authentication as a separate provider with its own callback.
+- Support OIDC-only, Discord-only, and accounts explicitly linked to both.
+- Link and unlink providers only through an explicit signed-in account flow.
+- Require at least one linked identity at all times.
+- Never merge accounts based only on email.
+- Persist short-lived, one-use authentication/link flow state that binds the initiating browser, provider, operation, and signed-in user where applicable.
 - Keep local user IDs, revocable PostgreSQL sessions, opaque cookies, and the existing no-local-password model.
-- Do not add Discord login, multiple linked providers, provider linking/unlinking flows, or email-based account merging in 1.0.
 
 ## Acceptance
 
-A new or upgraded user can enter the application after choosing a valid Game Nick, use profiles and per-Game handles without exposing provider data, and use the full Game Request flow without selecting or joining any Event/Clan/context. Existing prototype requests survive the migration path.
+A new or upgraded user can enter the application after choosing a valid Game Nick, use profiles and per-Game handles without exposing provider data, and use the full Game Request flow without selecting or joining any Event/Clan/context. Players can authenticate with either OIDC or Discord, explicitly link both when desired, and are never implicitly merged by email. Existing prototype requests survive the migration path.
 
 # Milestone 10 — IGDB Catalog Import and Rich Game Metadata
 
@@ -165,7 +170,7 @@ Deliver relevant Game Request changes beyond the open browser without coupling e
 
 ### Discord delivery
 
-- Keep Discord delivery independent from authentication; Discord login is not required for this milestone.
+- Keep Discord notification delivery separate from Discord login even though both are supported in 1.0.
 - Configure at most one Discord destination for the LANsurfer instance through Discord's `webhook.incoming` OAuth flow; do not accept pasted webhooks or add a bot/gateway connection.
 - Let global administrators configure the destination.
 - Encrypt webhook IDs and tokens at rest with AES-GCM using an operator-provided 32-byte data-encryption key; never reveal a stored secret.
@@ -209,9 +214,10 @@ Freeze the focused 1.0 feature set, validate the complete supported deployment a
 
 ## Expected outcomes
 
-- Publish `v1.0.0-rc.1` with complete migration, operations, security, privacy, catalog-provider, and notification-provider documentation.
+- Publish `v1.0.0-rc.1` with complete migration, operations, security, privacy, authentication-provider, catalog-provider, and notification-provider documentation.
 - After the release candidate, accept only release blockers, security fixes, migration fixes, and documentation corrections.
-- Exercise generic OIDC authentication, Game Nick onboarding, player profiles, the instance-wide Game Request flow, catalog-provider failure, notification retries, backup/restore, and prototype-to-1.0 upgrade paths.
+- Exercise OIDC-only, Discord-only, and explicitly linked-account authentication.
+- Exercise Game Nick onboarding, player profiles, the instance-wide Game Request flow, catalog-provider failure, notification retries, backup/restore, and prototype-to-1.0 upgrade paths.
 - Verify that no 1.0 workflow requires Event selection/membership, Open Play, Clans, or another Game Request parent context.
 - Verify accessibility, responsive behavior, Content Security Policy, secret handling, rate limits, and production asset embedding.
 - Publish `v1.0.0` when release-candidate blockers are resolved.
@@ -252,17 +258,6 @@ Possible future work includes:
 - Clan-aware discovery or Game Request scoping if a concrete use case is approved
 
 Clan posts, chat, private Clan LFG, and custom roles remain out of scope unless separately approved.
-
-## Multi-provider identity
-
-Possible future work includes:
-
-- Discord OAuth2 login as an independent provider
-- OIDC-only, Discord-only, and linked accounts
-- explicit provider linking and unlinking
-- one-use, browser-bound authentication/link flow state
-
-Never merge accounts based only on email. Discord notification delivery does not imply Discord login.
 
 # Explicitly not planned
 
