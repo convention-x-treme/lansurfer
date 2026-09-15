@@ -194,9 +194,64 @@
     padding: 0.75rem 1rem;
   }
 
-  .detail-layout {
+  .detail-page {
+    padding: 1.125rem 1rem 1.5rem;
+  }
+
+  .detail-shell {
     display: grid;
-    gap: 1rem;
+    gap: 1.125rem;
+    align-items: start;
+  }
+
+  .detail-main,
+  .detail-rail {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 1.125rem;
+  }
+
+  .detail-card,
+  .detail-hero {
+    display: flex;
+    flex-direction: column;
+    gap: 0.875rem;
+    border: 1px solid var(--color-base-300);
+    border-radius: var(--radius-box);
+    background: var(--color-base-200);
+    padding: 1.375rem;
+  }
+
+  .detail-hero {
+    gap: 0;
+  }
+
+  .detail-hero-last {
+    border-color: color-mix(in srgb, var(--brand-sunset) 70%, var(--color-base-300));
+  }
+
+  .detail-card-accent {
+    border-color: color-mix(in srgb, var(--color-warning) 40%, var(--color-base-300));
+  }
+
+  .member-time {
+    width: 6.5rem;
+    flex: none;
+    text-align: right;
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    white-space: nowrap;
+    color: color-mix(in srgb, var(--color-base-content) 60%, transparent);
+  }
+
+  .avatar-placeholder-member {
+    background: var(--brand-harbour);
+    color: var(--brand-sea-foam);
+  }
+
+  .detail-rail .btn {
+    justify-content: center;
   }
 
   .request-shell {
@@ -323,6 +378,16 @@
     color: var(--brand-sunset);
   }
 
+  .status-chip-open {
+    background: color-mix(in srgb, var(--color-primary) 18%, transparent);
+    color: var(--color-accent);
+  }
+
+  .status-chip-cancelled {
+    background: color-mix(in srgb, var(--color-error) 16%, transparent);
+    color: var(--color-error);
+  }
+
   .status-chip-joined {
     background: color-mix(in srgb, var(--color-secondary) 16%, transparent);
     color: var(--color-accent);
@@ -417,8 +482,8 @@
   }
 
   .game-abbreviation-lg {
-    width: 4.125rem;
-    height: 4.125rem;
+    width: 4rem;
+    height: 4rem;
     border-radius: var(--radius-field);
     font-size: 1.125rem;
   }
@@ -515,8 +580,7 @@
 
   .rail-panel,
   .surface-panel,
-  .composer-panel,
-  .request-hero {
+  .composer-panel {
     border: 1px solid var(--color-base-300);
     border-radius: var(--radius-box);
     background: var(--color-base-200);
@@ -571,17 +635,6 @@
     display: grid;
   }
 
-  .request-hero {
-    display: flex;
-    align-items: flex-start;
-    gap: 1.125rem;
-    padding: 1.5rem;
-  }
-
-  .request-hero-last {
-    border-color: color-mix(in srgb, var(--brand-sunset) 70%, var(--color-base-300));
-  }
-
   .member-row,
   .last-place-row {
     display: flex;
@@ -590,7 +643,7 @@
     gap: 0.75rem;
     border-radius: var(--radius-field);
     background: var(--color-base-100);
-    padding: 0.625rem 0.875rem;
+    padding: 0.75rem 0.875rem;
   }
 
   .last-place-row {
@@ -665,7 +718,8 @@
     background: color-mix(in srgb, var(--color-primary) 5%, var(--color-base-100));
   }
 
-  .count-open {
+  .count-open,
+  .section-label-accent {
     color: var(--color-secondary);
   }
 
@@ -682,9 +736,21 @@
   }
 
   [data-theme="lansurfer-light"] .count-open,
+  [data-theme="lansurfer-light"] .section-label-accent,
   [data-theme="lansurfer-light"] .status-chip-joined,
-  [data-theme="lansurfer-light"] .game-abbreviation {
+  [data-theme="lansurfer-light"] .status-chip-open,
+  [data-theme="lansurfer-light"] .game-abbreviation,
+  [data-theme="lansurfer-light"] .avatar-placeholder-member {
     color: var(--color-primary);
+  }
+
+  [data-theme="lansurfer-light"] .avatar-placeholder-member {
+    background: var(--color-base-300);
+  }
+
+  /* On White Sand the row fill matches the page, so the rows need an edge. */
+  [data-theme="lansurfer-light"] .member-row {
+    border: 1px solid var(--color-base-300);
   }
 
   [data-theme="lansurfer-light"] .count-hot,
@@ -719,14 +785,15 @@
 }
 
 @media (min-width: 64rem) {
-  .request-main {
+  .request-main,
+  .detail-page {
     padding-inline: 1.5rem;
   }
 }
 
 @media (min-width: 80rem) {
-  .detail-layout {
-    grid-template-columns: minmax(0, 1fr) 18.5rem;
+  .detail-shell {
+    grid-template-columns: minmax(0, 1fr) 20rem;
   }
 
   .request-shell {
@@ -794,14 +861,6 @@
   .request-empty img {
     width: 5rem;
     height: 5rem;
-  }
-
-  .request-hero {
-    flex-wrap: wrap;
-  }
-
-  .request-hero > :last-child {
-    width: 100%;
   }
 
   .member-row,

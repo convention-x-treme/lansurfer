@@ -133,7 +133,7 @@ func (h *GameRequests) RefreshView(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "refresh game request", http.StatusInternalServerError)
 		return
 	}
-	render(w, r, http.StatusOK, pages.GameRequestDetailContent(request, account.ID))
+	render(w, r, http.StatusOK, pages.GameRequestDetailContent(request, account.ID, true))
 }
 
 func (h *GameRequests) Join(w http.ResponseWriter, r *http.Request) {

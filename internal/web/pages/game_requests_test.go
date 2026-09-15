@@ -5,6 +5,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/convention-x-treme/lansurfer/internal/gamerequest"
 	requestquery "github.com/convention-x-treme/lansurfer/internal/query/gamerequest"
@@ -85,5 +86,41 @@ func TestGameRequestRowGuardsAgainstDoubleSubmission(t *testing.T) {
 				t.Errorf("%s row is missing %s", action, guard)
 			}
 		}
+	}
+}
+
+// The detail refresh replaces the request card in place, so the "updated" stamp
+// in the top bar has to travel with it out of band. Activity is newest first.
+func TestGameRequestDetailRefreshCarriesStampAndNewestActivityFirst(t *testing.T) {
+	now := time.Now()
+	request := requestquery.Request{
+		ID: "request-1", GameName: "Warcraft III", CreatorID: "host-1",
+		Status: gamerequest.StatusOpen, MemberCount: 2, CreatedAt: now.Add(-10 * time.Minute),
+		Members: []requestquery.Member{
+			{ID: "host-1", DisplayName: "Otter", JoinedAt: now.Add(-10 * time.Minute)},
+			{ID: "user-2", DisplayName: "Alex", JoinedAt: now.Add(-2 * time.Minute)},
+		},
+	}
+
+	var refreshed bytes.Buffer
+	if err := GameRequestDetailContent(request, "user-9", true).Render(context.Background(), &refreshed); err != nil {
+		t.Fatalf("render refreshed detail: %v", err)
+	}
+	body := refreshed.String()
+	for _, want := range []string{`hx-swap-oob="true"`, `id="detail-stamp"`, "updated "} {
+		if !strings.Contains(body, want) {
+			t.Errorf("refreshed detail does not contain %q", want)
+		}
+	}
+	if strings.Index(body, "Alex joined") > strings.Index(body, "Otter created the request") {
+		t.Error("activity does not list the newest entry first")
+	}
+
+	var initial bytes.Buffer
+	if err := GameRequestDetailContent(request, "user-9", false).Render(context.Background(), &initial); err != nil {
+		t.Fatalf("render initial detail: %v", err)
+	}
+	if strings.Contains(initial.String(), `hx-swap-oob`) {
+		t.Error("initial detail render must not carry an out-of-band swap")
 	}
 }

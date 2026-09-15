@@ -184,6 +184,22 @@ function showActionError(message: string): void {
   window.setTimeout(() => notice.remove(), 8000);
 }
 
+// The kit's square hero button copies the Game Request link. Feedback matters:
+// a silent copy leaves no way to tell whether the click did anything.
+document.addEventListener("click", (event) => {
+  const trigger = (event.target as HTMLElement | null)?.closest<HTMLButtonElement>("[data-copy-link]");
+  if (!trigger) return;
+  void navigator.clipboard?.writeText(window.location.href).then(() => {
+    const previous = trigger.title;
+    trigger.title = "Link copied";
+    trigger.classList.add("btn-primary");
+    window.setTimeout(() => {
+      trigger.title = previous;
+      trigger.classList.remove("btn-primary");
+    }, 1500);
+  });
+});
+
 document.addEventListener("htmx:responseError", () => showActionError("That action could not be completed. Please try again."));
 document.addEventListener("htmx:sendError", () => showActionError("The server could not be reached. Please try again."));
 document.addEventListener("htmx:timeout", () => showActionError("The server took too long to respond. Please try again."));

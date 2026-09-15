@@ -246,94 +246,147 @@ templ StartChoice(value, label, selected string) {
 templ GameRequestDetail(brand branding.Brand, navigation components.NavigationState, request requestquery.Request, viewerID, message, notice string) {
 	@components.Layout(brand, request.GameName, navigation) {
 		<header class="app-topbar">
-			<a class="link text-primary no-underline" href="/game-requests">← Game Requests</a>
-			<span class="data-text text-xs text-base-content/55">created { clockLabel(request.CreatedAt) }
-				if request.EventName != "" {
-					<span>· { request.EventName }</span>
-				}
-			</span>
+			<div class="flex flex-wrap items-center gap-x-4 gap-y-1">
+				<a class="link count-open text-sm font-semibold no-underline" href="/game-requests">← Game Requests</a>
+				<span class="data-text text-xs text-base-content/60">{ "created " + clockLabel(request.CreatedAt) }</span>
+			</div>
+			@DetailStamp()
 		</header>
-		<section class="app-page py-6 sm:py-8">
+		<div class="detail-page">
 			if notice != "" {
 				<div role="status" class="alert alert-info mb-4"><span>{ notice }</span></div>
 			}
 			if message != "" {
 				<div role="alert" class="alert alert-error mb-4"><span>{ message }</span></div>
 			}
-			@GameRequestDetailContent(request, viewerID)
-		</section>
+			@GameRequestDetailContent(request, viewerID, false)
+		</div>
 	}
 }
 
-templ GameRequestDetailContent(request requestquery.Request, viewerID string) {
-	<div id="game-request-detail" data-game-request-detail data-game-request-id={ request.ID } class="detail-layout">
-		<div class="grid min-w-0 content-start gap-4">
+// DetailStamp is swapped out of band by the detail refresh so the top bar keeps
+// pace with the counters, player list, and activity below it.
+templ DetailStamp() {
+	<p id="detail-stamp" class="data-text text-xs text-base-content/60">{ "updated " + updatedLabel() }</p>
+}
+
+templ GameRequestDetailContent(request requestquery.Request, viewerID string, refresh bool) {
+	if refresh {
+		<div hx-swap-oob="true">
+			@DetailStamp()
+		</div>
+	}
+	<div id="game-request-detail" data-game-request-detail data-game-request-id={ request.ID } class="detail-shell">
+		<div class="detail-main">
 			<article class={ requestHeroClass(request) }>
-				<div class="game-abbreviation game-abbreviation-lg" aria-hidden="true">{ gameAbbreviation(request.GameName) }</div>
-				<div class="min-w-0 flex-1">
-					<div class="flex flex-wrap items-center gap-2"><h1 class="text-3xl font-bold">{ request.GameName }</h1><span class="badge badge-info badge-sm">{ strings.ToUpper(string(request.Status)) }</span>
-						if lastPlace(request) {
-							<span class="badge badge-sm border-0 bg-[var(--brand-sunset)] text-[var(--brand-deep-ocean)]">Last place</span>
-						}
+				<div class="flex flex-wrap items-start gap-4">
+					<span class="game-abbreviation game-abbreviation-lg" aria-hidden="true">{ gameAbbreviation(request.GameName) }</span>
+					<div class="min-w-[12rem] flex-1">
+						<div class="flex flex-wrap items-center gap-2.5">
+							<h1 class="text-[1.875rem] font-black leading-tight tracking-tight">{ request.GameName }</h1>
+							<span class={ detailStatusChipClass(request) }>{ strings.ToUpper(string(request.Status)) }</span>
+							if lastPlace(request) {
+								<span class="status-chip status-chip-last">Last place</span>
+							}
+						</div>
+						<p class="data-text mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-base-content/60 [&>span]:whitespace-nowrap">
+							<strong class={ detailCountClass(request) }>{ playerCount(request) }</strong>
+							<span>players</span>
+							<span aria-hidden="true">·</span>
+							<span>{ startLongLabel(request.StartsAt) }</span>
+							if request.EventName != "" {
+								<span aria-hidden="true">·</span>
+								<span>{ request.EventName }</span>
+							}
+						</p>
 					</div>
-					<p class="data-text mt-3 flex flex-wrap gap-x-3 gap-y-1 text-sm text-base-content/65"><strong class={ playerCountClass(request) }>{ playerCount(request) }</strong><span>players</span><span>·</span><span>{ startLongLabel(request.StartsAt) }</span>
-						if request.EventName != "" {
-							<span>·</span><span>{ request.EventName }</span>
+					<div class="flex w-full flex-wrap items-center gap-2.5 sm:w-auto">
+						if request.Status == gamerequest.StatusOpen && request.CreatorID != viewerID && request.ViewerJoined {
+							<form method="post" action={ "/game-requests/" + request.ID + "/leave" }>@components.CSRFInput()<button class="btn btn-outline" type="submit">Leave</button></form>
+						} else if request.Status == gamerequest.StatusOpen && request.CreatorID != viewerID && !requestFull(request) {
+							<form method="post" action={ "/game-requests/" + request.ID + "/join" }>@components.CSRFInput()<button class={ detailJoinButtonClass(request) } type="submit">Join</button></form>
 						}
-					</p>
-					<div class="mt-4 max-w-[70ch]">
-						<p class="section-label">Description</p>
-						if request.Description == "" {
-							<p class="mt-2 text-base-content/50">No description.</p>
-						} else {
-							<p class="mt-2 whitespace-pre-wrap text-base-content/80">{ request.Description }</p>
-						}
+						<button class="btn btn-outline" type="button" disabled title="Following a game is available in the game catalog">Follow game</button>
+						<button class="btn btn-outline btn-square" type="button" data-copy-link aria-label="Copy link to this Game Request" title="Copy link">
+							<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="h-4 w-4" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.5 1.5"></path><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.5-1.5"></path></svg>
+						</button>
 					</div>
 				</div>
-				<div class="flex shrink-0 items-center gap-2">
-					if request.Status == gamerequest.StatusOpen && request.CreatorID != viewerID && request.ViewerJoined {
-						<form method="post" action={ "/game-requests/" + request.ID + "/leave" }>@components.CSRFInput()<button class="btn btn-outline" type="submit">Leave</button></form>
-					} else if request.Status == gamerequest.StatusOpen && request.CreatorID != viewerID && !requestFull(request) {
-						<form method="post" action={ "/game-requests/" + request.ID + "/join" }>@components.CSRFInput()<button class={ detailJoinButtonClass(request) } type="submit">Join</button></form>
+				<div class="mt-4 border-t border-base-300 pt-4">
+					<p class="section-label section-label-accent">Description</p>
+					if request.Description == "" {
+						<p class="mt-2 text-base-content/50">No description.</p>
+					} else {
+						<p class="mt-2 max-w-[48rem] whitespace-pre-wrap leading-relaxed text-base-content/80">{ request.Description }</p>
 					}
 				</div>
 			</article>
-			<section class="surface-panel" aria-labelledby="players-title">
-				<div class="flex flex-wrap items-baseline justify-between gap-3"><h2 id="players-title" class="text-xl font-bold">Players</h2><p class="data-text text-xs text-base-content/60">{ placesSummary(request) }</p></div>
-				<ul class="mt-4 grid gap-3">
+			<section class="detail-card flex-1" aria-labelledby="players-title">
+				<div class="flex flex-wrap items-baseline justify-between gap-3">
+					<h2 id="players-title" class="text-[1.0625rem] font-semibold">Players</h2>
+					<p class="data-text text-xs text-base-content/60">{ placesSummary(request) }</p>
+				</div>
+				<ul class="grid gap-3">
 					for _, member := range request.Members {
-						<li class="member-row"><span class="avatar-placeholder" aria-hidden="true">{ components.ViewerInitial(member.DisplayName) }</span><span class="min-w-0 flex-1 truncate font-semibold">{ member.DisplayName }</span>
+						<li class="member-row">
+							<span class={ memberAvatarClass(member, request) } aria-hidden="true">{ components.ViewerInitial(member.DisplayName) }</span>
+							<span class="min-w-0 flex-1 truncate font-semibold">{ member.DisplayName }</span>
 							if member.ID == request.CreatorID {
-								<span class="badge badge-warning badge-sm">Host</span>
+								<span class="status-chip status-chip-host">Host</span>
 							}
-							<time class="data-text text-xs text-base-content/55" datetime={ member.JoinedAt.Format(time.RFC3339) }>{ memberTimeLabel(member, request) }</time>
+							<time class="member-time" datetime={ member.JoinedAt.Format(time.RFC3339) }>{ memberTimeLabel(member, request) }</time>
 						</li>
 					}
 					if lastPlace(request) {
-						<li class="last-place-row"><span class="avatar-placeholder avatar-placeholder-outline" aria-hidden="true">+</span><strong class="text-[var(--brand-sunset)]">Last place open</strong><span class="data-text ml-auto text-xs text-base-content/55">joins update live</span></li>
+						<li class="last-place-row">
+							<span class="avatar-placeholder avatar-placeholder-outline" aria-hidden="true">+</span>
+							<strong class="flex-1 count-last">Last place open</strong>
+							<span class="data-text text-xs text-base-content/55">joins update live</span>
+						</li>
 					}
 				</ul>
 			</section>
 		</div>
-		<aside class="grid content-start gap-4" aria-label="Game Request context">
+		<aside class="detail-rail" aria-label="Game Request context">
 			if request.Status == gamerequest.StatusOpen && request.CreatorID == viewerID {
-				<section class="rail-panel border-warning/50"><p class="section-label text-warning">Host actions</p><div class="mt-4 grid gap-3">
-					<form method="post" action={ "/game-requests/" + request.ID + "/close" } data-confirm="Close this Game Request? Players will no longer be able to join.">@components.CSRFInput()<button class="btn btn-outline w-full" type="submit">Close for new players</button></form>
-					<form method="post" action={ "/game-requests/" + request.ID + "/cancel" } data-confirm="Cancel this Game Request? This cannot be reopened.">@components.CSRFInput()<button class="btn btn-error w-full" type="submit">Cancel Game Request</button></form>
-				</div></section>
+				<section class="detail-card detail-card-accent">
+					<p class="section-label count-hot">Host actions</p>
+					<form method="post" action={ "/game-requests/" + request.ID + "/close" } data-confirm="Close this Game Request? Players will no longer be able to join.">@components.CSRFInput()<button class="btn btn-outline btn-sm w-full" type="submit">Close for new players</button></form>
+					<form method="post" action={ "/game-requests/" + request.ID + "/cancel" } data-confirm="Cancel this Game Request? This cannot be reopened.">@components.CSRFInput()<button class="btn btn-soft btn-error btn-sm w-full" type="submit">Cancel Game Request</button></form>
+					<p class="text-xs leading-relaxed text-base-content/55">Visible to the host only. Cancelling asks once and notifies every player.</p>
+				</section>
 			}
-			<section class="rail-panel"><p class="section-label">Game</p><h2 class="mt-3 text-xl font-bold">{ request.GameName }</h2><p class="mt-2 text-sm text-base-content/60">{ request.EventName }</p><a class="link mt-4 inline-block text-sm text-primary no-underline" href="/games">Browse games →</a></section>
-			<section class="rail-panel"><p class="section-label">Activity</p><ol class="mt-4 grid gap-3">
-				for _, member := range request.Members {
-					<li class="flex gap-3 text-sm"><time class="data-text text-xs text-base-content/55">{ clockLabel(member.JoinedAt) }</time><span>{ member.DisplayName }
-						if member.ID == request.CreatorID {
-							<span> created the request</span>
-						} else {
-							<span> joined</span>
-						}
-					</span></li>
-				}
-			</ol><p class="mt-5 text-xs leading-relaxed text-base-content/50">Player counts and membership update live.</p></section>
+			<section class="detail-card">
+				<p class="section-label section-label-accent">Game</p>
+				<p class="text-[1.0625rem] font-semibold">{ request.GameName }</p>
+				<div class="data-text flex items-center justify-between gap-3 text-xs text-base-content/60">
+					<span>{ request.EventName }</span>
+					if request.ViewerSubscribed {
+						<span class="count-open">followed</span>
+					} else {
+						<span>not followed</span>
+					}
+				</div>
+				<a class="data-text link count-open text-xs no-underline" href="/game-requests">All Game Requests →</a>
+			</section>
+			<section class="detail-card flex-1">
+				<p class="section-label section-label-accent">Activity</p>
+				<ol class="grid gap-3">
+					for _, member := range activityEntries(request) {
+						<li class="flex gap-3">
+							<time class="data-text w-12 flex-none text-xs text-base-content/60">{ clockLabel(activityTime(member, request)) }</time>
+							<span class="flex-1 text-sm text-base-content/80">
+								if member.ID == request.CreatorID {
+									{ member.DisplayName + " created the request" }
+								} else {
+									{ member.DisplayName + " joined" }
+								}
+							</span>
+						</li>
+					}
+				</ol>
+				<p class="mt-auto text-xs leading-relaxed text-base-content/55">Counter, player list and activity update without a reload.</p>
+			</section>
 		</aside>
 	</div>
 }
@@ -413,9 +466,54 @@ func gameRequestRowClass(request requestquery.Request, highlightedID string) str
 
 func requestHeroClass(request requestquery.Request) string {
 	if lastPlace(request) {
-		return "request-hero request-hero-last"
+		return "detail-hero detail-hero-last"
 	}
-	return "request-hero"
+	return "detail-hero"
+}
+
+func detailStatusChipClass(request requestquery.Request) string {
+	switch request.Status {
+	case gamerequest.StatusCancelled:
+		return "status-chip status-chip-cancelled"
+	case gamerequest.StatusOpen:
+		return "status-chip status-chip-open"
+	default:
+		return "status-chip"
+	}
+}
+
+// detailCountClass keeps the hero counter at the kit's larger size while it
+// carries the same urgency colours as the list.
+func detailCountClass(request requestquery.Request) string {
+	if requestFull(request) {
+		return "data-text text-xl font-semibold count-muted"
+	}
+	if lastPlace(request) {
+		return "data-text text-xl font-semibold count-last"
+	}
+	return "data-text text-xl font-semibold count-open"
+}
+
+func memberAvatarClass(member requestquery.Member, request requestquery.Request) string {
+	if member.ID == request.CreatorID {
+		return "avatar-placeholder"
+	}
+	return "avatar-placeholder avatar-placeholder-member"
+}
+
+// activityEntries lists the newest event first, as the kit does, without
+// reordering the player list itself.
+func activityEntries(request requestquery.Request) []requestquery.Member {
+	entries := slices.Clone(request.Members)
+	slices.Reverse(entries)
+	return entries
+}
+
+func activityTime(member requestquery.Member, request requestquery.Request) time.Time {
+	if member.ID == request.CreatorID {
+		return request.CreatedAt
+	}
+	return member.JoinedAt
 }
 
 func startTimeClass(time.Time) string {
