@@ -184,7 +184,7 @@
     padding: 1.5rem 1rem 3rem;
   }
 
-  .request-detail-bar {
+  .app-topbar {
     display: flex;
     min-height: 4.5rem;
     align-items: center;
@@ -194,10 +194,151 @@
     padding: 0.75rem 1rem;
   }
 
-  .request-layout,
   .detail-layout {
     display: grid;
     gap: 1rem;
+  }
+
+  .request-shell {
+    display: grid;
+    min-height: calc(100vh - 4.5rem);
+  }
+
+  .request-main {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    padding: 1.125rem 1rem 1.5rem;
+  }
+
+  .request-rail {
+    display: none;
+    flex-direction: column;
+    gap: 1.375rem;
+    border-left: 1px solid var(--color-base-300);
+    padding: 1.125rem 1.25rem 1.5rem;
+  }
+
+  .rail-section {
+    display: grid;
+    gap: 0.75rem;
+    align-content: start;
+  }
+
+  .rail-divider {
+    height: 1px;
+    background: var(--color-base-300);
+  }
+
+  .rail-card-accent {
+    margin-top: auto;
+    border: 1px solid color-mix(in srgb, var(--color-warning) 40%, var(--color-base-300));
+    border-radius: var(--radius-field);
+    background: var(--color-base-200);
+    padding: 0.875rem;
+  }
+
+  .request-list-footer {
+    margin-top: auto;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+    padding-top: 1rem;
+  }
+
+  .request-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    padding-bottom: 0.875rem;
+  }
+
+  .filter-segment {
+    display: flex;
+    gap: 0.125rem;
+    border: 1px solid var(--color-base-300);
+    border-radius: var(--radius-field);
+    background: var(--color-base-200);
+    padding: 0.1875rem;
+  }
+
+  .filter-segment > span {
+    border-radius: var(--radius-selector);
+    padding: 0.4375rem 1rem;
+    color: color-mix(in srgb, var(--color-base-content) 62%, transparent);
+    font-size: 0.8125rem;
+  }
+
+  .filter-segment-active {
+    background: var(--color-primary);
+    color: var(--color-primary-content);
+    font-weight: 600;
+  }
+
+  .filter-chip {
+    display: inline-flex;
+    min-height: 2.25rem;
+    align-items: center;
+    gap: 0.5rem;
+    border: 1px solid var(--color-base-300);
+    border-radius: 999px;
+    padding-inline: 0.875rem;
+    color: color-mix(in srgb, var(--color-base-content) 62%, transparent);
+    font-size: 0.8125rem;
+  }
+
+  .filter-chip-active {
+    border-color: color-mix(in srgb, var(--color-primary) 55%, transparent);
+    background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+    /* Sea Foam would drop below contrast on the light theme's White Sand. */
+    color: var(--color-primary);
+    font-weight: 600;
+  }
+
+  .request-search {
+    margin-left: auto;
+    width: min(100%, 13.75rem);
+    border-radius: var(--radius-field);
+    background: var(--color-base-200);
+    font-size: 0.8125rem;
+  }
+
+  .status-chip {
+    flex: none;
+    white-space: nowrap;
+    border-radius: var(--radius-selector);
+    padding: 0.1875rem 0.5rem;
+    background: color-mix(in srgb, var(--color-base-content) 10%, transparent);
+    color: color-mix(in srgb, var(--color-base-content) 70%, transparent);
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+
+  .status-chip-last {
+    background: color-mix(in srgb, var(--brand-sunset) 18%, transparent);
+    color: var(--brand-sunset);
+  }
+
+  .status-chip-joined {
+    background: color-mix(in srgb, var(--color-secondary) 16%, transparent);
+    color: var(--color-accent);
+  }
+
+  .status-chip-host {
+    background: color-mix(in srgb, var(--color-warning) 16%, transparent);
+    color: var(--color-warning);
+  }
+
+  #game-request-list,
+  .request-list-content {
+    display: flex;
+    min-height: 0;
+    flex: 1;
+    flex-direction: column;
   }
 
   .request-list {
@@ -208,13 +349,13 @@
   .request-row {
     display: grid;
     min-height: 3.5rem;
-    grid-template-columns: minmax(0, 1fr) 4rem 5rem 5rem;
+    grid-template-columns: minmax(0, 1fr) 3.25rem 4.75rem auto;
     align-items: center;
-    gap: 0.75rem;
+    gap: 0.875rem;
     border: 1px solid var(--color-base-300);
     border-radius: var(--radius-field);
     background: var(--color-base-200);
-    padding: 0.375rem 0.75rem;
+    padding: 0.6875rem 0.875rem;
     transition: border-color 180ms ease-out, background-color 180ms ease-out;
   }
 
@@ -232,19 +373,39 @@
     border-color: color-mix(in srgb, var(--color-primary) 68%, var(--color-base-300));
   }
 
+  /* Closed and full requests stay readable but stop competing with joinable rows. */
+  .request-row-closed {
+    background: color-mix(in srgb, var(--color-base-200) 50%, transparent);
+    color: color-mix(in srgb, var(--color-base-content) 62%, transparent);
+  }
+
+  .request-row-closed .game-abbreviation {
+    color: inherit;
+  }
+
   .request-row-main {
     display: grid;
     min-width: 0;
-    grid-template-columns: 2.25rem minmax(0, auto) auto;
+    grid-template-columns: 2.125rem minmax(0, auto) auto;
     align-items: center;
     justify-content: start;
-    gap: 0.75rem;
+    gap: 0.875rem;
+  }
+
+  /* Places and start time are columns: right-aligned so they scan vertically. */
+  .request-row > span[aria-label],
+  .request-row > time {
+    text-align: right;
+  }
+
+  .request-row > span[aria-label] {
+    font-size: 1rem;
   }
 
   .game-abbreviation {
     display: inline-grid;
-    width: 2.25rem;
-    height: 2.25rem;
+    width: 2.125rem;
+    height: 2.125rem;
     flex: 0 0 auto;
     place-items: center;
     border: 1px solid var(--color-base-300);
@@ -271,6 +432,20 @@
     min-width: 4.25rem;
   }
 
+  .action-static {
+    display: inline-flex;
+    min-height: 2rem;
+    min-width: 4.25rem;
+    align-items: center;
+    justify-content: center;
+    border: 1px dashed color-mix(in srgb, var(--color-base-content) 22%, transparent);
+    border-radius: var(--radius-field);
+    padding-inline: 0.875rem;
+    color: color-mix(in srgb, var(--color-base-content) 55%, transparent);
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+
   .btn {
     font-size: 0.9375rem;
     font-weight: 600;
@@ -288,7 +463,7 @@
   .request-skeleton-row {
     min-height: 3.5rem;
     display: grid;
-    grid-template-columns: 2.25rem minmax(8rem, 1fr) 4rem;
+    grid-template-columns: 2.125rem minmax(8rem, 1fr) 4rem;
     align-items: center;
     gap: 0.75rem;
     border-radius: var(--radius-field);
@@ -303,7 +478,7 @@
   }
 
   .request-skeleton-row span:first-child {
-    height: 2.25rem;
+    height: 2.125rem;
     border-radius: var(--radius-selector);
   }
 
@@ -349,6 +524,10 @@
 
   .rail-panel {
     padding: 1.25rem;
+  }
+
+  .rail-panel-accent {
+    border-color: color-mix(in srgb, var(--color-warning) 40%, var(--color-base-300));
   }
 
   .surface-panel {
@@ -486,6 +665,38 @@
     background: color-mix(in srgb, var(--color-primary) 5%, var(--color-base-100));
   }
 
+  .count-open {
+    color: var(--color-secondary);
+  }
+
+  .count-hot {
+    color: var(--brand-golden-hour);
+  }
+
+  .count-last {
+    color: var(--brand-sunset);
+  }
+
+  .count-muted {
+    color: color-mix(in srgb, var(--color-base-content) 55%, transparent);
+  }
+
+  [data-theme="lansurfer-light"] .count-open,
+  [data-theme="lansurfer-light"] .status-chip-joined,
+  [data-theme="lansurfer-light"] .game-abbreviation {
+    color: var(--color-primary);
+  }
+
+  [data-theme="lansurfer-light"] .count-hot,
+  [data-theme="lansurfer-light"] .status-chip-host {
+    color: color-mix(in srgb, var(--brand-golden-hour) 45%, black);
+  }
+
+  [data-theme="lansurfer-light"] .count-last,
+  [data-theme="lansurfer-light"] .status-chip-last {
+    color: color-mix(in srgb, var(--brand-sunset) 72%, black);
+  }
+
   .htmx-indicator {
     display: none;
   }
@@ -502,19 +713,28 @@
     grid-template-columns: 15.5rem minmax(0, 1fr);
   }
 
-  .request-detail-bar {
+  .app-topbar {
+    padding-inline: 1.5rem;
+  }
+}
+
+@media (min-width: 64rem) {
+  .request-main {
     padding-inline: 1.5rem;
   }
 }
 
 @media (min-width: 80rem) {
-  .request-layout,
   .detail-layout {
     grid-template-columns: minmax(0, 1fr) 18.5rem;
   }
 
+  .request-shell {
+    grid-template-columns: minmax(0, 1fr) 18.5rem;
+  }
+
   .request-rail {
-    display: grid;
+    display: flex;
   }
 }
 
@@ -552,8 +772,19 @@
     grid-template-columns: 2.25rem minmax(0, 1fr);
   }
 
-  .request-row-main .badge {
+  .request-row-main .badge,
+  .request-row-main .status-chip {
     display: none;
+  }
+
+  .request-row > span[aria-label],
+  .request-row > time {
+    text-align: left;
+  }
+
+  .request-search {
+    margin-left: 0;
+    width: 100%;
   }
 
   .request-empty {

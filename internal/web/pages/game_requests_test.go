@@ -55,7 +55,7 @@ func TestGameRequestRowUsesPositiveJoinAction(t *testing.T) {
 	if err := GameRequestRow(request, "viewer-1", "").Render(context.Background(), &rendered); err != nil {
 		t.Fatalf("render GameRequestRow: %v", err)
 	}
-	if body := rendered.String(); !strings.Contains(body, `class="btn btn-success btn-sm"`) {
+	if body := rendered.String(); !strings.Contains(body, `class="btn btn-primary btn-sm"`) {
 		t.Fatalf("row action = %q", body)
 	}
 }

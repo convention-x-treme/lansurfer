@@ -1,6 +1,7 @@
 package components
 
 import (
+	"fmt"
 	"strings"
 	"unicode/utf8"
 
@@ -18,6 +19,9 @@ type NavigationState struct {
 	Viewer *Viewer
 	LoginAvailable bool
 	Section string
+	// OpenRequests is rendered beside the Game Requests link. Sections without
+	// a count on the current page simply omit it.
+	OpenRequests int
 }
 
 templ Layout(brand branding.Brand, title string, navigation NavigationState) {
@@ -139,11 +143,22 @@ templ MobileNavigation(brand branding.Brand, state NavigationState) {
 
 templ NavigationLinks(state NavigationState) {
 	<ul class="app-navigation">
-		<li>@NavigationLink("/game-requests", "Game Requests", "game-requests", state.Section)</li>
+		<li>
+			<a class={ navigationLinkClass(state.Section == "game-requests") } href="/game-requests" aria-current={ navigationCurrent(state.Section == "game-requests") }>
+				<span>Game Requests</span>
+				if state.OpenRequests > 0 {
+					<span class="data-text count-hot ml-auto text-xs">{ fmt.Sprint(state.OpenRequests) }</span>
+				}
+			</a>
+		</li>
 		<li>@NavigationLink("/games", "Games", "games", state.Section)</li>
 		<li>@NavigationLink("/games/mine", "My Games", "my-games", state.Section)</li>
 		if state.Viewer != nil && state.Viewer.Role == "admin" {
-			<li>@NavigationLink("/admin/games", "Administration", "administration", state.Section)</li>
+			<li>
+				<a class={ navigationLinkClass(state.Section == "administration") } href="/admin/games" aria-current={ navigationCurrent(state.Section == "administration") }>
+					<span>Administration</span><span class="data-text count-hot ml-auto rounded-md bg-warning/15 px-1.5 py-0.5 text-xs font-bold">ORGA</span>
+				</a>
+			</li>
 		}
 	</ul>
 }
@@ -164,7 +179,7 @@ templ ViewerPanel(viewer *Viewer) {
 templ LogoutControl() {
 	<form method="post" action="/auth/logout">
 		@CSRFInput()
-		<button type="submit" class="btn btn-ghost btn-sm px-0 text-base-content/65">Log out</button>
+		<button type="submit" class="data-text btn btn-ghost btn-sm px-0 text-xs text-base-content/60">Log out</button>
 	</form>
 }
 

@@ -72,7 +72,7 @@ func (h *GameRequests) RefreshList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	navigation := requestNavigation(r)
-	render(w, r, http.StatusOK, pages.GameRequestListContent(h.brand, requests, navigation.Viewer, r.URL.Query().Get("highlight")))
+	render(w, r, http.StatusOK, pages.GameRequestListContent(h.brand, requests, navigation.Viewer, r.URL.Query().Get("highlight"), true))
 }
 
 func (h *GameRequests) New(w http.ResponseWriter, r *http.Request) {
