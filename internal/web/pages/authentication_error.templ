@@ -8,20 +8,35 @@ import (
 templ Login(brand branding.Brand, loginAvailable bool) {
 	@components.AuthLayout(brand, "Log in") {
 		<section class="auth-stage">
+			<svg class="auth-waves" viewBox="0 0 1440 420" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+				<path d="M0,230 C230,120 400,320 610,220 C810,128 980,320 1180,210 C1320,132 1390,250 1440,210 L1440,420 L0,420 Z" fill="var(--brand-deep-ocean)" opacity="0.55"></path>
+				<path d="M0,300 C210,200 410,380 630,290 C830,206 990,378 1190,286 C1330,224 1400,320 1440,290 L1440,420 L0,420 Z" fill="var(--brand-surf-blue)" opacity="0.28"></path>
+				<path d="M0,360 C200,280 430,420 640,350 C840,286 1010,420 1210,348 C1350,300 1410,372 1440,352 L1440,420 L0,420 Z" fill="var(--brand-aqua-wave)" opacity="0.22"></path>
+			</svg>
 			<img class="auth-mascot" src={ brand.Assets.Mascot } alt="LANsurfer otter ready to help players find a game"/>
 			<div class="auth-panel">
-				<p class="section-label text-primary">Welcome to LANsurfer</p>
-				<h1 class="mt-4 text-3xl font-bold leading-tight">Find your crew.<br/>Catch the next game.</h1>
-				<p class="mt-4 text-base-content/65">Sign in with the account you already have. LANsurfer never stores a password.</p>
+				<h1 class="text-[1.75rem] font-black leading-tight tracking-tight">Find your crew.<br/>Catch the next game.</h1>
+				<p class="mt-2.5 text-base-content/65">Sign in with the account you already have. LANsurfer never stores a password.</p>
 				if loginAvailable {
-					<div class="mt-7 grid gap-3">
-						<a class="btn btn-primary w-full justify-between" href="/auth/oidc"><span>Continue with your CXT account</span><span class="data-text text-xs opacity-70">CXT IdP</span></a>
-						<button class="btn btn-outline w-full justify-between" type="button" disabled aria-label="Continue with Discord (coming soon)"><span>Continue with Discord</span><span class="data-text text-xs">Coming soon</span></button>
-					</div>
+					<a class="btn btn-primary mt-7 w-full justify-between" href="/auth/oidc">
+						<span>Continue with your CXT account</span>
+						<span class="data-text rounded-md bg-primary-content/15 px-2 py-1 text-xs font-bold">CXT IdP</span>
+					</a>
+					<p class="data-text mt-2 pl-1 text-xs text-base-content/60">Default provider on this instance.</p>
+					<div class="divider data-text my-5 text-xs text-base-content/60">or</div>
+					<button class="btn btn-outline w-full justify-start gap-3" type="button" disabled aria-label="Continue with Discord (coming soon)">
+						<span class="data-text flex h-6 w-6 items-center justify-center rounded-lg bg-[#5865F2] text-xs font-bold text-white" aria-hidden="true">D</span>
+						<span>Continue with Discord</span>
+						<span class="data-text ml-auto text-xs">Coming soon</span>
+					</button>
+					<p class="data-text mt-2 pl-1 text-xs text-base-content/60">The only planned alternative provider — no other social logins.</p>
 				} else {
 					<div role="alert" class="alert alert-warning mt-7"><span>Login is not configured for this LANsurfer instance.</span></div>
 				}
-				@components.OperatorAttribution("mt-8 text-center text-xs text-base-content/50")
+				<div class="mt-7 flex flex-wrap items-end justify-between gap-4 border-t border-base-300 pt-5">
+					<p class="max-w-[22rem] text-xs text-base-content/60">Your display name arrives as an OIDC claim — no onboarding form.</p>
+					@components.OperatorAttribution("data-text text-xs text-base-content/60")
+				</div>
 			</div>
 		</section>
 	}
@@ -30,7 +45,7 @@ templ Login(brand branding.Brand, loginAvailable bool) {
 templ AuthenticationError(brand branding.Brand, message string, loginAvailable bool) {
 	@components.AuthLayout(brand, "Login problem") {
 		<section class="auth-stage">
-			<div role="alert" class="auth-panel border-error">
+			<div role="alert" class="auth-panel justify-self-center border-error">
 				<p class="section-label text-error">Authentication</p>
 				<h1 class="mt-4 text-3xl font-bold">Login could not be completed</h1>
 				<p class="mt-4 text-base-content/70">{ message }</p>

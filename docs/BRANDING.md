@@ -8,12 +8,14 @@ Neither design source may redefine product behavior, domain terminology, approve
 
 ## UI kit relationship
 
-The UI kit consists of:
+The leading design source is the Claude Design project [LANsurfer UI Kit](https://claude.ai/design/p/c259a8f4-c239-427e-8e18-32443502b873), whose `UI-Kit-Colors` and `UI-Kit-Typography` files define the palette and typography recorded below. Where the local snapshot below disagrees with that project, the project wins and this document is updated.
+
+The local UI kit consists of:
 
 - [`ui-kit/README.md`](ui-kit/README.md), which records the represented routes and explicit interaction and terminology decisions;
 - [`ui-kit/index.html`](ui-kit/index.html), which provides the visual frames for login, Game Request list and states, creation, mobile behavior, details, and component tokens.
 
-The standalone HTML is a design reference, not production application code or a runtime dependency. Translate it into the approved templ/HTMX, Tailwind, and DaisyUI frontend architecture, with TypeScript limited to progressive enhancement. Extend the same tokens and component vocabulary to supported screens not yet represented by a frame instead of inventing a parallel visual system.
+`ui-kit/index.html` is a snapshot of an earlier export. It still shows the previous Montserrat typography and lacks Harbour and Deep Blue, so read colour and typography from this document and the Claude Design project instead, and use the snapshot only for composition, states, and interaction. The standalone HTML is a design reference, not production application code or a runtime dependency. Translate it into the approved templ/HTMX, Tailwind, and DaisyUI frontend architecture, with TypeScript limited to progressive enhancement. Extend the same tokens and component vocabulary to supported screens not yet represented by a frame instead of inventing a parallel visual system.
 
 The current kit is dark-first and shows a 1440 px desktop composition, but implementations must also provide the mobile behavior indicated by the kit and the equally supported light presentation required below. A missing frame is not permission to omit an interaction state, responsive behavior, or accessibility requirement.
 
@@ -31,24 +33,46 @@ Always write the product name as `LANsurfer`, including the lowercase `surfer`. 
 
 The palette is fixed through 1.0. Templates and styles must consume centralized semantic tokens instead of repeating hexadecimal values.
 
-| Token | Value | Intended role |
-| --- | --- | --- |
-| Deep Ocean | `#0D1B2A` | Dark-mode page background and dark foreground text |
-| Ocean Depth | `#1B263B` | Dark-mode raised surfaces, cards, and navigation |
-| Surf Blue | `#00B4D8` | Primary actions, active navigation, and selection |
-| Aqua Wave | `#48CAE4` | Secondary emphasis and informational accents |
-| Sea Foam | `#90E0EF` | Subtle highlights and light accent surfaces |
-| White Sand | `#F8F9FA` | Light-mode page background and text on dark surfaces |
-| Golden Hour | `#F4D35E` | Scheduled times and time-related emphasis |
-| Sunset | `#FF6B35` | Urgency, happening now, and the last available player place |
-| Coral | `#FF3F73` | Destructive actions, cancellation, and errors |
+| Token | Value | CMYK (uncoated) | Intended role |
+| --- | --- | --- | --- |
+| Deep Ocean | `#0D1B2A` | 69 · 36 · 0 · 84 | Dark-mode page background and dark surfaces |
+| Ocean Depth | `#1B263B` | 54 · 36 · 0 · 77 | Cards, rows, and navigation |
+| Harbour | `#163F57` | 75 · 28 · 0 · 66 | Raised state, borders, skeletons, and avatars |
+| Deep Blue | `#0077A8` | 100 · 29 · 0 · 34 | Light-mode primary action and gradients |
+| Surf Blue | `#00B4D8` | 100 · 17 · 0 · 15 | Dark-mode primary action and selection |
+| Aqua Wave | `#48CAE4` | 68 · 11 · 0 · 11 | Counters, links, and secondary emphasis |
+| Sea Foam | `#90E0EF` | 40 · 6 · 0 · 6 | Labels on dark surfaces and quiet accents |
+| White Sand | `#F8F9FA` | 1 · 0 · 0 · 2 | Body text on dark surfaces and light-mode background |
+| Golden Hour | `#F4D35E` | 0 · 14 · 61 · 4 | Scheduled times, trending, and organizer marks |
+| Sunset | `#FF6B35` | 0 · 58 · 79 · 0 | Urgency, happening now, and the last available place |
+| Coral | `#FF3F73` | 0 · 75 · 55 · 0 | Cancellation, deletion, and errors |
+
+CMYK values are uncoated-stock conversions for merchandise, print, and signage; re-profile them against the printer's ICC profile before production. Screen work always uses the HEX values.
+
+Surf Blue is the primary action and selection colour in the dark theme, Deep Blue in the light theme, where Surf Blue does not reach sufficient contrast on White Sand. Use one primary action per screen.
+
+### Derived inks
+
+Muted inks are blends of White Sand and Deep Ocean for screen use, not palette colours of their own. In print, tint White Sand or Deep Ocean instead.
+
+| Ink | Value | CMYK (uncoated) | Intended role |
+| --- | --- | --- | --- |
+| Ink 62% | `#8DA9BF` | 26 · 12 · 0 · 25 | Meta text, labels, inactive navigation |
+| Ink 84% | `#C7DCEA` | 15 · 6 · 0 · 8 | Body copy inside cards |
+
+Implementations produce them through the theme's own text colour (for example `color-mix` against `--color-base-content`) so both themes stay correct, rather than hardcoding the hexadecimal values.
+
+### Wave gradient
+
+`linear-gradient(135deg, #0D1B2A 0%, #0077A8 40%, #48CAE4 70%, #FF6B35 100%)` is reserved for key visuals such as the login stage. It is not a surface treatment for ordinary cards, rows, or buttons.
 
 Use the ocean blues for the majority of the interface. Sunset, Coral, and Golden Hour are semantic accents, not decorative alternatives to the primary color.
 
 ### Accessible color use
 
 - Use Deep Ocean text on Surf Blue, Aqua Wave, Sea Foam, Golden Hour, Sunset, and Coral fills. White Sand text does not have sufficient contrast on those colors for normal-sized text.
-- Use White Sand text on Deep Ocean and Ocean Depth.
+- Use White Sand text on Deep Ocean, Ocean Depth, Harbour, and Deep Blue.
+- Do not set Surf Blue text or small Surf Blue elements on White Sand. Use Deep Blue there.
 - Never communicate state through color alone. Pair it with a label, icon, or other visible treatment.
 - Preserve visible keyboard focus, hover, active, disabled, error, and success states in both themes.
 - Validate final combinations and interactive states against WCAG contrast requirements during implementation; opacity and blended backgrounds can change the effective contrast.
@@ -57,32 +81,49 @@ Use the ocean blues for the majority of the interface. Sunset, Coral, and Golden
 
 ### Primary typeface
 
-Use **Montserrat** throughout the interface:
+Use **Schibsted Grotesk** (SIL Open Font License 1.1) throughout the interface:
 
-- 800 ExtraBold: marketing headlines and the wordmark
-- 700 Bold: screen, row, and detail titles
-- 600 SemiBold: buttons and active navigation
-- 500 Medium: body copy and labels
+- 900 Black: all titles and the wordmark
+- 600 Bold: strong emphasis and buttons
+- 500 Semibold: light emphasis and active navigation
+- 400 Regular: every piece of running text
+
+No other weights are used. Italic is reserved for the LANsurfer wordmark and never appears in UI copy, titles, or taglines.
 
 ### Data typeface
 
-Use **JetBrains Mono** for compact data where aligned character shapes improve scanning, such as player and place counts, times, tags, and configuration snippets. Do not use it for paragraphs or ordinary navigation.
+Use **JetBrains Mono** (SIL Open Font License 1.1) for compact data where aligned character shapes improve scanning: places and player counts, times, nicknames, routes, tags, and configuration snippets. Never use it for running text or ordinary navigation.
 
 ### UI scale
 
-| Use | Size | Weight |
-| --- | ---: | ---: |
-| Screen title | 32 px | 700 |
-| Game name | 24 px | 700 |
-| Body and navigation | 16 px | 500 |
-| Button | 15 px | 600 |
-| Badge and metadata | 13 px | 500 |
+| Use | Typeface | Size | Weight | Tracking |
+| --- | --- | ---: | ---: | ---: |
+| Page title | Schibsted Grotesk | 36 px | 900 | −0.03em |
+| Screen title | Schibsted Grotesk | 30 px | 900 | −0.02em |
+| Section title | Schibsted Grotesk | 22 px | 900 | −0.02em |
+| Card title | Schibsted Grotesk | 17 px | 900 | normal |
+| Row title | Schibsted Grotesk | 16 px | 700 | normal |
+| Body | Schibsted Grotesk | 15 px | 400 | normal |
+| Body small | Schibsted Grotesk | 14 px | 400 | normal |
+| Button | Schibsted Grotesk | 15 px | 500 | normal |
+| Navigation item | Schibsted Grotesk | 15 px | 500 | normal |
+| Counter | JetBrains Mono | 16 px | 700 | normal |
+| Meta and badge | JetBrains Mono | 13 px | 500–700 | 0.12em caps |
 
-Bundle production webfonts with the application and serve them from embedded assets. Runtime font CDNs are not allowed. Provide system sans-serif and monospace fallbacks so content remains usable while fonts load or if they fail.
+Further rules:
+
+- 13 px mono is the smallest type in the product. Below that, drop the element instead of shrinking it.
+- Line height 1.15 for headlines, 1.45–1.55 for copy.
+- Letter-spacing appears only on headlines and caps labels.
+- Caps labels are always mono, 13 px, 0.12em tracking, in Sea Foam or Golden Hour.
+
+### Font delivery
+
+Bundle the variable webfonts with the application and serve them from embedded assets: Schibsted Grotesk upright and italic, plus JetBrains Mono. Runtime font CDNs are not allowed, and neither are Google Fonts stylesheet links. Provide system sans-serif and monospace fallbacks so content remains usable while fonts load or if they fail. Ship each font's license beside the asset.
 
 ## LANsurfer logo and lockup
 
-Use a Montserrat ExtraBold wordmark and the canonical tagline for the LANsurfer lockup. No production signet has been approved. Until one exists:
+Set the wordmark in Schibsted Grotesk italic: 900 for `LAN`, 600 for `surfer`, tracking −0.03em. This is the only italic in the system. Use it with the canonical tagline for the LANsurfer lockup. No production signet has been approved. Until one exists:
 
 - use the `LANsurfer` wordmark as text;
 - do not promote a prototype or UI-kit placeholder to the production logo or favicon;

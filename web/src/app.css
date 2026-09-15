@@ -1,7 +1,7 @@
 @source "../../internal/web/**/*.templ";
 
 @theme {
-  --font-sans: "Montserrat", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Schibsted Grotesk", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
   --text-xs: 0.8125rem;
   --text-xs--line-height: calc(18 / 13);
@@ -16,7 +16,7 @@
   body {
     min-height: 100vh;
     font-family: var(--font-sans);
-    font-weight: 500;
+    font-weight: 400;
   }
 
   :focus-visible {
@@ -26,10 +26,15 @@
 }
 
 @layer components {
+  /* The only italic in the system. "LAN" is Black, "surfer" Semibold. */
   .brand-wordmark {
     font-style: italic;
-    font-weight: 800;
-    letter-spacing: -0.035em;
+    font-weight: 900;
+    letter-spacing: -0.03em;
+  }
+
+  .brand-wordmark > span + span {
+    font-weight: 600;
   }
 
   .data-text {
@@ -41,7 +46,7 @@
     font-family: var(--font-mono);
     font-size: 0.8125rem;
     font-weight: 600;
-    letter-spacing: 0.14em;
+    letter-spacing: 0.12em;
     text-transform: uppercase;
     color: color-mix(in srgb, var(--color-base-content) 66%, transparent);
   }
@@ -423,45 +428,58 @@
     align-items: center;
     justify-content: space-between;
     padding: 1rem clamp(1rem, 4vw, 4rem);
+    /* The stage behind the header is always the dark key visual, in both themes. */
+    color: var(--brand-white-sand);
+  }
+
+  .auth-header .btn {
+    color: inherit;
   }
 
   .auth-stage {
     position: relative;
     display: grid;
     min-height: 100vh;
-    place-items: center;
+    align-items: center;
+    justify-items: start;
     overflow: hidden;
-    padding: 6rem 1rem 2rem;
-    background: color-mix(in srgb, var(--brand-ocean-depth) 44%, var(--color-base-100));
+    padding: 6rem clamp(1rem, 8vw, 7.5rem) 3rem;
+    background: linear-gradient(
+      150deg,
+      var(--brand-deep-ocean) 0%,
+      color-mix(in srgb, var(--brand-deep-ocean) 80%, var(--brand-surf-blue)) 48%,
+      var(--brand-surf-blue) 100%
+    );
   }
 
-  .auth-stage::before {
+  .auth-waves {
     position: absolute;
-    inset: 18% -10% auto auto;
-    width: min(42rem, 70vw);
-    height: min(42rem, 70vw);
-    border-radius: 50%;
-    background: color-mix(in srgb, var(--color-primary) 12%, transparent);
-    content: "";
+    inset: auto 0 0;
+    z-index: 0;
+    width: 100%;
+    height: clamp(14rem, 33vw, 30rem);
   }
 
   .auth-panel {
     position: relative;
     z-index: 2;
-    width: min(100%, 35rem);
+    width: min(100%, 29.25rem);
     border: 1px solid var(--color-base-300);
     border-radius: var(--radius-box);
-    background: var(--color-base-100);
+    background: color-mix(in srgb, var(--color-base-100) 88%, transparent);
     padding: clamp(1.5rem, 4vw, 2.75rem);
+    box-shadow: 0 2rem 5rem color-mix(in srgb, var(--brand-deep-ocean) 60%, transparent);
+    backdrop-filter: blur(12px);
   }
 
   .auth-mascot {
     position: absolute;
+    right: -2.5rem;
+    bottom: -3.75rem;
     z-index: 1;
-    width: clamp(12rem, 24vw, 23rem);
-    max-height: 70vh;
+    width: clamp(18rem, 34vw, 32.5rem);
+    max-height: 80vh;
     object-fit: contain;
-    transform: translateX(-25rem);
   }
 
   .hero-waterline {

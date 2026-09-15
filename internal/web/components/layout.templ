@@ -73,7 +73,7 @@ templ AuthLayout(brand branding.Brand, title string) {
 		</head>
 		<body class="bg-base-100 text-base-content antialiased">
 			<a class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-warning focus:px-4 focus:py-2 focus:text-warning-content" href="#main-content">Skip to content</a>
-			<header class="auth-header"><a class="brand-wordmark text-xl text-base-content" href="/"><span>LAN</span><span class="text-primary">surfer</span></a>@ThemeToggle()</header>
+			<header class="auth-header"><a class="brand-wordmark text-xl" href="/"><span>LAN</span><span class="text-primary">surfer</span></a>@ThemeToggle()</header>
 			<main id="main-content">{ children... }</main>
 		</body>
 	</html>
@@ -188,6 +188,7 @@ templ OperatorAttribution(class string) {
 // font arrives. crossorigin matches the CORS mode of font-face requests.
 templ FontPreloads(brand branding.Brand) {
 	<link rel="preload" as="font" type="font/woff2" crossorigin="anonymous" href={ templ.SafeURL(brand.Assets.PrimaryFont) }/>
+	<link rel="preload" as="font" type="font/woff2" crossorigin="anonymous" href={ templ.SafeURL(brand.Assets.PrimaryFontItalic) }/>
 	<link rel="preload" as="font" type="font/woff2" crossorigin="anonymous" href={ templ.SafeURL(brand.Assets.DataFont) }/>
 }
 

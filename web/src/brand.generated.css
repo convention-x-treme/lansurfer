@@ -9,6 +9,8 @@
 :root {
   --brand-deep-ocean: #0D1B2A;
   --brand-ocean-depth: #1B263B;
+  --brand-harbour: #163F57;
+  --brand-deep-blue: #0077A8;
   --brand-surf-blue: #00B4D8;
   --brand-aqua-wave: #48CAE4;
   --brand-sea-foam: #90E0EF;
@@ -25,7 +27,7 @@
   color-scheme: dark;
   --color-base-100: var(--brand-deep-ocean);
   --color-base-200: var(--brand-ocean-depth);
-  --color-base-300: color-mix(in srgb, var(--brand-ocean-depth) 82%, var(--brand-surf-blue));
+  --color-base-300: var(--brand-harbour);
   --color-base-content: var(--brand-white-sand);
   --color-primary: var(--brand-surf-blue);
   --color-primary-content: var(--brand-deep-ocean);
@@ -62,8 +64,8 @@
   --color-base-200: color-mix(in srgb, var(--brand-white-sand) 90%, white);
   --color-base-300: color-mix(in srgb, var(--brand-white-sand) 78%, var(--brand-sea-foam));
   --color-base-content: var(--brand-deep-ocean);
-  --color-primary: var(--brand-surf-blue);
-  --color-primary-content: var(--brand-deep-ocean);
+  --color-primary: var(--brand-deep-blue);
+  --color-primary-content: var(--brand-white-sand);
   --color-secondary: var(--brand-aqua-wave);
   --color-secondary-content: var(--brand-deep-ocean);
   --color-accent: var(--brand-sea-foam);
@@ -89,11 +91,20 @@
 }
 
 @font-face {
-  font-family: "Montserrat";
+  font-family: "Schibsted Grotesk";
   font-style: normal;
   font-display: swap;
-  font-weight: 100 900;
-  src: url("/assets/fonts/montserrat-latin-wght-normal.woff2") format("woff2-variations");
+  font-weight: 400 900;
+  src: url("/assets/fonts/schibsted-grotesk-latin-wght-normal.woff2") format("woff2-variations");
+}
+
+/* Italic is reserved for the LANsurfer wordmark. */
+@font-face {
+  font-family: "Schibsted Grotesk";
+  font-style: italic;
+  font-display: swap;
+  font-weight: 400 900;
+  src: url("/assets/fonts/schibsted-grotesk-latin-wght-italic.woff2") format("woff2-variations");
 }
 
 @font-face {

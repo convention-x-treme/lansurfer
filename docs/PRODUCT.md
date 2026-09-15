@@ -273,7 +273,7 @@ The product is called **LANsurfer**. Its tagline is:
 
 > Find your crew. Catch the next game.
 
-The fixed visual system uses an ocean-blue base, restrained warm semantic accents, Montserrat typography, JetBrains Mono for compact data, equal dark/light presentations, and a guide-like otter mascot. See the [Branding guide](BRANDING.md).
+The fixed visual system uses an ocean-blue base, restrained warm semantic accents, Schibsted Grotesk typography, JetBrains Mono for compact data, equal dark/light presentations, and a guide-like otter mascot. See the [Branding guide](BRANDING.md).
 
 For 1.0, a global administrator may configure a per-instance display name, welcome text, contact link, logo, and application icon. These fields can identify the specific LAN party or gaming event served by the installation. The fixed operator attribution, “Powered by Convention-X-Treme”, remains visible; it is not an instance-identity field.
 

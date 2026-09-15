@@ -617,7 +617,7 @@ Do not introduce a config file format unless a concrete requirement appears.
 
 Keep the product name, tagline, semantic colors, the operating community's name and public URL for the **Powered by …** attribution, and asset paths in one small centralized value/object near the web composition layer. Templates must consume it rather than repeat constants. Tailwind/DaisyUI theme definitions and CSS custom properties must map to the same semantic color roles in both dark and light modes.
 
-Bundle approved LANsurfer logos, mascot artwork, and Montserrat/JetBrains Mono webfonts with the production assets. They must be served from the embedded application; do not add a runtime font or branding CDN. The wordmark remains text until an approved production signet is available.
+Bundle approved LANsurfer logos, mascot artwork, and the Schibsted Grotesk (upright and italic) and JetBrains Mono webfonts with the production assets. They must be served from the embedded application; do not add a runtime font or branding CDN. The wordmark remains text until an approved production signet is available.
 
 The prototype branding is fixed application data. Track D adds PostgreSQL-backed instance display name, welcome text, contact link, logo, and icon, controlled by global administrators. Uploaded PNG assets are validated at the documented byte and pixel limits and stored in PostgreSQL. Colors, typography, accessibility behavior, component semantics, and the fixed “Powered by Convention-X-Treme” operator attribution remain fixed.
 
