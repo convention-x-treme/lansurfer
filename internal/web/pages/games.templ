@@ -85,7 +85,7 @@ templ GameFollowControl(gameID string, subscribed, myGames bool) {
 	if subscribed && myGames {
 		<div class="flex items-center gap-2">
 			<span class="badge badge-primary">Following</span>
-			<form method="post" action={ "/games/" + gameID + "/unfollow" } hx-post={ "/games/" + gameID + "/unfollow" } hx-target="closest article" hx-swap="outerHTML">
+			<form method="post" action={ "/games/" + gameID + "/unfollow" } hx-post={ "/games/" + gameID + "/unfollow" } hx-target="closest article" hx-swap="outerHTML" hx-sync="this:drop" hx-disabled-elt="find button">
 				@components.CSRFInput()
 				<input type="hidden" name="view" value="mine"/>
 				<button class="btn btn-outline btn-sm" type="submit">Unfollow</button>
@@ -94,13 +94,13 @@ templ GameFollowControl(gameID string, subscribed, myGames bool) {
 	} else if subscribed {
 		<div class="flex items-center gap-2">
 			<span class="badge badge-primary">Following</span>
-			<form method="post" action={ "/games/" + gameID + "/unfollow" } hx-post={ "/games/" + gameID + "/unfollow" } hx-target="closest div" hx-swap="outerHTML">
+			<form method="post" action={ "/games/" + gameID + "/unfollow" } hx-post={ "/games/" + gameID + "/unfollow" } hx-target="closest div" hx-swap="outerHTML" hx-sync="this:drop" hx-disabled-elt="find button">
 				@components.CSRFInput()
 				<button class="btn btn-outline btn-sm" type="submit">Unfollow</button>
 			</form>
 		</div>
 	} else {
-		<form method="post" action={ "/games/" + gameID + "/follow" } hx-post={ "/games/" + gameID + "/follow" } hx-target="this" hx-swap="outerHTML">
+		<form method="post" action={ "/games/" + gameID + "/follow" } hx-post={ "/games/" + gameID + "/follow" } hx-target="this" hx-swap="outerHTML" hx-sync="this:drop" hx-disabled-elt="find button">
 			@components.CSRFInput()
 			<button class="btn btn-primary btn-sm" type="submit">Follow Game</button>
 		</form>
