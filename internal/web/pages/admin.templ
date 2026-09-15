@@ -46,13 +46,13 @@ templ AdminEvents(brand branding.Brand, navigation components.NavigationState, e
 									if item.IsCurrent {
 										<span class="badge badge-primary">Current event</span>
 									} else {
-										<form method="post" action={ "/admin/events/" + item.ID + "/current" }>@components.CSRFInput()<button class="btn btn-outline btn-sm" type="submit">Make current</button></form>
+										<form method="post" action={ "/admin/events/" + item.ID + "/current" }>@components.CSRFInput()<button class="btn btn-quiet btn-sm" type="submit">Make current</button></form>
 									}
 								</div>
 								<form method="post" action={ "/admin/events/" + item.ID } class="mt-3 grid gap-4 sm:grid-cols-2">
 									@components.CSRFInput()
 									@EventFields(item.Name, item.StartsAt, item.EndsAt)
-									<div class="sm:col-span-2 flex justify-end"><button class="btn btn-outline btn-sm" type="submit">Save event</button></div>
+									<div class="sm:col-span-2 flex justify-end"><button class="btn btn-quiet btn-sm" type="submit">Save event</button></div>
 								</form>
 							</div>
 						</article>
@@ -100,7 +100,7 @@ templ AdminGames(brand branding.Brand, navigation components.NavigationState, ga
 						<div class="card-body">
 							<h2 class="card-title">Search catalog</h2>
 							<label class="form-control"><span class="label"><span class="label-text">Name or alias</span></span><input class="input input-bordered" type="search" name="q" value={ search } maxlength="120" placeholder="e.g. wc3"/></label>
-							<div class="card-actions justify-end"><a class="btn btn-ghost" href="/admin/games">Clear</a><button class="btn btn-outline" type="submit">Search</button></div>
+							<div class="card-actions justify-end"><a class="btn btn-ghost" href="/admin/games">Clear</a><button class="btn btn-quiet" type="submit">Search</button></div>
 						</div>
 					</form>
 				</div>
@@ -132,13 +132,13 @@ templ AdminGameCard(item game.Game) {
 				@components.CSRFInput()
 				@GameFields(item.Name, item.Slug)
 				<div class="sm:col-span-2 flex flex-wrap justify-end gap-2">
-					<button class="btn btn-outline btn-sm" type="submit">Save game</button>
+					<button class="btn btn-quiet btn-sm" type="submit">Save game</button>
 				</div>
 			</form>
 			<form method="post" action={ "/admin/games/" + item.ID + "/active" } class="flex justify-end" data-confirm={ gameActiveConfirmation(item.Active) }>
 				@components.CSRFInput()
 				if item.Active {
-					<input type="hidden" name="active" value="false"/><button class="btn btn-error btn-sm" type="submit">Deactivate game</button>
+					<input type="hidden" name="active" value="false"/><button class="btn btn-step-back btn-sm" type="submit">Deactivate game</button>
 				} else {
 					<input type="hidden" name="active" value="true"/><button class="btn btn-primary btn-sm" type="submit">Activate game</button>
 				}
@@ -159,7 +159,7 @@ templ AdminGameCard(item game.Game) {
 				@components.CSRFInput()
 				<label class="sr-only" for={ "alias-" + item.ID }>New alias</label>
 				<input id={ "alias-" + item.ID } class="input input-bordered input-sm flex-1" name="alias" maxlength="120" placeholder="Add search alias" required/>
-				<button class="btn btn-outline btn-sm" type="submit">Add alias</button>
+				<button class="btn btn-quiet btn-sm" type="submit">Add alias</button>
 			</form>
 		</div>
 	</article>

@@ -73,7 +73,7 @@ func ErrorState() templ.Component {
 			templ_7745c5c3_Var3 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<div role=\"alert\" class=\"alert alert-error\"><div><h3 class=\"font-bold\">Something went wrong</h3><p class=\"text-sm\">We could not load this section. Try the request again.</p></div><button type=\"button\" class=\"btn btn-sm border-error-content/30 bg-transparent text-error-content hover:bg-error-content/10\" hx-get=\"/ui/patterns/empty\" hx-target=\"#pattern-preview\" hx-swap=\"innerHTML\">Try again</button></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<div role=\"alert\" class=\"alert alert-error\"><div><h3 class=\"font-bold\">Something went wrong</h3><p class=\"text-sm\">We could not load this section. Try the request again.</p></div><button type=\"button\" class=\"btn btn-sm border-error-content/40 bg-transparent text-error-content hover:border-error-content hover:bg-error-content/15\" hx-get=\"/ui/patterns/empty\" hx-target=\"#pattern-preview\" hx-swap=\"innerHTML\">Try again</button></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

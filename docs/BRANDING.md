@@ -179,12 +179,52 @@ Follow the UI kit's choice of dense rows, detail surfaces, forms, and overlays f
 
 ## Component semantics
 
-Apply the visual language to the product's established terms:
+### One job per colour
 
-- Primary buttons such as **Create Game Request** and **Join** use Surf Blue with Deep Ocean text.
-- Destructive actions such as **Cancel Game Request** use Coral and require an explicit text label.
+The palette is large because print, merchandise, and key visuals need it. On screen every colour carries exactly one job, so a player can read a screen by colour alone.
+
+| Colour | Screen job |
+| --- | --- |
+| Deep Ocean | Page background (dark), text on bright fills |
+| Ocean Depth | Cards, rows, navigation |
+| Harbour | Raised quiet surfaces: supporting buttons, borders, member avatars, skeletons |
+| Deep Blue | Primary action in the light theme, key-visual gradients |
+| Surf Blue | Primary action in the dark theme, selection, active navigation |
+| Aqua Wave | Counters, links, joined state |
+| Sea Foam | Labels on dark surfaces, ink on quiet buttons |
+| White Sand | Body text on dark, page background (light) |
+| Golden Hour | Time and stewardship: start times, trending, ORGA, host actions |
+| Sunset | Scarcity and urgency: the last free place, "now" |
+| Coral | Leaving, cancelling, deleting, errors |
+
+A colour that would appear outside its job is the wrong colour. Decoration is not a job.
+
+### Action hierarchy
+
+Buttons carry the same six levels everywhere. The level, not the page, decides the colour; one filled Surf Blue action per view keeps "this moves you forward" readable at a glance.
+
+| Level | Class | Treatment | Examples |
+| --- | --- | --- | --- |
+| Commit | `btn-primary` | Surf Blue fill, Deep Ocean text (light theme: Deep Blue fill, White Sand text) | Join, Create Game Request, Follow Game |
+| Urgent commit | `btn-urgent` | Sunset fill, Deep Ocean text | Join on the last free place |
+| Supporting | `btn-quiet` | Harbour surface, Sea Foam text | Find Players, View, Search, Save, Copy link |
+| Step back | `btn-step-back` | Supporting at rest, Coral surface and text on hover and focus | Leave, Unfollow, Close for new players, Deactivate game |
+| Destructive | `btn-danger` | Coral-tinted surface and Coral text at rest | Cancel Game Request |
+| Tertiary | `btn-ghost` | Text only | Clear, Log out, Dismiss |
+
+Rules that keep the hierarchy honest:
+
+- Reversible actions never wear Coral at rest. Leaving a Game Request or unfollowing a game is repeatable, so the colour only appears once the pointer or keyboard is on the control. Permanent alarm colour on a repeatable action trains players to ignore it.
+- Irreversible actions wear Coral before the click and ask for confirmation.
+- Outline buttons are not a level. A supporting action gets the Harbour surface instead, so it reads as a real choice rather than a disabled control.
+- Disabled controls keep a legible label: they are dimmed, not erased.
+- Every level keeps the palette's contrast rules: button text meets 4.5:1 against its own fill in both themes.
+
+### Other components
+
 - A scheduled start time may use Golden Hour.
-- Player and available-place counts use JetBrains Mono; the last available place may use Sunset, and a full request uses a muted treatment.
+- Player and available-place counts use JetBrains Mono; the last available place uses Sunset, and a full request uses a muted treatment.
+- State chips (`OPEN`, `JOINED`, `HOST`, `LAST PLACE`, `FULL`) are mono, uppercase, and tinted with the colour of the state they name.
 - Errors use Coral with a clear message. Informational feedback uses Aqua Wave or Surf Blue.
 - Badges and metadata stay visually quieter than titles and primary actions.
 

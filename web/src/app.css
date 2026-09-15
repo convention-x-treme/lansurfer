@@ -1,5 +1,24 @@
 @source "../../internal/web/**/*.templ";
 
+/* Action surfaces derived from the brand palette. Each level of the action
+   hierarchy in docs/BRANDING.md owns one of them, so a filled Surf Blue button
+   can keep meaning exactly one thing: this moves you forward. */
+:root {
+  --surface-quiet: var(--brand-harbour);
+  --ink-quiet: var(--brand-sea-foam);
+  --surface-danger: color-mix(in srgb, var(--brand-coral) 18%, var(--brand-ocean-depth));
+  --surface-danger-strong: color-mix(in srgb, var(--brand-coral) 30%, var(--brand-ocean-depth));
+  --ink-danger: color-mix(in srgb, var(--brand-coral) 70%, var(--brand-white-sand));
+}
+
+[data-theme="lansurfer-light"] {
+  --surface-quiet: color-mix(in srgb, var(--brand-sea-foam) 30%, var(--brand-white-sand));
+  --ink-quiet: color-mix(in srgb, var(--brand-deep-blue) 85%, black);
+  --surface-danger: color-mix(in srgb, var(--brand-coral) 14%, var(--brand-white-sand));
+  --surface-danger-strong: color-mix(in srgb, var(--brand-coral) 22%, var(--brand-white-sand));
+  --ink-danger: color-mix(in srgb, var(--brand-coral) 72%, black);
+}
+
 @theme {
   --font-sans: "Schibsted Grotesk", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
@@ -533,11 +552,6 @@
     font-weight: 600;
   }
 
-  .btn {
-    font-size: 0.9375rem;
-    font-weight: 600;
-  }
-
   .badge {
     font-size: 0.8125rem;
   }
@@ -793,6 +807,62 @@
   .htmx-request.htmx-indicator {
     display: inline-block;
   }
+}
+
+/* DaisyUI compiles .btn into Tailwind's utilities layer, which outranks the
+   components layer whatever the specificity. The button type scale and the
+   action variants therefore stay unlayered, so their tokens reach the button
+   instead of losing silently to DaisyUI's defaults. */
+.btn {
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+/* Supporting actions. Harbour gives them a body, so they read as a real choice
+   instead of the outline that everything used to share. */
+.btn-quiet {
+  --btn-color: var(--surface-quiet);
+  --btn-fg: var(--ink-quiet);
+}
+
+/* Reversible exits — Leave, Unfollow, Close for new players. They stay quiet
+   until the pointer or the keyboard reaches them, then they admit what they do.
+   Coral at rest would cry wolf on an action the player can simply repeat. */
+.btn-step-back {
+  --btn-color: var(--surface-quiet);
+  --btn-fg: var(--ink-quiet);
+}
+
+.btn-step-back:hover,
+.btn-step-back:focus-visible {
+  --btn-color: var(--surface-danger-strong);
+  --btn-fg: var(--ink-danger);
+}
+
+/* Irreversible actions wear Coral before the click, not after it. */
+.btn-danger {
+  --btn-color: var(--surface-danger);
+  --btn-fg: var(--ink-danger);
+}
+
+.btn-danger:hover,
+.btn-danger:focus-visible {
+  --btn-color: var(--surface-danger-strong);
+}
+
+/* DaisyUI fades a disabled button to roughly 1:1 against its own surface. The
+   placeholder controls here stay disabled for a while, so they keep a readable
+   label instead of becoming an invisible ghost. */
+.btn:is(:disabled, [disabled], [aria-disabled="true"]) {
+  background-color: color-mix(in srgb, var(--color-base-content) 10%, var(--color-base-200));
+  color: color-mix(in srgb, var(--color-base-content) 55%, var(--color-base-200));
+  border-color: transparent;
+}
+
+/* The scarcity variant of the primary action: the last free place. */
+.btn-urgent {
+  --btn-color: var(--brand-sunset);
+  --btn-fg: var(--brand-deep-ocean);
 }
 
 @media (min-width: 64rem) {

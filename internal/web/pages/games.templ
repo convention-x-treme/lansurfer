@@ -12,13 +12,13 @@ templ GameCatalog(brand branding.Brand, navigation components.NavigationState, g
 	@components.Layout(brand, "Games", navigation) {
 		<header class="app-topbar">
 			<p class="data-text count-open text-xs">Game catalog</p>
-			<a class="btn btn-primary btn-sm" href="/games/mine">My Games</a>
+			<a class="btn btn-quiet btn-sm" href="/games/mine">My Games</a>
 		</header>
 		<div class="content-page">
 			<form class="request-toolbar" method="get" action="/games" hx-get="/games" hx-target="#game-catalog-results" hx-swap="outerHTML" hx-push-url="true">
 				<label class="sr-only" for="game-search">Search by game name or alias</label>
 				<input id="game-search" class="input input-sm request-search" type="search" name="q" value={ search } maxlength="120" placeholder="Search by name or alias, e.g. wc3"/>
-				<button class="btn btn-primary btn-sm" type="submit">Search</button>
+				<button class="btn btn-quiet btn-sm" type="submit">Search</button>
 				if search != "" {
 					<a class="btn btn-ghost btn-sm" href="/games">Clear</a>
 				}
@@ -94,7 +94,7 @@ templ GameSubscriptionCard(item game.SubscriptionGame, myGames bool) {
 		</div>
 		<div class="mt-auto flex flex-wrap items-center justify-end gap-2">
 			if item.Subscribed {
-				<a class="btn btn-outline btn-sm" href={ "/game-requests/new?game_id=" + item.ID }>Find Players</a>
+				<a class="btn btn-quiet btn-sm" href={ "/game-requests/new?game_id=" + item.ID }>Find Players</a>
 			}
 			@GameFollowControl(item.ID, item.Subscribed, myGames)
 		</div>
@@ -108,7 +108,7 @@ templ GameFollowControl(gameID string, subscribed, myGames bool) {
 			<form method="post" action={ "/games/" + gameID + "/unfollow" } hx-post={ "/games/" + gameID + "/unfollow" } hx-target="closest article" hx-swap="outerHTML" hx-sync="this:drop" hx-disabled-elt="find button">
 				@components.CSRFInput()
 				<input type="hidden" name="view" value="mine"/>
-				<button class="btn btn-outline btn-sm" type="submit">Unfollow</button>
+				<button class="btn btn-step-back btn-sm" type="submit">Unfollow</button>
 			</form>
 		</div>
 	} else if subscribed {
@@ -116,7 +116,7 @@ templ GameFollowControl(gameID string, subscribed, myGames bool) {
 			<span class="status-chip status-chip-joined">Following</span>
 			<form method="post" action={ "/games/" + gameID + "/unfollow" } hx-post={ "/games/" + gameID + "/unfollow" } hx-target="closest div" hx-swap="outerHTML" hx-sync="this:drop" hx-disabled-elt="find button">
 				@components.CSRFInput()
-				<button class="btn btn-outline btn-sm" type="submit">Unfollow</button>
+				<button class="btn btn-step-back btn-sm" type="submit">Unfollow</button>
 			</form>
 		</div>
 	} else {
