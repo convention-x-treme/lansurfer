@@ -120,7 +120,7 @@ templ GameRequestRow(request requestquery.Request, viewerID, highlightedID strin
 			} else if request.CreatorID == viewerID {
 				<a class="btn btn-outline btn-sm" href={ "/game-requests/" + request.ID }>View</a>
 			} else if request.ViewerJoined {
-				<form method="post" action={ "/game-requests/" + request.ID + "/leave" } hx-post={ "/game-requests/" + request.ID + "/leave" } hx-target="closest article" hx-swap="outerHTML">
+				<form method="post" action={ "/game-requests/" + request.ID + "/leave" } hx-post={ "/game-requests/" + request.ID + "/leave" } hx-target="closest article" hx-swap="outerHTML" hx-sync="closest article:drop" hx-disabled-elt="find button">
 					@components.CSRFInput()
 					<input type="hidden" name="return_to" value="list"/>
 					<button class="btn btn-outline btn-sm" type="submit">Leave</button>
@@ -128,7 +128,7 @@ templ GameRequestRow(request requestquery.Request, viewerID, highlightedID strin
 			} else if requestFull(request) {
 				<span class="btn btn-ghost btn-sm pointer-events-none text-base-content/50">Full</span>
 			} else {
-				<form method="post" action={ "/game-requests/" + request.ID + "/join" } hx-post={ "/game-requests/" + request.ID + "/join" } hx-target="closest article" hx-swap="outerHTML">
+				<form method="post" action={ "/game-requests/" + request.ID + "/join" } hx-post={ "/game-requests/" + request.ID + "/join" } hx-target="closest article" hx-swap="outerHTML" hx-sync="closest article:drop" hx-disabled-elt="find button">
 					@components.CSRFInput()
 					<input type="hidden" name="return_to" value="list"/>
 					<button class={ joinButtonClass(request) } type="submit">Join</button>

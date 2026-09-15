@@ -65,9 +65,33 @@ type GameRequestEvent = {
   gameId?: string;
 };
 
+// A mutation request targets a single row, and refreshing the list replaces
+// that row. Refreshes therefore wait for pending mutations to settle instead of
+// removing the element a response is about to be swapped into.
+let pendingMutations = 0;
+let refreshQueued = false;
+
+document.addEventListener("htmx:beforeRequest", () => {
+  pendingMutations += 1;
+});
+
+document.addEventListener("htmx:afterRequest", () => {
+  pendingMutations = Math.max(0, pendingMutations - 1);
+  if (pendingMutations > 0 || !refreshQueued) return;
+  refreshQueued = false;
+  refreshGameRequests();
+});
+
 // Without an event the current view is refreshed as a whole, which is what a
-// page needs after it was disconnected from the stream for a while.
+// page needs after it was disconnected from the stream for a while. A deferred
+// refresh drops the event, and with it only the highlight on a new row; the
+// rows themselves come from the database either way.
 function refreshGameRequests(event?: GameRequestEvent): void {
+  if (pendingMutations > 0) {
+    refreshQueued = true;
+    return;
+  }
+
   if (document.querySelector("[data-game-request-list]")) {
     const highlight = event?.type === "GameRequestCreated" ? `?highlight=${encodeURIComponent(event.requestId)}` : "";
     void htmx.ajax("get", `/game-requests/refresh${highlight}`, {
@@ -140,6 +164,30 @@ if (realtime?.dataset.realtimeUrl) {
   });
 }
 
+// A failed request must say so rather than leaving a control that looks live
+// but does nothing. Mirrors the server-rendered action error.
+function showActionError(message: string): void {
+  const notice = document.createElement("div");
+  notice.className = "alert alert-error";
+  notice.setAttribute("role", "alert");
+  notice.dataset.liveToast = "";
+  const text = document.createElement("span");
+  text.textContent = message;
+  const dismiss = document.createElement("button");
+  dismiss.type = "button";
+  dismiss.className = "btn btn-ghost btn-sm";
+  dismiss.dataset.dismissLiveToast = "";
+  dismiss.setAttribute("aria-label", "Dismiss error");
+  dismiss.textContent = "Dismiss";
+  notice.append(text, dismiss);
+  document.querySelector("#live-notices")?.append(notice);
+  window.setTimeout(() => notice.remove(), 8000);
+}
+
+document.addEventListener("htmx:responseError", () => showActionError("That action could not be completed. Please try again."));
+document.addEventListener("htmx:sendError", () => showActionError("The server could not be reached. Please try again."));
+document.addEventListener("htmx:timeout", () => showActionError("The server took too long to respond. Please try again."));
+
 document.addEventListener("click", (event) => {
   const target = event.target;
   if (target instanceof Element && target.closest("[data-dismiss-live-toast]")) {
@@ -150,11 +198,47 @@ document.addEventListener("click", (event) => {
   }
 });
 
+// A form that navigates has no response to react to, so the guard is released
+// when the next page loads. This timeout only matters when the submission never
+// completes at all; it must outlast the server's own request timeout.
+const submitRecoveryDelay = 20000;
+
+function releaseSubmitGuard(form: HTMLFormElement): void {
+  delete form.dataset.submitting;
+  form.querySelectorAll<HTMLButtonElement | HTMLInputElement>("button[type=submit], input[type=submit]").forEach((control) => {
+    control.disabled = false;
+  });
+}
+
 document.addEventListener("submit", (event) => {
   const form = event.target;
-  if (form instanceof HTMLFormElement && form.dataset.confirm && !window.confirm(form.dataset.confirm)) {
+  if (!(form instanceof HTMLFormElement)) return;
+  if (form.dataset.confirm && !window.confirm(form.dataset.confirm)) {
     event.preventDefault();
+    return;
   }
+  // An htmx submission cancels the native event and carries its own guards.
+  if (event.defaultPrevented) return;
+  if (form.dataset.submitting === "true") {
+    event.preventDefault();
+    return;
+  }
+
+  form.dataset.submitting = "true";
+  // Disabling a control before the browser has built the form data set would
+  // drop its value, so the controls are disabled once submission is under way.
+  window.setTimeout(() => {
+    form.querySelectorAll<HTMLButtonElement | HTMLInputElement>("button[type=submit], input[type=submit]").forEach((control) => {
+      control.disabled = true;
+    });
+  }, 0);
+  window.setTimeout(() => releaseSubmitGuard(form), submitRecoveryDelay);
+});
+
+// A page restored from the back/forward cache keeps the DOM it was frozen with,
+// including a submit guard whose navigation has long since finished.
+window.addEventListener("pageshow", () => {
+  document.querySelectorAll<HTMLFormElement>("form[data-submitting]").forEach(releaseSubmitGuard);
 });
 
 document.addEventListener("htmx:oobAfterSwap", () => {

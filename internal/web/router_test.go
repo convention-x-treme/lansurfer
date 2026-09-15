@@ -562,6 +562,7 @@ type routerGameRequests struct {
 	left      string
 	closed    string
 	cancelled string
+	joinError error
 }
 
 func (r *routerGameRequests) Create(_ context.Context, creatorID, gameID string, maximum *int32, startsAt time.Time, description string) (gamerequest.GameRequest, error) {
@@ -572,6 +573,9 @@ func (r *routerGameRequests) Create(_ context.Context, creatorID, gameID string,
 	return r.created, nil
 }
 func (r *routerGameRequests) Join(_ context.Context, requestID, userID string) error {
+	if r.joinError != nil {
+		return r.joinError
+	}
 	r.joined = requestID + "/" + userID
 	return nil
 }
@@ -645,4 +649,41 @@ func (*routerAuthentication) Logout(context.Context, string) error { return nil 
 
 func (a *routerAuthentication) Authenticate(context.Context, string) (user.User, error) {
 	return a.account, nil
+}
+
+// A second Join that lands after the first already succeeded must resolve into
+// a dismissible notice, leaving the row and the rest of the page usable.
+func TestDuplicateJoinReportsRecoverableConflict(t *testing.T) {
+	commands := &routerGameRequests{joinError: gamerequest.ErrAlreadyMember}
+	queries := &routerGameRequestQueries{items: []requestquery.Request{{
+		ID: "request-1", GameName: "Warcraft III", CreatorID: "user-2",
+		CreatorName: "Other", MemberCount: 2, ViewerJoined: true, Status: gamerequest.StatusOpen,
+		StartsAt: time.Now().Add(time.Hour),
+	}}}
+	router := gameRequestTestRouter(commands, queries)
+
+	duplicate := httptest.NewRequest(http.MethodPost, "/game-requests/request-1/join", strings.NewReader(url.Values{"return_to": {"list"}}.Encode()))
+	duplicate.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	duplicate.Header.Set("HX-Request", "true")
+	duplicate.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	addCSRF(duplicate)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, duplicate)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("duplicate join status = %d, want %d", response.Code, http.StatusOK)
+	}
+	if got := response.Header().Get("HX-Retarget"); got != "#live-notices" {
+		t.Errorf("HX-Retarget = %q, want %q", got, "#live-notices")
+	}
+	if got := response.Header().Get("HX-Reswap"); got != "beforeend" {
+		t.Errorf("HX-Reswap = %q, want %q", got, "beforeend")
+	}
+	body := response.Body.String()
+	if !strings.Contains(body, "You have already joined this Game Request.") {
+		t.Errorf("duplicate join body does not explain the conflict: %s", body)
+	}
+	if !strings.Contains(body, "data-dismiss-live-toast") {
+		t.Errorf("duplicate join notice cannot be dismissed: %s", body)
+	}
 }

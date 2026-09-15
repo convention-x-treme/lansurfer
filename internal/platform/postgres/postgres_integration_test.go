@@ -503,3 +503,153 @@ func productionMigrationFS(t *testing.T) fs.FS {
 func testLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
+
+// TestGameRequestDuplicateAndOverlappingMutations covers what rapid clicking
+// produces at the persistence layer: the same user issuing the same mutation
+// twice at once, and conflicting lifecycle mutations racing each other. Each
+// pair must resolve to one winner and one deterministic domain error, never to
+// a partially applied state.
+func TestGameRequestDuplicateAndOverlappingMutations(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+
+	users := user.NewService(userpostgres.NewStore(pool))
+	creator, err := users.Register(t.Context(), "Race Creator")
+	if err != nil {
+		t.Fatalf("register creator: %v", err)
+	}
+	joiner, err := users.Register(t.Context(), "Race Joiner")
+	if err != nil {
+		t.Fatalf("register joiner: %v", err)
+	}
+
+	events := event.NewService(eventpostgres.NewStore(pool))
+	startsAt := time.Now().UTC().Add(time.Hour).Truncate(time.Microsecond)
+	currentEvent, err := events.Create(t.Context(), "CXT Race", startsAt.Add(-time.Hour), startsAt.Add(48*time.Hour))
+	if err != nil {
+		t.Fatalf("create event: %v", err)
+	}
+	if err := events.SetCurrent(t.Context(), currentEvent.ID); err != nil {
+		t.Fatalf("set current event: %v", err)
+	}
+	catalog := game.NewService(gamepostgres.NewStore(pool))
+	selectedGame, err := catalog.Create(t.Context(), "Supreme Commander", "supreme-commander")
+	if err != nil {
+		t.Fatalf("create game: %v", err)
+	}
+	requests := gamerequest.NewService(gamerequestpostgres.NewStore(pool), catalog, events, nil)
+	readStore := gamerequestquery.NewStore(pool)
+
+	// Join → Join by one user, as a double-clicked Join button produces.
+	duplicateJoin, err := requests.Create(t.Context(), creator.ID, selectedGame.ID, nil, startsAt, "Duplicate join")
+	if err != nil {
+		t.Fatalf("create game request: %v", err)
+	}
+	results := runConcurrently(
+		func() error { return requests.Join(t.Context(), duplicateJoin.ID, joiner.ID) },
+		func() error { return requests.Join(t.Context(), duplicateJoin.ID, joiner.ID) },
+	)
+	assertOneWinner(t, "duplicate join", results, gamerequest.ErrAlreadyMember)
+	detail, err := readStore.ByID(t.Context(), duplicateJoin.ID, joiner.ID)
+	if err != nil {
+		t.Fatalf("read game request after duplicate join: %v", err)
+	}
+	if detail.MemberCount != 2 || !detail.ViewerJoined {
+		t.Fatalf("duplicate join left member count = %d, viewer joined = %t, want 2 and true", detail.MemberCount, detail.ViewerJoined)
+	}
+
+	// Join → Leave toggling: whichever order the database settles on, the
+	// membership must match the outcome the caller was told about.
+	toggled := runConcurrently(
+		func() error { return requests.Leave(t.Context(), duplicateJoin.ID, joiner.ID) },
+		func() error { return requests.Join(t.Context(), duplicateJoin.ID, joiner.ID) },
+	)
+	leaveErr, joinErr := toggled[0], toggled[1]
+	if leaveErr != nil && !errors.Is(leaveErr, gamerequest.ErrNotMember) {
+		t.Fatalf("toggled leave error = %v", leaveErr)
+	}
+	if joinErr != nil && !errors.Is(joinErr, gamerequest.ErrAlreadyMember) {
+		t.Fatalf("toggled join error = %v", joinErr)
+	}
+	detail, err = readStore.ByID(t.Context(), duplicateJoin.ID, joiner.ID)
+	if err != nil {
+		t.Fatalf("read game request after toggle: %v", err)
+	}
+	if leaveWon := leaveErr == nil && joinErr != nil; leaveWon && detail.ViewerJoined {
+		t.Fatal("leave reported success but the membership survived")
+	}
+	if joinWon := joinErr == nil && leaveErr != nil; joinWon && !detail.ViewerJoined {
+		t.Fatal("join reported success but the membership is missing")
+	}
+
+	// Close → Cancel by the creator, as repeated lifecycle clicks produce.
+	lifecycle, err := requests.Create(t.Context(), creator.ID, selectedGame.ID, nil, startsAt, "Lifecycle race")
+	if err != nil {
+		t.Fatalf("create lifecycle game request: %v", err)
+	}
+	lifecycleResults := runConcurrently(
+		func() error { return requests.Close(t.Context(), lifecycle.ID, creator.ID) },
+		func() error { return requests.Cancel(t.Context(), lifecycle.ID, creator.ID) },
+	)
+	assertOneWinner(t, "close against cancel", lifecycleResults, gamerequest.ErrNotOpen)
+	wantStatus := gamerequest.StatusClosed
+	if lifecycleResults[1] == nil {
+		wantStatus = gamerequest.StatusCancelled
+	}
+	lifecycleDetail, err := readStore.ByID(t.Context(), lifecycle.ID, creator.ID)
+	if err != nil {
+		t.Fatalf("read lifecycle game request: %v", err)
+	}
+	if lifecycleDetail.Status != wantStatus {
+		t.Fatalf("lifecycle status = %q, want %q", lifecycleDetail.Status, wantStatus)
+	}
+	if err := requests.Close(t.Context(), lifecycle.ID, creator.ID); !errors.Is(err, gamerequest.ErrNotOpen) {
+		t.Fatalf("repeated close error = %v, want ErrNotOpen", err)
+	}
+
+	// A member of a request that is no longer open cannot be added by a late
+	// click that was already in flight when the creator closed it.
+	if err := requests.Join(t.Context(), lifecycle.ID, joiner.ID); !errors.Is(err, gamerequest.ErrNotOpen) {
+		t.Fatalf("join after close error = %v, want ErrNotOpen", err)
+	}
+}
+
+// runConcurrently starts every mutation at the same moment and returns their
+// errors positionally.
+func runConcurrently(mutations ...func() error) []error {
+	results := make([]error, len(mutations))
+	start := make(chan struct{})
+	var wait sync.WaitGroup
+	for index, mutation := range mutations {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			<-start
+			results[index] = mutation()
+		}()
+	}
+	close(start)
+	wait.Wait()
+	return results
+}
+
+func assertOneWinner(t *testing.T, name string, results []error, wantConflict error) {
+	t.Helper()
+
+	succeeded, conflicted := 0, 0
+	for _, err := range results {
+		switch {
+		case err == nil:
+			succeeded++
+		case errors.Is(err, wantConflict):
+			conflicted++
+		default:
+			t.Fatalf("%s: unexpected error = %v", name, err)
+		}
+	}
+	if succeeded != 1 || conflicted != len(results)-1 {
+		t.Fatalf("%s: succeeded = %d, conflicted = %d, want 1 and %d", name, succeeded, conflicted, len(results)-1)
+	}
+}

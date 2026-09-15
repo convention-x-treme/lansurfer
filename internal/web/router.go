@@ -20,7 +20,13 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 )
 
-const readinessTimeout = time.Second
+const (
+	readinessTimeout = time.Second
+	// requestTimeout is a safety boundary, not a latency target: it keeps a
+	// blocked query or an exhausted connection pool from leaving the browser
+	// waiting forever on a request it can never complete.
+	requestTimeout = 15 * time.Second
+)
 
 // ReadyCheck reports whether dependencies required to serve traffic are ready.
 type ReadyCheck func(context.Context) error
@@ -56,6 +62,7 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 	router.Use(middleware.RequestID)
 	router.Use(webmiddleware.RequestLogging(dependencies.Logger, dependencies.TrustedProxies))
 	router.Use(middleware.Recoverer)
+	router.Use(webmiddleware.RequestTimeout(requestTimeout))
 	router.Use(webmiddleware.SecurityHeaders(dependencies.SecureCookies))
 	router.Use(webmiddleware.CSRF(dependencies.SecureCookies))
 
