@@ -221,7 +221,7 @@ func RequestFilters() templ.Component {
 			templ_7745c5c3_Var7 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "<div class=\"request-toolbar\"><div class=\"filter-segment\" aria-hidden=\"true\"><span class=\"filter-segment-active\">Now</span><span>Soon</span><span>Later</span></div><label class=\"filter-chip filter-chip-active\"><input class=\"toggle toggle-xs\" type=\"checkbox\" checked disabled><span>Free places only</span></label> <span class=\"filter-chip\" aria-hidden=\"true\">My Games</span> <input class=\"input input-sm request-search\" type=\"search\" placeholder=\"Search game or host…\" aria-label=\"Search game or host\" disabled><p class=\"sr-only\">Filtering and search are not available yet. The list shows every open Game Request.</p></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "<div class=\"request-toolbar\"><div class=\"filter-segment\" aria-hidden=\"true\"><span class=\"filter-segment-active\">Now</span><span>Soon</span><span>Later</span></div><label class=\"filter-chip filter-chip-active\"><input class=\"toggle toggle-xs\" type=\"checkbox\" checked disabled><span>Free places only</span></label> <span class=\"filter-chip\" aria-hidden=\"true\">My Games</span> <input class=\"input input-sm request-search ml-auto\" type=\"search\" placeholder=\"Search game or host…\" aria-label=\"Search game or host\" disabled><p class=\"sr-only\">Filtering and search are not available yet. The list shows every open Game Request.</p></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1261,7 +1261,7 @@ func GameRequestDetail(brand branding.Brand, navigation components.NavigationSta
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 105, "</header><div class=\"detail-page\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 105, "</header><div class=\"content-page\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
