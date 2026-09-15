@@ -405,13 +405,22 @@
     flex: none;
     white-space: nowrap;
     border-radius: var(--radius-selector);
-    padding: 0.1875rem 0.5rem;
+    padding: 0.3125rem 0.625rem;
     background: color-mix(in srgb, var(--color-base-content) 10%, transparent);
-    color: color-mix(in srgb, var(--color-base-content) 70%, transparent);
+    color: color-mix(in srgb, var(--color-base-content) 60%, transparent);
     font-family: var(--font-mono);
     font-size: 0.8125rem;
-    font-weight: 700;
+    font-weight: 500;
+    line-height: calc(18 / 13);
     text-transform: uppercase;
+  }
+
+  .status-chip-open,
+  .status-chip-cancelled,
+  .status-chip-joined,
+  .status-chip-host,
+  .status-chip-last {
+    font-weight: 700;
   }
 
   .status-chip-last {
@@ -426,11 +435,11 @@
 
   .status-chip-cancelled {
     background: color-mix(in srgb, var(--color-error) 16%, transparent);
-    color: var(--color-error);
+    color: var(--ink-danger);
   }
 
   .status-chip-joined {
-    background: color-mix(in srgb, var(--color-secondary) 16%, transparent);
+    background: color-mix(in srgb, var(--color-secondary) 20%, transparent);
     color: var(--color-accent);
   }
 
@@ -505,7 +514,21 @@
   }
 
   .request-row > span[aria-label] {
+    justify-self: end;
+  }
+
+  .place-counter {
+    font-family: var(--font-mono);
     font-size: 1rem;
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    line-height: 1;
+    white-space: nowrap;
+  }
+
+  .place-counter-lg {
+    font-size: 1.25rem;
+    line-height: 1.4;
   }
 
   .game-abbreviation {
@@ -773,11 +796,22 @@
 
   [data-theme="lansurfer-light"] .count-open,
   [data-theme="lansurfer-light"] .section-label-accent,
-  [data-theme="lansurfer-light"] .status-chip-joined,
-  [data-theme="lansurfer-light"] .status-chip-open,
   [data-theme="lansurfer-light"] .game-abbreviation,
   [data-theme="lansurfer-light"] .avatar-placeholder-member {
     color: var(--color-primary);
+  }
+
+  [data-theme="lansurfer-light"] .status-chip {
+    color: color-mix(in srgb, var(--color-base-content) 70%, transparent);
+  }
+
+  [data-theme="lansurfer-light"] .status-chip-open,
+  [data-theme="lansurfer-light"] .status-chip-joined {
+    color: color-mix(in srgb, var(--color-primary) 82%, black);
+  }
+
+  [data-theme="lansurfer-light"] .status-chip-cancelled {
+    color: var(--ink-danger);
   }
 
   [data-theme="lansurfer-light"] .avatar-placeholder-member {
@@ -796,7 +830,7 @@
 
   [data-theme="lansurfer-light"] .count-last,
   [data-theme="lansurfer-light"] .status-chip-last {
-    color: color-mix(in srgb, var(--brand-sunset) 72%, black);
+    color: color-mix(in srgb, var(--brand-sunset) 64%, black);
   }
 
   .htmx-indicator {

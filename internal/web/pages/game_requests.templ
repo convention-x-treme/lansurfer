@@ -192,30 +192,32 @@ templ GameRequestRow(request requestquery.Request, viewerID, highlightedID strin
 
 templ NewGameRequest(brand branding.Brand, navigation components.NavigationState, options requestquery.CreationOptions, form GameRequestForm, message string) {
 	@components.Layout(brand, "Create Game Request", navigation) {
-		<section class="app-page py-6 sm:py-10">
+		<header class="app-topbar">
+			<a class="link count-open text-sm font-semibold no-underline" href="/game-requests">← Game Requests</a>
+			<p class="data-text text-xs text-base-content/60">New request</p>
+		</header>
+		<div class="content-page">
 			<div class="composer-panel">
-				<div>
-					<div><p class="section-label">New Game Request</p><h1 class="mt-2 text-3xl font-bold">Who's up for a round?</h1></div>
-				</div>
+				<div><p class="section-label">Create Game Request</p><h1 class="mt-2 text-xl font-semibold">Who's up for a round?</h1><p class="mt-1 text-sm text-base-content/65">Pick a game, a start time, and how many players can join.</p></div>
 				if message != "" {
-					<div role="alert" class="alert alert-error mt-6"><span>{ message }</span></div>
+					<div role="alert" class="alert alert-error mt-5"><span>{ message }</span></div>
 				}
 				if options.EventID == "" {
-					<div role="status" class="alert alert-warning mt-6"><span>An administrator must select a current Event before Game Requests can be created.</span></div>
+					<div role="status" class="alert alert-warning mt-5"><span>An administrator must select a current Event before Game Requests can be created.</span></div>
 				} else if len(options.Games) == 0 {
-					<div role="status" class="alert alert-warning mt-6"><span>An administrator must add or activate a game first.</span></div>
+					<div role="status" class="alert alert-warning mt-5"><span>An administrator must add or activate a game first.</span></div>
 				} else {
-					<form method="post" action="/game-requests" class="mt-8 grid gap-7">
+					<form method="post" action="/game-requests" class="mt-6 grid gap-6">
 						@components.CSRFInput()
-						<label class="grid gap-2"><span class="section-label">01 · Game</span><select class="select select-bordered w-full" name="game_id" required><option value="" disabled selected?={ form.GameID == "" }>Choose a game</option>
+						<label class="grid gap-2"><span class="label-text font-medium">Game</span><select class="select select-bordered w-full" name="game_id" required><option value="" disabled selected?={ form.GameID == "" }>Choose a game</option>
 							for _, game := range options.Games {
 								<option value={ game.ID } selected?={ form.GameID == game.ID }>{ game.Name }</option>
 							}
 						</select></label>
 						<div class="grid gap-6 md:grid-cols-[10rem_minmax(0,1fr)]">
-							<label class="grid content-start gap-2"><span class="section-label">02 · Max players</span><input class="input input-bordered data-text w-full text-lg" type="number" name="max_players" min="1" max="2147483647" inputmode="numeric" value={ form.MaxPlayers } placeholder="No limit"/></label>
+							<label class="grid content-start gap-2"><span class="label-text font-medium">Max players</span><input class="input input-bordered data-text w-full text-lg" type="number" name="max_players" min="1" max="2147483647" inputmode="numeric" value={ form.MaxPlayers } placeholder="No limit"/></label>
 							<fieldset class="grid gap-3" data-start-options>
-								<legend class="section-label mb-2">03 · Start</legend>
+								<legend class="label-text mb-2 font-medium">Start</legend>
 								<div class="flex flex-wrap gap-2">
 									@StartChoice("now", "Now", form.StartPreset)
 									@StartChoice("15", "in 15 min", form.StartPreset)
@@ -230,12 +232,12 @@ templ NewGameRequest(brand branding.Brand, navigation components.NavigationState
 							</fieldset>
 						</div>
 						<input type="hidden" name="timezone_offset" value={ form.TimezoneOffset } data-timezone-offset/>
-						<label class="grid gap-2"><span class="section-label">04 · Description <span class="text-base-content/45">optional</span></span><textarea class="textarea textarea-bordered min-h-28" name="description" maxlength="1000" placeholder="Anything players should know" data-description>{ form.Description }</textarea><span class="data-text flex justify-between gap-4 text-xs text-base-content/55"><span>Leave max players empty for an open round.</span><span data-description-count>{ fmt.Sprintf("%d / 1000", len([]rune(form.Description))) }</span></span></label>
+						<label class="grid gap-2"><span class="label-text font-medium">Description <span class="font-normal text-base-content/55">(optional)</span></span><textarea class="textarea textarea-bordered min-h-28 w-full" name="description" maxlength="1000" placeholder="Anything players should know" data-description>{ form.Description }</textarea><span class="data-text flex justify-between gap-4 text-xs text-base-content/55"><span>Leave max players empty for an open round.</span><span data-description-count>{ fmt.Sprintf("%d / 1000", len([]rune(form.Description))) }</span></span></label>
 						<div class="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-end"><a class="btn btn-ghost" href="/game-requests">Cancel</a><button class="btn btn-primary sm:min-w-64" type="submit">Create Game Request</button></div>
 					</form>
 				}
 			</div>
-		</section>
+		</div>
 	}
 }
 
@@ -425,12 +427,12 @@ func playerCountAccessible(request requestquery.Request) string {
 
 func playerCountClass(request requestquery.Request) string {
 	if requestFull(request) {
-		return "data-text font-bold count-muted"
+		return "place-counter count-muted"
 	}
 	if lastPlace(request) {
-		return "data-text font-bold count-last"
+		return "place-counter count-last"
 	}
-	return "data-text font-bold count-open"
+	return "place-counter count-open"
 }
 
 func joinButtonClass(request requestquery.Request) string {
@@ -486,12 +488,12 @@ func detailStatusChipClass(request requestquery.Request) string {
 // carries the same urgency colours as the list.
 func detailCountClass(request requestquery.Request) string {
 	if requestFull(request) {
-		return "data-text text-xl font-semibold count-muted"
+		return "place-counter place-counter-lg count-muted"
 	}
 	if lastPlace(request) {
-		return "data-text text-xl font-semibold count-last"
+		return "place-counter place-counter-lg count-last"
 	}
-	return "data-text text-xl font-semibold count-open"
+	return "place-counter place-counter-lg count-open"
 }
 
 func memberAvatarClass(member requestquery.Member, request requestquery.Request) string {

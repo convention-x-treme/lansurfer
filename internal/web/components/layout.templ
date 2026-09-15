@@ -156,7 +156,7 @@ templ NavigationLinks(state NavigationState) {
 		if state.Viewer != nil && state.Viewer.Role == "admin" {
 			<li>
 				<a class={ navigationLinkClass(state.Section == "administration") } href="/admin/games" aria-current={ navigationCurrent(state.Section == "administration") }>
-					<span>Administration</span><span class="data-text count-hot ml-auto rounded-md bg-warning/15 px-1.5 py-0.5 text-xs font-bold">ORGA</span>
+					<span>Administration</span><span class="status-chip status-chip-host ml-auto">Orga</span>
 				</a>
 			</li>
 		}

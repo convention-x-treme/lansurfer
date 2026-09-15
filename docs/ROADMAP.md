@@ -310,7 +310,7 @@ Final integration waits only where another track changes the affected user-visib
 
 ## Implementation status
 
-The reusable shell, mapped brand tokens, responsive navigation/drawer, login, signed-in home redirect, dense Game Request list, loading/empty/error states, composer, detail view, in-row HTMX actions, SSE feedback, and dark/light presentation are implemented for the current application contracts. Existing authenticated administration and catalog routes now inherit the same shell and token system.
+The reusable shell, mapped brand tokens, responsive navigation/drawer, login, signed-in home redirect, dense Game Request list, loading/empty/error states, composer, detail view, in-row HTMX actions, SSE feedback, and dark/light presentation are implemented for the current application contracts. The Game Request composer and authenticated administration/catalog routes now share the same compact page hierarchy, shell, and component vocabulary.
 
 Track G remains active while its final feature integrations wait on their owning tracks: Track A must remove the prototype Event context from Game Request contracts; Track B must supply provider choices, onboarding, and profile state; Track C must supply catalog cover and metadata states; Track D must supply configurable instance identity; and Track E must supply notification settings and browser-permission state. These dependencies do not block further work within their respective tracks.
 

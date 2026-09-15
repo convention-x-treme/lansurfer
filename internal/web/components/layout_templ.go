@@ -675,7 +675,7 @@ func NavigationLinks(state NavigationState) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "\"><span>Administration</span><span class=\"data-text count-hot ml-auto rounded-md bg-warning/15 px-1.5 py-0.5 text-xs font-bold\">ORGA</span></a></li>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "\"><span>Administration</span><span class=\"status-chip status-chip-host ml-auto\">Orga</span></a></li>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
