@@ -65,9 +65,11 @@ type GameRequestEvent = {
   gameId?: string;
 };
 
-function refreshGameRequests(event: GameRequestEvent): void {
+// Without an event the current view is refreshed as a whole, which is what a
+// page needs after it was disconnected from the stream for a while.
+function refreshGameRequests(event?: GameRequestEvent): void {
   if (document.querySelector("[data-game-request-list]")) {
-    const highlight = event.type === "GameRequestCreated" ? `?highlight=${encodeURIComponent(event.requestId)}` : "";
+    const highlight = event?.type === "GameRequestCreated" ? `?highlight=${encodeURIComponent(event.requestId)}` : "";
     void htmx.ajax("get", `/game-requests/refresh${highlight}`, {
       target: "#game-request-list",
       swap: "outerHTML",
@@ -75,8 +77,9 @@ function refreshGameRequests(event: GameRequestEvent): void {
   }
 
   const detail = document.querySelector<HTMLElement>("[data-game-request-detail]");
-  if (detail?.dataset.gameRequestId === event.requestId) {
-    void htmx.ajax("get", `/game-requests/${encodeURIComponent(event.requestId)}/refresh`, {
+  const detailID = detail?.dataset.gameRequestId;
+  if (detailID && (event === undefined || detailID === event.requestId)) {
+    void htmx.ajax("get", `/game-requests/${encodeURIComponent(detailID)}/refresh`, {
       target: "#game-request-detail",
       swap: "outerHTML",
     });
@@ -85,23 +88,55 @@ function refreshGameRequests(event: GameRequestEvent): void {
 
 const realtime = document.querySelector<HTMLElement>("[data-realtime-url]");
 if (realtime?.dataset.realtimeUrl) {
-  const events = new EventSource(realtime.dataset.realtimeUrl);
-  events.addEventListener("open", () => document.querySelector("[data-live-connection-alert]")?.remove());
-  events.addEventListener("game-request", (message) => {
-    try {
-      refreshGameRequests(JSON.parse(message.data) as GameRequestEvent);
-    } catch {
-      // A malformed or stale signal can be ignored; the next event refreshes current state.
+  const realtimeURL = realtime.dataset.realtimeUrl;
+  let events: EventSource | null = null;
+
+  const connectRealtime = (): void => {
+    if (events) return;
+    events = new EventSource(realtimeURL);
+    events.addEventListener("open", () => document.querySelector("[data-live-connection-alert]")?.remove());
+    events.addEventListener("game-request", (message) => {
+      try {
+        refreshGameRequests(JSON.parse(message.data) as GameRequestEvent);
+      } catch {
+        // A malformed or stale signal can be ignored; the next event refreshes current state.
+      }
+    });
+    events.addEventListener("error", () => {
+      if (document.querySelector("[data-live-connection-alert]")) return;
+      const notice = document.createElement("div");
+      notice.className = "alert alert-warning";
+      notice.dataset.liveConnectionAlert = "";
+      notice.setAttribute("role", "status");
+      notice.textContent = "Live connection lost. Retrying…";
+      document.querySelector("#live-notices")?.append(notice);
+    });
+  };
+
+  const disconnectRealtime = (): void => {
+    events?.close();
+    events = null;
+  };
+
+  // An open stream occupies one connection for as long as its page lives, and
+  // a browser speaking HTTP/1.1 opens at most six per origin. A few pages
+  // holding a stream each therefore exhaust the pool and every further request
+  // waits forever. Only a visible page needs live updates, so a hidden one
+  // releases its stream and refetches the current state when it returns.
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      disconnectRealtime();
+      return;
     }
+    connectRealtime();
+    refreshGameRequests();
   });
-  events.addEventListener("error", () => {
-    if (document.querySelector("[data-live-connection-alert]")) return;
-    const notice = document.createElement("div");
-    notice.className = "alert alert-warning";
-    notice.dataset.liveConnectionAlert = "";
-    notice.setAttribute("role", "status");
-    notice.textContent = "Live connection lost. Retrying…";
-    document.querySelector("#live-notices")?.append(notice);
+
+  // A page kept in the back/forward cache is hidden without a visibility
+  // change, so release the stream on unload as well.
+  window.addEventListener("pagehide", disconnectRealtime);
+  window.addEventListener("pageshow", () => {
+    if (!document.hidden) connectRealtime();
   });
 }
 
