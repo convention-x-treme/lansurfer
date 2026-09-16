@@ -35,7 +35,6 @@ templ GameCatalogResults(games []game.SubscriptionGame, search, message string) 
 		}
 		<div class="mb-2 flex items-center justify-between gap-4">
 			<p class="section-label">{ gameCountLabel(len(games)) }</p>
-			<p class="data-text hidden text-xs text-base-content/55 sm:block" aria-hidden="true">follow · find players</p>
 		</div>
 		if len(games) == 0 {
 			<section class="detail-card">
@@ -65,7 +64,6 @@ templ MyGames(brand branding.Brand, navigation components.NavigationState, games
 		<div class="content-page">
 			<div class="mb-2 flex items-center justify-between gap-4">
 				<p class="section-label">My Games</p>
-				<p class="data-text hidden text-xs text-base-content/55 sm:block" aria-hidden="true">find players · unfollow</p>
 			</div>
 			<div class="game-grid" aria-live="polite">
 				if len(games) == 0 {

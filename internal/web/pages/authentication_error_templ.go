@@ -64,7 +64,7 @@ func Login(brand branding.Brand, loginAvailable bool) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			if loginAvailable {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<a class=\"btn btn-primary mt-7 w-full justify-between\" href=\"/auth/oidc\"><span>Continue with your CXT account</span> <span class=\"data-text rounded-md bg-primary-content/15 px-2 py-1 text-xs font-bold\">CXT IdP</span></a><p class=\"data-text mt-2 pl-1 text-xs text-base-content/60\">Default provider on this instance.</p><div class=\"divider data-text my-5 text-xs text-base-content/60\">or</div><button class=\"btn btn-quiet w-full justify-start gap-3\" type=\"button\" disabled aria-label=\"Continue with Discord (coming soon)\"><span class=\"data-text flex h-6 w-6 items-center justify-center rounded-lg bg-[#5865F2] text-xs font-bold text-white\" aria-hidden=\"true\">D</span> <span>Continue with Discord</span> <span class=\"data-text ml-auto text-xs\">Coming soon</span></button><p class=\"data-text mt-2 pl-1 text-xs text-base-content/60\">The only planned alternative provider — no other social logins.</p>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<a class=\"btn btn-primary mt-7 w-full justify-between\" href=\"/auth/oidc\"><span>Continue with your CXT account</span> <span class=\"data-text rounded-sm bg-primary-content/15 px-2 py-1 text-xs font-bold\">CXT IdP</span></a><div class=\"divider data-text my-5 text-xs text-base-content/60\">or</div><button class=\"btn btn-quiet w-full justify-start gap-3\" type=\"button\" disabled aria-label=\"Continue with Discord (coming soon)\"><span class=\"data-text flex h-6 w-6 items-center justify-center rounded-sm bg-[#5865F2] text-xs font-bold text-white\" aria-hidden=\"true\">D</span> <span>Continue with Discord</span> <span class=\"data-text ml-auto text-xs\">Coming soon</span></button>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -74,7 +74,7 @@ func Login(brand branding.Brand, loginAvailable bool) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<div class=\"mt-7 flex flex-wrap items-end justify-between gap-4 border-t border-base-300 pt-5\"><p class=\"max-w-[22rem] text-xs text-base-content/60\">Your display name arrives as an OIDC claim — no onboarding form.</p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<div class=\"mt-7 border-t border-base-300 pt-5\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -129,14 +129,14 @@ func AuthenticationError(brand branding.Brand, message string, loginAvailable bo
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "<section class=\"auth-stage\"><div role=\"alert\" class=\"auth-panel justify-self-center border-error\"><p class=\"section-label text-error\">Authentication</p><h1 class=\"mt-4 text-3xl font-bold\">Login could not be completed</h1><p class=\"mt-4 text-base-content/70\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "<section class=\"auth-stage\"><div role=\"alert\" class=\"auth-panel justify-self-center border-error\"><h1 class=\"text-3xl font-bold\">Login could not be completed</h1><p class=\"mt-4 text-base-content/70\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var6 string
 			templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(message)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/authentication_error.templ`, Line: 51, Col: 50}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/authentication_error.templ`, Line: 47, Col: 50}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 			if templ_7745c5c3_Err != nil {

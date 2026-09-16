@@ -37,7 +37,7 @@ templ Layout(brand branding.Brand, title string, navigation NavigationState) {
 			<script src={ brand.Assets.Script } defer></script>
 		</head>
 		<body class="bg-base-100 text-base-content antialiased">
-			<a class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-warning focus:px-4 focus:py-2 focus:text-warning-content" href="#main-content">Skip to content</a>
+			<a class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-sm focus:bg-warning focus:px-4 focus:py-2 focus:text-warning-content" href="#main-content">Skip to content</a>
 			if navigation.Viewer != nil {
 				<div class="app-shell">
 					@DesktopNavigation(brand, navigation)
@@ -76,7 +76,7 @@ templ AuthLayout(brand branding.Brand, title string) {
 			<script src={ brand.Assets.Script } defer></script>
 		</head>
 		<body class="bg-base-100 text-base-content antialiased">
-			<a class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-warning focus:px-4 focus:py-2 focus:text-warning-content" href="#main-content">Skip to content</a>
+			<a class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-sm focus:bg-warning focus:px-4 focus:py-2 focus:text-warning-content" href="#main-content">Skip to content</a>
 			<header class="auth-header"><a class="brand-wordmark text-xl" href="/"><span>LAN</span><span class="text-primary">surfer</span></a>@ThemeToggle()</header>
 			<main id="main-content">{ children... }</main>
 		</body>

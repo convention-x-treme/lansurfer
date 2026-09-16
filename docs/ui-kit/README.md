@@ -28,6 +28,13 @@ The leading source for colour and typography is the Claude Design project [LANsu
 - Sunset (`#FF6B35`) is the semantic color for "last place" and "now", but is not a `--color-*` in the DaisyUI theme: consume it through the central brand definition.
 - Muted inks (`#8DA9BF`, `#C7DCEA`) are blends of White Sand and Deep Ocean, not standalone palette colors.
 
+## Deviations from the Kit Snapshot
+
+- Corner radii are tighter than the kit: `--radius-selector` `0.25rem`, `--radius-field` `0.375rem`, `--radius-box` `0.5rem`.
+- Panel headings are sentence-case text in the UI font; the tracked uppercase mono eyebrow is gone.
+- Filter segment, "Free places only", "My Games" chip, list search, and "Load more" are not rendered. The kit shows them, but non-functional controls are not shipped; they return with server-side filtering and paging.
+- Player rows in the detail view are separated by rules inside the Players panel instead of being filled cards inside a card.
+
 ## Open
 
 - According to BRANDING.md, light mode is equally supported, but it is not yet represented in the kit.
