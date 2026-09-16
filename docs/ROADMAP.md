@@ -314,6 +314,8 @@ The reusable shell, mapped brand tokens, responsive navigation/drawer, login, si
 
 Track G remains active while its final feature integrations wait on their owning tracks: Track A must remove the prototype Event context from Game Request contracts; Track B must supply provider choices, onboarding, and profile state; Track C must supply catalog cover and metadata states; Track D must supply configurable instance identity; and Track E must supply notification settings and browser-permission state. These dependencies do not block further work within their respective tracks.
 
+A dark-mode presentation audit on 2026-09-16 scored the implemented surfaces 14/20 and recorded open theming, accessibility, and responsive defects in [`docs/UI-AUDIT.md`](UI-AUDIT.md). Its remediation backlog is Track G work on already-adopted surfaces and does not depend on another track.
+
 ## Expected outcomes
 
 ### System adoption
@@ -336,9 +338,20 @@ Track G remains active while its final feature integrations wait on their owning
 - Preserve ordinary HTTP behavior and server-rendered validation without JavaScript. Use HTMX for focused fragment replacement, SSE for live arrival/change states, and TypeScript only for browser-specific progressive enhancement such as the mobile drawer or viewport-aware notifications.
 - Apply the established shell, tokens, components, and interaction rules to the remaining supported prototype and 1.0 routes as their owning tracks deliver them; feature-specific surfaces must not create a competing visual system.
 
+### Presentation remediation
+
+Work the backlog in [`docs/UI-AUDIT.md`](UI-AUDIT.md), which records the measured defects behind each item. The P1 groups come first.
+
+- Resolve the theme cascade so a visitor without a theme cookie gets one coherent presentation, and make every form control identifiable at 3:1 in both themes. Drive theme differences through tokens rather than per-component `[data-theme]` overrides, and use `100dvh` where the shell fills the viewport.
+- Keep state legible on small viewports: never carry Last place, Joined, Host, or Full by colour alone, and keep live notices clear of the rail.
+- Use one colour per action level across every surface, give each page a real `h1`, and render absent values as an omitted row rather than a placeholder dash.
+- Restrict JetBrains Mono to the data roles in `BRANDING.md`; running text, navigation, and controls use Schibsted Grotesk.
+- Restore colour semantics: state text meets 4.5:1 on its own tint, closed and cancelled requests drop the open-places colour, Sunset marks one scarce thing per view, and quiet and destructive buttons keep a visible body on dark surfaces.
+- Make the live-update path visible: the arrival highlight must read against the resting row, and sticky surfaces must not let content ghost through.
+
 ## Acceptance
 
-The production login and complete Game Request flow match the UI kit's hierarchy, density, terminology, states, and responsive behavior without expanding the domain model. The remaining supported routes use the same shell and component vocabulary. Dark and light presentations retain all information and actions; desktop, mobile, keyboard, screen-reader, reduced-motion, HTMX/SSE, server-validation, and no-JavaScript paths are verified at appropriate layers. Production assets are embedded, and feature-track integrations preserve their owning module and handler/query boundaries.
+The production login and complete Game Request flow match the UI kit's hierarchy, density, terminology, states, and responsive behavior without expanding the domain model. The remaining supported routes use the same shell and component vocabulary. Dark and light presentations retain all information and actions, including for a visitor who has expressed no theme preference, and the remediation backlog in [`docs/UI-AUDIT.md`](UI-AUDIT.md) is closed. Desktop, mobile, keyboard, screen-reader, reduced-motion, HTMX/SSE, server-validation, and no-JavaScript paths are verified at appropriate layers. Production assets are embedded, and feature-track integrations preserve their owning module and handler/query boundaries.
 
 # 1.0 Integration Gate
 
