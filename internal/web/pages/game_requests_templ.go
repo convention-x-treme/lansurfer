@@ -164,7 +164,7 @@ func RequestStats(requests []requestquery.Request) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "</p><p class=\"data-text text-xs text-base-content/60\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "</p><p class=\"data-text text-xs text-base-content/70\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -206,12 +206,12 @@ func TrendingSection(requests []requestquery.Request) templ.Component {
 			templ_7745c5c3_Var7 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "<section class=\"rail-section\"><div class=\"flex items-baseline justify-between gap-3\"><h2 class=\"text-[0.9375rem] font-semibold\">Most requested</h2><span class=\"data-text text-xs text-base-content/55\">open requests</span></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "<section class=\"rail-section\"><div class=\"flex items-baseline justify-between gap-3\"><h2 class=\"text-[0.9375rem] font-semibold\">Most requested</h2><span class=\"data-text text-xs text-base-content/65\">open requests</span></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if len(requests) == 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "<p class=\"text-sm text-base-content/60\">Nothing open yet.</p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "<p class=\"text-sm text-base-content/70\">Nothing open yet.</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -368,7 +368,7 @@ func GameRequestListContent(brand branding.Brand, requests []requestquery.Reques
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "</p><p class=\"data-text hidden text-xs text-base-content/55 sm:block\" aria-hidden=\"true\">places · start</p><span class=\"sr-only\">Player places and start times follow each game name.</span></div><div class=\"request-list\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "</p><p class=\"data-text hidden text-xs text-base-content/65 sm:block\" aria-hidden=\"true\">places · start</p><span class=\"sr-only\">Player places and start times follow each game name.</span></div><div class=\"request-list\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -835,7 +835,7 @@ func NewGameRequest(brand branding.Brand, navigation components.NavigationState,
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 71, "<header class=\"app-topbar\"><a class=\"link count-open text-sm font-semibold no-underline\" href=\"/game-requests\">← Game Requests</a><p class=\"data-text text-xs text-base-content/60\">New request</p></header><div class=\"content-page\"><div class=\"composer-panel\"><div><h1 class=\"text-xl font-semibold\">Who's up for a round?</h1><p class=\"mt-1 text-sm text-base-content/65\">Pick a game, a start time, and how many players can join.</p></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 71, "<header class=\"app-topbar\"><a class=\"link count-open text-sm font-semibold no-underline\" href=\"/game-requests\">← Game Requests</a><p class=\"data-text text-xs text-base-content/70\">New request</p></header><div class=\"content-page\"><div class=\"composer-panel\"><div><h1 class=\"text-xl font-semibold\">Who's up for a round?</h1><p class=\"mt-1 text-sm text-base-content/70\">Pick a game, a start time, and how many players can join.</p></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1009,7 +1009,7 @@ func NewGameRequest(brand branding.Brand, navigation components.NavigationState,
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 90, "\" data-timezone-offset> <label class=\"grid gap-2\"><span class=\"label-text font-medium\">Description <span class=\"font-normal text-base-content/55\">(optional)</span></span><textarea class=\"textarea textarea-bordered min-h-28 w-full\" name=\"description\" maxlength=\"1000\" placeholder=\"Anything players should know\" data-description>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 90, "\" data-timezone-offset> <label class=\"grid gap-2\"><span class=\"label-text font-medium\">Description <span class=\"font-normal text-base-content/65\">(optional)</span></span><textarea class=\"textarea textarea-bordered min-h-28 w-full\" name=\"description\" maxlength=\"1000\" placeholder=\"Anything players should know\" data-description>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -1022,7 +1022,7 @@ func NewGameRequest(brand branding.Brand, navigation components.NavigationState,
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 91, "</textarea><span class=\"data-text flex justify-between gap-4 text-xs text-base-content/55\"><span>Leave max players empty for an open round.</span><span data-description-count>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 91, "</textarea><span class=\"data-text flex justify-between gap-4 text-xs text-base-content/65\"><span>Leave max players empty for an open round.</span><span data-description-count>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -1152,7 +1152,7 @@ func GameRequestDetail(brand branding.Brand, navigation components.NavigationSta
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 99, "<header class=\"app-topbar\"><div class=\"flex flex-wrap items-center gap-x-4 gap-y-1\"><a class=\"link count-open text-sm font-semibold no-underline\" href=\"/game-requests\">← Game Requests</a> <span class=\"data-text text-xs text-base-content/60\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 99, "<header class=\"app-topbar\"><div class=\"flex flex-wrap items-center gap-x-4 gap-y-1\"><a class=\"link count-open text-sm font-semibold no-underline\" href=\"/game-requests\">← Game Requests</a> <span class=\"data-text text-xs text-base-content/70\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1256,7 +1256,7 @@ func DetailStamp() templ.Component {
 			templ_7745c5c3_Var60 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 107, "<p id=\"detail-stamp\" class=\"data-text text-xs text-base-content/60\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 107, "<p id=\"detail-stamp\" class=\"data-text text-xs text-base-content/70\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1418,7 +1418,7 @@ func GameRequestDetailContent(request requestquery.Request, viewerID string, ref
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 121, "</div><p class=\"data-text mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-base-content/60 [&>span]:whitespace-nowrap\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 121, "</div><p class=\"data-text mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-base-content/70 [&>span]:whitespace-nowrap\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1569,7 +1569,7 @@ func GameRequestDetailContent(request requestquery.Request, viewerID string, ref
 			return templ_7745c5c3_Err
 		}
 		if request.Description == "" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 137, "<p class=\"mt-2 text-base-content/50\">No description.</p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 137, "<p class=\"mt-2 text-base-content/65\">No description.</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1592,7 +1592,7 @@ func GameRequestDetailContent(request requestquery.Request, viewerID string, ref
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 140, "</div></article><section class=\"detail-card flex-1\" aria-labelledby=\"players-title\"><div class=\"flex flex-wrap items-baseline justify-between gap-3\"><h2 id=\"players-title\" class=\"text-[1.0625rem] font-semibold\">Players</h2><p class=\"data-text text-xs text-base-content/60\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 140, "</div></article><section class=\"detail-card flex-1\" aria-labelledby=\"players-title\"><div class=\"flex flex-wrap items-baseline justify-between gap-3\"><h2 id=\"players-title\" class=\"text-[1.0625rem] font-semibold\">Players</h2><p class=\"data-text text-xs text-base-content/70\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1700,7 +1700,7 @@ func GameRequestDetailContent(request requestquery.Request, viewerID string, ref
 			}
 		}
 		if lastPlace(request) {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 151, "<li class=\"last-place-row\"><span class=\"avatar-placeholder avatar-placeholder-outline\" aria-hidden=\"true\">+</span> <strong class=\"flex-1 count-last\">Last place open</strong> <span class=\"data-text text-xs text-base-content/55\">joins update live</span></li>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 151, "<li class=\"last-place-row\"><span class=\"avatar-placeholder avatar-placeholder-outline\" aria-hidden=\"true\">+</span> <strong class=\"flex-1 count-last\">Last place open</strong> <span class=\"data-text text-xs text-base-content/65\">joins update live</span></li>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1752,7 +1752,7 @@ func GameRequestDetailContent(request requestquery.Request, viewerID string, ref
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 157, "<button class=\"btn btn-danger btn-sm w-full\" type=\"submit\">Cancel Game Request</button></form><p class=\"text-xs leading-relaxed text-base-content/55\">Visible to the host only. Cancelling asks once and notifies every player.</p></section>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 157, "<button class=\"btn btn-danger btn-sm w-full\" type=\"submit\">Cancel Game Request</button></form><p class=\"text-xs leading-relaxed text-base-content/65\">Visible to the host only. Cancelling asks once and notifies every player.</p></section>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1770,7 +1770,7 @@ func GameRequestDetailContent(request requestquery.Request, viewerID string, ref
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 159, "</p><div class=\"data-text flex items-center justify-between gap-3 text-xs text-base-content/60\"><span>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 159, "</p><div class=\"data-text flex items-center justify-between gap-3 text-xs text-base-content/70\"><span>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1803,7 +1803,7 @@ func GameRequestDetailContent(request requestquery.Request, viewerID string, ref
 			return templ_7745c5c3_Err
 		}
 		for _, member := range activityEntries(request) {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 164, "<li class=\"flex gap-3\"><time class=\"data-text w-12 flex-none text-xs text-base-content/60\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 164, "<li class=\"flex gap-3\"><time class=\"data-text w-12 flex-none text-xs text-base-content/70\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1846,7 +1846,7 @@ func GameRequestDetailContent(request requestquery.Request, viewerID string, ref
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 167, "</ol><p class=\"mt-auto text-xs leading-relaxed text-base-content/55\">Counter, player list and activity update without a reload.</p></section></aside></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 167, "</ol><p class=\"mt-auto text-xs leading-relaxed text-base-content/65\">Counter, player list and activity update without a reload.</p></section></aside></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2067,7 +2067,7 @@ func activityTime(member requestquery.Member, request requestquery.Request) time
 }
 
 func startTimeClass(time.Time) string {
-	return "data-text text-xs text-base-content/60"
+	return "data-text text-xs text-base-content/70"
 }
 
 func startLabel(startsAt time.Time) string {

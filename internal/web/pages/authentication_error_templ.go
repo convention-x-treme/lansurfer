@@ -59,12 +59,12 @@ func Login(brand branding.Brand, loginAvailable bool) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "\" alt=\"LANsurfer otter ready to help players find a game\"><div class=\"auth-panel\"><h1 class=\"text-[1.75rem] font-black leading-tight tracking-tight\">Find your crew.<br>Catch the next game.</h1><p class=\"mt-2.5 text-base-content/65\">Sign in with the account you already have. LANsurfer never stores a password.</p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "\" alt=\"LANsurfer otter ready to help players find a game\"><div class=\"auth-panel\"><h1 class=\"text-[1.75rem] font-black leading-tight tracking-tight\">Find your crew.<br>Catch the next game.</h1><p class=\"mt-2.5 text-base-content/70\">Sign in with the account you already have. LANsurfer never stores a password.</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if loginAvailable {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<a class=\"btn btn-primary mt-7 w-full justify-between\" href=\"/auth/oidc\"><span>Continue with your CXT account</span> <span class=\"data-text rounded-sm bg-primary-content/15 px-2 py-1 text-xs font-bold\">CXT IdP</span></a><div class=\"divider data-text my-5 text-xs text-base-content/60\">or</div><button class=\"btn btn-quiet w-full justify-start gap-3\" type=\"button\" disabled aria-label=\"Continue with Discord (coming soon)\"><span class=\"data-text flex h-6 w-6 items-center justify-center rounded-sm bg-[#5865F2] text-xs font-bold text-white\" aria-hidden=\"true\">D</span> <span>Continue with Discord</span> <span class=\"data-text ml-auto text-xs\">Coming soon</span></button>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<a class=\"btn btn-primary mt-7 w-full justify-between\" href=\"/auth/oidc\"><span>Continue with your CXT account</span> <span class=\"data-text rounded-sm bg-primary-content/15 px-2 py-1 text-xs font-bold\">CXT IdP</span></a><div class=\"divider data-text my-5 text-xs text-base-content/70\">or</div><button class=\"btn btn-quiet w-full justify-start gap-3\" type=\"button\" disabled aria-label=\"Continue with Discord (coming soon)\"><span class=\"data-text flex h-6 w-6 items-center justify-center rounded-sm bg-[#5865F2] text-xs font-bold text-white\" aria-hidden=\"true\">D</span> <span>Continue with Discord</span> <span class=\"data-text ml-auto text-xs\">Coming soon</span></button>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -78,7 +78,7 @@ func Login(brand branding.Brand, loginAvailable bool) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = components.OperatorAttribution("data-text text-xs text-base-content/60").Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = components.OperatorAttribution("data-text text-xs text-base-content/70").Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

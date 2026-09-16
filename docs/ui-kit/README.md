@@ -37,4 +37,4 @@ The leading source for colour and typography is the Claude Design project [LANsu
 
 ## Open
 
-- According to BRANDING.md, light mode is equally supported, but it is not yet represented in the kit.
+- According to BRANDING.md, light mode is equally supported, but it is not yet represented in the kit. The implemented light presentation is the Sea Mist canvas with White Sand surfaces and Tide Line borders described there; a future kit frame should follow it rather than the kit's original near-white sketch.

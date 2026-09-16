@@ -42,7 +42,9 @@ The palette is fixed through 1.0. Templates and styles must consume centralized 
 | Surf Blue | `#00B4D8` | 100 · 17 · 0 · 15 | Dark-mode primary action and selection |
 | Aqua Wave | `#48CAE4` | 68 · 11 · 0 · 11 | Counters, links, and secondary emphasis |
 | Sea Foam | `#90E0EF` | 40 · 6 · 0 · 6 | Labels on dark surfaces and quiet accents |
-| White Sand | `#F8F9FA` | 1 · 0 · 0 · 2 | Body text on dark surfaces and light-mode background |
+| Sea Mist | `#E1EDF4` | 8 · 3 · 0 · 4 | Light-mode page background and recessed light-mode fields |
+| Tide Line | `#BED3DF` | 15 · 5 · 0 · 13 | Light-mode borders, rules, and member avatars |
+| White Sand | `#F8F9FA` | 1 · 0 · 0 · 2 | Body text on dark surfaces and raised light-mode surfaces |
 | Golden Hour | `#F4D35E` | 0 · 14 · 61 · 4 | Scheduled times, trending, and organizer marks |
 | Sunset | `#FF6B35` | 0 · 58 · 79 · 0 | Urgency, happening now, and the last available place |
 | Coral | `#FF3F73` | 0 · 75 · 55 · 0 | Cancellation, deletion, and errors |
@@ -50,6 +52,8 @@ The palette is fixed through 1.0. Templates and styles must consume centralized 
 CMYK values are uncoated-stock conversions for merchandise, print, and signage; re-profile them against the printer's ICC profile before production. Screen work always uses the HEX values.
 
 Surf Blue is the primary action and selection colour in the dark theme, Deep Blue in the light theme, where Surf Blue does not reach sufficient contrast on White Sand. Use one primary action per screen.
+
+The two themes build depth in opposite directions. Dark mode lifts a surface by lightening it (Deep Ocean page, Ocean Depth cards, Harbour raised state). Light mode lowers the canvas instead: Sea Mist is the page and the recessed field, White Sand is the raised surface, and Tide Line draws the borders between them. A light screen that is White Sand throughout has no layers left to read.
 
 ### Derived inks
 
@@ -62,6 +66,8 @@ Muted inks are blends of White Sand and Deep Ocean for screen use, not palette c
 
 Implementations produce them through the theme's own text colour (for example `color-mix` against `--color-base-content`) so both themes stay correct, rather than hardcoding the hexadecimal values.
 
+Deep Ocean is a blue dark, so it loses contrast faster than a neutral grey as it is diluted. On light surfaces, muted ink stops at 65% of the text colour, and ordinary meta text uses 70%; below that it fails 4.5:1 against Sea Mist. Use 80% for quiet headings.
+
 ### Wave gradient
 
 `linear-gradient(135deg, #0D1B2A 0%, #0077A8 40%, #48CAE4 70%, #FF6B35 100%)` is reserved for key visuals such as the login stage. It is not a surface treatment for ordinary cards, rows, or buttons.
@@ -73,6 +79,9 @@ Use the ocean blues for the majority of the interface. Sunset, Coral, and Golden
 - Use Deep Ocean text on Surf Blue, Aqua Wave, Sea Foam, Golden Hour, Sunset, and Coral fills. White Sand text does not have sufficient contrast on those colors for normal-sized text.
 - Use White Sand text on Deep Ocean, Ocean Depth, Harbour, and Deep Blue.
 - Do not set Surf Blue text or small Surf Blue elements on White Sand. Use Deep Blue there.
+- Deep Blue text clears 4.5:1 on White Sand but not on Sea Mist. On Sea Mist surfaces — recessed fields, game abbreviations, member avatars — darken it toward Deep Ocean first.
+- The keyboard focus ring is Golden Hour on dark surfaces and Deep Blue on light ones. Golden Hour on Sea Mist is roughly 1.3:1 and is not a visible ring.
+- In light mode, alerts are a tinted surface with a matching border and dark ink rather than a saturated fill. The meaning of the colour does not change with the treatment.
 - Never communicate state through color alone. Pair it with a label, icon, or other visible treatment.
 - Preserve visible keyboard focus, hover, active, disabled, error, and success states in both themes.
 - Validate final combinations and interactive states against WCAG contrast requirements during implementation; opacity and blended backgrounds can change the effective contrast.
@@ -170,10 +179,11 @@ Additional poses should share the same recognizable character, headset, ocean pa
 Dark mode is the primary event-floor presentation, and light mode is an equal supported presentation for daylight, office, projector, and accessibility contexts. Neither mode may lose information or actions.
 
 - Dark pages use Deep Ocean with Ocean Depth cards and navigation surfaces.
-- Light pages use White Sand with white or lightly ocean-tinted raised surfaces and restrained blue borders.
+- Light pages use a Sea Mist canvas with White Sand cards, rows, navigation, and a Tide Line border on every raised surface. Light surfaces also carry a single hairline shadow; dark surfaces separate by value alone and carry none.
+- Inputs and other recessed elements invert that relationship: Sea Mist inside a White Sand panel in light mode, Deep Ocean inside an Ocean Depth card in dark mode.
 - Surf Blue remains the primary interactive accent in both themes.
 - Semantic meanings for Golden Hour, Sunset, and Coral remain identical across themes.
-- Theme choice is a presentation preference, not configurable instance branding.
+- Theme choice is a presentation preference, not configurable instance branding. It is remembered in a preference cookie and rendered into the document, so a navigation never paints the other theme first.
 
 Follow the UI kit's choice of dense rows, detail surfaces, forms, and overlays for each task. Use restrained borders, clear grouping, and high information density that remains readable at a glance. Ocean styling must not obscure the primary action or instance identity.
 
@@ -191,8 +201,10 @@ The palette is large because print, merchandise, and key visuals need it. On scr
 | Deep Blue | Primary action in the light theme, key-visual gradients |
 | Surf Blue | Primary action in the dark theme, selection, active navigation |
 | Aqua Wave | Counters, links, joined state |
-| Sea Foam | Labels on dark surfaces, ink on quiet buttons |
-| White Sand | Body text on dark, page background (light) |
+| Sea Foam | Labels on dark surfaces, ink on quiet buttons, body of the light quiet button |
+| Sea Mist | Page background and recessed fields (light) |
+| Tide Line | Borders, rules, and member avatars (light) |
+| White Sand | Body text on dark, raised surfaces (light) |
 | Golden Hour | Time and stewardship: start times, trending, ORGA, host actions |
 | Sunset | Scarcity and urgency: the last free place, "now" |
 | Coral | Leaving, cancelling, deleting, errors |
@@ -207,7 +219,7 @@ Buttons carry the same six levels everywhere. The level, not the page, decides t
 | --- | --- | --- | --- |
 | Commit | `btn-primary` | Surf Blue fill, Deep Ocean text (light theme: Deep Blue fill, White Sand text) | Join, Create Game Request, Follow Game |
 | Urgent commit | `btn-urgent` | Sunset fill, Deep Ocean text | Join on the last free place |
-| Supporting | `btn-quiet` | Harbour surface, Sea Foam text | Find Players, View, Search, Save, Copy link |
+| Supporting | `btn-quiet` | Harbour surface, Sea Foam text (light theme: Sea Foam and Tide Line surface, dark Deep Blue text) | Find Players, View, Search, Save, Copy link |
 | Step back | `btn-step-back` | Supporting at rest, Coral surface and text on hover and focus | Leave, Unfollow, Close for new players, Deactivate game |
 | Destructive | `btn-danger` | Coral-tinted surface and Coral text at rest | Cancel Game Request |
 | Tertiary | `btn-ghost` | Text only | Clear, Log out, Dismiss |

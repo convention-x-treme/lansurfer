@@ -49,7 +49,7 @@ func AdminEvents(brand branding.Brand, navigation components.NavigationState, ev
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<header class=\"app-topbar\"><h1 class=\"data-text count-open text-xs\">Administration · Events</h1><a class=\"btn btn-quiet btn-sm\" href=\"/admin/games\">Game catalog</a></header><div class=\"content-page\"><p class=\"mb-5 max-w-2xl text-sm text-base-content/65\">Keep historical events and select the one currently used by LANsurfer.</p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<header class=\"app-topbar\"><h1 class=\"data-text count-open text-xs\">Administration · Events</h1><a class=\"btn btn-quiet btn-sm\" href=\"/admin/games\">Game catalog</a></header><div class=\"content-page\"><p class=\"mb-5 max-w-2xl text-sm text-base-content/70\">Keep historical events and select the one currently used by LANsurfer.</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -108,7 +108,7 @@ func AdminEvents(brand branding.Brand, navigation components.NavigationState, ev
 				return templ_7745c5c3_Err
 			}
 			if len(events) == 0 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<div class=\"detail-card\"><h2 class=\"text-[1.0625rem] font-semibold\">No events yet</h2><p class=\"text-sm text-base-content/65\">Create the LAN event you want to prepare.</p></div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<div class=\"detail-card\"><h2 class=\"text-[1.0625rem] font-semibold\">No events yet</h2><p class=\"text-sm text-base-content/70\">Create the LAN event you want to prepare.</p></div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -308,7 +308,7 @@ func AdminGames(brand branding.Brand, navigation components.NavigationState, gam
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "<header class=\"app-topbar\"><h1 class=\"data-text count-open text-xs\">Administration · Game catalog</h1><a class=\"btn btn-quiet btn-sm\" href=\"/admin/events\">Events</a></header><div class=\"content-page\"><p class=\"mb-5 max-w-2xl text-sm text-base-content/65\">Maintain the local games available for Looking for Group.</p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "<header class=\"app-topbar\"><h1 class=\"data-text count-open text-xs\">Administration · Game catalog</h1><a class=\"btn btn-quiet btn-sm\" href=\"/admin/events\">Events</a></header><div class=\"content-page\"><p class=\"mb-5 max-w-2xl text-sm text-base-content/70\">Maintain the local games available for Looking for Group.</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -390,7 +390,7 @@ func AdminGames(brand branding.Brand, navigation components.NavigationState, gam
 				return templ_7745c5c3_Err
 			}
 			if len(games) == 0 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "<div class=\"detail-card\"><h2 class=\"text-[1.0625rem] font-semibold\">No games found</h2><p class=\"text-sm text-base-content/65\">Add a game or try a different name or alias.</p></div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "<div class=\"detail-card\"><h2 class=\"text-[1.0625rem] font-semibold\">No games found</h2><p class=\"text-sm text-base-content/70\">Add a game or try a different name or alias.</p></div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -449,7 +449,7 @@ func AdminGameCard(item game.Game) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "</h2><p class=\"data-text text-xs text-base-content/55\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "</h2><p class=\"data-text text-xs text-base-content/65\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -618,7 +618,7 @@ func AdminGameCard(item game.Game) templ.Component {
 			}
 		}
 		if len(item.Aliases) == 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, "<span class=\"text-sm text-base-content/60\">No aliases</span>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, "<span class=\"text-sm text-base-content/70\">No aliases</span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -766,7 +766,7 @@ func AdminError(brand branding.Brand, navigation components.NavigationState) tem
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 63, "<header class=\"app-topbar\"><p class=\"data-text text-xs text-base-content/60\">Administration</p></header><div class=\"content-page\"><div role=\"alert\" class=\"alert alert-error\"><div><h1 class=\"font-bold\">Administration could not be loaded</h1><p>Try the request again.</p></div></div></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 63, "<header class=\"app-topbar\"><p class=\"data-text text-xs text-base-content/70\">Administration</p></header><div class=\"content-page\"><div role=\"alert\" class=\"alert alert-error\"><div><h1 class=\"font-bold\">Administration could not be loaded</h1><p>Try the request again.</p></div></div></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

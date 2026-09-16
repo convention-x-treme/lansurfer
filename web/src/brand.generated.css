@@ -14,6 +14,8 @@
   --brand-surf-blue: #00B4D8;
   --brand-aqua-wave: #48CAE4;
   --brand-sea-foam: #90E0EF;
+  --brand-sea-mist: #E1EDF4;
+  --brand-tide-line: #BED3DF;
   --brand-white-sand: #F8F9FA;
   --brand-golden-hour: #F4D35E;
   --brand-sunset: #FF6B35;
@@ -22,7 +24,7 @@
 
 @plugin "daisyui/theme" {
   name: "lansurfer-dark";
-  default: true;
+  default: false;
   prefersdark: true;
   color-scheme: dark;
   --color-base-100: var(--brand-deep-ocean);
@@ -56,13 +58,17 @@
 }
 
 @plugin "daisyui/theme" {
+  /* Light is the plain :root theme and dark is attached to prefers-color-scheme,
+     so a document with no data-theme attribute still paints the right one. */
   name: "lansurfer-light";
-  default: false;
+  default: true;
   prefersdark: false;
   color-scheme: light;
-  --color-base-100: var(--brand-white-sand);
-  --color-base-200: color-mix(in srgb, var(--brand-white-sand) 90%, white);
-  --color-base-300: color-mix(in srgb, var(--brand-white-sand) 78%, var(--brand-sea-foam));
+  /* The light page is Sea Mist, not paper: raised surfaces are White Sand and
+     read as layers above the canvas instead of dissolving into one white sheet. */
+  --color-base-100: var(--brand-sea-mist);
+  --color-base-200: var(--brand-white-sand);
+  --color-base-300: var(--brand-tide-line);
   --color-base-content: var(--brand-deep-ocean);
   --color-primary: var(--brand-deep-blue);
   --color-primary-content: var(--brand-white-sand);

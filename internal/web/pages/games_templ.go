@@ -161,12 +161,12 @@ func GameCatalogResults(games []game.SubscriptionGame, search, message string) t
 				return templ_7745c5c3_Err
 			}
 			if search == "" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "<p class=\"text-sm text-base-content/65\">There are no active games in the catalog yet.</p>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "<p class=\"text-sm text-base-content/70\">There are no active games in the catalog yet.</p>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			} else {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "<p class=\"text-sm text-base-content/65\">Try a different game name or alias.</p>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "<p class=\"text-sm text-base-content/70\">Try a different game name or alias.</p>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -250,7 +250,7 @@ func MyGames(brand branding.Brand, navigation components.NavigationState, games 
 				return templ_7745c5c3_Err
 			}
 			if len(games) == 0 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "<section class=\"detail-card\"><h2 class=\"text-[1.0625rem] font-semibold\">You are not following any games yet</h2><p class=\"text-sm text-base-content/65\">Browse the catalog and follow the games you would like to play.</p><a class=\"btn btn-primary btn-sm self-start\" href=\"/games\">Browse games</a></section>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "<section class=\"detail-card\"><h2 class=\"text-[1.0625rem] font-semibold\">You are not following any games yet</h2><p class=\"text-sm text-base-content/70\">Browse the catalog and follow the games you would like to play.</p><a class=\"btn btn-primary btn-sm self-start\" href=\"/games\">Browse games</a></section>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -322,7 +322,7 @@ func GameSubscriptionCard(item game.SubscriptionGame, myGames bool) templ.Compon
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "</strong> <span class=\"data-text block truncate text-xs text-base-content/55\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "</strong> <span class=\"data-text block truncate text-xs text-base-content/65\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -546,7 +546,7 @@ func GameCatalogError(brand branding.Brand, navigation components.NavigationStat
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "<header class=\"app-topbar\"><p class=\"data-text text-xs text-base-content/60\">Game catalog</p><a class=\"btn btn-primary btn-sm\" href=\"/games\">Retry</a></header><div class=\"content-page\"><div role=\"alert\" class=\"alert alert-error\"><div><h1 class=\"font-bold\">Games could not be loaded</h1><p>Try the request again.</p></div></div></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "<header class=\"app-topbar\"><p class=\"data-text text-xs text-base-content/70\">Game catalog</p><a class=\"btn btn-primary btn-sm\" href=\"/games\">Retry</a></header><div class=\"content-page\"><div role=\"alert\" class=\"alert alert-error\"><div><h1 class=\"font-bold\">Games could not be loaded</h1><p>Try the request again.</p></div></div></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

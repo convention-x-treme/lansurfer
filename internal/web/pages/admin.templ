@@ -15,7 +15,7 @@ templ AdminEvents(brand branding.Brand, navigation components.NavigationState, e
 			<a class="btn btn-quiet btn-sm" href="/admin/games">Game catalog</a>
 		</header>
 		<div class="content-page">
-			<p class="mb-5 max-w-2xl text-sm text-base-content/65">Keep historical events and select the one currently used by LANsurfer.</p>
+			<p class="mb-5 max-w-2xl text-sm text-base-content/70">Keep historical events and select the one currently used by LANsurfer.</p>
 			if formError != "" {
 				<div role="alert" class="alert alert-error mb-4"><span>{ formError }</span></div>
 			}
@@ -35,7 +35,7 @@ templ AdminEvents(brand branding.Brand, navigation components.NavigationState, e
 					<p class="section-label">Existing events</p>
 					<div class="grid gap-3">
 						if len(events) == 0 {
-							<div class="detail-card"><h2 class="text-[1.0625rem] font-semibold">No events yet</h2><p class="text-sm text-base-content/65">Create the LAN event you want to prepare.</p></div>
+							<div class="detail-card"><h2 class="text-[1.0625rem] font-semibold">No events yet</h2><p class="text-sm text-base-content/70">Create the LAN event you want to prepare.</p></div>
 						}
 						for _, item := range events {
 							<article class="game-card">
@@ -75,7 +75,7 @@ templ AdminGames(brand branding.Brand, navigation components.NavigationState, ga
 			<a class="btn btn-quiet btn-sm" href="/admin/events">Events</a>
 		</header>
 		<div class="content-page">
-			<p class="mb-5 max-w-2xl text-sm text-base-content/65">Maintain the local games available for Looking for Group.</p>
+			<p class="mb-5 max-w-2xl text-sm text-base-content/70">Maintain the local games available for Looking for Group.</p>
 			if formError != "" {
 				<div role="alert" class="alert alert-error mb-4"><span>{ formError }</span></div>
 			}
@@ -103,7 +103,7 @@ templ AdminGames(brand branding.Brand, navigation components.NavigationState, ga
 					<p class="section-label">Catalog games</p>
 					<div class="grid gap-3">
 						if len(games) == 0 {
-							<div class="detail-card"><h2 class="text-[1.0625rem] font-semibold">No games found</h2><p class="text-sm text-base-content/65">Add a game or try a different name or alias.</p></div>
+							<div class="detail-card"><h2 class="text-[1.0625rem] font-semibold">No games found</h2><p class="text-sm text-base-content/70">Add a game or try a different name or alias.</p></div>
 						}
 						for _, item := range games {
 							@AdminGameCard(item)
@@ -118,7 +118,7 @@ templ AdminGames(brand branding.Brand, navigation components.NavigationState, ga
 templ AdminGameCard(item game.Game) {
 	<article class="game-card">
 		<div class="flex flex-wrap items-center justify-between gap-3">
-			<div><h2 class="text-[1.0625rem] font-semibold">{ item.Name }</h2><p class="data-text text-xs text-base-content/55">{ item.Slug }</p></div>
+			<div><h2 class="text-[1.0625rem] font-semibold">{ item.Name }</h2><p class="data-text text-xs text-base-content/65">{ item.Slug }</p></div>
 			if item.Active {
 				<span class="status-chip status-chip-open">Active</span>
 			} else {
@@ -149,7 +149,7 @@ templ AdminGameCard(item game.Game) {
 				</form>
 			}
 			if len(item.Aliases) == 0 {
-				<span class="text-sm text-base-content/60">No aliases</span>
+				<span class="text-sm text-base-content/70">No aliases</span>
 			}
 		</div>
 		<form method="post" action={ "/admin/games/" + item.ID + "/aliases" } class="flex flex-col gap-2 sm:flex-row">
@@ -168,7 +168,7 @@ templ GameFields(name, slug string) {
 
 templ AdminError(brand branding.Brand, navigation components.NavigationState) {
 	@components.Layout(brand, "Administration error", navigation) {
-		<header class="app-topbar"><p class="data-text text-xs text-base-content/60">Administration</p></header>
+		<header class="app-topbar"><p class="data-text text-xs text-base-content/70">Administration</p></header>
 		<div class="content-page"><div role="alert" class="alert alert-error"><div><h1 class="font-bold">Administration could not be loaded</h1><p>Try the request again.</p></div></div></div>
 	}
 }

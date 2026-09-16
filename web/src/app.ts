@@ -4,28 +4,29 @@ import htmx from "htmx.org";
 // Content-Security-Policy blocks. app.css defines those classes itself.
 htmx.config.includeIndicatorStyles = false;
 
-const themeStorageKey = "lansurfer-theme";
+// The theme the document already paints with: the server renders an explicit
+// choice into <html>, and without one the stylesheet follows the operating
+// system. Setting it from script on load would repaint the page after the
+// deferred bundle runs, which is the theme flash this avoids.
+const themeCookieName = "lansurfer_theme";
+const themeCookieMaxAge = 60 * 60 * 24 * 365;
 const darkTheme = "lansurfer-dark";
 const lightTheme = "lansurfer-light";
 
 type Theme = typeof darkTheme | typeof lightTheme;
 
-function storedTheme(): Theme | null {
-  try {
-    const value = window.localStorage.getItem(themeStorageKey);
-    return value === darkTheme || value === lightTheme ? value : null;
-  } catch {
-    return null;
-  }
+function currentTheme(): Theme {
+  const rendered = document.documentElement.dataset.theme;
+  if (rendered === darkTheme || rendered === lightTheme) return rendered;
+  return window.matchMedia("(prefers-color-scheme: light)").matches ? lightTheme : darkTheme;
 }
 
-function preferredTheme(): Theme {
-  return storedTheme() ?? (window.matchMedia("(prefers-color-scheme: light)").matches ? lightTheme : darkTheme);
+function rememberTheme(theme: Theme): void {
+  const secure = window.location.protocol === "https:" ? "; Secure" : "";
+  document.cookie = `${themeCookieName}=${theme}; path=/; max-age=${themeCookieMaxAge}; SameSite=Lax${secure}`;
 }
 
-function applyTheme(theme: Theme): void {
-  document.documentElement.dataset.theme = theme;
-
+function describeToggles(theme: Theme): void {
   document.querySelectorAll<HTMLButtonElement>("[data-theme-toggle]").forEach((button) => {
     const isDark = theme === darkTheme;
     button.setAttribute("aria-label", isDark ? "Use light theme" : "Use dark theme");
@@ -35,7 +36,7 @@ function applyTheme(theme: Theme): void {
   });
 }
 
-applyTheme(preferredTheme());
+describeToggles(currentTheme());
 
 document.querySelectorAll<HTMLInputElement>("[data-timezone-offset]").forEach((input) => {
   input.value = String(new Date().getTimezoneOffset());
@@ -43,13 +44,10 @@ document.querySelectorAll<HTMLInputElement>("[data-timezone-offset]").forEach((i
 
 document.querySelectorAll<HTMLButtonElement>("[data-theme-toggle]").forEach((button) => {
   button.addEventListener("click", () => {
-    const nextTheme = document.documentElement.dataset.theme === darkTheme ? lightTheme : darkTheme;
-    try {
-      window.localStorage.setItem(themeStorageKey, nextTheme);
-    } catch {
-      // A blocked storage API should not prevent an in-page theme change.
-    }
-    applyTheme(nextTheme);
+    const nextTheme = currentTheme() === darkTheme ? lightTheme : darkTheme;
+    rememberTheme(nextTheme);
+    document.documentElement.dataset.theme = nextTheme;
+    describeToggles(nextTheme);
   });
 });
 

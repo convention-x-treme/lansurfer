@@ -40,9 +40,9 @@ templ GameCatalogResults(games []game.SubscriptionGame, search, message string) 
 			<section class="detail-card">
 				<h2 class="text-[1.0625rem] font-semibold">No games found</h2>
 				if search == "" {
-					<p class="text-sm text-base-content/65">There are no active games in the catalog yet.</p>
+					<p class="text-sm text-base-content/70">There are no active games in the catalog yet.</p>
 				} else {
-					<p class="text-sm text-base-content/65">Try a different game name or alias.</p>
+					<p class="text-sm text-base-content/70">Try a different game name or alias.</p>
 				}
 			</section>
 		} else {
@@ -69,7 +69,7 @@ templ MyGames(brand branding.Brand, navigation components.NavigationState, games
 				if len(games) == 0 {
 					<section class="detail-card">
 						<h2 class="text-[1.0625rem] font-semibold">You are not following any games yet</h2>
-						<p class="text-sm text-base-content/65">Browse the catalog and follow the games you would like to play.</p>
+						<p class="text-sm text-base-content/70">Browse the catalog and follow the games you would like to play.</p>
 						<a class="btn btn-primary btn-sm self-start" href="/games">Browse games</a>
 					</section>
 				}
@@ -87,7 +87,7 @@ templ GameSubscriptionCard(item game.SubscriptionGame, myGames bool) {
 			<span class="game-abbreviation" aria-hidden="true">{ gameAbbreviation(item.Name) }</span>
 			<span class="min-w-0">
 				<strong class="block truncate text-base font-semibold">{ item.Name }</strong>
-				<span class="data-text block truncate text-xs text-base-content/55">{ item.Slug }</span>
+				<span class="data-text block truncate text-xs text-base-content/65">{ item.Slug }</span>
 			</span>
 		</div>
 		<div class="mt-auto flex flex-wrap items-center justify-end gap-2">
@@ -128,7 +128,7 @@ templ GameFollowControl(gameID string, subscribed, myGames bool) {
 templ GameCatalogError(brand branding.Brand, navigation components.NavigationState) {
 	@components.Layout(brand, "Games unavailable", navigation) {
 		<header class="app-topbar">
-			<p class="data-text text-xs text-base-content/60">Game catalog</p>
+			<p class="data-text text-xs text-base-content/70">Game catalog</p>
 			<a class="btn btn-primary btn-sm" href="/games">Retry</a>
 		</header>
 		<div class="content-page">

@@ -65,6 +65,7 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 	router.Use(webmiddleware.RequestTimeout(requestTimeout))
 	router.Use(webmiddleware.SecurityHeaders(dependencies.SecureCookies))
 	router.Use(webmiddleware.CSRF(dependencies.SecureCookies))
+	router.Use(webmiddleware.Theme)
 
 	router.Handle("/assets/*", http.StripPrefix("/assets/", assets.Handler()))
 	router.Group(func(authenticated chi.Router) {

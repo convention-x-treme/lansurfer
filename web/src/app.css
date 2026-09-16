@@ -9,14 +9,23 @@
   --surface-danger: color-mix(in srgb, var(--brand-coral) 18%, var(--brand-ocean-depth));
   --surface-danger-strong: color-mix(in srgb, var(--brand-coral) 30%, var(--brand-ocean-depth));
   --ink-danger: color-mix(in srgb, var(--brand-coral) 70%, var(--brand-white-sand));
+  /* Golden Hour reads as a ring against the dark page; on Sea Mist it does not. */
+  --focus-ring: var(--brand-golden-hour);
+  /* Dark surfaces separate by value alone, so they carry no shadow. */
+  --shadow-raised: none;
 }
 
+/* Light mode layers by surface, border, and a hairline shadow: Sea Mist canvas,
+   White Sand surfaces, Tide Line rules. Quiet controls need a body of their own
+   here, because a pale wash on a near-white card is not a visible affordance. */
 [data-theme="lansurfer-light"] {
-  --surface-quiet: color-mix(in srgb, var(--brand-sea-foam) 30%, var(--brand-white-sand));
-  --ink-quiet: color-mix(in srgb, var(--brand-deep-blue) 85%, black);
+  --surface-quiet: color-mix(in srgb, var(--brand-sea-foam) 50%, var(--brand-tide-line));
+  --ink-quiet: color-mix(in srgb, var(--brand-deep-blue) 72%, black);
   --surface-danger: color-mix(in srgb, var(--brand-coral) 14%, var(--brand-white-sand));
-  --surface-danger-strong: color-mix(in srgb, var(--brand-coral) 22%, var(--brand-white-sand));
-  --ink-danger: color-mix(in srgb, var(--brand-coral) 72%, black);
+  --surface-danger-strong: color-mix(in srgb, var(--brand-coral) 24%, var(--brand-white-sand));
+  --ink-danger: color-mix(in srgb, var(--brand-coral) 64%, black);
+  --focus-ring: var(--brand-deep-blue);
+  --shadow-raised: 0 1px 2px color-mix(in srgb, var(--brand-deep-ocean) 10%, transparent);
 }
 
 @theme {
@@ -39,7 +48,7 @@
   }
 
   :focus-visible {
-    outline: 3px solid var(--color-warning);
+    outline: 3px solid var(--focus-ring);
     outline-offset: 3px;
   }
 }
@@ -100,7 +109,7 @@
     align-items: center;
     border-radius: var(--radius-field);
     padding-inline: 0.75rem;
-    color: color-mix(in srgb, var(--color-base-content) 66%, transparent);
+    color: color-mix(in srgb, var(--color-base-content) 72%, transparent);
     transition: color 180ms ease-out, background-color 180ms ease-out;
   }
 
@@ -238,6 +247,7 @@
     border-radius: var(--radius-box);
     background: var(--color-base-200);
     padding: 1.375rem;
+    box-shadow: var(--shadow-raised);
   }
 
   .detail-hero {
@@ -261,6 +271,7 @@
     border-radius: var(--radius-box);
     background: var(--color-base-200);
     padding: 1.125rem 1.25rem;
+    box-shadow: var(--shadow-raised);
     transition: border-color 180ms ease-out;
   }
 
@@ -282,7 +293,7 @@
     font-family: var(--font-mono);
     font-size: 0.8125rem;
     white-space: nowrap;
-    color: color-mix(in srgb, var(--color-base-content) 60%, transparent);
+    color: color-mix(in srgb, var(--color-base-content) 70%, transparent);
   }
 
   .avatar-placeholder-member {
@@ -340,8 +351,8 @@
     white-space: nowrap;
     border-radius: var(--radius-selector);
     padding: 0.3125rem 0.625rem;
-    background: color-mix(in srgb, var(--color-base-content) 10%, transparent);
-    color: color-mix(in srgb, var(--color-base-content) 60%, transparent);
+    background: color-mix(in srgb, var(--color-base-content) 12%, transparent);
+    color: color-mix(in srgb, var(--color-base-content) 70%, transparent);
     font-family: var(--font-mono);
     font-size: 0.8125rem;
     font-weight: 500;
@@ -404,6 +415,7 @@
     border-radius: var(--radius-field);
     background: var(--color-base-200);
     padding: 0.6875rem 0.875rem;
+    box-shadow: var(--shadow-raised);
     transition: border-color 180ms ease-out, background-color 180ms ease-out;
   }
 
@@ -424,7 +436,7 @@
   /* Closed and full requests stay readable but stop competing with joinable rows. */
   .request-row-closed {
     background: color-mix(in srgb, var(--color-base-200) 50%, transparent);
-    color: color-mix(in srgb, var(--color-base-content) 62%, transparent);
+    color: color-mix(in srgb, var(--color-base-content) 70%, transparent);
   }
 
   .request-row-closed .game-abbreviation {
@@ -503,7 +515,7 @@
     border: 1px solid color-mix(in srgb, var(--color-base-content) 22%, transparent);
     border-radius: var(--radius-field);
     padding-inline: 0.875rem;
-    color: color-mix(in srgb, var(--color-base-content) 55%, transparent);
+    color: color-mix(in srgb, var(--color-base-content) 70%, transparent);
     font-size: 0.875rem;
     font-weight: 600;
   }
@@ -531,7 +543,7 @@
   .request-skeleton-row span {
     height: 0.75rem;
     border-radius: 0.125rem;
-    background: color-mix(in srgb, var(--color-base-content) 10%, transparent);
+    background: color-mix(in srgb, var(--color-base-content) 14%, transparent);
   }
 
   .request-skeleton-row span:first-child {
@@ -555,6 +567,7 @@
     border-radius: var(--radius-box);
     background: var(--color-base-200);
     padding: 1.5rem;
+    box-shadow: var(--shadow-raised);
   }
 
   .request-empty img {
@@ -577,6 +590,7 @@
     border-radius: var(--radius-box);
     background: var(--color-base-200);
     padding: 1.25rem;
+    box-shadow: var(--shadow-raised);
   }
 
   .start-choice span {
@@ -587,7 +601,7 @@
     border: 1px solid var(--color-base-300);
     border-radius: var(--radius-field);
     padding-inline: 0.875rem;
-    color: color-mix(in srgb, var(--color-base-content) 68%, transparent);
+    color: color-mix(in srgb, var(--color-base-content) 72%, transparent);
   }
 
   .start-choice input:checked + span {
@@ -598,7 +612,7 @@
   }
 
   .start-choice input:focus-visible + span {
-    outline: 3px solid var(--color-warning);
+    outline: 3px solid var(--focus-ring);
     outline-offset: 3px;
   }
 
@@ -644,6 +658,12 @@
 
   .auth-header .btn {
     color: inherit;
+  }
+
+  /* The stage stays dark in both themes, so its focus ring stays Golden Hour. */
+  .auth-header,
+  .auth-stage {
+    --focus-ring: var(--brand-golden-hour);
   }
 
   .auth-stage {
@@ -708,17 +728,18 @@
   }
 
   .count-muted {
-    color: color-mix(in srgb, var(--color-base-content) 55%, transparent);
+    color: color-mix(in srgb, var(--color-base-content) 70%, transparent);
   }
 
-  [data-theme="lansurfer-light"] .count-open,
-  [data-theme="lansurfer-light"] .game-abbreviation,
-  [data-theme="lansurfer-light"] .avatar-placeholder-member {
+  [data-theme="lansurfer-light"] .count-open {
     color: var(--color-primary);
   }
 
-  [data-theme="lansurfer-light"] .status-chip {
-    color: color-mix(in srgb, var(--color-base-content) 70%, transparent);
+  /* Deep Blue clears 4.5:1 on a White Sand row but not on the Sea Mist insets
+     these two sit in, so they take the darker quiet ink instead. */
+  [data-theme="lansurfer-light"] .game-abbreviation,
+  [data-theme="lansurfer-light"] .avatar-placeholder-member {
+    color: var(--ink-quiet);
   }
 
   [data-theme="lansurfer-light"] .status-chip-open,
@@ -732,6 +753,11 @@
 
   [data-theme="lansurfer-light"] .avatar-placeholder-member {
     background: var(--color-base-300);
+  }
+
+  [data-theme="lansurfer-light"] .app-sidebar,
+  [data-theme="lansurfer-light"] .mobile-drawer-panel {
+    box-shadow: var(--shadow-raised);
   }
 
   [data-theme="lansurfer-light"] .count-hot,
@@ -800,8 +826,38 @@
    label instead of becoming an invisible ghost. */
 .btn:is(:disabled, [disabled], [aria-disabled="true"]) {
   background-color: color-mix(in srgb, var(--color-base-content) 10%, var(--color-base-200));
-  color: color-mix(in srgb, var(--color-base-content) 55%, var(--color-base-200));
+  color: color-mix(in srgb, var(--color-base-content) 70%, var(--color-base-200));
   border-color: transparent;
+}
+
+/* Light mode carries its meaning in tinted surfaces, so a full-saturation bar
+   would be the loudest thing on the page. Dark mode keeps the solid fills. */
+[data-theme="lansurfer-light"] .alert {
+  --alert-color: color-mix(in srgb, var(--alert-tint) 16%, var(--color-base-200));
+  --alert-border-color: color-mix(in srgb, var(--alert-tint) 45%, var(--color-base-300));
+  color: var(--color-base-content);
+}
+
+[data-theme="lansurfer-light"] .alert-info {
+  --alert-tint: var(--color-info);
+}
+
+[data-theme="lansurfer-light"] .alert-warning {
+  --alert-tint: var(--color-warning);
+}
+
+[data-theme="lansurfer-light"] .alert-error {
+  --alert-tint: var(--color-error);
+  color: var(--ink-danger);
+}
+
+/* A placeholder is read as text, so it meets the same 4.5:1 as the value. */
+.input::placeholder,
+.textarea::placeholder,
+input::placeholder,
+textarea::placeholder {
+  color: color-mix(in srgb, var(--color-base-content) 70%, transparent);
+  opacity: 1;
 }
 
 /* The scarcity variant of the primary action: the last free place. */

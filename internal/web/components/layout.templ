@@ -1,6 +1,7 @@
 package components
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"unicode/utf8"
@@ -8,6 +9,16 @@ import (
 	"github.com/convention-x-treme/lansurfer/internal/web/branding"
 	webmiddleware "github.com/convention-x-treme/lansurfer/internal/web/middleware"
 )
+
+// A visitor who has chosen a theme gets it in the markup, so the first paint is
+// already correct; without a choice the attribute is absent and the stylesheet's
+// prefers-color-scheme default decides. Either way nothing repaints on load.
+func themeAttributes(ctx context.Context) templ.Attributes {
+	if theme := webmiddleware.ThemeChoice(ctx); theme != "" {
+		return templ.Attributes{"data-theme": theme}
+	}
+	return nil
+}
 
 type Viewer struct {
 	ID string
@@ -26,7 +37,7 @@ type NavigationState struct {
 
 templ Layout(brand branding.Brand, title string, navigation NavigationState) {
 	<!doctype html>
-	<html lang="en" data-theme="lansurfer-dark">
+	<html lang="en" { themeAttributes(ctx)... }>
 		<head>
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
@@ -65,7 +76,7 @@ templ Layout(brand branding.Brand, title string, navigation NavigationState) {
 
 templ AuthLayout(brand branding.Brand, title string) {
 	<!doctype html>
-	<html lang="en" data-theme="lansurfer-dark">
+	<html lang="en" { themeAttributes(ctx)... }>
 		<head>
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
@@ -109,7 +120,7 @@ templ DesktopNavigation(brand branding.Brand, state NavigationState) {
 				@LogoutControl()
 				@ThemeToggle()
 			</div>
-			@OperatorAttribution("px-2 text-xs text-base-content/55")
+			@OperatorAttribution("px-2 text-xs text-base-content/65")
 		</div>
 	</aside>
 }
@@ -134,7 +145,7 @@ templ MobileNavigation(brand branding.Brand, state NavigationState) {
 						@LogoutControl()
 						@ThemeToggle()
 					</div>
-					@OperatorAttribution("px-2 text-xs text-base-content/55")
+					@OperatorAttribution("px-2 text-xs text-base-content/65")
 				</div>
 			</nav>
 		</details>
@@ -179,7 +190,7 @@ templ ViewerPanel(viewer *Viewer) {
 templ LogoutControl() {
 	<form method="post" action="/auth/logout">
 		@CSRFInput()
-		<button type="submit" class="data-text btn btn-ghost btn-sm px-0 text-xs text-base-content/60">Log out</button>
+		<button type="submit" class="data-text btn btn-ghost btn-sm px-0 text-xs text-base-content/70">Log out</button>
 	</form>
 }
 

@@ -52,15 +52,15 @@ templ GameRequestList(brand branding.Brand, navigation components.NavigationStat
 templ RequestStats(requests []requestquery.Request) {
 	<div id="request-stats" class="flex flex-wrap items-center gap-x-5 gap-y-1">
 		<p class="data-text count-open text-xs">{ fmt.Sprintf("%d players in open requests", playersInRequests(requests)) }</p>
-		<p class="data-text text-xs text-base-content/60">{ "updated " + updatedLabel() }</p>
+		<p class="data-text text-xs text-base-content/70">{ "updated " + updatedLabel() }</p>
 	</div>
 }
 
 templ TrendingSection(requests []requestquery.Request) {
 	<section class="rail-section">
-		<div class="flex items-baseline justify-between gap-3"><h2 class="text-[0.9375rem] font-semibold">Most requested</h2><span class="data-text text-xs text-base-content/55">open requests</span></div>
+		<div class="flex items-baseline justify-between gap-3"><h2 class="text-[0.9375rem] font-semibold">Most requested</h2><span class="data-text text-xs text-base-content/65">open requests</span></div>
 		if len(requests) == 0 {
-			<p class="text-sm text-base-content/60">Nothing open yet.</p>
+			<p class="text-sm text-base-content/70">Nothing open yet.</p>
 		} else {
 			<ul class="grid gap-3">
 				for _, entry := range trendingGames(requests) {
@@ -97,7 +97,7 @@ templ GameRequestListContent(brand branding.Brand, requests []requestquery.Reque
 			} else {
 				<div class="mb-2 flex items-center justify-between gap-4">
 					<p class="section-label">{ fmt.Sprintf("%d open requests", len(requests)) }</p>
-					<p class="data-text hidden text-xs text-base-content/55 sm:block" aria-hidden="true">places · start</p>
+					<p class="data-text hidden text-xs text-base-content/65 sm:block" aria-hidden="true">places · start</p>
 					<span class="sr-only">Player places and start times follow each game name.</span>
 				</div>
 				<div class="request-list">
@@ -161,11 +161,11 @@ templ NewGameRequest(brand branding.Brand, navigation components.NavigationState
 	@components.Layout(brand, "Create Game Request", navigation) {
 		<header class="app-topbar">
 			<a class="link count-open text-sm font-semibold no-underline" href="/game-requests">← Game Requests</a>
-			<p class="data-text text-xs text-base-content/60">New request</p>
+			<p class="data-text text-xs text-base-content/70">New request</p>
 		</header>
 		<div class="content-page">
 			<div class="composer-panel">
-				<div><h1 class="text-xl font-semibold">Who's up for a round?</h1><p class="mt-1 text-sm text-base-content/65">Pick a game, a start time, and how many players can join.</p></div>
+				<div><h1 class="text-xl font-semibold">Who's up for a round?</h1><p class="mt-1 text-sm text-base-content/70">Pick a game, a start time, and how many players can join.</p></div>
 				if message != "" {
 					<div role="alert" class="alert alert-error mt-5"><span>{ message }</span></div>
 				}
@@ -199,7 +199,7 @@ templ NewGameRequest(brand branding.Brand, navigation components.NavigationState
 							</fieldset>
 						</div>
 						<input type="hidden" name="timezone_offset" value={ form.TimezoneOffset } data-timezone-offset/>
-						<label class="grid gap-2"><span class="label-text font-medium">Description <span class="font-normal text-base-content/55">(optional)</span></span><textarea class="textarea textarea-bordered min-h-28 w-full" name="description" maxlength="1000" placeholder="Anything players should know" data-description>{ form.Description }</textarea><span class="data-text flex justify-between gap-4 text-xs text-base-content/55"><span>Leave max players empty for an open round.</span><span data-description-count>{ fmt.Sprintf("%d / 1000", len([]rune(form.Description))) }</span></span></label>
+						<label class="grid gap-2"><span class="label-text font-medium">Description <span class="font-normal text-base-content/65">(optional)</span></span><textarea class="textarea textarea-bordered min-h-28 w-full" name="description" maxlength="1000" placeholder="Anything players should know" data-description>{ form.Description }</textarea><span class="data-text flex justify-between gap-4 text-xs text-base-content/65"><span>Leave max players empty for an open round.</span><span data-description-count>{ fmt.Sprintf("%d / 1000", len([]rune(form.Description))) }</span></span></label>
 						<div class="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-end"><a class="btn btn-ghost" href="/game-requests">Cancel</a><button class="btn btn-primary sm:min-w-64" type="submit">Create Game Request</button></div>
 					</form>
 				}
@@ -217,7 +217,7 @@ templ GameRequestDetail(brand branding.Brand, navigation components.NavigationSt
 		<header class="app-topbar">
 			<div class="flex flex-wrap items-center gap-x-4 gap-y-1">
 				<a class="link count-open text-sm font-semibold no-underline" href="/game-requests">← Game Requests</a>
-				<span class="data-text text-xs text-base-content/60">{ "created " + clockLabel(request.CreatedAt) }</span>
+				<span class="data-text text-xs text-base-content/70">{ "created " + clockLabel(request.CreatedAt) }</span>
 			</div>
 			@DetailStamp()
 		</header>
@@ -236,7 +236,7 @@ templ GameRequestDetail(brand branding.Brand, navigation components.NavigationSt
 // DetailStamp is swapped out of band by the detail refresh so the top bar keeps
 // pace with the counters, player list, and activity below it.
 templ DetailStamp() {
-	<p id="detail-stamp" class="data-text text-xs text-base-content/60">{ "updated " + updatedLabel() }</p>
+	<p id="detail-stamp" class="data-text text-xs text-base-content/70">{ "updated " + updatedLabel() }</p>
 }
 
 templ GameRequestDetailContent(request requestquery.Request, viewerID string, refresh bool) {
@@ -258,7 +258,7 @@ templ GameRequestDetailContent(request requestquery.Request, viewerID string, re
 								<span class="status-chip status-chip-last">Last place</span>
 							}
 						</div>
-						<p class="data-text mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-base-content/60 [&>span]:whitespace-nowrap">
+						<p class="data-text mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-base-content/70 [&>span]:whitespace-nowrap">
 							<strong class={ detailCountClass(request) }>{ playerCount(request) }</strong>
 							<span>players</span>
 							<span aria-hidden="true">·</span>
@@ -283,7 +283,7 @@ templ GameRequestDetailContent(request requestquery.Request, viewerID string, re
 				<div class="mt-4 border-t border-base-300 pt-4">
 					<p class="section-label">Description</p>
 					if request.Description == "" {
-						<p class="mt-2 text-base-content/50">No description.</p>
+						<p class="mt-2 text-base-content/65">No description.</p>
 					} else {
 						<p class="mt-2 max-w-[48rem] whitespace-pre-wrap leading-relaxed text-base-content/80">{ request.Description }</p>
 					}
@@ -292,7 +292,7 @@ templ GameRequestDetailContent(request requestquery.Request, viewerID string, re
 			<section class="detail-card flex-1" aria-labelledby="players-title">
 				<div class="flex flex-wrap items-baseline justify-between gap-3">
 					<h2 id="players-title" class="text-[1.0625rem] font-semibold">Players</h2>
-					<p class="data-text text-xs text-base-content/60">{ placesSummary(request) }</p>
+					<p class="data-text text-xs text-base-content/70">{ placesSummary(request) }</p>
 				</div>
 				<ul class="grid">
 					for _, member := range request.Members {
@@ -309,7 +309,7 @@ templ GameRequestDetailContent(request requestquery.Request, viewerID string, re
 						<li class="last-place-row">
 							<span class="avatar-placeholder avatar-placeholder-outline" aria-hidden="true">+</span>
 							<strong class="flex-1 count-last">Last place open</strong>
-							<span class="data-text text-xs text-base-content/55">joins update live</span>
+							<span class="data-text text-xs text-base-content/65">joins update live</span>
 						</li>
 					}
 				</ul>
@@ -321,13 +321,13 @@ templ GameRequestDetailContent(request requestquery.Request, viewerID string, re
 					<p class="section-label">Host actions</p>
 					<form method="post" action={ "/game-requests/" + request.ID + "/close" } data-confirm="Close this Game Request? Players will no longer be able to join.">@components.CSRFInput()<button class="btn btn-step-back btn-sm w-full" type="submit">Close for new players</button></form>
 					<form method="post" action={ "/game-requests/" + request.ID + "/cancel" } data-confirm="Cancel this Game Request? This cannot be reopened.">@components.CSRFInput()<button class="btn btn-danger btn-sm w-full" type="submit">Cancel Game Request</button></form>
-					<p class="text-xs leading-relaxed text-base-content/55">Visible to the host only. Cancelling asks once and notifies every player.</p>
+					<p class="text-xs leading-relaxed text-base-content/65">Visible to the host only. Cancelling asks once and notifies every player.</p>
 				</section>
 			}
 			<section class="detail-card">
 				<p class="section-label">Game</p>
 				<p class="text-[1.0625rem] font-semibold">{ request.GameName }</p>
-				<div class="data-text flex items-center justify-between gap-3 text-xs text-base-content/60">
+				<div class="data-text flex items-center justify-between gap-3 text-xs text-base-content/70">
 					<span>{ request.EventName }</span>
 					if request.ViewerSubscribed {
 						<span class="count-open">followed</span>
@@ -342,7 +342,7 @@ templ GameRequestDetailContent(request requestquery.Request, viewerID string, re
 				<ol class="grid gap-3">
 					for _, member := range activityEntries(request) {
 						<li class="flex gap-3">
-							<time class="data-text w-12 flex-none text-xs text-base-content/60">{ clockLabel(activityTime(member, request)) }</time>
+							<time class="data-text w-12 flex-none text-xs text-base-content/70">{ clockLabel(activityTime(member, request)) }</time>
 							<span class="flex-1 text-sm text-base-content/80">
 								if member.ID == request.CreatorID {
 									{ member.DisplayName + " created the request" }
@@ -353,7 +353,7 @@ templ GameRequestDetailContent(request requestquery.Request, viewerID string, re
 						</li>
 					}
 				</ol>
-				<p class="mt-auto text-xs leading-relaxed text-base-content/55">Counter, player list and activity update without a reload.</p>
+				<p class="mt-auto text-xs leading-relaxed text-base-content/65">Counter, player list and activity update without a reload.</p>
 			</section>
 		</aside>
 	</div>
@@ -493,7 +493,7 @@ func activityTime(member requestquery.Member, request requestquery.Request) time
 }
 
 func startTimeClass(time.Time) string {
-	return "data-text text-xs text-base-content/60"
+	return "data-text text-xs text-base-content/70"
 }
 
 func startLabel(startsAt time.Time) string {

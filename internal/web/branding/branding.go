@@ -29,6 +29,8 @@ type Colors struct {
 	SurfBlue   string
 	AquaWave   string
 	SeaFoam    string
+	SeaMist    string
+	TideLine   string
 	WhiteSand  string
 	GoldenHour string
 	Sunset     string
@@ -60,6 +62,8 @@ func Default() Brand {
 			SurfBlue:   "#00B4D8",
 			AquaWave:   "#48CAE4",
 			SeaFoam:    "#90E0EF",
+			SeaMist:    "#E1EDF4",
+			TideLine:   "#BED3DF",
 			WhiteSand:  "#F8F9FA",
 			GoldenHour: "#F4D35E",
 			Sunset:     "#FF6B35",
