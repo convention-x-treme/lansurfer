@@ -9,6 +9,7 @@
 *.test
 /node_modules/
 __debug_bin*
+/.worktrees/
 
 # Editors and operating systems
 .idea/
