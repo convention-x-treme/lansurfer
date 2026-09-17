@@ -55,7 +55,7 @@ templ Layout(brand branding.Brand, title string, navigation NavigationState) {
 					<div class="min-w-0">
 						@MobileNavigation(brand, navigation)
 						<div data-realtime-url="/events/game-requests"></div>
-						<div id="live-notices" class="pointer-events-none fixed right-4 top-20 z-50 grid w-[min(24rem,calc(100%-2rem))] gap-3 [&>*]:pointer-events-auto" aria-live="polite"></div>
+						<div id="live-notices" class="pointer-events-none fixed bottom-4 right-4 z-50 grid w-[min(24rem,calc(100%-2rem))] gap-3 [&>*]:pointer-events-auto" aria-live="polite"></div>
 						<main id="main-content" class="min-w-0">
 							{ children... }
 						</main>
@@ -182,7 +182,7 @@ templ ViewerPanel(viewer *Viewer) {
 	if viewer != nil {
 		<div class="viewer-panel">
 			<span class="avatar-placeholder" aria-hidden="true">{ ViewerInitial(viewer.DisplayName) }</span>
-			<span class="min-w-0"><strong class="block truncate text-sm">{ viewer.DisplayName }</strong><span class="data-text block text-xs text-primary">{ viewerRole(viewer.Role) }</span></span>
+			<span class="min-w-0"><strong class="block truncate text-sm">{ viewer.DisplayName }</strong><span class="block text-xs font-semibold text-primary">{ viewerRole(viewer.Role) }</span></span>
 		</div>
 	}
 }
@@ -190,7 +190,7 @@ templ ViewerPanel(viewer *Viewer) {
 templ LogoutControl() {
 	<form method="post" action="/auth/logout">
 		@CSRFInput()
-		<button type="submit" class="data-text btn btn-ghost btn-sm px-0 text-xs text-base-content/70">Log out</button>
+		<button type="submit" class="btn btn-ghost btn-sm px-0 text-sm text-base-content/70">Log out</button>
 	</form>
 }
 

@@ -11,7 +11,7 @@ import (
 templ AdminEvents(brand branding.Brand, navigation components.NavigationState, events []event.Event, formError, notice string) {
 	@components.Layout(brand, "Manage Events", navigation) {
 		<header class="app-topbar">
-			<h1 class="data-text count-open text-xs">Administration · Events</h1>
+			<h1 class="app-title">Manage Events</h1>
 			<a class="btn btn-quiet btn-sm" href="/admin/games">Game catalog</a>
 		</header>
 		<div class="content-page">
@@ -71,7 +71,7 @@ templ EventFields(name string, startsAt, endsAt time.Time) {
 templ AdminGames(brand branding.Brand, navigation components.NavigationState, games []game.Game, search, formError, notice string) {
 	@components.Layout(brand, "Manage Games", navigation) {
 		<header class="app-topbar">
-			<h1 class="data-text count-open text-xs">Administration · Game catalog</h1>
+			<h1 class="app-title">Manage Games</h1>
 			<a class="btn btn-quiet btn-sm" href="/admin/events">Events</a>
 		</header>
 		<div class="content-page">
@@ -168,8 +168,8 @@ templ GameFields(name, slug string) {
 
 templ AdminError(brand branding.Brand, navigation components.NavigationState) {
 	@components.Layout(brand, "Administration error", navigation) {
-		<header class="app-topbar"><p class="data-text text-xs text-base-content/70">Administration</p></header>
-		<div class="content-page"><div role="alert" class="alert alert-error"><div><h1 class="font-bold">Administration could not be loaded</h1><p>Try the request again.</p></div></div></div>
+		<header class="app-topbar"><h1 class="app-title">Administration</h1></header>
+		<div class="content-page"><div role="alert" class="alert alert-error"><div><p class="font-bold">Administration could not be loaded</p><p>Try the request again.</p></div></div></div>
 	}
 }
 

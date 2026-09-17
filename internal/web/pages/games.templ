@@ -11,7 +11,7 @@ import (
 templ GameCatalog(brand branding.Brand, navigation components.NavigationState, games []game.SubscriptionGame, search, message string) {
 	@components.Layout(brand, "Games", navigation) {
 		<header class="app-topbar">
-			<p class="data-text count-open text-xs">Game catalog</p>
+			<h1 class="app-title">Games</h1>
 			<a class="btn btn-quiet btn-sm" href="/games/mine">My Games</a>
 		</header>
 		<div class="content-page">
@@ -58,12 +58,12 @@ templ GameCatalogResults(games []game.SubscriptionGame, search, message string) 
 templ MyGames(brand branding.Brand, navigation components.NavigationState, games []game.SubscriptionGame) {
 	@components.Layout(brand, "My Games", navigation) {
 		<header class="app-topbar">
-			<p class="data-text count-open text-xs">{ fmt.Sprintf("%d games followed", len(games)) }</p>
+			<h1 class="app-title">My Games</h1>
 			<a class="btn btn-primary btn-sm" href="/games">Browse games</a>
 		</header>
 		<div class="content-page">
 			<div class="mb-2 flex items-center justify-between gap-4">
-				<p class="section-label">My Games</p>
+				<p class="section-label">{ followedCountLabel(len(games)) }</p>
 			</div>
 			<div class="game-grid" aria-live="polite">
 				if len(games) == 0 {
@@ -128,13 +128,20 @@ templ GameFollowControl(gameID string, subscribed, myGames bool) {
 templ GameCatalogError(brand branding.Brand, navigation components.NavigationState) {
 	@components.Layout(brand, "Games unavailable", navigation) {
 		<header class="app-topbar">
-			<p class="data-text text-xs text-base-content/70">Game catalog</p>
+			<h1 class="app-title">Games</h1>
 			<a class="btn btn-primary btn-sm" href="/games">Retry</a>
 		</header>
 		<div class="content-page">
-			<div role="alert" class="alert alert-error"><div><h1 class="font-bold">Games could not be loaded</h1><p>Try the request again.</p></div></div>
+			<div role="alert" class="alert alert-error"><div><p class="font-bold">Games could not be loaded</p><p>Try the request again.</p></div></div>
 		</div>
 	}
+}
+
+func followedCountLabel(count int) string {
+	if count == 1 {
+		return "1 game followed"
+	}
+	return fmt.Sprintf("%d games followed", count)
 }
 
 func gameCountLabel(count int) string {

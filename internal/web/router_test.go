@@ -378,7 +378,7 @@ func TestRealtimeRefreshHighlightsFollowedGame(t *testing.T) {
 	// The refresh also carries the top bar counters out of band, so the stats
 	// above the list cannot drift away from the rows below it.
 	for _, want := range []string{`id="game-request-list"`, "request-row-incoming", "New Game Request for Warcraft III",
-		`hx-swap-oob="beforeend:#live-notices"`, `hx-swap-oob="true"`, `id="request-stats"`, "1 players in open requests"} {
+		`hx-swap-oob="beforeend:#live-notices"`, `hx-swap-oob="true"`, `id="request-stats"`, "player in open requests"} {
 		if !strings.Contains(response.Body.String(), want) {
 			t.Errorf("body does not contain %q: %q", want, response.Body.String())
 		}

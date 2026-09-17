@@ -27,7 +27,10 @@ type GameRequestForm struct {
 templ GameRequestList(brand branding.Brand, navigation components.NavigationState, event requestquery.EventContext, requests []requestquery.Request, notice string) {
 	@components.Layout(brand, "Game Requests", navigationWithCount(navigation, len(requests))) {
 		<header class="app-topbar">
-			@RequestStats(requests)
+			<div class="min-w-0">
+				<h1 class="app-title">Game Requests</h1>
+				@RequestStats(requests, false)
+			</div>
 			<a class="btn btn-primary btn-sm" href="/game-requests/new">Create Game Request</a>
 		</header>
 		<div class="request-shell">
@@ -48,12 +51,11 @@ templ GameRequestList(brand branding.Brand, navigation components.NavigationStat
 }
 
 // RequestStats is swapped out of band by the list refresh, so the counts and the
-// timestamp in the top bar stay in step with the rows below them.
-templ RequestStats(requests []requestquery.Request) {
-	<div id="request-stats" class="flex flex-wrap items-center gap-x-5 gap-y-1">
-		<p class="data-text count-open text-xs">{ fmt.Sprintf("%d players in open requests", playersInRequests(requests)) }</p>
-		<p class="data-text text-xs text-base-content/70">{ "updated " + updatedLabel() }</p>
-	</div>
+// timestamp in the top bar stay in step with the rows below them. htmx resolves
+// an out-of-band swap through the id of the element carrying the attribute, so
+// the attribute belongs on this element rather than on a wrapper around it.
+templ RequestStats(requests []requestquery.Request, oob bool) {
+	<p id="request-stats" class="mt-1 text-sm text-base-content/70" { outOfBand(oob)... }><span class="data-text count-open font-bold">{ fmt.Sprint(playersInRequests(requests)) }</span>{ playersInRequestsLabel(requests) }<span class="data-text">{ updatedLabel() }</span></p>
 }
 
 templ TrendingSection(requests []requestquery.Request) {
@@ -74,9 +76,7 @@ templ TrendingSection(requests []requestquery.Request) {
 
 templ GameRequestListContent(brand branding.Brand, requests []requestquery.Request, viewer *components.Viewer, highlightedID string, refresh bool) {
 	if refresh {
-		<div hx-swap-oob="true">
-			@RequestStats(requests)
-		</div>
+		@RequestStats(requests, true)
 	}
 	<div id="game-request-list" data-game-request-list aria-live="polite" aria-busy="false">
 		<div class="request-list-skeleton" aria-hidden="true">
@@ -128,7 +128,7 @@ templ GameRequestRow(request requestquery.Request, viewerID, highlightedID strin
 			} else if lastPlace(request) {
 				<span class="status-chip status-chip-last">Last place</span>
 			} else if requestFull(request) {
-				<span class="status-chip status-chip-full">Full</span>
+				<span class="status-chip">Full</span>
 			}
 		</a>
 		<span class={ playerCountClass(request) } aria-label={ playerCountAccessible(request) }>{ playerCount(request) }</span>
@@ -161,11 +161,10 @@ templ NewGameRequest(brand branding.Brand, navigation components.NavigationState
 	@components.Layout(brand, "Create Game Request", navigation) {
 		<header class="app-topbar">
 			<a class="link count-open text-sm font-semibold no-underline" href="/game-requests">← Game Requests</a>
-			<p class="data-text text-xs text-base-content/70">New request</p>
 		</header>
 		<div class="content-page">
 			<div class="composer-panel">
-				<div><h1 class="text-xl font-semibold">Who's up for a round?</h1><p class="mt-1 text-sm text-base-content/70">Pick a game, a start time, and how many players can join.</p></div>
+				<div><h1 class="app-title">Who's up for a round?</h1><p class="mt-1 text-sm text-base-content/70">Pick a game, a start time, and how many players can join.</p></div>
 				if message != "" {
 					<div role="alert" class="alert alert-error mt-5"><span>{ message }</span></div>
 				}
@@ -199,7 +198,7 @@ templ NewGameRequest(brand branding.Brand, navigation components.NavigationState
 							</fieldset>
 						</div>
 						<input type="hidden" name="timezone_offset" value={ form.TimezoneOffset } data-timezone-offset/>
-						<label class="grid gap-2"><span class="label-text font-medium">Description <span class="font-normal text-base-content/65">(optional)</span></span><textarea class="textarea textarea-bordered min-h-28 w-full" name="description" maxlength="1000" placeholder="Anything players should know" data-description>{ form.Description }</textarea><span class="data-text flex justify-between gap-4 text-xs text-base-content/65"><span>Leave max players empty for an open round.</span><span data-description-count>{ fmt.Sprintf("%d / 1000", len([]rune(form.Description))) }</span></span></label>
+						<label class="grid gap-2"><span class="label-text font-medium">Description <span class="font-normal text-base-content/65">(optional)</span></span><textarea class="textarea textarea-bordered min-h-28 w-full" name="description" maxlength="1000" placeholder="Anything players should know" data-description>{ form.Description }</textarea><span class="flex justify-between gap-4 text-xs text-base-content/65"><span>Leave max players empty for an open round.</span><span class="data-text" data-description-count>{ fmt.Sprintf("%d / 1000", len([]rune(form.Description))) }</span></span></label>
 						<div class="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-end"><a class="btn btn-ghost" href="/game-requests">Cancel</a><button class="btn btn-primary sm:min-w-64" type="submit">Create Game Request</button></div>
 					</form>
 				}
@@ -217,9 +216,11 @@ templ GameRequestDetail(brand branding.Brand, navigation components.NavigationSt
 		<header class="app-topbar">
 			<div class="flex flex-wrap items-center gap-x-4 gap-y-1">
 				<a class="link count-open text-sm font-semibold no-underline" href="/game-requests">← Game Requests</a>
-				<span class="data-text text-xs text-base-content/70">{ "created " + clockLabel(request.CreatedAt) }</span>
+				if !request.CreatedAt.IsZero() {
+					<span class="text-xs text-base-content/70">{ "created " }<span class="data-text">{ clockLabel(request.CreatedAt) }</span></span>
+				}
 			</div>
-			@DetailStamp()
+			@DetailStamp(false)
 		</header>
 		<div class="content-page">
 			if notice != "" {
@@ -235,30 +236,25 @@ templ GameRequestDetail(brand branding.Brand, navigation components.NavigationSt
 
 // DetailStamp is swapped out of band by the detail refresh so the top bar keeps
 // pace with the counters, player list, and activity below it.
-templ DetailStamp() {
-	<p id="detail-stamp" class="data-text text-xs text-base-content/70">{ "updated " + updatedLabel() }</p>
+templ DetailStamp(oob bool) {
+	<p id="detail-stamp" class="text-xs text-base-content/70" { outOfBand(oob)... }>{ "updated " }<span class="data-text">{ updatedLabel() }</span></p>
 }
 
 templ GameRequestDetailContent(request requestquery.Request, viewerID string, refresh bool) {
 	if refresh {
-		<div hx-swap-oob="true">
-			@DetailStamp()
-		</div>
+		@DetailStamp(true)
 	}
 	<div id="game-request-detail" data-game-request-detail data-game-request-id={ request.ID } class="detail-shell">
 		<div class="detail-main">
-			<article class={ requestHeroClass(request) }>
+			<article class="detail-hero">
 				<div class="flex flex-wrap items-start gap-4">
 					<span class="game-abbreviation game-abbreviation-lg" aria-hidden="true">{ gameAbbreviation(request.GameName) }</span>
 					<div class="min-w-[12rem] flex-1">
 						<div class="flex flex-wrap items-center gap-2.5">
 							<h1 class="text-[1.875rem] font-black leading-tight tracking-tight">{ request.GameName }</h1>
 							<span class={ detailStatusChipClass(request) }>{ statusLabel(request.Status) }</span>
-							if lastPlace(request) {
-								<span class="status-chip status-chip-last">Last place</span>
-							}
 						</div>
-						<p class="data-text mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-base-content/70 [&>span]:whitespace-nowrap">
+						<p class="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-base-content/70 [&>span]:whitespace-nowrap">
 							<strong class={ detailCountClass(request) }>{ playerCount(request) }</strong>
 							<span>players</span>
 							<span aria-hidden="true">·</span>
@@ -302,14 +298,16 @@ templ GameRequestDetailContent(request requestquery.Request, viewerID string, re
 							if member.ID == request.CreatorID {
 								<span class="status-chip status-chip-host">Host</span>
 							}
-							<time class="member-time" datetime={ member.JoinedAt.Format(time.RFC3339) }>{ memberTimeLabel(member, request) }</time>
+							if !activityTime(member, request).IsZero() {
+								<time class="member-time" datetime={ activityTime(member, request).Format(time.RFC3339) }>{ memberTimeLabel(member, request) }</time>
+							}
 						</li>
 					}
 					if lastPlace(request) {
 						<li class="last-place-row">
 							<span class="avatar-placeholder avatar-placeholder-outline" aria-hidden="true">+</span>
-							<strong class="flex-1 count-last">Last place open</strong>
-							<span class="data-text text-xs text-base-content/65">joins update live</span>
+							<strong class="flex-1">Last place open</strong>
+							<span class="text-xs text-base-content/65">joins update live</span>
 						</li>
 					}
 				</ul>
@@ -327,22 +325,24 @@ templ GameRequestDetailContent(request requestquery.Request, viewerID string, re
 			<section class="detail-card">
 				<p class="section-label">Game</p>
 				<p class="text-[1.0625rem] font-semibold">{ request.GameName }</p>
-				<div class="data-text flex items-center justify-between gap-3 text-xs text-base-content/70">
+				<div class="flex items-center justify-between gap-3 text-xs text-base-content/70">
 					<span>{ request.EventName }</span>
 					if request.ViewerSubscribed {
-						<span class="count-open">followed</span>
+						<span class="count-open font-semibold">followed</span>
 					} else {
 						<span>not followed</span>
 					}
 				</div>
-				<a class="data-text link count-open text-xs no-underline" href="/game-requests">All Game Requests →</a>
+				<a class="link count-open text-sm font-semibold no-underline" href="/game-requests">All Game Requests →</a>
 			</section>
 			<section class="detail-card flex-1">
 				<p class="section-label">Activity</p>
 				<ol class="grid gap-3">
 					for _, member := range activityEntries(request) {
 						<li class="flex gap-3">
-							<time class="data-text w-12 flex-none text-xs text-base-content/70">{ clockLabel(activityTime(member, request)) }</time>
+							if !activityTime(member, request).IsZero() {
+								<time class="data-text w-12 flex-none text-xs text-base-content/70" datetime={ activityTime(member, request).Format(time.RFC3339) }>{ clockLabel(activityTime(member, request)) }</time>
+							}
 							<span class="flex-1 text-sm text-base-content/80">
 								if member.ID == request.CreatorID {
 									{ member.DisplayName + " created the request" }
@@ -361,7 +361,8 @@ templ GameRequestDetailContent(request requestquery.Request, viewerID string, re
 
 templ GameRequestError(brand branding.Brand, navigation components.NavigationState) {
 	@components.Layout(brand, "Game Requests unavailable", navigation) {
-		<section class="app-page py-16"><div role="alert" class="alert alert-error"><div><h1 class="font-bold">Game Requests could not be loaded</h1><p>Try the request again.</p></div><a class="btn btn-quiet btn-sm" href="/game-requests">Retry</a></div></section>
+		<header class="app-topbar"><h1 class="app-title">Game Requests</h1></header>
+		<section class="content-page"><div role="alert" class="alert alert-error"><div><p class="font-bold">Game Requests could not be loaded</p><p>Try the request again.</p></div><a class="btn btn-quiet btn-sm" href="/game-requests">Retry</a></div></section>
 	}
 }
 
@@ -392,7 +393,9 @@ func playerCountAccessible(request requestquery.Request) string {
 }
 
 func playerCountClass(request requestquery.Request) string {
-	if requestFull(request) {
+	// A cancelled or closed request has no open places, so its counter must not
+	// keep the colour that means "places left".
+	if requestFull(request) || request.Status != gamerequest.StatusOpen {
 		return "place-counter count-muted"
 	}
 	if lastPlace(request) {
@@ -408,11 +411,13 @@ func joinButtonClass(request requestquery.Request) string {
 	return "btn btn-primary btn-sm"
 }
 
+// detailJoinButtonClass carries the same action level as the list row. Sea Foam
+// is a label colour in docs/BRANDING.md, not an action fill.
 func detailJoinButtonClass(request requestquery.Request) string {
 	if lastPlace(request) {
 		return "btn btn-urgent"
 	}
-	return "btn btn-success"
+	return "btn btn-primary"
 }
 
 func gameRequestRowClass(request requestquery.Request, highlightedID string) string {
@@ -430,13 +435,6 @@ func gameRequestRowClass(request requestquery.Request, highlightedID string) str
 		classes += " request-row-closed"
 	}
 	return classes
-}
-
-func requestHeroClass(request requestquery.Request) string {
-	if lastPlace(request) {
-		return "detail-hero detail-hero-last"
-	}
-	return "detail-hero"
 }
 
 func statusLabel(status gamerequest.Status) string {
@@ -461,7 +459,7 @@ func detailStatusChipClass(request requestquery.Request) string {
 // detailCountClass keeps the hero counter at the kit's larger size while it
 // carries the same urgency colours as the list.
 func detailCountClass(request requestquery.Request) string {
-	if requestFull(request) {
+	if requestFull(request) || request.Status != gamerequest.StatusOpen {
 		return "place-counter place-counter-lg count-muted"
 	}
 	if lastPlace(request) {
@@ -517,11 +515,20 @@ func startLongLabel(startsAt time.Time) string {
 	return "starts " + startLabel(startsAt)
 }
 
+// An unknown time is not rendered at all; an em dash in its place is a
+// placeholder, and placeholders are not UI.
 func clockLabel(value time.Time) string {
 	if value.IsZero() {
-		return "—"
+		return ""
 	}
 	return value.Local().Format("15:04")
+}
+
+func outOfBand(oob bool) templ.Attributes {
+	if oob {
+		return templ.Attributes{"hx-swap-oob": "true"}
+	}
+	return nil
 }
 
 func gameAbbreviation(name string) string {
@@ -613,6 +620,15 @@ func trendingCountClass(count int) string {
 		return "data-text text-xs font-bold count-hot"
 	}
 	return "data-text text-xs font-bold count-open"
+}
+
+// playersInRequestsLabel joins the counter to the timestamp beside it. The
+// count itself is rendered separately so it keeps the data typeface.
+func playersInRequestsLabel(requests []requestquery.Request) string {
+	if playersInRequests(requests) == 1 {
+		return " player in open requests · updated "
+	}
+	return " players in open requests · updated "
 }
 
 func playersInRequests(requests []requestquery.Request) int64 {

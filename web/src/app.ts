@@ -57,6 +57,26 @@ description?.addEventListener("input", () => {
   if (descriptionCount) descriptionCount.textContent = `${Array.from(description.value).length} / 1000`;
 });
 
+// Every live notice is dismissible: an outage can last as long as the event
+// floor's network does, and an undismissable banner just covers the page.
+function liveNotice(variant: "info" | "warning" | "error", message: string): HTMLElement {
+  const notice = document.createElement("div");
+  notice.className = `alert alert-${variant}`;
+  notice.setAttribute("role", variant === "error" ? "alert" : "status");
+  notice.dataset.liveToast = "";
+  const text = document.createElement("span");
+  text.textContent = message;
+  const dismiss = document.createElement("button");
+  dismiss.type = "button";
+  dismiss.className = "btn btn-ghost btn-sm";
+  dismiss.dataset.dismissLiveToast = "";
+  dismiss.setAttribute("aria-label", "Dismiss notification");
+  dismiss.textContent = "Dismiss";
+  notice.append(text, dismiss);
+  document.querySelector("#live-notices")?.append(notice);
+  return notice;
+}
+
 type GameRequestEvent = {
   type: "GameRequestCreated" | "GameRequestJoined" | "GameRequestLeft" | "GameRequestClosed" | "GameRequestCancelled";
   requestId: string;
@@ -126,12 +146,7 @@ if (realtime?.dataset.realtimeUrl) {
     });
     events.addEventListener("error", () => {
       if (document.querySelector("[data-live-connection-alert]")) return;
-      const notice = document.createElement("div");
-      notice.className = "alert alert-warning";
-      notice.dataset.liveConnectionAlert = "";
-      notice.setAttribute("role", "status");
-      notice.textContent = "Live connection lost. Retrying…";
-      document.querySelector("#live-notices")?.append(notice);
+      liveNotice("warning", "Live connection lost. Retrying…").dataset.liveConnectionAlert = "";
     });
   };
 
@@ -165,20 +180,7 @@ if (realtime?.dataset.realtimeUrl) {
 // A failed request must say so rather than leaving a control that looks live
 // but does nothing. Mirrors the server-rendered action error.
 function showActionError(message: string): void {
-  const notice = document.createElement("div");
-  notice.className = "alert alert-error";
-  notice.setAttribute("role", "alert");
-  notice.dataset.liveToast = "";
-  const text = document.createElement("span");
-  text.textContent = message;
-  const dismiss = document.createElement("button");
-  dismiss.type = "button";
-  dismiss.className = "btn btn-ghost btn-sm";
-  dismiss.dataset.dismissLiveToast = "";
-  dismiss.setAttribute("aria-label", "Dismiss error");
-  dismiss.textContent = "Dismiss";
-  notice.append(text, dismiss);
-  document.querySelector("#live-notices")?.append(notice);
+  const notice = liveNotice("error", message);
   window.setTimeout(() => notice.remove(), 8000);
 }
 
@@ -256,7 +258,7 @@ window.addEventListener("pageshow", () => {
 });
 
 document.addEventListener("htmx:oobAfterSwap", () => {
-  document.querySelectorAll<HTMLElement>("[data-live-toast]").forEach((toast) => {
+  document.querySelectorAll<HTMLElement>("[data-live-toast]:not([data-live-connection-alert])").forEach((toast) => {
     const targetID = toast.dataset.visibilityTarget;
     const target = targetID ? document.querySelector(`#game-request-${CSS.escape(targetID)}`) : null;
     if (target) {

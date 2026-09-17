@@ -314,7 +314,7 @@ The reusable shell, mapped brand tokens, responsive navigation/drawer, login, si
 
 Track G remains active while its final feature integrations wait on their owning tracks: Track A must remove the prototype Event context from Game Request contracts; Track B must supply provider choices, onboarding, and profile state; Track C must supply catalog cover and metadata states; Track D must supply configurable instance identity; and Track E must supply notification settings and browser-permission state. These dependencies do not block further work within their respective tracks.
 
-A dark-mode presentation audit on 2026-09-16 scored the implemented surfaces 14/20 and recorded open theming, accessibility, and responsive defects in [`docs/UI-AUDIT.md`](UI-AUDIT.md). Its remediation backlog is Track G work on already-adopted surfaces and does not depend on another track.
+A dark-mode presentation audit on 2026-09-16 scored the implemented surfaces 14/20 and recorded theming, accessibility, and responsive defects in [`docs/UI-AUDIT.md`](UI-AUDIT.md). All 21 findings were remediated on 2026-09-17 and that backlog is now empty; theme differences are carried by one `light-dark()` token set instead of per-component `[data-theme]` overrides. The score has not been revised, because each fix was verified individually rather than by re-running the full audit against a live instance.
 
 ## Expected outcomes
 
@@ -340,7 +340,7 @@ A dark-mode presentation audit on 2026-09-16 scored the implemented surfaces 14/
 
 ### Presentation remediation
 
-Work the backlog in [`docs/UI-AUDIT.md`](UI-AUDIT.md), which records the measured defects behind each item. The P1 groups come first.
+The backlog in [`docs/UI-AUDIT.md`](UI-AUDIT.md) is closed; that document records the measured defect and the shipped resolution for each item. The rules below are the standing expectations the remediation established.
 
 - Resolve the theme cascade so a visitor without a theme cookie gets one coherent presentation, and make every form control identifiable at 3:1 in both themes. Drive theme differences through tokens rather than per-component `[data-theme]` overrides, and use `100dvh` where the shell fills the viewport.
 - Keep state legible on small viewports: never carry Last place, Joined, Host, or Full by colour alone, and keep live notices clear of the rail.

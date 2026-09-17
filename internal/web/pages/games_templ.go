@@ -49,7 +49,7 @@ func GameCatalog(brand branding.Brand, navigation components.NavigationState, ga
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<header class=\"app-topbar\"><p class=\"data-text count-open text-xs\">Game catalog</p><a class=\"btn btn-quiet btn-sm\" href=\"/games/mine\">My Games</a></header><div class=\"content-page\"><form class=\"request-toolbar\" method=\"get\" action=\"/games\" hx-get=\"/games\" hx-target=\"#game-catalog-results\" hx-swap=\"outerHTML\" hx-push-url=\"true\"><label class=\"sr-only\" for=\"game-search\">Search by game name or alias</label> <input id=\"game-search\" class=\"input input-sm request-search\" type=\"search\" name=\"q\" value=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<header class=\"app-topbar\"><h1 class=\"app-title\">Games</h1><a class=\"btn btn-quiet btn-sm\" href=\"/games/mine\">My Games</a></header><div class=\"content-page\"><form class=\"request-toolbar\" method=\"get\" action=\"/games\" hx-get=\"/games\" hx-target=\"#game-catalog-results\" hx-swap=\"outerHTML\" hx-push-url=\"true\"><label class=\"sr-only\" for=\"game-search\">Search by game name or alias</label> <input id=\"game-search\" class=\"input input-sm request-search\" type=\"search\" name=\"q\" value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -232,20 +232,20 @@ func MyGames(brand branding.Brand, navigation components.NavigationState, games 
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "<header class=\"app-topbar\"><p class=\"data-text count-open text-xs\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "<header class=\"app-topbar\"><h1 class=\"app-title\">My Games</h1><a class=\"btn btn-primary btn-sm\" href=\"/games\">Browse games</a></header><div class=\"content-page\"><div class=\"mb-2 flex items-center justify-between gap-4\"><p class=\"section-label\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var9 string
-			templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d games followed", len(games)))
+			templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(followedCountLabel(len(games)))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/games.templ`, Line: 61, Col: 89}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/games.templ`, Line: 66, Col: 61}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "</p><a class=\"btn btn-primary btn-sm\" href=\"/games\">Browse games</a></header><div class=\"content-page\"><div class=\"mb-2 flex items-center justify-between gap-4\"><p class=\"section-label\">My Games</p></div><div class=\"game-grid\" aria-live=\"polite\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "</p></div><div class=\"game-grid\" aria-live=\"polite\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -546,7 +546,7 @@ func GameCatalogError(brand branding.Brand, navigation components.NavigationStat
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "<header class=\"app-topbar\"><p class=\"data-text text-xs text-base-content/70\">Game catalog</p><a class=\"btn btn-primary btn-sm\" href=\"/games\">Retry</a></header><div class=\"content-page\"><div role=\"alert\" class=\"alert alert-error\"><div><h1 class=\"font-bold\">Games could not be loaded</h1><p>Try the request again.</p></div></div></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "<header class=\"app-topbar\"><h1 class=\"app-title\">Games</h1><a class=\"btn btn-primary btn-sm\" href=\"/games\">Retry</a></header><div class=\"content-page\"><div role=\"alert\" class=\"alert alert-error\"><div><p class=\"font-bold\">Games could not be loaded</p><p>Try the request again.</p></div></div></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -558,6 +558,13 @@ func GameCatalogError(brand branding.Brand, navigation components.NavigationStat
 		}
 		return nil
 	})
+}
+
+func followedCountLabel(count int) string {
+	if count == 1 {
+		return "1 game followed"
+	}
+	return fmt.Sprintf("%d games followed", count)
 }
 
 func gameCountLabel(count int) string {

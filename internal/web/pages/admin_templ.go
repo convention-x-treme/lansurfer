@@ -49,7 +49,7 @@ func AdminEvents(brand branding.Brand, navigation components.NavigationState, ev
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<header class=\"app-topbar\"><h1 class=\"data-text count-open text-xs\">Administration · Events</h1><a class=\"btn btn-quiet btn-sm\" href=\"/admin/games\">Game catalog</a></header><div class=\"content-page\"><p class=\"mb-5 max-w-2xl text-sm text-base-content/70\">Keep historical events and select the one currently used by LANsurfer.</p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<header class=\"app-topbar\"><h1 class=\"app-title\">Manage Events</h1><a class=\"btn btn-quiet btn-sm\" href=\"/admin/games\">Game catalog</a></header><div class=\"content-page\"><p class=\"mb-5 max-w-2xl text-sm text-base-content/70\">Keep historical events and select the one currently used by LANsurfer.</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -308,7 +308,7 @@ func AdminGames(brand branding.Brand, navigation components.NavigationState, gam
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "<header class=\"app-topbar\"><h1 class=\"data-text count-open text-xs\">Administration · Game catalog</h1><a class=\"btn btn-quiet btn-sm\" href=\"/admin/events\">Events</a></header><div class=\"content-page\"><p class=\"mb-5 max-w-2xl text-sm text-base-content/70\">Maintain the local games available for Looking for Group.</p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "<header class=\"app-topbar\"><h1 class=\"app-title\">Manage Games</h1><a class=\"btn btn-quiet btn-sm\" href=\"/admin/events\">Events</a></header><div class=\"content-page\"><p class=\"mb-5 max-w-2xl text-sm text-base-content/70\">Maintain the local games available for Looking for Group.</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -766,7 +766,7 @@ func AdminError(brand branding.Brand, navigation components.NavigationState) tem
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 63, "<header class=\"app-topbar\"><p class=\"data-text text-xs text-base-content/70\">Administration</p></header><div class=\"content-page\"><div role=\"alert\" class=\"alert alert-error\"><div><h1 class=\"font-bold\">Administration could not be loaded</h1><p>Try the request again.</p></div></div></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 63, "<header class=\"app-topbar\"><h1 class=\"app-title\">Administration</h1></header><div class=\"content-page\"><div role=\"alert\" class=\"alert alert-error\"><div><p class=\"font-bold\">Administration could not be loaded</p><p>Try the request again.</p></div></div></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
