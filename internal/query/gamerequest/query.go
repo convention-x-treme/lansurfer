@@ -66,16 +66,43 @@ type GameOption struct {
 	Name string
 }
 
-// Filter carries the stable 1.0 Game Request discovery filters.
+// Scope is the audience a player is looking at. The four values are mutually
+// exclusive intents rather than combinable facets: asking for requests you
+// created and requests for games you follow at once has no useful answer.
+type Scope string
+
+const (
+	// ScopeAll is the default view and the zero value, so an absent or
+	// unrecognized parameter simply leaves the list unnarrowed.
+	ScopeAll     Scope = ""
+	ScopeMyGames Scope = "my-games"
+	ScopeJoined  Scope = "joined"
+	ScopeMine    Scope = "mine"
+)
+
+// ParseScope resolves a request parameter to a scope, falling back to the
+// default view for anything it does not recognize.
+func ParseScope(value string) Scope {
+	switch Scope(value) {
+	case ScopeMyGames, ScopeJoined, ScopeMine:
+		return Scope(value)
+	default:
+		return ScopeAll
+	}
+}
+
+// Filter carries the stable 1.0 Game Request discovery filters. Scope selects
+// the audience; free places is a separate toggle because it narrows any of
+// them.
 type Filter struct {
 	Search         string
-	FollowedOnly   bool
+	Scope          Scope
 	OpenPlacesOnly bool
 }
 
 // Active reports whether any filter narrows the list.
 func (f Filter) Active() bool {
-	return f.Search != "" || f.FollowedOnly || f.OpenPlacesOnly
+	return f.Search != "" || f.Scope != ScopeAll || f.OpenPlacesOnly
 }
 
 // TrendingGame is one entry of the request-activity ranking.
@@ -110,7 +137,7 @@ func (s *Store) ListActive(ctx context.Context, viewerID string, filter Filter) 
 	rows, err := s.queries.ListActiveGameRequests(ctx, sqlcgen.ListActiveGameRequestsParams{
 		ViewerID:       databaseViewerID,
 		Search:         search,
-		FollowedOnly:   filter.FollowedOnly,
+		Scope:          string(filter.Scope),
 		OpenPlacesOnly: filter.OpenPlacesOnly,
 	})
 	if err != nil {

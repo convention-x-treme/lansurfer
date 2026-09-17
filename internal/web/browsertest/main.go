@@ -278,8 +278,19 @@ func (f *fixture) ListActive(_ context.Context, _ string, filter requestquery.Fi
 		if filter.Search != "" && !strings.Contains(strings.ToLower(entry.request.GameName), strings.ToLower(filter.Search)) {
 			continue
 		}
-		if filter.FollowedOnly && !entry.followed {
-			continue
+		switch filter.Scope {
+		case requestquery.ScopeMyGames:
+			if !entry.followed {
+				continue
+			}
+		case requestquery.ScopeJoined:
+			if !entry.request.ViewerJoined {
+				continue
+			}
+		case requestquery.ScopeMine:
+			if entry.request.CreatorID != viewerID {
+				continue
+			}
 		}
 		if filter.OpenPlacesOnly && entry.request.MaxPlayers != nil && entry.request.MemberCount >= int64(*entry.request.MaxPlayers) {
 			continue

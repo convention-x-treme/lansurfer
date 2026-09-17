@@ -374,7 +374,7 @@ func TestGameRequestDiscoveryFiltersAndTrending(t *testing.T) {
 	}
 	router := gameRequestTestRouter(&routerGameRequests{}, queries)
 
-	page := httptest.NewRequest(http.MethodGet, "/game-requests?q=wc3&followed=1&open_places=1", nil)
+	page := httptest.NewRequest(http.MethodGet, "/game-requests?q=wc3&scope=mine&open_places=1", nil)
 	page.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
 	pageResponse := httptest.NewRecorder()
 	router.ServeHTTP(pageResponse, page)
@@ -382,14 +382,14 @@ func TestGameRequestDiscoveryFiltersAndTrending(t *testing.T) {
 	if pageResponse.Code != http.StatusOK {
 		t.Fatalf("status = %d", pageResponse.Code)
 	}
-	want := requestquery.Filter{Search: "wc3", FollowedOnly: true, OpenPlacesOnly: true}
+	want := requestquery.Filter{Search: "wc3", Scope: requestquery.ScopeMine, OpenPlacesOnly: true}
 	if queries.filter != want {
 		t.Fatalf("filter = %#v, want %#v", queries.filter, want)
 	}
 	body := pageResponse.Body.String()
 	// The window has to be stated next to the ranking, and the ranking itself
 	// comes from recorded request activity.
-	for _, fragment := range []string{`id="trending-rail"`, "Trending", "last 6 hours", "My Games", "Free places", "1 matching open request"} {
+	for _, fragment := range []string{`id="trending-rail"`, "Trending", "last 6 hours", "All", "My Games", "Joined", "Created by me", "Free places", "1 matching open request"} {
 		if !strings.Contains(body, fragment) {
 			t.Errorf("page does not contain %q", fragment)
 		}

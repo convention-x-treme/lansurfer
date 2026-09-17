@@ -164,14 +164,14 @@ func TestDetailActivityKeepsHistoryAfterLeave(t *testing.T) {
 // The list wrapper hands the active filters to the live refresh, so an SSE
 // update reloads the same selection instead of silently widening it.
 func TestListContentCarriesActiveFilters(t *testing.T) {
-	filter := requestquery.Filter{Search: "wc3", FollowedOnly: true, OpenPlacesOnly: true}
+	filter := requestquery.Filter{Search: "wc3", Scope: requestquery.ScopeJoined, OpenPlacesOnly: true}
 
 	var rendered bytes.Buffer
 	if err := GameRequestListContent(branding.Default(), nil, filter, nil, "", false, nil, "").Render(context.Background(), &rendered); err != nil {
 		t.Fatalf("render list content: %v", err)
 	}
 	body := rendered.String()
-	if !strings.Contains(body, "followed=1") || !strings.Contains(body, "open_places=1") || !strings.Contains(body, "q=wc3") {
+	if !strings.Contains(body, "scope=joined") || !strings.Contains(body, "open_places=1") || !strings.Contains(body, "q=wc3") {
 		t.Fatalf("list does not carry its filters: %s", body)
 	}
 	if !strings.Contains(body, "No Game Request matches that.") {
