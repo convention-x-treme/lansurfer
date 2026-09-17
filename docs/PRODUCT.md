@@ -269,6 +269,7 @@ Core properties include Game, creator, optional maximum players, start time, des
 - The creator closes or cancels their request instead of leaving as an ordinary member; ownership transfer is not included.
 - A player cannot join the same request twice.
 - Concurrent joins must never overfill a limited request.
+- One player may hold several open requests for the same Game at the same start time, because organizing two separate groups is legitimate. The application therefore does not treat a repeated creation as the same request; accidental double submission is prevented in the interface instead.
 - Any signed-in player may discover and use current Game Requests according to the normal application rules; Event membership is not an access prerequisite.
 
 The primary UI should show Game, player count/capacity, start time, short description, and the Join action without forcing the player through a detail page.
