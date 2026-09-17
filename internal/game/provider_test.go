@@ -59,7 +59,7 @@ func TestVisibleProviderGameType(t *testing.T) {
 }
 
 func TestProviderReferenceValidation(t *testing.T) {
-	ref, err := NewProviderReference(" igdb ", " 123 ")
+	ref, err := NewProviderReference(" IGDB ", " 123 ")
 	if err != nil {
 		t.Fatalf("valid reference: %v", err)
 	}
@@ -67,8 +67,8 @@ func TestProviderReferenceValidation(t *testing.T) {
 		t.Fatalf("reference = %#v, want normalized IGDB reference", ref)
 	}
 	for _, tc := range [][2]string{{"", "123"}, {"igdb", ""}, {"steam", "123"}} {
-		if _, err := NewProviderReference(tc[0], tc[1]); err == nil {
-			t.Fatalf("reference %q/%q unexpectedly valid", tc[0], tc[1])
+		if _, err := NewProviderReference(tc[0], tc[1]); !errors.Is(err, ErrInvalidProviderReference) {
+			t.Fatalf("reference %q/%q error = %v, want ErrInvalidProviderReference", tc[0], tc[1], err)
 		}
 	}
 	for _, id := range []string{"0", "00", "12.3", "-1", "abc", "１２３"} {
