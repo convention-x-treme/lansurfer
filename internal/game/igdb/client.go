@@ -31,14 +31,16 @@ const gameFields = "id,name,slug,game_type.type,first_release_date,parent_game,v
 type Option func(*Client)
 
 type Client struct {
-	clientID     string
-	clientSecret string
-	tokenURL     string
-	gamesURL     string
-	pageSize     int
-	httpClient   *http.Client
-	now          func() time.Time
-	sleep        func(context.Context, time.Duration) error
+	clientID         string
+	clientSecret     string
+	tokenURL         string
+	gamesURL         string
+	pageSize         int
+	requestInterval  time.Duration
+	maxResponseBytes int
+	httpClient       *http.Client
+	now              func() time.Time
+	sleep            func(context.Context, time.Duration) error
 
 	tokenMu        sync.Mutex
 	accessToken    string
@@ -52,14 +54,16 @@ var _ game.ProviderCatalog = (*Client)(nil)
 
 func NewClient(clientID, clientSecret string, options ...Option) *Client {
 	client := &Client{
-		clientID:     clientID,
-		clientSecret: clientSecret,
-		tokenURL:     defaultTokenURL,
-		gamesURL:     defaultGamesURL,
-		pageSize:     defaultPageSize,
-		httpClient:   &http.Client{Timeout: requestTimeout},
-		now:          time.Now,
-		sleep:        sleepContext,
+		clientID:         clientID,
+		clientSecret:     clientSecret,
+		tokenURL:         defaultTokenURL,
+		gamesURL:         defaultGamesURL,
+		pageSize:         defaultPageSize,
+		requestInterval:  minRequestInterval,
+		maxResponseBytes: maxResponseBytes,
+		httpClient:       &http.Client{Timeout: requestTimeout},
+		now:              time.Now,
+		sleep:            sleepContext,
 	}
 	for _, option := range options {
 		option(client)
@@ -67,17 +71,38 @@ func NewClient(clientID, clientSecret string, options ...Option) *Client {
 	return client
 }
 
-func withEndpoints(tokenURL, gamesURL string) Option {
+func WithTokenURL(tokenURL string) Option {
 	return func(client *Client) {
 		client.tokenURL = tokenURL
+	}
+}
+
+func WithGamesURL(gamesURL string) Option {
+	return func(client *Client) {
 		client.gamesURL = gamesURL
 	}
 }
 
-func withPageSize(pageSize int) Option {
+func WithPageSize(pageSize int) Option {
 	return func(client *Client) {
 		if pageSize > 0 {
 			client.pageSize = pageSize
+		}
+	}
+}
+
+func WithRequestInterval(interval time.Duration) Option {
+	return func(client *Client) {
+		if interval >= 0 {
+			client.requestInterval = interval
+		}
+	}
+}
+
+func WithMaxResponseBytes(limit int) Option {
+	return func(client *Client) {
+		if limit > 0 {
+			client.maxResponseBytes = limit
 		}
 	}
 }
@@ -158,7 +183,7 @@ func (c *Client) requestGamesPage(ctx context.Context, token string, lastID int6
 	c.requestMu.Lock()
 	defer c.requestMu.Unlock()
 	if !c.lastRequestTime.IsZero() {
-		wait := minRequestInterval - c.now().Sub(c.lastRequestTime)
+		wait := c.requestInterval - c.now().Sub(c.lastRequestTime)
 		if wait > 0 {
 			if err := c.sleep(ctx, wait); err != nil {
 				return nil, 0, fmt.Errorf("pace IGDB games request: %w", err)
@@ -171,7 +196,7 @@ func (c *Client) requestGamesPage(ctx context.Context, token string, lastID int6
 	if err != nil {
 		return nil, 0, fmt.Errorf("request IGDB games: %w", err)
 	}
-	responseBody, err := readResponseBody(response)
+	responseBody, err := c.readResponseBody(response)
 	if err != nil {
 		return nil, response.StatusCode, fmt.Errorf("read IGDB games response: %w", err)
 	}
@@ -214,7 +239,7 @@ func (c *Client) token(ctx context.Context) (string, error) {
 		}
 		return "", errors.New("request app access token failed")
 	}
-	responseBody, err := readResponseBody(response)
+	responseBody, err := c.readResponseBody(response)
 	if err != nil {
 		return "", fmt.Errorf("read app access token response: %w", err)
 	}
@@ -244,14 +269,14 @@ func (c *Client) invalidateToken(token string) {
 	}
 }
 
-func readResponseBody(response *http.Response) ([]byte, error) {
+func (c *Client) readResponseBody(response *http.Response) ([]byte, error) {
 	defer response.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(response.Body, maxResponseBytes+1))
+	body, err := io.ReadAll(io.LimitReader(response.Body, int64(c.maxResponseBytes)+1))
 	if err != nil {
 		return nil, err
 	}
-	if len(body) > maxResponseBytes {
-		return nil, fmt.Errorf("response exceeds %d bytes", maxResponseBytes)
+	if len(body) > c.maxResponseBytes {
+		return nil, fmt.Errorf("response exceeds %d bytes", c.maxResponseBytes)
 	}
 	return body, nil
 }

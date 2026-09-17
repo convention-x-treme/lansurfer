@@ -17,7 +17,6 @@ import (
 )
 
 func TestGamesGetsOneTokenAndPagesByLastID(t *testing.T) {
-	clock := newFakeClock(time.Unix(1_700_000_000, 0))
 	var tokenRequests atomic.Int32
 	var mu sync.Mutex
 	var gameRequests []recordedRequest
@@ -71,10 +70,10 @@ func TestGamesGetsOneTokenAndPagesByLastID(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	client := NewClient("client-id", "client-secret",
-		withEndpoints(server.URL+"/token", server.URL+"/games"),
-		withPageSize(2),
-		withNow(clock.Now),
-		withSleep(clock.Sleep),
+		WithTokenURL(server.URL+"/token"),
+		WithGamesURL(server.URL+"/games"),
+		WithPageSize(2),
+		WithRequestInterval(0),
 	)
 	var got []game.ProviderGame
 	err := client.Games(context.Background(), func(batch []game.ProviderGame) error {
@@ -154,7 +153,6 @@ func TestGamesGetsOneTokenAndPagesByLastID(t *testing.T) {
 }
 
 func TestGamesRefreshesTokenOnceAfter401(t *testing.T) {
-	clock := newFakeClock(time.Unix(1_700_000_000, 0))
 	var tokenRequests atomic.Int32
 	var mu sync.Mutex
 	var authorizations []string
@@ -181,9 +179,9 @@ func TestGamesRefreshesTokenOnceAfter401(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	client := NewClient("client-id", "client-secret",
-		withEndpoints(server.URL+"/token", server.URL+"/games"),
-		withNow(clock.Now),
-		withSleep(clock.Sleep),
+		WithTokenURL(server.URL+"/token"),
+		WithGamesURL(server.URL+"/games"),
+		WithRequestInterval(0),
 	)
 	if err := client.Games(context.Background(), func([]game.ProviderGame) error { return nil }); err != nil {
 		t.Fatalf("Games() error = %v", err)
@@ -207,7 +205,7 @@ func TestGamesRejectsOversizedOrMalformedResponse(t *testing.T) {
 	}{
 		{name: "non-array JSON", body: `{}`},
 		{name: "malformed JSON", body: `[`},
-		{name: "oversized JSON", body: `[` + strings.Repeat(" ", (8<<20)+1) + `]`},
+		{name: "oversized JSON", body: `[` + strings.Repeat(" ", 64) + `]`},
 	}
 
 	for _, tt := range tests {
@@ -224,12 +222,40 @@ func TestGamesRejectsOversizedOrMalformedResponse(t *testing.T) {
 			}))
 			t.Cleanup(server.Close)
 
-			client := NewClient("client-id", "client-secret", withEndpoints(server.URL+"/token", server.URL+"/games"))
+			client := NewClient("client-id", "client-secret",
+				WithTokenURL(server.URL+"/token"),
+				WithGamesURL(server.URL+"/games"),
+				WithRequestInterval(0),
+				WithMaxResponseBytes(32),
+			)
 			err := client.Games(context.Background(), func([]game.ProviderGame) error { return nil })
 			if err == nil {
 				t.Fatal("Games() error = nil, want response error")
 			}
 		})
+	}
+}
+
+func TestGamesRejectsOversizedTokenResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/token":
+			_, _ = io.WriteString(w, `{"access_token":"token","expires_in":3600}`+strings.Repeat(" ", 64))
+		case "/games":
+			t.Fatal("Games request made after oversized token response")
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	client := NewClient("client-id", "client-secret",
+		WithTokenURL(server.URL+"/token"),
+		WithGamesURL(server.URL+"/games"),
+		WithMaxResponseBytes(32),
+	)
+	if err := client.Games(context.Background(), func([]game.ProviderGame) error { return nil }); err == nil {
+		t.Fatal("Games() error = nil, want oversized token response error")
 	}
 }
 
@@ -254,7 +280,9 @@ func TestGamesPacesRequestStarts(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	client := NewClient("client-id", "client-secret",
-		withEndpoints(server.URL+"/token", server.URL+"/games"),
+		WithTokenURL(server.URL+"/token"),
+		WithGamesURL(server.URL+"/games"),
+		WithRequestInterval(10*time.Millisecond),
 		withNow(clock.Now),
 		withSleep(clock.Sleep),
 	)
@@ -280,8 +308,8 @@ func TestGamesPacesRequestStarts(t *testing.T) {
 		t.Fatalf("games request starts = %d, want 3", len(gotStarts))
 	}
 	for i := 1; i < len(gotStarts); i++ {
-		if elapsed := gotStarts[i].Sub(gotStarts[i-1]); elapsed < 250*time.Millisecond {
-			t.Errorf("games request start %d followed previous by %v, want at least 250ms", i+1, elapsed)
+		if elapsed := gotStarts[i].Sub(gotStarts[i-1]); elapsed < 10*time.Millisecond {
+			t.Errorf("games request start %d followed previous by %v, want at least 10ms", i+1, elapsed)
 		}
 	}
 }
