@@ -11,7 +11,7 @@ import (
 func TestCreateValidatesAndUsesOwnedLookups(t *testing.T) {
 	repository := &recordingRepository{}
 	publisher := &recordingPublisher{}
-	service := NewService(repository, staticGames(true), staticEvent("event-1"), publisher)
+	service := NewService(repository, staticGames(true), publisher)
 	startsAt := time.Date(2027, time.May, 1, 18, 0, 0, 0, time.UTC)
 	maximum := int32(4)
 
@@ -19,7 +19,7 @@ func TestCreateValidatesAndUsesOwnedLookups(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
 	}
-	if created.EventID != "event-1" || created.GameID != "game-1" || created.CreatorID != "user-1" ||
+	if created.GameID != "game-1" || created.CreatorID != "user-1" ||
 		created.Description != "Casual players welcome." || created.Status != StatusOpen {
 		t.Fatalf("created request = %#v", created)
 	}
@@ -39,24 +39,26 @@ func TestCreateValidatesAndUsesOwnedLookups(t *testing.T) {
 	}
 }
 
-func TestCreateRequiresActiveGameAndCurrentEvent(t *testing.T) {
+// Creating a Game Request needs an active Game and nothing else: the
+// installation itself is the 1.0 event context.
+func TestCreateRequiresActiveGameOnly(t *testing.T) {
 	startsAt := time.Now()
-	if _, err := NewService(&recordingRepository{}, staticGames(false), staticEvent("event-1"), nil).Create(
+	if _, err := NewService(&recordingRepository{}, staticGames(false), nil).Create(
 		t.Context(), "user-1", "game-1", nil, startsAt, "",
 	); !errors.Is(err, ErrGameUnavailable) {
 		t.Errorf("inactive game error = %v", err)
 	}
-	if _, err := NewService(&recordingRepository{}, staticGames(true), staticEvent(""), nil).Create(
+	if _, err := NewService(&recordingRepository{}, staticGames(true), nil).Create(
 		t.Context(), "user-1", "game-1", nil, startsAt, "",
-	); !errors.Is(err, ErrNoCurrentEvent) {
-		t.Errorf("missing current event error = %v", err)
+	); err != nil {
+		t.Errorf("Create() without an Event error = %v", err)
 	}
 }
 
 func TestPublishesSuccessfulLifecycleChangesOnly(t *testing.T) {
 	repository := &recordingRepository{}
 	publisher := &recordingPublisher{}
-	service := NewService(repository, staticGames(true), staticEvent("event-1"), publisher)
+	service := NewService(repository, staticGames(true), publisher)
 
 	if err := service.Join(t.Context(), "request-1", "user-1"); err != nil {
 		t.Fatal(err)
@@ -112,10 +114,6 @@ func (*recordingRepository) SetStatus(context.Context, string, string, Status) e
 type staticGames bool
 
 func (g staticGames) ActiveExists(context.Context, string) (bool, error) { return bool(g), nil }
-
-type staticEvent string
-
-func (e staticEvent) Current(context.Context) (string, error) { return string(e), nil }
 
 type recordingPublisher struct{ events []Event }
 

@@ -110,9 +110,14 @@ function refreshGameRequests(event?: GameRequestEvent): void {
     return;
   }
 
-  if (document.querySelector("[data-game-request-list]")) {
-    const highlight = event?.type === "GameRequestCreated" ? `?highlight=${encodeURIComponent(event.requestId)}` : "";
-    void htmx.ajax("get", `/game-requests/refresh${highlight}`, {
+  // The refresh reloads whatever selection the player is looking at, so a live
+  // update never silently drops their discovery filters.
+  const list = document.querySelector<HTMLElement>("[data-game-request-list]");
+  if (list) {
+    const parameters = new URLSearchParams(list.dataset.filterQuery ?? "");
+    if (event?.type === "GameRequestCreated") parameters.set("highlight", event.requestId);
+    const query = parameters.toString();
+    void htmx.ajax("get", `/game-requests/refresh${query ? `?${query}` : ""}`, {
       target: "#game-request-list",
       swap: "outerHTML",
     });

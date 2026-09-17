@@ -1,5 +1,5 @@
 -- name: ListActiveGameRequests :many
-SELECT gr.id::text AS request_id, e.name AS event_name,
+SELECT gr.id::text AS request_id,
        g.name AS game_name,
        gr.creator_id::text AS creator_id, u.display_name AS creator_name,
        gr.max_players, gr.starts_at, gr.description, gr.status,
@@ -8,18 +8,31 @@ SELECT gr.id::text AS request_id, e.name AS event_name,
        bool_or(m.user_id = sqlc.arg(viewer_id)::uuid) AS viewer_joined,
        bool_or(gs.user_id IS NOT NULL) AS viewer_subscribed
 FROM game_requests gr
-JOIN events e ON e.id = gr.event_id
 JOIN games g ON g.id = gr.game_id
 JOIN users u ON u.id = gr.creator_id
 JOIN game_request_members m ON m.game_request_id = gr.id
 LEFT JOIN game_subscriptions gs ON gs.game_id = gr.game_id
   AND gs.user_id = sqlc.arg(viewer_id)::uuid
-WHERE gr.status = 'open' AND e.is_current
-GROUP BY gr.id, e.name, g.name, u.display_name
+WHERE gr.status = 'open'
+  AND (
+      sqlc.arg(search)::text = ''
+      OR strpos(lower(g.name), lower(sqlc.arg(search)::text)) > 0
+      OR EXISTS (
+          SELECT 1
+          FROM game_aliases ga
+          WHERE ga.game_id = g.id
+            AND strpos(lower(ga.alias), lower(sqlc.arg(search)::text)) > 0
+      )
+  )
+  AND (NOT sqlc.arg(followed_only)::boolean OR gs.user_id IS NOT NULL)
+GROUP BY gr.id, g.name, u.display_name
+HAVING NOT sqlc.arg(open_places_only)::boolean
+    OR gr.max_players IS NULL
+    OR count(m.user_id) < gr.max_players
 ORDER BY gr.starts_at, gr.created_at, gr.id;
 
 -- name: GetGameRequest :one
-SELECT gr.id::text AS request_id, e.name AS event_name,
+SELECT gr.id::text AS request_id,
        g.name AS game_name,
        gr.creator_id::text AS creator_id, u.display_name AS creator_name,
        gr.max_players, gr.starts_at, gr.description, gr.status,
@@ -28,14 +41,13 @@ SELECT gr.id::text AS request_id, e.name AS event_name,
        bool_or(m.user_id = sqlc.arg(viewer_id)::uuid) AS viewer_joined,
        bool_or(gs.user_id IS NOT NULL) AS viewer_subscribed
 FROM game_requests gr
-JOIN events e ON e.id = gr.event_id
 JOIN games g ON g.id = gr.game_id
 JOIN users u ON u.id = gr.creator_id
 JOIN game_request_members m ON m.game_request_id = gr.id
 LEFT JOIN game_subscriptions gs ON gs.game_id = gr.game_id
   AND gs.user_id = sqlc.arg(viewer_id)::uuid
 WHERE gr.id = sqlc.arg(id)::uuid
-GROUP BY gr.id, e.name, g.name, u.display_name;
+GROUP BY gr.id, g.name, u.display_name;
 
 -- name: ListGameRequestMembers :many
 SELECT u.id::text AS user_id, u.display_name, m.joined_at
@@ -44,8 +56,28 @@ JOIN users u ON u.id = m.user_id
 WHERE m.game_request_id = sqlc.arg(game_request_id)::uuid
 ORDER BY m.joined_at, u.id;
 
--- name: CurrentEventForGameRequest :one
-SELECT id::text, name FROM events WHERE is_current;
+-- name: ListGameRequestActivity :many
+SELECT a.kind, a.occurred_at, a.actor_id::text AS actor_id, u.display_name AS actor_name
+FROM game_request_activity a
+JOIN users u ON u.id = a.actor_id
+WHERE a.game_request_id = sqlc.arg(game_request_id)::uuid
+ORDER BY a.sequence DESC;
+
+-- TrendingGames ranks games by Game Request activity inside the rolling window
+-- the caller states in the UI. Ranking comes from recorded request activity, not
+-- from search queries or page views.
+-- name: TrendingGames :many
+SELECT g.id::text AS game_id, g.name AS game_name,
+       count(*) AS activity_count,
+       count(DISTINCT a.game_request_id) AS request_count
+FROM game_request_activity a
+JOIN game_requests gr ON gr.id = a.game_request_id
+JOIN games g ON g.id = gr.game_id
+WHERE a.occurred_at >= sqlc.arg(since)
+  AND a.kind IN ('created', 'joined')
+GROUP BY g.id, g.name
+ORDER BY count(*) DESC, count(DISTINCT a.game_request_id) DESC, lower(g.name), g.id
+LIMIT sqlc.arg(result_limit);
 
 -- name: ActiveGamesForGameRequest :many
 SELECT id::text, name FROM games WHERE active ORDER BY lower(name), id;

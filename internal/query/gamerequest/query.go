@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	domain "github.com/convention-x-treme/lansurfer/internal/gamerequest"
@@ -14,9 +15,22 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// TrendingWindow is the rolling window the Trending read model ranks over. The
+// UI states it next to the ranking, so both come from this one value.
+const TrendingWindow = 6 * time.Hour
+
+// trendingLimit keeps the rail compact; a sparse or empty ranking during a
+// quiet period is the intended result, not a reason to widen the window.
+const trendingLimit = 5
+
+// maxSearchLength matches the game catalog's own search bound.
+const maxSearchLength = 120
+
+// ErrInvalidSearch reports a search term the read model refuses to run.
+var ErrInvalidSearch = errors.New("invalid search term")
+
 type Request struct {
 	ID               string
-	EventName        string
 	GameName         string
 	CreatorID        string
 	CreatorName      string
@@ -29,6 +43,7 @@ type Request struct {
 	ViewerJoined     bool
 	ViewerSubscribed bool
 	Members          []Member
+	Activity         []Activity
 }
 
 type Member struct {
@@ -37,42 +52,69 @@ type Member struct {
 	JoinedAt    time.Time
 }
 
+// Activity is one durable request-local entry, newest first.
+type Activity struct {
+	Kind       domain.ActivityKind
+	ActorID    string
+	ActorName  string
+	OccurredAt time.Time
+}
+
 type GameOption struct {
 	ID   string
 	Name string
 }
 
-type CreationOptions struct {
-	EventID   string
-	EventName string
-	Games     []GameOption
+// Filter carries the stable 1.0 Game Request discovery filters.
+type Filter struct {
+	Search         string
+	FollowedOnly   bool
+	OpenPlacesOnly bool
 }
 
-type EventContext struct {
-	ID   string
-	Name string
+// Active reports whether any filter narrows the list.
+func (f Filter) Active() bool {
+	return f.Search != "" || f.FollowedOnly || f.OpenPlacesOnly
+}
+
+// TrendingGame is one entry of the request-activity ranking.
+type TrendingGame struct {
+	GameID        string
+	GameName      string
+	ActivityCount int64
+	RequestCount  int64
 }
 
 type Store struct {
 	queries *sqlcgen.Queries
+	now     func() time.Time
 }
 
 func NewStore(pool *pgxpool.Pool) *Store {
-	return &Store{queries: sqlcgen.New(pool)}
+	return &Store{queries: sqlcgen.New(pool), now: time.Now}
 }
 
-func (s *Store) ListActive(ctx context.Context, viewerID string) ([]Request, error) {
+func (s *Store) ListActive(ctx context.Context, viewerID string, filter Filter) ([]Request, error) {
+	search := strings.TrimSpace(filter.Search)
+	if len(search) > maxSearchLength {
+		return nil, ErrInvalidSearch
+	}
 	databaseViewerID, err := parseUUID(viewerID)
 	if err != nil {
 		return nil, fmt.Errorf("parse viewer ID: %w", err)
 	}
-	rows, err := s.queries.ListActiveGameRequests(ctx, databaseViewerID)
+	rows, err := s.queries.ListActiveGameRequests(ctx, sqlcgen.ListActiveGameRequestsParams{
+		ViewerID:       databaseViewerID,
+		Search:         search,
+		FollowedOnly:   filter.FollowedOnly,
+		OpenPlacesOnly: filter.OpenPlacesOnly,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("list active game requests: %w", err)
 	}
 	result := make([]Request, 0, len(rows))
 	for _, row := range rows {
-		result = append(result, requestFromFields(row.RequestID, row.EventName, row.GameName, row.CreatorID, row.CreatorName,
+		result = append(result, requestFromFields(row.RequestID, row.GameName, row.CreatorID, row.CreatorName,
 			row.MaxPlayers, row.StartsAt, row.Description, row.Status, row.CreatedAt, row.MemberCount, row.ViewerJoined, row.ViewerSubscribed))
 	}
 	return result, nil
@@ -94,7 +136,7 @@ func (s *Store) ByID(ctx context.Context, id, viewerID string) (Request, error) 
 	if err != nil {
 		return Request{}, fmt.Errorf("get game request: %w", err)
 	}
-	request := requestFromFields(row.RequestID, row.EventName, row.GameName, row.CreatorID, row.CreatorName,
+	request := requestFromFields(row.RequestID, row.GameName, row.CreatorID, row.CreatorName,
 		row.MaxPlayers, row.StartsAt, row.Description, row.Status, row.CreatedAt, row.MemberCount, row.ViewerJoined, row.ViewerSubscribed)
 	members, err := s.queries.ListGameRequestMembers(ctx, databaseID)
 	if err != nil {
@@ -104,49 +146,64 @@ func (s *Store) ByID(ctx context.Context, id, viewerID string) (Request, error) 
 	for _, member := range members {
 		request.Members = append(request.Members, Member{ID: member.UserID, DisplayName: member.DisplayName, JoinedAt: member.JoinedAt.Time})
 	}
+	activity, err := s.queries.ListGameRequestActivity(ctx, databaseID)
+	if err != nil {
+		return Request{}, fmt.Errorf("list game request activity: %w", err)
+	}
+	request.Activity = make([]Activity, 0, len(activity))
+	for _, entry := range activity {
+		request.Activity = append(request.Activity, Activity{
+			Kind: domain.ActivityKind(entry.Kind), ActorID: entry.ActorID,
+			ActorName: entry.ActorName, OccurredAt: entry.OccurredAt.Time,
+		})
+	}
 	return request, nil
 }
 
-func (s *Store) CreationOptions(ctx context.Context) (CreationOptions, error) {
-	event, err := s.queries.CurrentEventForGameRequest(ctx)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return CreationOptions{Games: []GameOption{}}, nil
-	}
+// Trending ranks games by Game Request activity inside TrendingWindow.
+func (s *Store) Trending(ctx context.Context) ([]TrendingGame, error) {
+	rows, err := s.queries.TrendingGames(ctx, sqlcgen.TrendingGamesParams{
+		Since:       pgtype.Timestamptz{Time: s.now().Add(-TrendingWindow), Valid: true},
+		ResultLimit: trendingLimit,
+	})
 	if err != nil {
-		return CreationOptions{}, fmt.Errorf("find current event: %w", err)
+		return nil, fmt.Errorf("rank trending games: %w", err)
 	}
+	result := make([]TrendingGame, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, TrendingGame{
+			GameID: row.GameID, GameName: row.GameName,
+			ActivityCount: row.ActivityCount, RequestCount: row.RequestCount,
+		})
+	}
+	return result, nil
+}
+
+// CreationOptions lists the games a player may request a round of. The
+// installation itself is the event context, so no Event selection is involved.
+func (s *Store) CreationOptions(ctx context.Context) ([]GameOption, error) {
 	games, err := s.queries.ActiveGamesForGameRequest(ctx)
 	if err != nil {
-		return CreationOptions{}, fmt.Errorf("list active games: %w", err)
+		return nil, fmt.Errorf("list active games: %w", err)
 	}
-	options := CreationOptions{EventID: event.ID, EventName: event.Name, Games: make([]GameOption, 0, len(games))}
+	options := make([]GameOption, 0, len(games))
 	for _, game := range games {
-		options.Games = append(options.Games, GameOption{ID: game.ID, Name: game.Name})
+		options = append(options, GameOption{ID: game.ID, Name: game.Name})
 	}
 	return options, nil
 }
 
-func (s *Store) CurrentEvent(ctx context.Context) (EventContext, error) {
-	event, err := s.queries.CurrentEventForGameRequest(ctx)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return EventContext{}, nil
-	}
-	if err != nil {
-		return EventContext{}, fmt.Errorf("find current event: %w", err)
-	}
-	return EventContext{ID: event.ID, Name: event.Name}, nil
-}
-
-func requestFromFields(id, eventName, gameName, creatorID, creatorName string, maxPlayers pgtype.Int4,
+func requestFromFields(id, gameName, creatorID, creatorName string, maxPlayers pgtype.Int4,
 	startsAt pgtype.Timestamptz, description, status string, createdAt pgtype.Timestamptz,
 	memberCount int64, viewerJoined, viewerSubscribed bool,
 ) Request {
 	return Request{
-		ID: id, EventName: eventName, GameName: gameName, CreatorID: creatorID, CreatorName: creatorName,
+		ID: id, GameName: gameName, CreatorID: creatorID, CreatorName: creatorName,
 		MaxPlayers: int4Pointer(maxPlayers), StartsAt: startsAt.Time, Description: description,
 		Status: domain.Status(status), CreatedAt: createdAt.Time, MemberCount: memberCount,
 		ViewerJoined: viewerJoined, ViewerSubscribed: viewerSubscribed,
-		Members: []Member{},
+		Members:  []Member{},
+		Activity: []Activity{},
 	}
 }
 

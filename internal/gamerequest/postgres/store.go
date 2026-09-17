@@ -24,10 +24,6 @@ func NewStore(pool *pgxpool.Pool) *Store {
 }
 
 func (s *Store) Create(ctx context.Context, request gamerequest.GameRequest) (gamerequest.GameRequest, error) {
-	eventID, err := parseUUID(request.EventID)
-	if err != nil {
-		return gamerequest.GameRequest{}, gamerequest.ErrNoCurrentEvent
-	}
 	gameID, err := parseUUID(request.GameID)
 	if err != nil {
 		return gamerequest.GameRequest{}, gamerequest.ErrGameUnavailable
@@ -44,7 +40,7 @@ func (s *Store) Create(ctx context.Context, request gamerequest.GameRequest) (ga
 	defer tx.Rollback(ctx)
 	queries := s.queries.WithTx(tx)
 	row, err := queries.CreateGameRequest(ctx, sqlcgen.CreateGameRequestParams{
-		EventID: eventID, GameID: gameID, CreatorID: creatorID,
+		GameID: gameID, CreatorID: creatorID,
 		MaxPlayers:  nullableInt4(request.MaxPlayers),
 		StartsAt:    pgtype.Timestamptz{Time: request.StartsAt, Valid: true},
 		Description: request.Description,
@@ -58,6 +54,9 @@ func (s *Store) Create(ctx context.Context, request gamerequest.GameRequest) (ga
 	}
 	if err := queries.AddCreatorMembership(ctx, sqlcgen.AddCreatorMembershipParams{GameRequestID: requestID, UserID: creatorID}); err != nil {
 		return gamerequest.GameRequest{}, fmt.Errorf("add creator membership: %w", err)
+	}
+	if err := recordActivity(ctx, queries, requestID, creatorID, gamerequest.ActivityCreated); err != nil {
+		return gamerequest.GameRequest{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return gamerequest.GameRequest{}, fmt.Errorf("commit create game request: %w", err)
@@ -100,7 +99,7 @@ func (s *Store) Join(ctx context.Context, requestID, userID string) error {
 			}
 			return fmt.Errorf("add game request member: %w", err)
 		}
-		return nil
+		return recordActivity(ctx, queries, databaseRequestID, databaseUserID, gamerequest.ActivityJoined)
 	})
 }
 
@@ -125,7 +124,7 @@ func (s *Store) Leave(ctx context.Context, requestID, userID string) error {
 		if removed == 0 {
 			return gamerequest.ErrNotMember
 		}
-		return nil
+		return recordActivity(ctx, queries, databaseRequestID, databaseUserID, gamerequest.ActivityLeft)
 	})
 }
 
@@ -150,8 +149,26 @@ func (s *Store) SetStatus(ctx context.Context, requestID, userID string, status 
 		if updated != 1 {
 			return gamerequest.ErrNotOpen
 		}
-		return nil
+		return recordActivity(ctx, queries, databaseRequestID, databaseUserID, statusActivity(status))
 	})
+}
+
+// recordActivity keeps the durable record inside the caller's transaction, so a
+// change and the entry describing it either both commit or neither does.
+func recordActivity(ctx context.Context, queries *sqlcgen.Queries, requestID, actorID pgtype.UUID, kind gamerequest.ActivityKind) error {
+	if err := queries.RecordGameRequestActivity(ctx, sqlcgen.RecordGameRequestActivityParams{
+		GameRequestID: requestID, ActorID: actorID, Kind: string(kind),
+	}); err != nil {
+		return fmt.Errorf("record game request activity: %w", err)
+	}
+	return nil
+}
+
+func statusActivity(status gamerequest.Status) gamerequest.ActivityKind {
+	if status == gamerequest.StatusCancelled {
+		return gamerequest.ActivityCancelled
+	}
+	return gamerequest.ActivityClosed
 }
 
 func (s *Store) withLockedRequest(ctx context.Context, requestID pgtype.UUID, change func(*sqlcgen.Queries, sqlcgen.LockGameRequestRow) error) error {
@@ -179,7 +196,7 @@ func (s *Store) withLockedRequest(ctx context.Context, requestID pgtype.UUID, ch
 
 func fromCreateRow(row sqlcgen.CreateGameRequestRow) gamerequest.GameRequest {
 	return gamerequest.GameRequest{
-		ID: row.ID, EventID: row.EventID, GameID: row.GameID, CreatorID: row.CreatorID,
+		ID: row.ID, GameID: row.GameID, CreatorID: row.CreatorID,
 		MaxPlayers: int4Pointer(row.MaxPlayers), StartsAt: row.StartsAt.Time,
 		Description: row.Description, Status: gamerequest.Status(row.Status),
 		CreatedAt: row.CreatedAt.Time, UpdatedAt: row.UpdatedAt.Time,

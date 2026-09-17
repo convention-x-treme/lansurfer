@@ -16,10 +16,11 @@ Use Taskfile workflows, not Makefiles; run `task --list` for the authoritative t
 
 ## Architecture and coding rules
 
-- Keep a modular monolith organized by business capability (`auth`, `user`, `game`, `gamerequest`, and the 1.0 `notification` module). The prototype `event` module may remain only where needed for migration compatibility while the single-event 1.0 model is implemented. Do not add `clan` or other post-1.0 modules until their roadmap work is explicitly scheduled. Keep infrastructure, queries, and web delivery separate from domain modules.
+- Keep a modular monolith organized by business capability (`auth`, `user`, `game`, `gamerequest`, and the 1.0 `notification` module). The prototype `event` module has been removed by Track A's single-event migration; do not reintroduce it, and do not add `clan` or other post-1.0 modules until their roadmap work is explicitly scheduled. Keep infrastructure, queries, and web delivery separate from domain modules.
 - Business modules own their behavior and writes. Never access another module's persistence implementation or write its tables directly. Call the owning service through a small explicit interface or publish an application/domain event.
 - Define narrow interfaces in the consuming package. Keep concrete infrastructure behind them. Wire dependencies explicitly in the composition root; do not use a dependency-injection framework or service locator.
 - Use dedicated query/read models for cross-module UI reads and joins. Query packages must not perform domain writes. The 1.0 Trending view is a focused read model over Game Request activity, not authorization for a general analytics/event store.
+- `game_request_activity` is both the durable request-local activity record and Track A's transactional notification-intent handoff to Track E. Write its entry in the same transaction as the change it describes; do not add a parallel outbox table.
 - Keep generated sqlc types inside persistence/read infrastructure. Map them to domain or explicit read models at boundaries.
 - Avoid generic `shared`, `common`, `utils`, repository, DTO/mapping, CQRS, or other framework-style abstractions. Prefer a little duplication to a premature abstraction.
 - Keep HTTP handlers limited to transport concerns, authentication context, service/query calls, domain-error translation, and templ rendering. Keep business rules out of handlers. Do not create an internal JSON API solely for the web UI.

@@ -177,7 +177,6 @@ Business modules through the prototype are:
 auth
 user
 game
-event
 gamerequest
 ```
 
@@ -187,7 +186,7 @@ The approved 1.0 target adds:
 notification
 ```
 
-The prototype `event` module may remain while Track A preserves/migrates legacy Event-linked data, but normal 1.0 Game Request behavior must not depend on Event selection, membership, lifecycle, or authorization. `clan` is post-1.0 and must not be introduced until that work is explicitly scheduled.
+The prototype `event` module has been removed: Track A's forward migration dropped the Game Request/Event association, so no 1.0 behavior depends on Event selection, membership, lifecycle, or authorization. `clan` is post-1.0 and must not be introduced until that work is explicitly scheduled.
 
 Supporting technical areas include:
 
@@ -210,7 +209,6 @@ internal/
 ├── auth/
 ├── user/
 ├── game/
-├── event/         # prototype/migration compatibility only
 ├── gamerequest/
 ├── notification/  # Track E
 ├── query/
@@ -285,9 +283,9 @@ Owns:
 
 The synchronized provider index is discovery infrastructure. It must not become a second authoritative domain model or permit provider synchronization code to write Game Request state.
 
-### `event` (prototype compatibility)
+### Legacy Event data
 
-Owns existing prototype Event data while it remains in the schema. Track A decides the concrete forward migration needed to preserve prototype Game Requests while removing Event requirements from normal 1.0 behavior. Do not expand Event into new 1.0 membership, invitation, seat, lifecycle, or access-control features.
+Migration `00006_single_event_core` drops `game_requests.event_id` and its index; every prototype Game Request keeps its id, creator, members, status, description, and timestamps. The legacy `events` table is deliberately left in place with its rows: no application code reads it, no row references it, and destroying operator data is not something a 1.0 upgrade promised. A later release may remove the table once operators have had a chance to export it. Do not reintroduce an `event` module, Event selection, or Event membership.
 
 ### `gamerequest`
 
@@ -298,7 +296,9 @@ Owns:
 - request lifecycle
 - capacity rules
 - durable request-local activity for successful create/join/leave/close/cancel changes
-- transactional notification outbox records describing Game Request changes
+- the transactional notification-intent record Track E consumes
+
+One table, `game_request_activity`, serves both of those responsibilities. Every successful change writes its entry inside the same transaction as the change itself, so a rolled-back mutation leaves neither the change nor a notification intent, and a committed one survives a restart before delivery. The table's `sequence` identity column gives Track E a stable total order and replay cursor, and `kind` tells it which changes are worth delivering. A second outbox table would duplicate the same write for the same guarantee; Track E owns its own delivery, retry, and per-recipient state instead.
 
 Request-local activity is not event sourcing, generic audit logging, chat, or notification delivery history.
 

@@ -399,6 +399,31 @@
     padding-bottom: 0.875rem;
   }
 
+  /* A filter toggle is a control, so it carries the same minimum target size
+     as the buttons beside it and shows focus on the whole label. */
+  .filter-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4375rem;
+    min-height: 2.75rem;
+    border-radius: var(--radius-field);
+    padding-inline: 0.5rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: color-mix(in srgb, var(--color-base-content) 78%, transparent);
+    cursor: pointer;
+  }
+
+  .filter-toggle:has(:focus-visible) {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+
+  .filter-toggle:has(:checked) {
+    background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+    color: var(--color-base-content);
+  }
+
   .request-search {
     width: min(100%, 13.75rem);
     border-radius: var(--radius-field);

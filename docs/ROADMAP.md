@@ -44,7 +44,7 @@ Tracks A–G may run concurrently. A dependency blocks only the dependent integr
 
 | Track | Scope | Planning status | Integration dependencies |
 | --- | --- | --- | --- |
-| **A** | Single-Event Core & Request Discovery | Prioritized | Track B only for final public Game Nick rendering; Track E consumes A's outbox contract |
+| **A** | Single-Event Core & Request Discovery | In progress — see delivery evidence below | Track B only for final public Game Nick rendering; Track E consumes A's outbox contract |
 | **B** | Game Nick & Authentication | Prioritized | None |
 | **C** | Game Catalog & IGDB Discovery | Prioritized | None for provider/index work; A for final request-card/read-model presentation where needed |
 | **D** | Minimum Instance Identity & PWA | Prioritized | None; service-worker contract is consumed by E; G owns visual presentation |
@@ -56,14 +56,18 @@ Tracks A–G may run concurrently. A dependency blocks only the dependent integr
 
 **Prioritized** describes planning, not verified implementation progress. Mark work **In progress** only with a linked delivery issue/PR and a responsible implementer. **Integration ready** requires demonstrated track-local outcomes, stable contracts, and a linked list of remaining cross-track checks. **Done** additionally requires merged work and applicable integration checks.
 
-Review checkpoint: **2026-09-15**, against `main` at [`e356791`](https://github.com/convention-x-treme/lansurfer/commit/e356791affdef6a2eb4968c1256c17be870e8407). At that revision the current Game Request service still requires a current Event during creation, so the single-event target is not evidence that Track A is delivered. Track G's current delivery evidence is the stacked UI work in PRs #17, #19, and #21; it remains **In progress** until that work is merged and applicable integration checks are recorded.
+Review checkpoint: **2026-09-15**, against `main` at [`e356791`](https://github.com/convention-x-treme/lansurfer/commit/e356791affdef6a2eb4968c1256c17be870e8407). At that revision the current Game Request service still required a current Event during creation.
+
+Track A delivery evidence (**2026-09-17**): migration `00006_single_event_core` removes the Game Request/Event association and adds `game_request_activity`; the `event` module, its administration screens, and its routes are gone; Game Request discovery gained name/alias search, followed/My Games, and free-places filters; the Trending rail now ranks from recorded request activity over the stated 6-hour window; and the detail screen renders the durable activity record. Track G surfaces were updated in the same change so the list, detail, creation, and administration screens stay consistent. Repository checks run for that work: `task lint`, `go test -race ./...`, `task test:integration`, `task frontend:build`, and `task build`. **A delivery issue/PR link and responsible implementer still have to be recorded here before this status is authoritative.**
+
+Track G's current delivery evidence is the stacked UI work in PRs #17, #19, and #21; it remains **In progress** until that work is merged and applicable integration checks are recorded.
 
 Do not infer delivery dates, staffing, owners, or completion percentages from this roadmap.
 
 ### Cross-track contracts
 
 1. **Track A → Track E: Game Request notification contract**
-   - Track A owns Game Request writes and the transactional outbox integration point.
+   - Track A owns Game Request writes and the transactional outbox integration point. That integration point is the `game_request_activity` table: one row per committed change, carrying `sequence` (total order and replay cursor), `game_request_id`, `actor_id`, `kind`, and `occurred_at`.
    - Track E owns durable workers, retry behavior, delivery persistence, and transport adapters.
    - Domain write + notification intent commit in the same PostgreSQL transaction where notification work is required.
    - Agree stable request/work identifiers, change kinds, ordering, replay, and stale-update handling. A failed/rolled-back mutation leaves no notification intent.

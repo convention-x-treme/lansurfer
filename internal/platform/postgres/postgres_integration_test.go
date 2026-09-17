@@ -12,6 +12,8 @@ import (
 	"io/fs"
 	"log/slog"
 	"os"
+	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"testing/fstest"
@@ -19,8 +21,6 @@ import (
 
 	"github.com/convention-x-treme/lansurfer/internal/auth"
 	authpostgres "github.com/convention-x-treme/lansurfer/internal/auth/postgres"
-	"github.com/convention-x-treme/lansurfer/internal/event"
-	eventpostgres "github.com/convention-x-treme/lansurfer/internal/event/postgres"
 	"github.com/convention-x-treme/lansurfer/internal/game"
 	gamepostgres "github.com/convention-x-treme/lansurfer/internal/game/postgres"
 	"github.com/convention-x-treme/lansurfer/internal/gamerequest"
@@ -108,35 +108,10 @@ func TestAuthenticationPersistence(t *testing.T) {
 	}
 }
 
-func TestEventAndGameCatalogPersistence(t *testing.T) {
+func TestGameCatalogPersistence(t *testing.T) {
 	pool := newTestPool(t)
 	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
 		t.Fatalf("Migrate() error = %v", err)
-	}
-
-	events := event.NewService(eventpostgres.NewStore(pool))
-	startsAt := time.Date(2027, time.May, 1, 10, 0, 0, 0, time.UTC)
-	first, err := events.Create(t.Context(), "CXT 2027", startsAt, startsAt.Add(48*time.Hour))
-	if err != nil {
-		t.Fatalf("create first event: %v", err)
-	}
-	second, err := events.Create(t.Context(), "CXT 2028", startsAt.AddDate(1, 0, 0), startsAt.AddDate(1, 0, 2))
-	if err != nil {
-		t.Fatalf("create second event: %v", err)
-	}
-	if err := events.SetCurrent(t.Context(), first.ID); err != nil {
-		t.Fatalf("set first current: %v", err)
-	}
-	if err := events.SetCurrent(t.Context(), second.ID); err != nil {
-		t.Fatalf("set second current: %v", err)
-	}
-	updatedFirst, err := events.Update(t.Context(), first.ID, "CXT 2027 Extended", startsAt, startsAt.Add(72*time.Hour))
-	if err != nil || updatedFirst.Name != "CXT 2027 Extended" {
-		t.Fatalf("update event = %#v, %v", updatedFirst, err)
-	}
-	listedEvents, err := events.List(t.Context())
-	if err != nil || len(listedEvents) != 2 || !listedEvents[0].IsCurrent || listedEvents[0].ID != second.ID || listedEvents[1].IsCurrent {
-		t.Fatalf("list events = %#v, %v", listedEvents, err)
 	}
 
 	games := game.NewService(gamepostgres.NewStore(pool))
@@ -259,15 +234,7 @@ func TestGameRequestWorkflowAndConcurrentCapacity(t *testing.T) {
 		t.Fatalf("register second joiner: %v", err)
 	}
 
-	events := event.NewService(eventpostgres.NewStore(pool))
 	startsAt := time.Now().UTC().Add(time.Hour).Truncate(time.Microsecond)
-	currentEvent, err := events.Create(t.Context(), "CXT Test", startsAt.Add(-time.Hour), startsAt.Add(48*time.Hour))
-	if err != nil {
-		t.Fatalf("create event: %v", err)
-	}
-	if err := events.SetCurrent(t.Context(), currentEvent.ID); err != nil {
-		t.Fatalf("set current event: %v", err)
-	}
 	gameStore := gamepostgres.NewStore(pool)
 	catalog := game.NewService(gameStore)
 	subscriptions := game.NewSubscriptionService(gameStore)
@@ -279,7 +246,7 @@ func TestGameRequestWorkflowAndConcurrentCapacity(t *testing.T) {
 		t.Fatalf("follow selected game: %v", err)
 	}
 
-	requests := gamerequest.NewService(gamerequestpostgres.NewStore(pool), catalog, events, nil)
+	requests := gamerequest.NewService(gamerequestpostgres.NewStore(pool), catalog, nil)
 	maximum := int32(2)
 	created, err := requests.Create(t.Context(), creator.ID, selectedGame.ID, &maximum, startsAt, "Concurrent capacity test")
 	if err != nil {
@@ -329,7 +296,7 @@ func TestGameRequestWorkflowAndConcurrentCapacity(t *testing.T) {
 	if detail.MemberCount != 2 || len(detail.Members) != 2 || !detail.ViewerJoined {
 		t.Fatalf("request after joins = %#v", detail)
 	}
-	activeForFollower, err := readStore.ListActive(t.Context(), firstJoiner.ID)
+	activeForFollower, err := readStore.ListActive(t.Context(), firstJoiner.ID, gamerequestquery.Filter{})
 	if err != nil || len(activeForFollower) != 1 || !activeForFollower[0].ViewerSubscribed {
 		t.Fatalf("request subscription projection = %#v, %v", activeForFollower, err)
 	}
@@ -387,8 +354,8 @@ func TestMigrateAndReadyCheck(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get migration version: %v", err)
 	}
-	if version != 5 {
-		t.Errorf("migration version = %d, want 5", version)
+	if version != 6 {
+		t.Errorf("migration version = %d, want 6", version)
 	}
 
 	if err := migrateFS(t.Context(), pool, migrationFS, logger); err != nil {
@@ -525,21 +492,13 @@ func TestGameRequestDuplicateAndOverlappingMutations(t *testing.T) {
 		t.Fatalf("register joiner: %v", err)
 	}
 
-	events := event.NewService(eventpostgres.NewStore(pool))
 	startsAt := time.Now().UTC().Add(time.Hour).Truncate(time.Microsecond)
-	currentEvent, err := events.Create(t.Context(), "CXT Race", startsAt.Add(-time.Hour), startsAt.Add(48*time.Hour))
-	if err != nil {
-		t.Fatalf("create event: %v", err)
-	}
-	if err := events.SetCurrent(t.Context(), currentEvent.ID); err != nil {
-		t.Fatalf("set current event: %v", err)
-	}
 	catalog := game.NewService(gamepostgres.NewStore(pool))
 	selectedGame, err := catalog.Create(t.Context(), "Supreme Commander", "supreme-commander")
 	if err != nil {
 		t.Fatalf("create game: %v", err)
 	}
-	requests := gamerequest.NewService(gamerequestpostgres.NewStore(pool), catalog, events, nil)
+	requests := gamerequest.NewService(gamerequestpostgres.NewStore(pool), catalog, nil)
 	readStore := gamerequestquery.NewStore(pool)
 
 	// Join → Join by one user, as a double-clicked Join button produces.
@@ -653,3 +612,305 @@ func assertOneWinner(t *testing.T, name string, results []error, wantConflict er
 		t.Fatalf("%s: succeeded = %d, conflicted = %d, want 1 and %d", name, succeeded, conflicted, len(results)-1)
 	}
 }
+
+// The forward migration to the single-event core keeps prototype Game Requests
+// intact: same id, creator, members, status, and timestamps, with their history
+// reconstructed as durable activity. Legacy Event rows stay in the database.
+func TestForwardMigrationPreservesPrototypeGameRequests(t *testing.T) {
+	pool := newTestPool(t)
+	logger := testLogger()
+	migrationFS := productionMigrationFS(t)
+
+	database := stdlib.OpenDBFromPool(pool)
+	defer database.Close()
+	provider, err := goose.NewProvider(goose.DialectPostgres, database, migrationFS, goose.WithSlog(logger))
+	if err != nil {
+		t.Fatalf("create goose provider: %v", err)
+	}
+	// Version 5 is the prototype schema, where a Game Request still belongs to
+	// an Event.
+	if _, err := provider.UpTo(t.Context(), 5); err != nil {
+		t.Fatalf("migrate to the prototype schema: %v", err)
+	}
+
+	var eventID, gameID, creatorID, joinerID, openID, closedID string
+	var createdAt, joinedAt, updatedAt time.Time
+	if err := pool.QueryRow(t.Context(), `
+		WITH inserted_event AS (
+			INSERT INTO events (name, starts_at, ends_at, is_current)
+			VALUES ('Prototype LAN', now() - interval '1 day', now() + interval '1 day', true)
+			RETURNING id
+		), inserted_game AS (
+			INSERT INTO games (name, slug) VALUES ('Quake', 'quake') RETURNING id
+		), inserted_creator AS (
+			INSERT INTO users (display_name) VALUES ('Prototype Host') RETURNING id
+		), inserted_joiner AS (
+			INSERT INTO users (display_name) VALUES ('Prototype Guest') RETURNING id
+		), open_request AS (
+			INSERT INTO game_requests (event_id, game_id, creator_id, max_players, starts_at, description, created_at, updated_at)
+			SELECT inserted_event.id, inserted_game.id, inserted_creator.id, 4,
+			       now() + interval '2 hours', 'Prototype round',
+			       now() - interval '3 hours', now() - interval '3 hours'
+			FROM inserted_event, inserted_game, inserted_creator
+			RETURNING id, created_at
+		), closed_request AS (
+			INSERT INTO game_requests (event_id, game_id, creator_id, starts_at, status, created_at, updated_at)
+			SELECT inserted_event.id, inserted_game.id, inserted_creator.id,
+			       now() - interval '5 hours', 'closed',
+			       now() - interval '9 hours', now() - interval '6 hours'
+			FROM inserted_event, inserted_game, inserted_creator
+			RETURNING id, updated_at
+		), creator_membership AS (
+			INSERT INTO game_request_members (game_request_id, user_id, joined_at)
+			SELECT open_request.id, inserted_creator.id, open_request.created_at
+			FROM open_request, inserted_creator
+			RETURNING joined_at
+		), joiner_membership AS (
+			INSERT INTO game_request_members (game_request_id, user_id, joined_at)
+			SELECT open_request.id, inserted_joiner.id, now() - interval '2 hours'
+			FROM open_request, inserted_joiner
+			RETURNING joined_at
+		), closed_membership AS (
+			INSERT INTO game_request_members (game_request_id, user_id, joined_at)
+			SELECT closed_request.id, inserted_creator.id, now() - interval '9 hours'
+			FROM closed_request, inserted_creator
+			RETURNING joined_at
+		)
+		SELECT inserted_event.id::text, inserted_game.id::text, inserted_creator.id::text,
+		       inserted_joiner.id::text, open_request.id::text, closed_request.id::text,
+		       open_request.created_at, joiner_membership.joined_at, closed_request.updated_at
+		FROM inserted_event, inserted_game, inserted_creator, inserted_joiner,
+		     open_request, closed_request, creator_membership, joiner_membership, closed_membership
+	`).Scan(&eventID, &gameID, &creatorID, &joinerID, &openID, &closedID, &createdAt, &joinedAt, &updatedAt); err != nil {
+		t.Fatalf("seed prototype data: %v", err)
+	}
+
+	if err := migrateFS(t.Context(), pool, migrationFS, logger); err != nil {
+		t.Fatalf("migrate to the single-event core: %v", err)
+	}
+
+	readStore := gamerequestquery.NewStore(pool)
+	preserved, err := readStore.ByID(t.Context(), openID, joinerID)
+	if err != nil {
+		t.Fatalf("read preserved game request: %v", err)
+	}
+	if preserved.CreatorID != creatorID || preserved.MemberCount != 2 || !preserved.ViewerJoined ||
+		preserved.Status != gamerequest.StatusOpen || preserved.Description != "Prototype round" ||
+		!preserved.CreatedAt.Equal(createdAt) {
+		t.Fatalf("preserved request = %#v", preserved)
+	}
+	if got := activityKinds(preserved.Activity); !slices.Equal(got, []gamerequest.ActivityKind{gamerequest.ActivityJoined, gamerequest.ActivityCreated}) {
+		t.Fatalf("backfilled activity = %v", got)
+	}
+	if !preserved.Activity[0].OccurredAt.Equal(joinedAt) || preserved.Activity[0].ActorID != joinerID {
+		t.Fatalf("backfilled join entry = %#v", preserved.Activity[0])
+	}
+
+	closed, err := readStore.ByID(t.Context(), closedID, creatorID)
+	if err != nil {
+		t.Fatalf("read preserved closed request: %v", err)
+	}
+	if closed.Status != gamerequest.StatusClosed {
+		t.Fatalf("closed request status = %q", closed.Status)
+	}
+	if len(closed.Activity) == 0 || closed.Activity[0].Kind != gamerequest.ActivityClosed ||
+		!closed.Activity[0].OccurredAt.Equal(updatedAt) {
+		t.Fatalf("closed request activity = %#v", closed.Activity)
+	}
+
+	// Legacy Event rows are documented as kept, not silently discarded.
+	var legacyEvents int
+	if err := pool.QueryRow(t.Context(), "SELECT count(*) FROM events WHERE id = $1", eventID).Scan(&legacyEvents); err != nil {
+		t.Fatalf("count legacy events: %v", err)
+	}
+	if legacyEvents != 1 {
+		t.Fatalf("legacy event rows = %d, want 1", legacyEvents)
+	}
+	// The request itself no longer carries an Event association.
+	var columns int
+	if err := pool.QueryRow(t.Context(), `
+		SELECT count(*) FROM information_schema.columns
+		WHERE table_name = 'game_requests' AND column_name = 'event_id'
+	`).Scan(&columns); err != nil {
+		t.Fatalf("inspect game_requests columns: %v", err)
+	}
+	if columns != 0 {
+		t.Fatal("game_requests still carries event_id after the single-event migration")
+	}
+}
+
+// Durable activity is written in the same transaction as the change it
+// describes, which is what makes it usable as Track E's notification intent: a
+// rejected mutation leaves neither the change nor an entry, and a committed one
+// survives a restart because it is only ever read back from PostgreSQL.
+func TestGameRequestActivityDiscoveryAndTrending(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+
+	users := user.NewService(userpostgres.NewStore(pool))
+	host, err := users.Register(t.Context(), "Activity Host")
+	if err != nil {
+		t.Fatalf("register host: %v", err)
+	}
+	guest, err := users.Register(t.Context(), "Activity Guest")
+	if err != nil {
+		t.Fatalf("register guest: %v", err)
+	}
+	outsider, err := users.Register(t.Context(), "Activity Outsider")
+	if err != nil {
+		t.Fatalf("register outsider: %v", err)
+	}
+
+	gameStore := gamepostgres.NewStore(pool)
+	catalog := game.NewService(gameStore)
+	subscriptions := game.NewSubscriptionService(gameStore)
+	warcraft, err := catalog.Create(t.Context(), "Warcraft III", "warcraft-3")
+	if err != nil {
+		t.Fatalf("create game: %v", err)
+	}
+	if _, err := catalog.AddAlias(t.Context(), warcraft.ID, "WC3"); err != nil {
+		t.Fatalf("add alias: %v", err)
+	}
+	quake, err := catalog.Create(t.Context(), "Quake", "quake")
+	if err != nil {
+		t.Fatalf("create second game: %v", err)
+	}
+	if err := subscriptions.Follow(t.Context(), guest.ID, warcraft.ID); err != nil {
+		t.Fatalf("follow game: %v", err)
+	}
+
+	requests := gamerequest.NewService(gamerequestpostgres.NewStore(pool), catalog, nil)
+	readStore := gamerequestquery.NewStore(pool)
+	startsAt := time.Now().UTC().Add(time.Hour).Truncate(time.Microsecond)
+
+	limit := int32(2)
+	tracked, err := requests.Create(t.Context(), host.ID, warcraft.ID, &limit, startsAt, "Tracked round")
+	if err != nil {
+		t.Fatalf("create tracked request: %v", err)
+	}
+	if err := requests.Join(t.Context(), tracked.ID, guest.ID); err != nil {
+		t.Fatalf("join tracked request: %v", err)
+	}
+	// Rejected mutations: a duplicate join, a join into a full request, and a
+	// close by someone who is not the creator.
+	if err := requests.Join(t.Context(), tracked.ID, guest.ID); !errors.Is(err, gamerequest.ErrAlreadyMember) {
+		t.Fatalf("duplicate join error = %v", err)
+	}
+	if err := requests.Join(t.Context(), tracked.ID, outsider.ID); !errors.Is(err, gamerequest.ErrFull) {
+		t.Fatalf("join full request error = %v", err)
+	}
+	if err := requests.Close(t.Context(), tracked.ID, guest.ID); !errors.Is(err, gamerequest.ErrNotCreator) {
+		t.Fatalf("non-creator close error = %v", err)
+	}
+	if err := requests.Leave(t.Context(), tracked.ID, guest.ID); err != nil {
+		t.Fatalf("leave tracked request: %v", err)
+	}
+	if err := requests.Close(t.Context(), tracked.ID, host.ID); err != nil {
+		t.Fatalf("close tracked request: %v", err)
+	}
+
+	detail, err := readStore.ByID(t.Context(), tracked.ID, host.ID)
+	if err != nil {
+		t.Fatalf("read tracked request: %v", err)
+	}
+	wantKinds := []gamerequest.ActivityKind{
+		gamerequest.ActivityClosed, gamerequest.ActivityLeft,
+		gamerequest.ActivityJoined, gamerequest.ActivityCreated,
+	}
+	if got := activityKinds(detail.Activity); !slices.Equal(got, wantKinds) {
+		t.Fatalf("activity = %v, want %v (rejected mutations must not record anything)", got, wantKinds)
+	}
+	// Leaving removed the membership but not the history of the round.
+	if detail.MemberCount != 1 {
+		t.Fatalf("member count after leave = %d, want 1", detail.MemberCount)
+	}
+	if detail.Activity[1].ActorName != "Activity Guest" || detail.Activity[1].ActorID != guest.ID {
+		t.Fatalf("leave entry = %#v", detail.Activity[1])
+	}
+
+	// A rolled-back write leaves neither the request nor an activity entry.
+	before := countActivity(t, pool)
+	if _, err := requests.Create(t.Context(), host.ID, "not-a-uuid", nil, startsAt, ""); err == nil {
+		t.Fatal("create with an unknown game unexpectedly succeeded")
+	}
+	if after := countActivity(t, pool); after != before {
+		t.Fatalf("failed create recorded activity: %d entries, want %d", after, before)
+	}
+
+	// Discovery filters.
+	open, err := requests.Create(t.Context(), host.ID, warcraft.ID, nil, startsAt, "Open round")
+	if err != nil {
+		t.Fatalf("create open request: %v", err)
+	}
+	full, err := requests.Create(t.Context(), host.ID, quake.ID, ptr(int32(1)), startsAt, "Full round")
+	if err != nil {
+		t.Fatalf("create full request: %v", err)
+	}
+
+	byAlias, err := readStore.ListActive(t.Context(), guest.ID, gamerequestquery.Filter{Search: "wC3"})
+	if err != nil || len(byAlias) != 1 || byAlias[0].ID != open.ID {
+		t.Fatalf("alias search = %#v, %v", byAlias, err)
+	}
+	followed, err := readStore.ListActive(t.Context(), guest.ID, gamerequestquery.Filter{FollowedOnly: true})
+	if err != nil || len(followed) != 1 || followed[0].ID != open.ID {
+		t.Fatalf("followed filter = %#v, %v", followed, err)
+	}
+	withPlaces, err := readStore.ListActive(t.Context(), guest.ID, gamerequestquery.Filter{OpenPlacesOnly: true})
+	if err != nil {
+		t.Fatalf("open places filter: %v", err)
+	}
+	if slices.ContainsFunc(withPlaces, func(request gamerequestquery.Request) bool { return request.ID == full.ID }) {
+		t.Fatalf("open places filter kept a full request: %#v", withPlaces)
+	}
+	if !slices.ContainsFunc(withPlaces, func(request gamerequestquery.Request) bool { return request.ID == open.ID }) {
+		t.Fatalf("open places filter dropped a request with free places: %#v", withPlaces)
+	}
+	if _, err := readStore.ListActive(t.Context(), guest.ID, gamerequestquery.Filter{Search: strings.Repeat("x", 121)}); !errors.Is(err, gamerequestquery.ErrInvalidSearch) {
+		t.Fatalf("overlong search error = %v", err)
+	}
+
+	// Trending ranks from recorded activity inside the stated window; entries
+	// older than the window drop out instead of the window widening.
+	trending, err := readStore.Trending(t.Context())
+	if err != nil {
+		t.Fatalf("trending: %v", err)
+	}
+	if len(trending) == 0 || trending[0].GameName != "Warcraft III" {
+		t.Fatalf("trending = %#v", trending)
+	}
+	if _, err := pool.Exec(t.Context(), `
+		UPDATE game_request_activity
+		SET occurred_at = now() - $1::interval
+	`, gamerequestquery.TrendingWindow+time.Hour); err != nil {
+		t.Fatalf("age activity beyond the window: %v", err)
+	}
+	quiet, err := readStore.Trending(t.Context())
+	if err != nil {
+		t.Fatalf("trending after ageing: %v", err)
+	}
+	if len(quiet) != 0 {
+		t.Fatalf("trending outside the window = %#v, want an empty ranking", quiet)
+	}
+}
+
+func activityKinds(entries []gamerequestquery.Activity) []gamerequest.ActivityKind {
+	kinds := make([]gamerequest.ActivityKind, 0, len(entries))
+	for _, entry := range entries {
+		kinds = append(kinds, entry.Kind)
+	}
+	return kinds
+}
+
+func countActivity(t *testing.T, pool *pgxpool.Pool) int {
+	t.Helper()
+
+	var total int
+	if err := pool.QueryRow(t.Context(), "SELECT count(*) FROM game_request_activity").Scan(&total); err != nil {
+		t.Fatalf("count game request activity: %v", err)
+	}
+	return total
+}
+
+func ptr[T any](value T) *T { return &value }
