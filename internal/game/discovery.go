@@ -2,7 +2,6 @@ package game
 
 import (
 	"context"
-	"strings"
 )
 
 // discoveryProviderRowLimit bounds provider-only rows returned by a single
@@ -33,9 +32,15 @@ func NewDiscoveryService(discovery DiscoveryRepository, materializer Materializa
 // the active IGDB generation, bounded to discoveryProviderRowLimit rows and
 // filtered to player-visible Game Types. A provider row already
 // materialized into a local Game is returned once, as that authoritative
-// local Game, never duplicated as a separate provider card.
+// local Game, never duplicated as a separate provider card. search is
+// bounded by the same validateSearch rule the pre-existing local browse
+// used, on both the empty and non-empty path: an over-length value produces
+// ErrInvalidSearch without calling either repository.
 func (s *DiscoveryService) Browse(ctx context.Context, userID, search string) ([]DiscoveryItem, error) {
-	search = strings.TrimSpace(search)
+	search, err := validateSearch(search)
+	if err != nil {
+		return nil, err
+	}
 	if search == "" {
 		local, err := s.subscriptions.Browse(ctx, userID, "")
 		if err != nil {

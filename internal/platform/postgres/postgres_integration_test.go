@@ -710,6 +710,70 @@ func TestDiscoverySearchPostgreSQL(t *testing.T) {
 		if len(otherResult) != 1 || otherResult[0].Subscribed {
 			t.Fatalf("Browse (other) = %#v", otherResult)
 		}
+
+		// Search by the provider's own (stale) search_text, not the local
+		// name/alias, so the provider_matches CTE actually matches this row
+		// and the local_rows NOT EXISTS dedup against provider_rows is the
+		// thing keeping the result count at one, not the absence of a
+		// provider-side match.
+		providerTextResult, err := discovery.Browse(t.Context(), viewer.ID, "provider name")
+		if err != nil {
+			t.Fatalf("Browse (provider search text): %v", err)
+		}
+		if len(providerTextResult) != 1 || !providerTextResult[0].Materialized ||
+			providerTextResult[0].LocalGameID != localGame.ID || providerTextResult[0].Name != "Authoritative Local Name" {
+			t.Fatalf("Browse (provider search text) = %#v", providerTextResult)
+		}
+	})
+
+	t.Run("materialized row survives a later hidden Game Type drift", func(t *testing.T) {
+		firstGenerationID, err := gameStore.BeginGeneration(t.Context())
+		if err != nil {
+			t.Fatalf("begin first generation: %v", err)
+		}
+		if err := gameStore.StoreProviderGames(t.Context(), firstGenerationID, []game.ProviderGame{
+			{Reference: game.ProviderReference{Provider: "igdb", ExternalID: "9401"}, Name: "Vintage Bundle Master", Slug: "vintage-bundle-master", GameType: "Main Game"},
+		}); err != nil {
+			t.Fatalf("store first generation games: %v", err)
+		}
+		if err := gameStore.ActivateGeneration(t.Context(), firstGenerationID, 1); err != nil {
+			t.Fatalf("activate first generation: %v", err)
+		}
+		localGame, err := catalog.Create(t.Context(), "Renamed Local Edition", "renamed-local-edition")
+		if err != nil {
+			t.Fatalf("create local game: %v", err)
+		}
+		if _, err := pool.Exec(t.Context(), `INSERT INTO game_external_ids(game_id, provider, external_id) VALUES($1, 'igdb', '9401')`, localGame.ID); err != nil {
+			t.Fatalf("insert external identity: %v", err)
+		}
+
+		// A later refresh reclassifies the same external ID under a hidden
+		// Game Type (spec: provider metadata may drift post-materialization
+		// without renaming/relabeling the authoritative local Game).
+		secondGenerationID, err := gameStore.BeginGeneration(t.Context())
+		if err != nil {
+			t.Fatalf("begin second generation: %v", err)
+		}
+		if err := gameStore.StoreProviderGames(t.Context(), secondGenerationID, []game.ProviderGame{
+			{Reference: game.ProviderReference{Provider: "igdb", ExternalID: "9401"}, Name: "Vintage Bundle Master", Slug: "vintage-bundle-master", GameType: "Bundle"},
+		}); err != nil {
+			t.Fatalf("store second generation games: %v", err)
+		}
+		if err := gameStore.ActivateGeneration(t.Context(), secondGenerationID, 1); err != nil {
+			t.Fatalf("activate second generation: %v", err)
+		}
+
+		// Search only matches the provider's stale search_text, never the
+		// current local name/alias, so the materialized-row exemption from
+		// type filtering is what has to surface it.
+		got, err := discovery.Browse(t.Context(), viewer.ID, "vintage bundle master")
+		if err != nil {
+			t.Fatalf("Browse: %v", err)
+		}
+		if len(got) != 1 || !got[0].Materialized || got[0].LocalGameID != localGame.ID ||
+			got[0].Name != "Renamed Local Edition" || got[0].GameType != "Bundle" {
+			t.Fatalf("Browse = %#v", got)
+		}
 	})
 
 	t.Run("provider rows are capped at 50", func(t *testing.T) {

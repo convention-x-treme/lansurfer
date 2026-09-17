@@ -144,12 +144,16 @@ WHERE state.singleton;
 -- the pre-IGDB local browse) with the active IGDB generation (matched by
 -- normalized search_text), so local search keeps working unchanged when
 -- IGDB is disabled or has no active generation yet. Never calls the
--- provider live. Visible-type filtering happens before the provider row
--- limit so hidden-type matches cannot crowd out visible ones. A provider
--- row already materialized into an active local Game is returned exactly
--- once, as that authoritative local Game (materialized = true), sourced
--- from the provider side when its own search_text also matched, or from
--- the local side otherwise; it is never duplicated.
+-- provider live. A provider row already materialized into an active local
+-- Game (materialized_provider_rows) is always returned regardless of its
+-- current Game Type or the row cap -- spec: "later provider refreshes do
+-- not automatically rename the authoritative Game" and must not make it
+-- disappear from search either. Only genuinely unmaterialized provider rows
+-- (unmaterialized_provider_rows) are filtered to player-visible Game Types
+-- and capped, so hidden-type/overflow matches cannot crowd out visible new
+-- results. A materialized provider row is returned exactly once: sourced
+-- from the provider side when its own search_text matched, or from the
+-- local side when only its current local name/alias matched; never both.
 WITH active_generation AS (
     SELECT active_generation_id AS id
     FROM igdb_provider_state
@@ -164,33 +168,58 @@ WITH active_generation AS (
            provider_game.cover_image_id
     FROM igdb_game_index provider_game
     JOIN active_generation ON active_generation.id = provider_game.generation_id
-    WHERE lower(provider_game.game_type) = ANY(sqlc.arg(visible_game_types)::text[])
-      AND strpos(provider_game.search_text, lower(sqlc.arg(search)::text)) > 0
-    ORDER BY lower(provider_game.name), provider_game.igdb_id
-    LIMIT sqlc.arg(row_limit)::int
-), provider_rows AS (
+    WHERE strpos(provider_game.search_text, lower(sqlc.arg(search)::text)) > 0
+), materialized_provider_rows AS (
     SELECT
         provider_matches.igdb_id::text AS external_id,
-        COALESCE(local_game.id::text, '')::text AS local_game_id,
-        COALESCE(local_game.name, provider_matches.name)::text AS name,
-        COALESCE(local_game.slug, provider_matches.slug)::text AS slug,
+        local_game.id::text AS local_game_id,
+        local_game.name::text AS name,
+        local_game.slug::text AS slug,
         provider_matches.game_type,
         provider_matches.platform_names,
         provider_matches.first_release_date,
         provider_matches.cover_image_id,
-        (local_game.id IS NOT NULL)::boolean AS materialized,
+        true::boolean AS materialized,
         (subscription.game_id IS NOT NULL)::boolean AS subscribed
     FROM provider_matches
-    LEFT JOIN game_external_ids external_id
-        ON lower(btrim(external_id.provider)) = 'igdb'
-       AND external_id.external_id = provider_matches.igdb_id::text
-       AND external_id.archived_at IS NULL
-    LEFT JOIN games local_game
-        ON local_game.id = external_id.game_id
+    JOIN game_external_ids mapping
+        ON lower(btrim(mapping.provider)) = 'igdb'
+       AND mapping.external_id = provider_matches.igdb_id::text
+       AND mapping.archived_at IS NULL
+    JOIN games local_game
+        ON local_game.id = mapping.game_id
        AND local_game.active
     LEFT JOIN game_subscriptions subscription
         ON subscription.game_id = local_game.id
        AND subscription.user_id = sqlc.arg(user_id)::uuid
+), unmaterialized_provider_rows AS (
+    SELECT
+        provider_matches.igdb_id::text AS external_id,
+        ''::text AS local_game_id,
+        provider_matches.name::text AS name,
+        provider_matches.slug::text AS slug,
+        provider_matches.game_type,
+        provider_matches.platform_names,
+        provider_matches.first_release_date,
+        provider_matches.cover_image_id,
+        false::boolean AS materialized,
+        false::boolean AS subscribed
+    FROM provider_matches
+    WHERE lower(provider_matches.game_type) = ANY(sqlc.arg(visible_game_types)::text[])
+      AND NOT EXISTS (
+          SELECT 1
+          FROM game_external_ids mapping
+          JOIN games local_game ON local_game.id = mapping.game_id AND local_game.active
+          WHERE lower(btrim(mapping.provider)) = 'igdb'
+            AND mapping.external_id = provider_matches.igdb_id::text
+            AND mapping.archived_at IS NULL
+      )
+    ORDER BY lower(provider_matches.name), provider_matches.igdb_id
+    LIMIT sqlc.arg(row_limit)::int
+), provider_rows AS (
+    SELECT * FROM materialized_provider_rows
+    UNION ALL
+    SELECT * FROM unmaterialized_provider_rows
 ), local_rows AS (
     SELECT
         ''::text AS external_id,

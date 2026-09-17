@@ -3,6 +3,7 @@ package game
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -128,6 +129,20 @@ func TestDiscoveryBrowsePassesBoundedLimit(t *testing.T) {
 	}
 	if repo.calls != 1 || repo.lastUser != "user-1" || repo.lastQuery != "wc3" || repo.lastLimit != 50 {
 		t.Fatalf("calls=%d user=%q query=%q limit=%d", repo.calls, repo.lastUser, repo.lastQuery, repo.lastLimit)
+	}
+}
+
+func TestDiscoveryBrowseRejectsOverLongSearch(t *testing.T) {
+	repo := &fakeDiscoveryRepository{}
+	subs := &fakeSubscriptions{}
+	service := NewDiscoveryService(repo, nil, subs)
+	overLong := strings.Repeat("a", maxSearchLength+1)
+	_, err := service.Browse(t.Context(), "user-1", overLong)
+	if !errors.Is(err, ErrInvalidSearch) {
+		t.Fatalf("err = %v, want %v", err, ErrInvalidSearch)
+	}
+	if repo.calls != 0 || subs.browseCalls != 0 {
+		t.Fatalf("repo.calls=%d subs.browseCalls=%d, want 0/0", repo.calls, subs.browseCalls)
 	}
 }
 
