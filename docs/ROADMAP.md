@@ -142,7 +142,7 @@ The complete Game Request flow works without Event/Clan/context selection or mem
 - Prove failed/rejected/duplicate mutations do not produce durable activity.
 - Prove the 6-hour Trending window and filters use the intended read model without raw-query tracking.
 - At the A/E boundary, prove a rollback leaves neither the domain change nor its outbox work, while a committed change retains notification intent across restart-before-delivery.
-- Keep normal regression coverage for rapid HTMX/SSE interaction and supported production HTTP behavior. Issue #15's reported hang is considered resolved as a deployment-path HTTP/2 problem and is not an open root-cause investigation requirement.
+- Keep regression coverage for rapid HTMX/SSE interaction and supported production HTTP behavior. Issue #15 remains open until its accepted hardening scope is complete: PR #17 documents the confirmed SSE/HTTP/1.1 connection-exhaustion root cause and production HTTP/2 mitigation, while PR #18 covers additional rapid-interaction hardening. HTTP/2 is a mitigation for the original browser connection-pool symptom, not the root cause itself.
 
 # Track B — Game Nick & Authentication
 
@@ -423,13 +423,13 @@ The Pilot Gate is green only when the following approved pilot subset is impleme
 - At least one upgrade path using existing data is exercised.
 - A representative documented load/recovery rehearsal covers realistic parallel browsing/search, request create/join/leave flows, SSE updates, and notification behavior.
 - The validation artifact records tested hardware, network conditions, client/browser mix where relevant, tested load envelope, observed response/update behavior, failures, and recovery characteristics. Do not invent permanent concurrency/latency numbers in the roadmap.
-- Supported production deployment preserves required HTTP behavior and core interaction reliability under normal regression testing. Issue #15 is not an unresolved pilot blocker.
+- Supported production deployment preserves required HTTP behavior and core interaction reliability under normal regression testing. Issue #15 is not waived by this documentation: a reproducible persistent hang in a supported core workflow remains a pilot blocker until the relevant fix and regression evidence are merged.
 
 ## Pilot evidence
 
 Link the tested revision/artifact and the collected validation evidence. Do not infer success from implementation status alone.
 
-**Open before final go/no-go:** the repository does not yet name how the pilot release decision owner/go-no-go responsibility is recorded. Do not invent an owner.
+**Decision ownership convention:** every pilot go/no-go validation artifact must name one responsible GitHub user and record the decision, date, tested revision, and unresolved blockers. Stable-release validation uses the same convention: the release artifact/PR names one responsible GitHub user and records the release decision against the exact candidate revision. This is a per-decision responsibility record, not a permanent staffing assignment.
 
 # 1.0 Integration Gate
 
@@ -483,7 +483,7 @@ Review snapshot: **2026-09-15**. Issue existence is not evidence of implementati
 
 | Issue / topic | Stable 1.0 disposition |
 | --- | --- |
-| [#15 — interaction hangs](https://github.com/convention-x-treme/lansurfer/issues/15) | Reported resolved; root cause was missing HTTP/2 support in the deployment path. Remove it as an open investigation/pilot blocker. Keep ordinary core-interaction and supported-production-HTTP regression coverage. |
+| [#15 — interaction hangs](https://github.com/convention-x-treme/lansurfer/issues/15) | Open until its accepted hardening scope is complete. The confirmed original hang was caused by long-lived SSE `EventSource` connections exhausting the browser's HTTP/1.1 per-origin connection pool; HTTP/2 multiplexing prevents that production-path pool exhaustion but is not the root cause. PR #17 addresses the stream-lifecycle problem and PR #18 adds rapid-interaction hardening; closure still depends on the issue's remaining acceptance evidence. |
 | [#12 — request search and filters](https://github.com/convention-x-treme/lansurfer/issues/12) | Include Game name/alias search, followed/My Games, and open capacity/free places. Other proposed filters are not automatically approved by this review. |
 | [#11 — English/German i18n](https://github.com/convention-x-treme/lansurfer/issues/11) | Deferred beyond stable 1.0. Stable 1.0 is English-only. |
 | [#10 — curated request tags](https://github.com/convention-x-treme/lansurfer/issues/10) | Deferred beyond stable 1.0. Free-text request descriptions remain sufficient. |
@@ -494,9 +494,11 @@ Review snapshot: **2026-09-15**. Issue existence is not evidence of implementati
 | Generic OIDC | Remains stable-1.0 scope even though Discord is sufficient/required for the selected pilot. |
 | [#7 — optional dotenv](https://github.com/convention-x-treme/lansurfer/issues/7), [#8 — development database modes](https://github.com/convention-x-treme/lansurfer/issues/8) | Contributor-workflow items; track separately from production release acceptance. |
 
-## Remaining explicit decision
+## Decision ownership convention
 
-- **Pilot/release ownership:** decide how a responsible person records the pilot go/no-go and later stable-release decision. No owner or staffing assignment is inferred by this roadmap.
+- Each pilot validation artifact names one responsible GitHub user and records go/no-go, decision date, exact tested revision, and unresolved blockers.
+- Each stable release artifact/PR names one responsible GitHub user and records the release decision against the exact candidate revision.
+- Responsibility is assigned per decision; this roadmap does not infer permanent staffing or ownership.
 
 If later decisions change product behavior or architecture, update ROADMAP, PRODUCT, ARCHITECTURE, and repository guidance together.
 
