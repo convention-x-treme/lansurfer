@@ -59,9 +59,12 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 	realtimeHandler := handler.NewRealtime(dependencies.Realtime)
 	router := chi.NewRouter()
 	router.Use(middleware.RequestID)
+	// RequestTimeout wraps RequestLogging so the logger sees the context the
+	// timeout derived, and can report a timed-out request as such instead of
+	// as a completed one.
+	router.Use(webmiddleware.RequestTimeout(requestTimeout))
 	router.Use(webmiddleware.RequestLogging(dependencies.Logger, dependencies.TrustedProxies))
 	router.Use(middleware.Recoverer)
-	router.Use(webmiddleware.RequestTimeout(requestTimeout))
 	router.Use(webmiddleware.SecurityHeaders(dependencies.SecureCookies))
 	router.Use(webmiddleware.CSRF(dependencies.SecureCookies))
 	router.Use(webmiddleware.Theme)

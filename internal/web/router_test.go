@@ -680,6 +680,8 @@ func (r *routerRealtime) Subscribe() (<-chan gamerequest.Event, func()) {
 	return r.events, func() {}
 }
 
+func (r *routerRealtime) Subscribers() int { return 1 }
+
 func (r *routerGameRequestQueries) ListActive(_ context.Context, _ string, filter requestquery.Filter) ([]requestquery.Request, error) {
 	r.filter = filter
 	if r.listErr != nil {

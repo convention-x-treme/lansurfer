@@ -87,8 +87,7 @@ type fixture struct {
 	// delay stalls mutations so a test can act while one is in flight.
 	delay time.Duration
 
-	broker  *sse.Broker
-	streams int
+	broker *sse.Broker
 }
 
 func newFixture() *fixture {
@@ -139,24 +138,12 @@ func (*fixture) Authenticate(context.Context, string) (user.User, error) {
 
 // --- realtime -------------------------------------------------------------
 
-// Subscribe counts open streams. The product broker deliberately does not
-// expose this yet — that is issue #32 — but the connection-exhaustion
-// regression is only observable as a count of streams the server is holding.
-func (f *fixture) Subscribe() (<-chan gamerequest.Event, func()) {
-	events, unsubscribe := f.broker.Subscribe()
-	f.mu.Lock()
-	f.streams++
-	f.mu.Unlock()
-	var once sync.Once
-	return events, func() {
-		once.Do(func() {
-			f.mu.Lock()
-			f.streams--
-			f.mu.Unlock()
-			unsubscribe()
-		})
-	}
-}
+// The connection-exhaustion regression is only observable as a count of the
+// streams the server is holding. The product broker reports that itself, so the
+// fixture passes both methods straight through.
+func (f *fixture) Subscribe() (<-chan gamerequest.Event, func()) { return f.broker.Subscribe() }
+
+func (f *fixture) Subscribers() int { return f.broker.Subscribers() }
 
 // --- game request commands ------------------------------------------------
 
@@ -356,7 +343,7 @@ func (f *fixture) controlPlane() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/__test__/state", func(w http.ResponseWriter, _ *http.Request) {
 		f.mu.Lock()
-		payload := map[string]int{"creates": f.creates, "joins": f.joins, "streams": f.streams, "requests": len(f.order)}
+		payload := map[string]int{"creates": f.creates, "joins": f.joins, "streams": f.broker.Subscribers(), "requests": len(f.order)}
 		f.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(payload)

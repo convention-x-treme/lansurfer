@@ -42,3 +42,27 @@ func TestBrokerCloseDisconnectsAndRejectsSubscribers(t *testing.T) {
 	}
 	broker.Publish(gamerequest.Event{Type: gamerequest.EventCreated})
 }
+
+func TestBrokerCountsOpenSubscribers(t *testing.T) {
+	broker := NewBroker()
+	if got := broker.Subscribers(); got != 0 {
+		t.Fatalf("new broker Subscribers() = %d", got)
+	}
+
+	_, first := broker.Subscribe()
+	_, second := broker.Subscribe()
+	if got := broker.Subscribers(); got != 2 {
+		t.Errorf("Subscribers() with two streams open = %d", got)
+	}
+
+	first()
+	first()
+	if got := broker.Subscribers(); got != 1 {
+		t.Errorf("Subscribers() after one release = %d", got)
+	}
+
+	second()
+	if got := broker.Subscribers(); got != 0 {
+		t.Errorf("Subscribers() after all released = %d", got)
+	}
+}

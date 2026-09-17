@@ -61,6 +61,16 @@ func (b *Broker) Subscribe() (<-chan gamerequest.Event, func()) {
 	}
 }
 
+// Subscribers reports how many realtime streams are currently open. Issue #15's
+// root cause was long-lived EventSource connections occupying the browser's
+// per-origin connection pool; this is the number that makes that visible to an
+// operator reading the logs.
+func (b *Broker) Subscribers() int {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	return len(b.subscribers)
+}
+
 // Close disconnects all subscribers and prevents new subscriptions. It is
 // used before HTTP shutdown so long-lived streams do not delay termination.
 func (b *Broker) Close() {
