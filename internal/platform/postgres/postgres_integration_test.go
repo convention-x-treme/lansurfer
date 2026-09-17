@@ -614,31 +614,137 @@ func assertOneWinner(t *testing.T, name string, results []error, wantConflict er
 }
 
 // The forward migration to the single-event core keeps prototype Game Requests
-// intact: same id, creator, members, status, and timestamps, with their history
-// reconstructed as durable activity. Legacy Event rows stay in the database.
+// intact regardless of the Event state they were created under: same id,
+// creator, members, status, and timestamps, with their history reconstructed as
+// durable activity. Legacy Event rows stay in the database.
+//
+// The Event state matters because the prototype list query required
+// `events.is_current`. A request created under an event that was never selected,
+// or under one that has since been replaced, was invisible before the migration
+// and must be discoverable after it. That is the product claim the single-event
+// core makes: Event selection stops being a precondition for normal behavior.
 func TestForwardMigrationPreservesPrototypeGameRequests(t *testing.T) {
-	pool := newTestPool(t)
-	logger := testLogger()
-	migrationFS := productionMigrationFS(t)
+	tests := map[string]struct {
+		current  bool
+		startsAt string
+		endsAt   string
+	}{
+		"current event":    {current: true, startsAt: "now() - interval '1 day'", endsAt: "now() + interval '1 day'"},
+		"historical event": {current: false, startsAt: "now() - interval '30 days'", endsAt: "now() - interval '28 days'"},
+		"no current event": {current: false, startsAt: "now() + interval '30 days'", endsAt: "now() + interval '32 days'"},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			pool := newTestPool(t)
+			migrationFS := productionMigrationFS(t)
+			migrateToPrototypeSchema(t, pool, migrationFS)
+
+			fixture := seedPrototypeGameRequests(t, pool, test.current, test.startsAt, test.endsAt)
+
+			if err := migrateFS(t.Context(), pool, migrationFS, testLogger()); err != nil {
+				t.Fatalf("migrate to the single-event core: %v", err)
+			}
+
+			readStore := gamerequestquery.NewStore(pool)
+			preserved, err := readStore.ByID(t.Context(), fixture.openID, fixture.joinerID)
+			if err != nil {
+				t.Fatalf("read preserved game request: %v", err)
+			}
+			if preserved.CreatorID != fixture.creatorID || preserved.MemberCount != 2 || !preserved.ViewerJoined ||
+				preserved.Status != gamerequest.StatusOpen || preserved.Description != "Prototype round" ||
+				!preserved.CreatedAt.Equal(fixture.createdAt) {
+				t.Fatalf("preserved request = %#v", preserved)
+			}
+			if got := activityKinds(preserved.Activity); !slices.Equal(got, []gamerequest.ActivityKind{gamerequest.ActivityJoined, gamerequest.ActivityCreated}) {
+				t.Fatalf("backfilled activity = %v", got)
+			}
+			if !preserved.Activity[0].OccurredAt.Equal(fixture.joinedAt) || preserved.Activity[0].ActorID != fixture.joinerID {
+				t.Fatalf("backfilled join entry = %#v", preserved.Activity[0])
+			}
+
+			// The point of the track: discovery no longer depends on an Event
+			// being selected, so the request is listed under every Event state.
+			active, err := readStore.ListActive(t.Context(), fixture.joinerID, gamerequestquery.Filter{})
+			if err != nil {
+				t.Fatalf("list active game requests: %v", err)
+			}
+			if !slices.ContainsFunc(active, func(request gamerequestquery.Request) bool { return request.ID == fixture.openID }) {
+				t.Fatalf("preserved request is not discoverable under the %q fixture: %#v", name, active)
+			}
+
+			closed, err := readStore.ByID(t.Context(), fixture.closedID, fixture.creatorID)
+			if err != nil {
+				t.Fatalf("read preserved closed request: %v", err)
+			}
+			if closed.Status != gamerequest.StatusClosed {
+				t.Fatalf("closed request status = %q", closed.Status)
+			}
+			if len(closed.Activity) == 0 || closed.Activity[0].Kind != gamerequest.ActivityClosed ||
+				!closed.Activity[0].OccurredAt.Equal(fixture.updatedAt) {
+				t.Fatalf("closed request activity = %#v", closed.Activity)
+			}
+
+			// Legacy Event rows are documented as kept, not silently discarded.
+			var legacyEvents int
+			if err := pool.QueryRow(t.Context(), "SELECT count(*) FROM events WHERE id = $1", fixture.eventID).Scan(&legacyEvents); err != nil {
+				t.Fatalf("count legacy events: %v", err)
+			}
+			if legacyEvents != 1 {
+				t.Fatalf("legacy event rows = %d, want 1", legacyEvents)
+			}
+			assertNoEventAssociation(t, pool)
+		})
+	}
+
+	// A fresh installation has no prototype rows to carry forward at all.
+	t.Run("fresh installation", func(t *testing.T) {
+		pool := newTestPool(t)
+		if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+			t.Fatalf("Migrate() error = %v", err)
+		}
+		var requests, activity int
+		if err := pool.QueryRow(t.Context(), "SELECT count(*) FROM game_requests").Scan(&requests); err != nil {
+			t.Fatalf("count game requests: %v", err)
+		}
+		if err := pool.QueryRow(t.Context(), "SELECT count(*) FROM game_request_activity").Scan(&activity); err != nil {
+			t.Fatalf("count game request activity: %v", err)
+		}
+		if requests != 0 || activity != 0 {
+			t.Fatalf("fresh installation = %d requests, %d activity entries, want 0 and 0", requests, activity)
+		}
+		assertNoEventAssociation(t, pool)
+	})
+}
+
+type prototypeFixture struct {
+	eventID, creatorID, joinerID, openID, closedID string
+	createdAt, joinedAt, updatedAt                 time.Time
+}
+
+// migrateToPrototypeSchema stops at version 5, the last schema in which a Game
+// Request still belongs to an Event.
+func migrateToPrototypeSchema(t *testing.T, pool *pgxpool.Pool, migrationFS fs.FS) {
+	t.Helper()
 
 	database := stdlib.OpenDBFromPool(pool)
 	defer database.Close()
-	provider, err := goose.NewProvider(goose.DialectPostgres, database, migrationFS, goose.WithSlog(logger))
+	provider, err := goose.NewProvider(goose.DialectPostgres, database, migrationFS, goose.WithSlog(testLogger()))
 	if err != nil {
 		t.Fatalf("create goose provider: %v", err)
 	}
-	// Version 5 is the prototype schema, where a Game Request still belongs to
-	// an Event.
 	if _, err := provider.UpTo(t.Context(), 5); err != nil {
 		t.Fatalf("migrate to the prototype schema: %v", err)
 	}
+}
 
-	var eventID, gameID, creatorID, joinerID, openID, closedID string
-	var createdAt, joinedAt, updatedAt time.Time
+func seedPrototypeGameRequests(t *testing.T, pool *pgxpool.Pool, current bool, startsAt, endsAt string) prototypeFixture {
+	t.Helper()
+
+	var fixture prototypeFixture
 	if err := pool.QueryRow(t.Context(), `
 		WITH inserted_event AS (
 			INSERT INTO events (name, starts_at, ends_at, is_current)
-			VALUES ('Prototype LAN', now() - interval '1 day', now() + interval '1 day', true)
+			VALUES ('Prototype LAN', `+startsAt+`, `+endsAt+`, $1)
 			RETURNING id
 		), inserted_game AS (
 			INSERT INTO games (name, slug) VALUES ('Quake', 'quake') RETURNING id
@@ -676,57 +782,22 @@ func TestForwardMigrationPreservesPrototypeGameRequests(t *testing.T) {
 			FROM closed_request, inserted_creator
 			RETURNING joined_at
 		)
-		SELECT inserted_event.id::text, inserted_game.id::text, inserted_creator.id::text,
+		SELECT inserted_event.id::text, inserted_creator.id::text,
 		       inserted_joiner.id::text, open_request.id::text, closed_request.id::text,
 		       open_request.created_at, joiner_membership.joined_at, closed_request.updated_at
 		FROM inserted_event, inserted_game, inserted_creator, inserted_joiner,
 		     open_request, closed_request, creator_membership, joiner_membership, closed_membership
-	`).Scan(&eventID, &gameID, &creatorID, &joinerID, &openID, &closedID, &createdAt, &joinedAt, &updatedAt); err != nil {
+	`, current).Scan(&fixture.eventID, &fixture.creatorID, &fixture.joinerID,
+		&fixture.openID, &fixture.closedID,
+		&fixture.createdAt, &fixture.joinedAt, &fixture.updatedAt); err != nil {
 		t.Fatalf("seed prototype data: %v", err)
 	}
+	return fixture
+}
 
-	if err := migrateFS(t.Context(), pool, migrationFS, logger); err != nil {
-		t.Fatalf("migrate to the single-event core: %v", err)
-	}
+func assertNoEventAssociation(t *testing.T, pool *pgxpool.Pool) {
+	t.Helper()
 
-	readStore := gamerequestquery.NewStore(pool)
-	preserved, err := readStore.ByID(t.Context(), openID, joinerID)
-	if err != nil {
-		t.Fatalf("read preserved game request: %v", err)
-	}
-	if preserved.CreatorID != creatorID || preserved.MemberCount != 2 || !preserved.ViewerJoined ||
-		preserved.Status != gamerequest.StatusOpen || preserved.Description != "Prototype round" ||
-		!preserved.CreatedAt.Equal(createdAt) {
-		t.Fatalf("preserved request = %#v", preserved)
-	}
-	if got := activityKinds(preserved.Activity); !slices.Equal(got, []gamerequest.ActivityKind{gamerequest.ActivityJoined, gamerequest.ActivityCreated}) {
-		t.Fatalf("backfilled activity = %v", got)
-	}
-	if !preserved.Activity[0].OccurredAt.Equal(joinedAt) || preserved.Activity[0].ActorID != joinerID {
-		t.Fatalf("backfilled join entry = %#v", preserved.Activity[0])
-	}
-
-	closed, err := readStore.ByID(t.Context(), closedID, creatorID)
-	if err != nil {
-		t.Fatalf("read preserved closed request: %v", err)
-	}
-	if closed.Status != gamerequest.StatusClosed {
-		t.Fatalf("closed request status = %q", closed.Status)
-	}
-	if len(closed.Activity) == 0 || closed.Activity[0].Kind != gamerequest.ActivityClosed ||
-		!closed.Activity[0].OccurredAt.Equal(updatedAt) {
-		t.Fatalf("closed request activity = %#v", closed.Activity)
-	}
-
-	// Legacy Event rows are documented as kept, not silently discarded.
-	var legacyEvents int
-	if err := pool.QueryRow(t.Context(), "SELECT count(*) FROM events WHERE id = $1", eventID).Scan(&legacyEvents); err != nil {
-		t.Fatalf("count legacy events: %v", err)
-	}
-	if legacyEvents != 1 {
-		t.Fatalf("legacy event rows = %d, want 1", legacyEvents)
-	}
-	// The request itself no longer carries an Event association.
 	var columns int
 	if err := pool.QueryRow(t.Context(), `
 		SELECT count(*) FROM information_schema.columns
@@ -914,3 +985,141 @@ func countActivity(t *testing.T, pool *pgxpool.Pool) int {
 }
 
 func ptr[T any](value T) *T { return &value }
+
+// A committed Game Request change keeps its notification intent across a
+// restart that happens before anything delivered it. This is the half of the
+// A/E contract that the rollback case cannot show: the rollback proves nothing
+// survives a failure, and this proves everything survives a process ending.
+//
+// The restart is real rather than simulated. The pool that wrote the activity
+// is closed, and a second pool opens against the same schema, so nothing the
+// first connection held in memory can satisfy the read.
+func TestCommittedActivitySurvivesRestartBeforeDelivery(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+
+	users := user.NewService(userpostgres.NewStore(pool))
+	host, err := users.Register(t.Context(), "Restart Host")
+	if err != nil {
+		t.Fatalf("register host: %v", err)
+	}
+	guest, err := users.Register(t.Context(), "Restart Guest")
+	if err != nil {
+		t.Fatalf("register guest: %v", err)
+	}
+	catalog := game.NewService(gamepostgres.NewStore(pool))
+	selectedGame, err := catalog.Create(t.Context(), "Unreal Tournament", "unreal-tournament")
+	if err != nil {
+		t.Fatalf("create game: %v", err)
+	}
+
+	requests := gamerequest.NewService(gamerequestpostgres.NewStore(pool), catalog, nil)
+	created, err := requests.Create(t.Context(), host.ID, selectedGame.ID, nil, time.Now().UTC().Add(time.Hour), "Survives a restart")
+	if err != nil {
+		t.Fatalf("create game request: %v", err)
+	}
+	if err := requests.Join(t.Context(), created.ID, guest.ID); err != nil {
+		t.Fatalf("join game request: %v", err)
+	}
+	if err := requests.Close(t.Context(), created.ID, host.ID); err != nil {
+		t.Fatalf("close game request: %v", err)
+	}
+
+	schemaName := currentSchema(t, pool)
+	before := readActivityCursor(t, pool, created.ID)
+	if len(before) != 3 {
+		t.Fatalf("activity before restart = %#v, want 3 entries", before)
+	}
+
+	// The process ends here, with the intent recorded and nothing delivered.
+	pool.Close()
+	restarted := reopenTestPool(t, schemaName)
+
+	after := readActivityCursor(t, restarted, created.ID)
+	if !slices.Equal(before, after) {
+		t.Fatalf("activity after restart = %#v, want %#v", after, before)
+	}
+	// Track E replays from `sequence`, so the order and the cursor values
+	// themselves have to be the same ones it would have seen before the restart.
+	for index := 1; index < len(after); index++ {
+		if after[index].sequence <= after[index-1].sequence {
+			t.Fatalf("activity sequence is not monotonic after restart: %#v", after)
+		}
+	}
+	detail, err := gamerequestquery.NewStore(restarted).ByID(t.Context(), created.ID, host.ID)
+	if err != nil {
+		t.Fatalf("read game request after restart: %v", err)
+	}
+	wantKinds := []gamerequest.ActivityKind{gamerequest.ActivityClosed, gamerequest.ActivityJoined, gamerequest.ActivityCreated}
+	if got := activityKinds(detail.Activity); !slices.Equal(got, wantKinds) {
+		t.Fatalf("activity kinds after restart = %v, want %v", got, wantKinds)
+	}
+}
+
+type activityCursor struct {
+	sequence int64
+	kind     string
+	actorID  string
+}
+
+func readActivityCursor(t *testing.T, pool *pgxpool.Pool, requestID string) []activityCursor {
+	t.Helper()
+
+	rows, err := pool.Query(t.Context(), `
+		SELECT sequence, kind, actor_id::text
+		FROM game_request_activity
+		WHERE game_request_id = $1::uuid
+		ORDER BY sequence
+	`, requestID)
+	if err != nil {
+		t.Fatalf("read activity cursor: %v", err)
+	}
+	defer rows.Close()
+
+	var entries []activityCursor
+	for rows.Next() {
+		var entry activityCursor
+		if err := rows.Scan(&entry.sequence, &entry.kind, &entry.actorID); err != nil {
+			t.Fatalf("scan activity cursor: %v", err)
+		}
+		entries = append(entries, entry)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate activity cursor: %v", err)
+	}
+	return entries
+}
+
+func currentSchema(t *testing.T, pool *pgxpool.Pool) string {
+	t.Helper()
+
+	var schemaName string
+	if err := pool.QueryRow(t.Context(), "SELECT current_schema()").Scan(&schemaName); err != nil {
+		t.Fatalf("read current schema: %v", err)
+	}
+	return schemaName
+}
+
+// reopenTestPool opens a second pool against an existing test schema, standing
+// in for the application starting again over the same database.
+func reopenTestPool(t *testing.T, schemaName string) *pgxpool.Pool {
+	t.Helper()
+
+	poolConfig, err := pgxpool.ParseConfig(os.Getenv("LANSURFER_TEST_DATABASE_URL"))
+	if err != nil {
+		t.Fatalf("parse test database URL: %v", err)
+	}
+	identifier := pgx.Identifier{schemaName}.Sanitize()
+	poolConfig.AfterConnect = func(ctx context.Context, connection *pgx.Conn) error {
+		_, err := connection.Exec(ctx, "SET search_path TO "+identifier+", public")
+		return err
+	}
+	pool, err := pgxpool.NewWithConfig(t.Context(), poolConfig)
+	if err != nil {
+		t.Fatalf("reopen test pool: %v", err)
+	}
+	t.Cleanup(pool.Close)
+	return pool
+}
