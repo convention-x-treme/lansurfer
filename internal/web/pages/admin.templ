@@ -1,6 +1,7 @@
 package pages
 
 import (
+	"strconv"
 	"time"
 	"github.com/convention-x-treme/lansurfer/internal/event"
 	"github.com/convention-x-treme/lansurfer/internal/game"
@@ -170,6 +171,71 @@ templ GameFields(name, slug string) {
 	<label class="form-control"><span class="label"><span class="label-text">Slug</span></span><input class="input input-bordered w-full data-text" name="slug" value={ slug } maxlength="120" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" placeholder="counter-strike-2" required/></label>
 }
 
+templ AdminIGDB(brand branding.Brand, navigation components.NavigationState, status game.ProviderStatus, notice string) {
+	@components.Layout(brand, "IGDB Synchronization", navigation) {
+		<section class="page-shell py-10">
+			<div class="flex flex-wrap items-end justify-between gap-4">
+				<div>
+					<p class="data-text text-sm font-semibold uppercase tracking-widest text-secondary">Administration</p>
+					<h1 class="mt-2 text-3xl font-bold">IGDB synchronization</h1>
+					<p class="mt-2 text-base-content/70">Review the local IGDB discovery index and its background refresh.</p>
+				</div>
+				<a class="btn btn-ghost" href="/admin/games">Manage games</a>
+			</div>
+			if notice != "" {
+				<div role="status" class="alert alert-info mt-6"><span>{ notice }</span></div>
+			}
+			<div class="mt-8 card border border-base-300 bg-base-200 shadow-sm">
+				<div class="card-body">
+					<div class="flex flex-wrap items-center justify-between gap-3">
+						<h2 class="card-title">Status</h2>
+						@igdbStatusBadge(status.State)
+					</div>
+					<dl class="mt-4 grid gap-4 sm:grid-cols-3">
+						<div>
+							<dt class="text-sm text-base-content/60">Last attempt</dt>
+							<dd class="data-text">{ igdbTimestamp(status.LastAttempt) }</dd>
+						</div>
+						<div>
+							<dt class="text-sm text-base-content/60">Last success</dt>
+							<dd class="data-text">{ igdbTimestamp(status.LastSuccess) }</dd>
+						</div>
+						<div>
+							<dt class="text-sm text-base-content/60">Indexed records</dt>
+							<dd class="data-text">{ strconv.FormatInt(status.RecordCount, 10) }</dd>
+						</div>
+					</dl>
+					if status.LastError != "" {
+						<div role="alert" class="alert alert-error mt-4"><span>{ status.LastError }</span></div>
+					}
+					if status.State != game.ProviderDisabled && status.State != game.ProviderSyncing {
+						<form method="post" action="/admin/igdb/sync" class="card-actions justify-end mt-4">
+							@components.CSRFInput()
+							<button class="btn btn-primary" type="submit">Sync now</button>
+						</form>
+					}
+				</div>
+			</div>
+		</section>
+	}
+}
+
+templ igdbStatusBadge(state game.ProviderState) {
+	if state == game.ProviderCurrent {
+		<span class="badge badge-primary">Current</span>
+	} else if state == game.ProviderSyncing {
+		<span class="badge badge-info">Syncing</span>
+	} else if state == game.ProviderFailed {
+		<span class="badge badge-error">Failed</span>
+	} else if state == game.ProviderStale {
+		<span class="badge badge-warning">Stale</span>
+	} else if state == game.ProviderDisabled {
+		<span class="badge badge-ghost">Disabled</span>
+	} else {
+		<span class="badge badge-outline">Not synced</span>
+	}
+}
+
 templ AdminError(brand branding.Brand, navigation components.NavigationState) {
 	@components.Layout(brand, "Administration error", navigation) {
 		<section class="page-shell py-16"><div role="alert" class="alert alert-error"><div><h1 class="font-bold">Administration could not be loaded</h1><p>Try the request again.</p></div></div></section>
@@ -179,6 +245,13 @@ templ AdminError(brand branding.Brand, navigation components.NavigationState) {
 func adminDateTime(value time.Time) string {
 	if value.IsZero() { return "" }
 	return value.UTC().Format("2006-01-02T15:04")
+}
+
+func igdbTimestamp(value *time.Time) string {
+	if value == nil {
+		return "Never"
+	}
+	return value.UTC().Format("2006-01-02T15:04Z")
 }
 
 func gameActiveConfirmation(active bool) string {

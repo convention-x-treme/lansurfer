@@ -35,6 +35,7 @@ type RouterDependencies struct {
 	Authentication Authentication
 	Events         handler.EventAdministration
 	Games          handler.GameAdministration
+	ProviderSync   handler.ProviderSyncAdministration
 	Subscriptions  handler.GameSubscriptions
 	GameRequests   handler.GameRequestCommands
 	RequestQueries handler.GameRequestQueries
@@ -48,7 +49,7 @@ type RouterDependencies struct {
 func NewRouter(dependencies RouterDependencies) http.Handler {
 	brand := branding.Default()
 	authenticationHandler := handler.NewAuthentication(dependencies.Authentication, brand, dependencies.SecureCookies)
-	administrationHandler := handler.NewAdministration(dependencies.Events, dependencies.Games, brand)
+	administrationHandler := handler.NewAdministration(dependencies.Events, dependencies.Games, dependencies.ProviderSync, brand)
 	gamesHandler := handler.NewGames(dependencies.Subscriptions, brand)
 	gameRequestsHandler := handler.NewGameRequests(dependencies.GameRequests, dependencies.RequestQueries, brand)
 	realtimeHandler := handler.NewRealtime(dependencies.Realtime)
@@ -103,6 +104,10 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 				admin.Post("/games/{gameID}/active", administrationHandler.SetGameActive)
 				admin.Post("/games/{gameID}/aliases", administrationHandler.AddGameAlias)
 				admin.Post("/games/{gameID}/aliases/{aliasID}/remove", administrationHandler.RemoveGameAlias)
+				if dependencies.ProviderSync != nil {
+					admin.Get("/igdb", administrationHandler.IGDB)
+					admin.Post("/igdb/sync", administrationHandler.SyncIGDB)
+				}
 			})
 		}
 	})

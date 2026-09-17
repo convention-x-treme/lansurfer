@@ -260,6 +260,88 @@ func TestAdminGameSearchRendersAliasMatch(t *testing.T) {
 	}
 }
 
+func TestAdminIGDBRoutesRequireAdmin(t *testing.T) {
+	dependencies := RouterDependencies{
+		Ready:          func(context.Context) error { return nil },
+		Authentication: &routerAuthentication{account: user.User{DisplayName: "Player", Role: user.RoleUser}},
+		Events:         &routerEvents{}, Games: &routerGames{},
+		ProviderSync: &routerProviderSync{},
+	}
+	request := httptest.NewRequest(http.MethodGet, "/admin/igdb", nil)
+	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	response := httptest.NewRecorder()
+
+	NewRouter(dependencies).ServeHTTP(response, request)
+
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusForbidden)
+	}
+}
+
+func TestAdminIGDBPageRendersStatusAndHidesSyncWhenDisabled(t *testing.T) {
+	providerSync := &routerProviderSync{status: game.ProviderStatus{State: game.ProviderDisabled}}
+	request := httptest.NewRequest(http.MethodGet, "/admin/igdb", nil)
+	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	response := httptest.NewRecorder()
+
+	adminIGDBTestRouter(providerSync).ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
+	}
+	body := response.Body.String()
+	if !strings.Contains(body, "Disabled") {
+		t.Errorf("body does not contain disabled state: %q", body)
+	}
+	if strings.Contains(body, "Sync now") {
+		t.Errorf("body unexpectedly contains a sync action while disabled")
+	}
+}
+
+func TestAdminIGDBPageShowsSyncActionAndLastError(t *testing.T) {
+	lastAttempt := time.Date(2027, 1, 2, 3, 4, 0, 0, time.UTC)
+	providerSync := &routerProviderSync{status: game.ProviderStatus{
+		State:       game.ProviderFailed,
+		LastAttempt: &lastAttempt,
+		RecordCount: 42,
+		LastError:   "upstream returned 503",
+	}}
+	request := httptest.NewRequest(http.MethodGet, "/admin/igdb", nil)
+	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	response := httptest.NewRecorder()
+
+	adminIGDBTestRouter(providerSync).ServeHTTP(response, request)
+
+	body := response.Body.String()
+	for _, want := range []string{"Failed", "42", "upstream returned 503", "Sync now"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("body does not contain %q: %q", want, body)
+		}
+	}
+	for _, unwanted := range []string{"client_secret", "access_token", "Bearer "} {
+		if strings.Contains(body, unwanted) {
+			t.Errorf("body unexpectedly contains %q", unwanted)
+		}
+	}
+}
+
+func TestAdminIGDBSyncTriggersManualSync(t *testing.T) {
+	providerSync := &routerProviderSync{}
+	request := httptest.NewRequest(http.MethodPost, "/admin/igdb/sync", nil)
+	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	addCSRF(request)
+	response := httptest.NewRecorder()
+
+	adminIGDBTestRouter(providerSync).ServeHTTP(response, request)
+
+	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/admin/igdb?notice=igdb-sync-started" {
+		t.Fatalf("response = %d %q", response.Code, response.Header().Get("Location"))
+	}
+	if !providerSync.started {
+		t.Error("manual sync was not started")
+	}
+}
+
 func TestGameCatalogRequiresAuthentication(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/games", nil)
 	response := httptest.NewRecorder()
@@ -475,6 +557,15 @@ func adminTestRouter(events *routerEvents, games *routerGames) http.Handler {
 	})
 }
 
+func adminIGDBTestRouter(providerSync *routerProviderSync) http.Handler {
+	return NewRouter(RouterDependencies{
+		Ready:          func(context.Context) error { return nil },
+		Authentication: &routerAuthentication{account: user.User{DisplayName: "Ada Admin", Role: user.RoleAdmin}},
+		Events:         &routerEvents{}, Games: &routerGames{},
+		ProviderSync: providerSync,
+	})
+}
+
 func gameTestRouter(subscriptions *routerSubscriptions) http.Handler {
 	return NewRouter(RouterDependencies{
 		Ready: func(context.Context) error { return nil },
@@ -527,6 +618,21 @@ func (*routerGames) AddAlias(context.Context, string, string) (game.Alias, error
 	return game.Alias{}, nil
 }
 func (*routerGames) RemoveAlias(context.Context, string, string) error { return nil }
+
+type routerProviderSync struct {
+	status    game.ProviderStatus
+	statusErr error
+	started   bool
+}
+
+func (r *routerProviderSync) Status(context.Context) (game.ProviderStatus, error) {
+	return r.status, r.statusErr
+}
+
+func (r *routerProviderSync) TryStart(context.Context) bool {
+	r.started = true
+	return true
+}
 
 type routerSubscriptions struct {
 	items, mine []game.SubscriptionGame

@@ -38,14 +38,24 @@ type GameAdministration interface {
 	RemoveAlias(context.Context, string, string) error
 }
 
-type Administration struct {
-	events EventAdministration
-	games  GameAdministration
-	brand  branding.Brand
+// ProviderSyncAdministration is the narrow interface the admin IGDB status
+// page and manual "Sync now" action need. It is satisfied by
+// *game.IGDBSyncService and by the disabled adapter wired in when IGDB
+// credentials are not configured.
+type ProviderSyncAdministration interface {
+	Status(context.Context) (game.ProviderStatus, error)
+	TryStart(context.Context) bool
 }
 
-func NewAdministration(events EventAdministration, games GameAdministration, brand branding.Brand) *Administration {
-	return &Administration{events: events, games: games, brand: brand}
+type Administration struct {
+	events       EventAdministration
+	games        GameAdministration
+	providerSync ProviderSyncAdministration
+	brand        branding.Brand
+}
+
+func NewAdministration(events EventAdministration, games GameAdministration, providerSync ProviderSyncAdministration, brand branding.Brand) *Administration {
+	return &Administration{events: events, games: games, providerSync: providerSync, brand: brand}
 }
 
 func (h *Administration) Events(w http.ResponseWriter, r *http.Request) {
@@ -167,6 +177,20 @@ func (h *Administration) RemoveGameAlias(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	h.redirect(w, r, "/admin/games?notice=alias-removed")
+}
+
+func (h *Administration) IGDB(w http.ResponseWriter, r *http.Request) {
+	status, err := h.providerSync.Status(r.Context())
+	if err != nil {
+		h.renderAdminError(w, r, err)
+		return
+	}
+	render(w, r, http.StatusOK, pages.AdminIGDB(h.brand, adminNavigation(r), status, notice(r)))
+}
+
+func (h *Administration) SyncIGDB(w http.ResponseWriter, r *http.Request) {
+	h.providerSync.TryStart(r.Context())
+	h.redirect(w, r, "/admin/igdb?notice=igdb-sync-started")
 }
 
 func eventForm(r *http.Request) (string, time.Time, time.Time, error) {
@@ -293,6 +317,8 @@ func notice(r *http.Request) string {
 		return "Alias removed."
 	case "request-created":
 		return "Game Request created."
+	case "igdb-sync-started":
+		return "IGDB synchronization requested."
 	default:
 		return ""
 	}

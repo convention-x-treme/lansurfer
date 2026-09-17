@@ -78,6 +78,7 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	realtime := sse.NewBroker()
 	gameRequests := gamerequest.NewService(gamerequestpostgres.NewStore(pool), gameService, eventService, realtime)
 	gameRequestQueries := gamerequestquery.NewStore(pool)
+	igdbSyncService := newIGDBSync(ctx, cfg.IGDB, gameStore)
 
 	server := &http.Server{
 		Addr: cfg.ListenAddr,
@@ -90,6 +91,7 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 			GameRequests:   gameRequests,
 			RequestQueries: gameRequestQueries,
 			Realtime:       realtime,
+			ProviderSync:   igdbSyncService,
 			SecureCookies:  strings.HasPrefix(cfg.BaseURL, "https://"),
 			Logger:         logger,
 			TrustedProxies: cfg.TrustedProxies,
@@ -105,6 +107,7 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		logger.Info("HTTP server listening", "address", cfg.ListenAddr)
 		serverErrors <- server.ListenAndServe()
 	}()
+	go runDailyIGDBSync(ctx, igdbSyncService, igdbSyncInterval)
 
 	select {
 	case err := <-serverErrors:
