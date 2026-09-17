@@ -233,6 +233,53 @@ func TestDiscoveryFollowLocalDelegatesToSubscriptions(t *testing.T) {
 	}
 }
 
+func TestDiscoveryFollowMaterializesThenSubscribes(t *testing.T) {
+	materializer := &fakeMaterializer{result: Game{ID: "local-1", Name: "Game", Slug: "game"}}
+	subscriptions := &fakeSubscriptions{}
+	service := NewDiscoveryService(&fakeDiscoveryRepository{}, materializer, subscriptions)
+	got, err := service.Follow(t.Context(), "user-1", ProviderReference{Provider: "igdb", ExternalID: "100"})
+	if err != nil {
+		t.Fatalf("Follow: %v", err)
+	}
+	if got.ID != "local-1" || subscriptions.followedGame != "local-1" || subscriptions.followedUser != "user-1" {
+		t.Fatalf("got=%#v subs=%#v", got, subscriptions)
+	}
+}
+
+func TestDiscoveryFollowPropagatesResolveErrorWithoutSubscribing(t *testing.T) {
+	materializer := &fakeMaterializer{err: ErrProviderRecordNotFound}
+	subscriptions := &fakeSubscriptions{}
+	service := NewDiscoveryService(&fakeDiscoveryRepository{}, materializer, subscriptions)
+	if _, err := service.Follow(t.Context(), "user-1", ProviderReference{Provider: "igdb", ExternalID: "100"}); !errors.Is(err, ErrProviderRecordNotFound) {
+		t.Fatalf("err = %v, want %v", err, ErrProviderRecordNotFound)
+	}
+	if subscriptions.followedGame != "" {
+		t.Fatalf("followedGame = %q, want empty", subscriptions.followedGame)
+	}
+}
+
+func TestDiscoveryFollowRejectsInvalidReferenceWithoutMaterializing(t *testing.T) {
+	materializer := &fakeMaterializer{result: Game{ID: "local-1"}}
+	subscriptions := &fakeSubscriptions{}
+	service := NewDiscoveryService(&fakeDiscoveryRepository{}, materializer, subscriptions)
+	if _, err := service.Follow(t.Context(), "user-1", ProviderReference{Provider: "steam", ExternalID: "100"}); !errors.Is(err, ErrInvalidProviderReference) {
+		t.Fatalf("err = %v, want %v", err, ErrInvalidProviderReference)
+	}
+	if materializer.calls != 0 || subscriptions.followedGame != "" {
+		t.Fatalf("materializer.calls=%d followedGame=%q", materializer.calls, subscriptions.followedGame)
+	}
+}
+
+func TestDiscoveryFollowPropagatesSubscriptionError(t *testing.T) {
+	materializer := &fakeMaterializer{result: Game{ID: "local-1"}}
+	failure := errors.New("follow failed")
+	subscriptions := &fakeSubscriptions{followErr: failure}
+	service := NewDiscoveryService(&fakeDiscoveryRepository{}, materializer, subscriptions)
+	if _, err := service.Follow(t.Context(), "user-1", ProviderReference{Provider: "igdb", ExternalID: "100"}); !errors.Is(err, failure) {
+		t.Fatalf("err = %v, want %v", err, failure)
+	}
+}
+
 func TestDiscoveryUnfollowDelegatesToSubscriptions(t *testing.T) {
 	subs := &fakeSubscriptions{}
 	service := NewDiscoveryService(&fakeDiscoveryRepository{}, nil, subs)

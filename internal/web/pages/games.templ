@@ -56,11 +56,12 @@ templ GameCatalogResults(games []game.DiscoveryItem, search, message string) {
 
 // GameDiscoveryCard renders one Browse result. A materialized item is
 // already an authoritative local Game, so it renders with the usual
-// follow/unfollow controls. An unmaterialized provider item is read-only
-// display in this task: name plus type/platform/release disambiguation and
-// a remote cover derived only from CoverImageID. No provider name, slug, or
-// other metadata is ever posted back to the server from this card; only the
-// opaque provider reference could ever be used for a future action.
+// follow/unfollow controls. An unmaterialized provider item shows read-only
+// display metadata (name plus type/platform/release disambiguation and a
+// remote cover derived only from CoverImageID) plus a follow action. No
+// provider name, slug, or other metadata is ever posted back to the server
+// from this card; only the opaque provider reference (provider + external
+// ID) travels, in the follow form's URL path.
 templ GameDiscoveryCard(item game.DiscoveryItem) {
 	if item.Materialized {
 		@GameSubscriptionCard(game.SubscriptionGame{ID: item.LocalGameID, Name: item.Name, Slug: item.Slug, Subscribed: item.Subscribed}, false)
@@ -79,7 +80,13 @@ templ ProviderDiscoveryCard(item game.DiscoveryItem) {
 				<div class="min-w-0">
 					<h2 class="card-title text-2xl">{ item.Name }</h2>
 					<p class="data-text mt-1 text-sm text-base-content/60">{ providerDisambiguation(item) }</p>
-					<span class="badge badge-ghost mt-2">Not yet in LANsurfer catalog</span>
+					<div class="mt-2 flex items-center gap-2">
+						<span class="badge badge-ghost">Not yet in LANsurfer catalog</span>
+						<form method="post" action={ providerFollowAction(item.Reference) } hx-post={ providerFollowAction(item.Reference) } hx-target="closest div" hx-swap="outerHTML">
+							@components.CSRFInput()
+							<button class="btn btn-primary btn-sm" type="submit">Follow Game</button>
+						</form>
+					</div>
 				</div>
 			</div>
 		</div>
@@ -154,6 +161,15 @@ templ GameCatalogError(brand branding.Brand, navigation components.NavigationSta
 // Referrer-Policy: no-referrer safeguards live in internal/web/middleware.
 func providerCoverURL(coverImageID string) string {
 	return "https://images.igdb.com/igdb/image/upload/t_cover_small/" + coverImageID + ".jpg"
+}
+
+// providerFollowAction builds the provider-follow route from only the
+// opaque provider reference already carried on the DiscoveryItem (never
+// browser input): provider is always "igdb" in this codebase, and external
+// ID is the provider's numeric identity. No other provider metadata is
+// included in the request.
+func providerFollowAction(ref game.ProviderReference) string {
+	return "/games/providers/" + ref.Provider + "/" + ref.ExternalID + "/follow"
 }
 
 // providerDisambiguation renders type/platform/release context so provider

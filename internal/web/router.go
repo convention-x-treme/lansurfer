@@ -69,6 +69,7 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 				games.Use(handler.RequireAuthentication)
 				games.Get("/", gamesHandler.Browse)
 				games.Get("/mine", gamesHandler.MyGames)
+				games.Post("/providers/{provider}/{externalID}/follow", gamesHandler.FollowProvider)
 				games.Post("/{gameID}/follow", gamesHandler.Follow)
 				games.Post("/{gameID}/unfollow", gamesHandler.Unfollow)
 			})

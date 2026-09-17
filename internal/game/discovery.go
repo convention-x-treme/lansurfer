@@ -84,6 +84,23 @@ func (s *DiscoveryService) Resolve(ctx context.Context, ref ProviderReference) (
 	return s.materializer.Materialize(ctx, normalized)
 }
 
+// Follow materializes the authoritative local Game for an IGDB discovery
+// result (if it is not already materialized) and then follows it, so a
+// player can follow a provider search result without the browser ever
+// needing to know a local Game ID (spec: "Follow and Game Request
+// integration"). It orchestrates Resolve and the subscription follow inside
+// the Game capability so this stays a single explicit call for callers.
+func (s *DiscoveryService) Follow(ctx context.Context, userID string, ref ProviderReference) (Game, error) {
+	item, err := s.Resolve(ctx, ref)
+	if err != nil {
+		return Game{}, err
+	}
+	if err := s.subscriptions.Follow(ctx, userID, item.ID); err != nil {
+		return Game{}, err
+	}
+	return item, nil
+}
+
 // MyGames returns the current user's followed local Games.
 func (s *DiscoveryService) MyGames(ctx context.Context, userID string) ([]SubscriptionGame, error) {
 	return s.subscriptions.MyGames(ctx, userID)

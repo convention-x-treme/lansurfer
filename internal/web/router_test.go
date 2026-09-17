@@ -404,7 +404,7 @@ func TestMyGamesRendersOnlySubscriptions(t *testing.T) {
 	}
 }
 
-func TestGameCatalogRendersUnmaterializedProviderResultReadOnly(t *testing.T) {
+func TestGameCatalogRendersUnmaterializedProviderResultWithFollowAction(t *testing.T) {
 	releaseDate := time.Date(2002, time.July, 3, 0, 0, 0, 0, time.UTC)
 	discovery := &routerDiscovery{items: []game.DiscoveryItem{{
 		Reference:        game.ProviderReference{Provider: "igdb", ExternalID: "42"},
@@ -433,15 +433,69 @@ func TestGameCatalogRendersUnmaterializedProviderResultReadOnly(t *testing.T) {
 		"2002",
 		"https://images.igdb.com/igdb/image/upload/t_cover_small/co1abc.jpg",
 		"Not yet in LANsurfer catalog",
+		"Follow Game",
+		`hx-post="/games/providers/igdb/42/follow"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("body does not contain %q", want)
 		}
 	}
-	for _, notWanted := range []string{"Follow Game", "hx-post=\"/games//follow\""} {
-		if strings.Contains(body, notWanted) {
-			t.Errorf("body unexpectedly contains %q", notWanted)
-		}
+	// The card never posts the provider name/slug/metadata; only the opaque
+	// provider reference travels, in the URL path.
+	if strings.Contains(body, "hx-post=\"/games//follow\"") {
+		t.Errorf("follow form posts to malformed local-follow route: %q", body)
+	}
+}
+
+func TestAuthenticatedUserCanFollowProviderResult(t *testing.T) {
+	discovery := &routerDiscovery{followResult: game.Game{ID: "local-1", Name: "Warcraft III", Slug: "warcraft-3"}}
+	router := gameTestRouter(discovery)
+
+	request := httptest.NewRequest(http.MethodPost, "/games/providers/igdb/42/follow", nil)
+	request.Header.Set("HX-Request", "true")
+	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	addCSRF(request)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK || discovery.followProvided != "user-1/igdb/42" {
+		t.Fatalf("status = %d, followProvided = %q", response.Code, discovery.followProvided)
+	}
+	body := response.Body.String()
+	if !strings.Contains(body, "Following") || !strings.Contains(body, `action="/games/local-1/unfollow"`) {
+		t.Errorf("body = %q", body)
+	}
+}
+
+func TestFollowProviderResultReportsNotFoundWhenProviderRecordMissing(t *testing.T) {
+	discovery := &routerDiscovery{followErr: game.ErrProviderRecordNotFound}
+	router := gameTestRouter(discovery)
+
+	request := httptest.NewRequest(http.MethodPost, "/games/providers/igdb/42/follow", nil)
+	request.Header.Set("HX-Request", "true")
+	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	addCSRF(request)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusNotFound)
+	}
+}
+
+func TestFollowProviderResultReportsInvalidReference(t *testing.T) {
+	discovery := &routerDiscovery{followErr: game.ErrInvalidProviderReference}
+	router := gameTestRouter(discovery)
+
+	request := httptest.NewRequest(http.MethodPost, "/games/providers/steam/42/follow", nil)
+	request.Header.Set("HX-Request", "true")
+	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	addCSRF(request)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusUnprocessableEntity)
 	}
 }
 
@@ -676,11 +730,14 @@ func (r *routerProviderSync) TryStart(context.Context) bool {
 }
 
 type routerDiscovery struct {
-	items      []game.DiscoveryItem
-	mine       []game.SubscriptionGame
-	search     string
-	followed   string
-	unfollowed string
+	items          []game.DiscoveryItem
+	mine           []game.SubscriptionGame
+	search         string
+	followed       string
+	unfollowed     string
+	followProvided string
+	followResult   game.Game
+	followErr      error
 }
 
 type routerGameRequests struct {
@@ -754,6 +811,13 @@ func (r *routerDiscovery) MyGames(context.Context, string) ([]game.SubscriptionG
 func (r *routerDiscovery) FollowLocal(_ context.Context, userID, gameID string) error {
 	r.followed = userID + "/" + gameID
 	return nil
+}
+func (r *routerDiscovery) Follow(_ context.Context, userID string, ref game.ProviderReference) (game.Game, error) {
+	r.followProvided = userID + "/" + ref.Provider + "/" + ref.ExternalID
+	if r.followErr != nil {
+		return game.Game{}, r.followErr
+	}
+	return r.followResult, nil
 }
 func (r *routerDiscovery) Unfollow(_ context.Context, userID, gameID string) error {
 	r.unfollowed = userID + "/" + gameID

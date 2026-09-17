@@ -14,13 +14,15 @@ import (
 )
 
 // GameDiscovery combines the authoritative local Game catalog with the
-// active synchronized IGDB provider index. Provider search results are
-// read-only display in this handler; following/requesting an unmaterialized
-// provider result is not implemented here.
+// active synchronized IGDB provider index. Follow materializes an
+// unmaterialized provider result (keyed only by the opaque provider
+// reference) and follows the resulting authoritative local Game; FollowLocal
+// follows an already-local Game by ID.
 type GameDiscovery interface {
 	Browse(context.Context, string, string) ([]game.DiscoveryItem, error)
 	MyGames(context.Context, string) ([]game.SubscriptionGame, error)
 	FollowLocal(context.Context, string, string) error
+	Follow(context.Context, string, game.ProviderReference) (game.Game, error)
 	Unfollow(context.Context, string, string) error
 }
 
@@ -69,6 +71,28 @@ func (h *Games) Follow(w http.ResponseWriter, r *http.Request) {
 	h.mutationSuccess(w, r, true)
 }
 
+// FollowProvider follows an IGDB discovery result identified only by its
+// opaque provider reference (provider + external ID) in the URL path. The
+// browser never supplies a name, slug, or other provider metadata; the Game
+// capability reloads and materializes the record itself before following it.
+func (h *Games) FollowProvider(w http.ResponseWriter, r *http.Request) {
+	account, _ := webmiddleware.CurrentUser(r.Context())
+	ref := game.ProviderReference{
+		Provider:   chi.URLParam(r, "provider"),
+		ExternalID: chi.URLParam(r, "externalID"),
+	}
+	result, err := h.discovery.Follow(r.Context(), account.ID, ref)
+	if err != nil {
+		h.renderMutationError(w, r, err)
+		return
+	}
+	if r.Header.Get("HX-Request") == "true" {
+		render(w, r, http.StatusOK, pages.GameFollowControl(result.ID, true, false))
+		return
+	}
+	http.Redirect(w, r, "/games", http.StatusSeeOther)
+}
+
 func (h *Games) Unfollow(w http.ResponseWriter, r *http.Request) {
 	account, _ := webmiddleware.CurrentUser(r.Context())
 	if err := h.discovery.Unfollow(r.Context(), account.ID, chi.URLParam(r, "gameID")); err != nil {
@@ -103,8 +127,12 @@ func (h *Games) mutationSuccess(w http.ResponseWriter, r *http.Request, subscrib
 }
 
 func (h *Games) renderMutationError(w http.ResponseWriter, r *http.Request, cause error) {
-	if errors.Is(cause, game.ErrNotFound) {
+	if errors.Is(cause, game.ErrNotFound) || errors.Is(cause, game.ErrProviderRecordNotFound) {
 		http.Error(w, "game not found", http.StatusNotFound)
+		return
+	}
+	if errors.Is(cause, game.ErrInvalidProviderReference) {
+		http.Error(w, "invalid provider reference", http.StatusUnprocessableEntity)
 		return
 	}
 	webmiddleware.LogError(r, "update game subscription", cause)
