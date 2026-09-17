@@ -16,10 +16,11 @@ import (
 
 type Store struct {
 	queries *sqlcgen.Queries
+	pool    *pgxpool.Pool
 }
 
 func NewStore(pool *pgxpool.Pool) *Store {
-	return &Store{queries: sqlcgen.New(pool)}
+	return &Store{queries: sqlcgen.New(pool), pool: pool}
 }
 
 func (s *Store) List(ctx context.Context, search string) ([]game.Game, error) {

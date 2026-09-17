@@ -140,6 +140,12 @@ func TestEventAndGameCatalogPersistence(t *testing.T) {
 	}
 
 	games := game.NewService(gamepostgres.NewStore(pool))
+	if _, err := games.Create(t.Context(), "Shared Name", "shared-a"); err != nil {
+		t.Fatalf("create first game with shared name: %v", err)
+	}
+	if _, err := games.Create(t.Context(), "Shared Name", "shared-b"); err != nil {
+		t.Fatalf("create second game with shared name: %v", err)
+	}
 	warcraft, err := games.Create(t.Context(), "Warcraft III", "warcraft-3")
 	if err != nil {
 		t.Fatalf("create game: %v", err)
@@ -163,7 +169,7 @@ func TestEventAndGameCatalogPersistence(t *testing.T) {
 		t.Fatalf("update game = %#v, %v", updatedGame, err)
 	}
 	allGames, err := games.List(t.Context(), "")
-	if err != nil || len(allGames) != 1 || allGames[0].Active {
+	if err != nil || len(allGames) != 3 || allGames[2].Active {
 		t.Fatalf("games after deactivation = %#v, %v", allGames, err)
 	}
 	if err := games.RemoveAlias(t.Context(), warcraft.ID, alias.ID); err != nil {
@@ -181,6 +187,45 @@ func TestEventAndGameCatalogPersistence(t *testing.T) {
 		VALUES ($1, 'steam', '123')
 	`, warcraft.ID); err == nil {
 		t.Fatal("duplicate provider/external ID unexpectedly succeeded")
+	}
+}
+
+func TestIGDBGenerationPersistence(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+
+	store := gamepostgres.NewStore(pool)
+	generationID, err := store.BeginGeneration(t.Context())
+	if err != nil {
+		t.Fatalf("BeginGeneration: %v", err)
+	}
+	batch := []game.ProviderGame{{
+		Reference: game.ProviderReference{Provider: "igdb", ExternalID: "100"},
+		Name:      "Shared Name",
+		Slug:      "shared",
+		GameType:  "Main Game",
+	}}
+	if err := store.StoreProviderGames(t.Context(), generationID, batch); err != nil {
+		t.Fatalf("StoreProviderGames: %v", err)
+	}
+	before, err := store.Status(t.Context(), time.Now().UTC())
+	if err != nil {
+		t.Fatalf("Status before activation: %v", err)
+	}
+	if before.State != game.ProviderNotSynced {
+		t.Fatalf("before = %#v", before)
+	}
+	if err := store.ActivateGeneration(t.Context(), generationID, 1); err != nil {
+		t.Fatalf("ActivateGeneration: %v", err)
+	}
+	after, err := store.Status(t.Context(), time.Now().UTC())
+	if err != nil {
+		t.Fatalf("Status after activation: %v", err)
+	}
+	if after.State != game.ProviderCurrent || after.RecordCount != 1 {
+		t.Fatalf("after = %#v", after)
 	}
 }
 
@@ -387,8 +432,8 @@ func TestMigrateAndReadyCheck(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get migration version: %v", err)
 	}
-	if version != 5 {
-		t.Errorf("migration version = %d, want 5", version)
+	if version != 6 {
+		t.Errorf("migration version = %d, want 6", version)
 	}
 
 	if err := migrateFS(t.Context(), pool, migrationFS, logger); err != nil {
