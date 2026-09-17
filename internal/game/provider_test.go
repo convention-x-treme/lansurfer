@@ -3,6 +3,7 @@ package game
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 )
@@ -75,5 +76,39 @@ func TestProviderReferenceValidation(t *testing.T) {
 		if _, err := NewProviderReference("igdb", id); !errors.Is(err, ErrInvalidProviderReference) {
 			t.Fatalf("external ID %q error = %v, want ErrInvalidProviderReference", id, err)
 		}
+	}
+}
+
+// TestProviderReferenceCanonicalizesExternalID pins the invariant that one
+// provider record has exactly one external ID string. The external ID is the
+// key for the game_external_ids mapping and for the deterministic
+// materialization slug, so a zero-padded value that survived as its own string
+// would materialize a second local Game for an already-materialized provider
+// record, and would then be archived by every later sync because the provider
+// index compares against the canonical igdb_id::text form.
+func TestProviderReferenceCanonicalizesExternalID(t *testing.T) {
+	padded, err := NewProviderReference("igdb", " 0100 ")
+	if err != nil {
+		t.Fatalf("padded reference: %v", err)
+	}
+	plain, err := NewProviderReference("igdb", "100")
+	if err != nil {
+		t.Fatalf("plain reference: %v", err)
+	}
+	if padded != plain {
+		t.Fatalf("padded = %#v, plain = %#v, want one canonical reference", padded, plain)
+	}
+	if padded.ExternalID != "100" {
+		t.Fatalf("padded.ExternalID = %q, want %q", padded.ExternalID, "100")
+	}
+	// Canonicalization also bounds the external ID to the digits of an int64,
+	// which is what keeps the deterministic "-igdb-<external ID>" slug suffix
+	// inside the 120-character games.slug limit.
+	longPadded, err := NewProviderReference("igdb", strings.Repeat("0", 200)+"7")
+	if err != nil {
+		t.Fatalf("long padded reference: %v", err)
+	}
+	if longPadded.ExternalID != "7" {
+		t.Fatalf("longPadded.ExternalID = %q, want %q", longPadded.ExternalID, "7")
 	}
 }

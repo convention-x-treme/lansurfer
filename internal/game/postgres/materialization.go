@@ -51,9 +51,14 @@ func (s *Store) Materialize(ctx context.Context, reference game.ProviderReferenc
 	if err != nil {
 		return game.Game{}, game.ErrInvalidProviderReference
 	}
+	// The mapping key, the slug suffix, and the numeric provider key must all
+	// describe one identity. Deriving the string form back from the parsed
+	// integer guarantees that locally, whatever the caller passed in: a padded
+	// "0100" must never map provider record 100 to a second local Game.
+	canonicalID := strconv.FormatInt(igdbID, 10)
 
 	for range maxMaterializationAttempts {
-		materialized, err := s.materializeIGDBGame(ctx, normalized.ExternalID, igdbID)
+		materialized, err := s.materializeIGDBGame(ctx, canonicalID, igdbID)
 		if err == nil {
 			return materialized, nil
 		}
@@ -65,7 +70,7 @@ func (s *Store) Materialize(ctx context.Context, reference game.ProviderReferenc
 		// our own transaction has already rolled back by now. A fresh read
 		// therefore observes the committed winner rather than a stale or
 		// empty snapshot.
-		winner, found, lookupErr := findMaterializedIGDBGame(ctx, s.queries, normalized.ExternalID)
+		winner, found, lookupErr := findMaterializedIGDBGame(ctx, s.queries, canonicalID)
 		if lookupErr != nil {
 			return game.Game{}, lookupErr
 		}
@@ -76,7 +81,7 @@ func (s *Store) Materialize(ctx context.Context, reference game.ProviderReferenc
 		// not from this provider record. Retry so slug selection observes the
 		// now-taken slug and falls through to the deterministic suffix.
 	}
-	return game.Game{}, fmt.Errorf("materialize IGDB game %s: repeated uniqueness conflicts", normalized.ExternalID)
+	return game.Game{}, fmt.Errorf("materialize IGDB game %s: repeated uniqueness conflicts", canonicalID)
 }
 
 // materializeIGDBGame performs one attempt inside a single transaction. The

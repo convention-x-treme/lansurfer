@@ -98,7 +98,13 @@ func NewProviderReference(provider, externalID string) (ProviderReference, error
 	if err != nil || value <= 0 {
 		return ProviderReference{}, ErrInvalidProviderReference
 	}
-	return ProviderReference{Provider: provider, ExternalID: externalID}, nil
+	// Canonicalize to the decimal form the provider index itself stores
+	// (igdb_id::text), so a padded value such as "0100" can never become a
+	// second identity for provider record 100. The external ID is the key for
+	// the game_external_ids mapping and for the deterministic materialization
+	// slug, and both must agree with the numeric provider key. Canonicalizing
+	// also bounds the string to at most 19 digits.
+	return ProviderReference{Provider: provider, ExternalID: strconv.FormatInt(value, 10)}, nil
 }
 
 // visibleProviderGameTypes is the single source of truth for the

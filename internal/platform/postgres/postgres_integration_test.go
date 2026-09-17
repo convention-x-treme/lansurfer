@@ -895,6 +895,36 @@ func TestIGDBMaterializationPostgreSQL(t *testing.T) {
 		}
 	})
 
+	t.Run("a zero-padded external ID resolves the existing game instead of duplicating it", func(t *testing.T) {
+		padded, err := discovery.Resolve(t.Context(), game.ProviderReference{Provider: "igdb", ExternalID: "0100"})
+		if err != nil {
+			t.Fatalf("Resolve padded: %v", err)
+		}
+		if padded.ID != first.ID || padded.Slug != first.Slug {
+			t.Fatalf("padded = %#v, want the existing local game %#v", padded, first)
+		}
+		// The provider index stores the canonical igdb_id::text form, so a
+		// stray '0100' mapping would both duplicate the Game and be archived
+		// by every later sync.
+		var mappings int
+		if err := pool.QueryRow(t.Context(), `
+			SELECT count(*) FROM game_external_ids
+			WHERE lower(btrim(provider))='igdb' AND external_id IN ('100', '0100')
+		`).Scan(&mappings); err != nil {
+			t.Fatalf("count mappings for provider record 100: %v", err)
+		}
+		if mappings != 1 {
+			t.Fatalf("mappings for provider record 100 = %d, want 1", mappings)
+		}
+		var canonical string
+		if err := pool.QueryRow(t.Context(), `SELECT external_id FROM game_external_ids WHERE game_id=$1`, first.ID).Scan(&canonical); err != nil {
+			t.Fatalf("load mapping external ID: %v", err)
+		}
+		if canonical != "100" {
+			t.Fatalf("stored external ID = %q, want the canonical %q", canonical, "100")
+		}
+	})
+
 	t.Run("unknown provider records are never fabricated into local games", func(t *testing.T) {
 		if _, err := discovery.Resolve(t.Context(), game.ProviderReference{Provider: "igdb", ExternalID: "999999"}); !errors.Is(err, game.ErrProviderRecordNotFound) {
 			t.Fatalf("Resolve unknown = %v, want %v", err, game.ErrProviderRecordNotFound)
