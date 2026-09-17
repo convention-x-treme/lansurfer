@@ -319,6 +319,20 @@ func (*fixture) CreationOptions(context.Context) ([]requestquery.GameOption, err
 	}, nil
 }
 
+// CountOpen is the whole installation's open total, never the filtered subset,
+// which is what the navigation badge states.
+func (f *fixture) CountOpen(context.Context) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var total int64
+	for _, entry := range f.requests {
+		if entry.request.Status == gamerequest.StatusOpen {
+			total++
+		}
+	}
+	return total, nil
+}
+
 func (f *fixture) Trending(context.Context) ([]requestquery.TrendingGame, error) {
 	return []requestquery.TrendingGame{{GameID: "game-1", GameName: "Warcraft III", ActivityCount: 4, RequestCount: 2}}, nil
 }

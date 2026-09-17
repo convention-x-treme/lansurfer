@@ -167,7 +167,7 @@ func TestListContentCarriesActiveFilters(t *testing.T) {
 	filter := requestquery.Filter{Search: "wc3", FollowedOnly: true, OpenPlacesOnly: true}
 
 	var rendered bytes.Buffer
-	if err := GameRequestListContent(branding.Default(), nil, filter, nil, "", false, nil).Render(context.Background(), &rendered); err != nil {
+	if err := GameRequestListContent(branding.Default(), nil, filter, nil, "", false, nil, "").Render(context.Background(), &rendered); err != nil {
 		t.Fatalf("render list content: %v", err)
 	}
 	body := rendered.String()

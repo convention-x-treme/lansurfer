@@ -17,12 +17,25 @@ CREATE INDEX game_requests_open_idx
 -- successful lifecycle changes, and it is also Track A's transactional handoff
 -- point to Track E: a row exists exactly when the domain change it describes
 -- committed, so a rolled-back mutation leaves no notification intent behind.
--- `sequence` gives Track E a stable replay cursor and a total order.
+--
+-- `sequence` identifies a row and orders the history of one Game Request. It is
+-- deliberately not a global replay cursor: the value is assigned when the row is
+-- inserted, not when its transaction commits, and creation takes no shared lock,
+-- so two concurrent changes can commit in the opposite order to their sequence
+-- values. A consumer advancing a single high-watermark would skip the row that
+-- committed late. Ordering within one request is safe because join, leave, close
+-- and cancel all serialize on the request row lock and `created` is always first.
+--
+-- `origin` separates what actually happened while LANsurfer was running from
+-- what this migration reconstructed. Reconstructed rows describe activity that
+-- predates the record, so they are history only and must never be treated as
+-- work to deliver.
 CREATE TABLE game_request_activity (
     sequence bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     game_request_id uuid NOT NULL REFERENCES game_requests (id) ON DELETE CASCADE,
     actor_id uuid NOT NULL REFERENCES users (id) ON DELETE RESTRICT,
     kind text NOT NULL CHECK (kind IN ('created', 'joined', 'left', 'closed', 'cancelled')),
+    origin text NOT NULL DEFAULT 'live' CHECK (origin IN ('live', 'backfill')),
     occurred_at timestamptz NOT NULL DEFAULT now()
 );
 
@@ -34,19 +47,21 @@ CREATE INDEX game_request_activity_recent_idx
 
 -- Prototype requests predate durable activity. Their creations and joins are
 -- reconstructed from the membership rows that recorded them.
-INSERT INTO game_request_activity (game_request_id, actor_id, kind, occurred_at)
+INSERT INTO game_request_activity (game_request_id, actor_id, kind, origin, occurred_at)
 SELECT m.game_request_id, m.user_id,
        CASE WHEN m.user_id = gr.creator_id THEN 'created' ELSE 'joined' END,
+       'backfill',
        CASE WHEN m.user_id = gr.creator_id THEN gr.created_at ELSE m.joined_at END
 FROM game_request_members m
 JOIN game_requests gr ON gr.id = m.game_request_id
-ORDER BY 4, m.game_request_id;
+ORDER BY 5, m.game_request_id;
 
 -- A request that already left the open state ends its history with that change.
 -- Only the creator can close or cancel, so the creator is the recorded actor.
-INSERT INTO game_request_activity (game_request_id, actor_id, kind, occurred_at)
+INSERT INTO game_request_activity (game_request_id, actor_id, kind, origin, occurred_at)
 SELECT gr.id, gr.creator_id,
        CASE gr.status WHEN 'closed' THEN 'closed' ELSE 'cancelled' END,
+       'backfill',
        gr.updated_at
 FROM game_requests gr
 WHERE gr.status <> 'open'

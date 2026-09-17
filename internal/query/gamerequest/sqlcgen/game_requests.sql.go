@@ -40,6 +40,20 @@ func (q *Queries) ActiveGamesForGameRequest(ctx context.Context) ([]ActiveGamesF
 	return items, nil
 }
 
+const countOpenGameRequests = `-- name: CountOpenGameRequests :one
+SELECT count(*) FROM game_requests WHERE status = 'open'
+`
+
+// CountOpenGameRequests backs the navigation badge, which states how many Game
+// Requests are open on this installation and is therefore deliberately not
+// affected by the viewer's discovery filters.
+func (q *Queries) CountOpenGameRequests(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, countOpenGameRequests)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const getGameRequest = `-- name: GetGameRequest :one
 SELECT gr.id::text AS request_id,
        g.name AS game_name,

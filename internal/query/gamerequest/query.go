@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	domain "github.com/convention-x-treme/lansurfer/internal/gamerequest"
 	"github.com/convention-x-treme/lansurfer/internal/query/gamerequest/sqlcgen"
@@ -96,7 +97,10 @@ func NewStore(pool *pgxpool.Pool) *Store {
 
 func (s *Store) ListActive(ctx context.Context, viewerID string, filter Filter) ([]Request, error) {
 	search := strings.TrimSpace(filter.Search)
-	if len(search) > maxSearchLength {
+	// Counted in characters, as the game catalog counts its own search term and
+	// as the browser's maxlength counts. Bytes would reject a shorter term than
+	// the player was allowed to type.
+	if utf8.RuneCountInString(search) > maxSearchLength {
 		return nil, ErrInvalidSearch
 	}
 	databaseViewerID, err := parseUUID(viewerID)
@@ -177,6 +181,17 @@ func (s *Store) Trending(ctx context.Context) ([]TrendingGame, error) {
 		})
 	}
 	return result, nil
+}
+
+// CountOpen reports how many Game Requests are open on this installation,
+// independent of any discovery filter, so the navigation badge keeps one
+// meaning whether or not the list beside it is narrowed.
+func (s *Store) CountOpen(ctx context.Context) (int64, error) {
+	total, err := s.queries.CountOpenGameRequests(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("count open game requests: %w", err)
+	}
+	return total, nil
 }
 
 // CreationOptions lists the games a player may request a round of. The

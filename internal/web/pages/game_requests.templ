@@ -24,8 +24,8 @@ type GameRequestForm struct {
 	Description string
 }
 
-templ GameRequestList(brand branding.Brand, navigation components.NavigationState, filter requestquery.Filter, requests []requestquery.Request, trending []requestquery.TrendingGame, message, notice string) {
-	@components.Layout(brand, "Game Requests", navigationWithCount(navigation, len(requests))) {
+templ GameRequestList(brand branding.Brand, navigation components.NavigationState, filter requestquery.Filter, requests []requestquery.Request, trending []requestquery.TrendingGame, openRequests int64, message, notice string) {
+	@components.Layout(brand, "Game Requests", navigationWithCount(navigation, openRequests)) {
 		<header class="app-topbar">
 			<div class="min-w-0">
 				<h1 class="app-title">Game Requests</h1>
@@ -38,11 +38,8 @@ templ GameRequestList(brand branding.Brand, navigation components.NavigationStat
 				if notice != "" {
 					<div role="status" class="alert alert-info mb-4"><span>{ notice }</span></div>
 				}
-				if message != "" {
-					<div role="alert" class="alert alert-error mb-4"><span>{ message }</span></div>
-				}
 				@RequestFilters(filter)
-				@GameRequestListContent(brand, requests, filter, navigation.Viewer, "", false, nil)
+				@GameRequestListContent(brand, requests, filter, navigation.Viewer, "", false, nil, message)
 			</div>
 			<aside class="request-rail" aria-label="Game Request summary">
 				@TrendingSection(trending, false)
@@ -108,7 +105,7 @@ templ TrendingSection(trending []requestquery.TrendingGame, oob bool) {
 	</section>
 }
 
-templ GameRequestListContent(brand branding.Brand, requests []requestquery.Request, filter requestquery.Filter, viewer *components.Viewer, highlightedID string, refresh bool, trending []requestquery.TrendingGame) {
+templ GameRequestListContent(brand branding.Brand, requests []requestquery.Request, filter requestquery.Filter, viewer *components.Viewer, highlightedID string, refresh bool, trending []requestquery.TrendingGame, message string) {
 	if refresh {
 		@RequestStats(requests, true)
 		if trending != nil {
@@ -116,6 +113,9 @@ templ GameRequestListContent(brand branding.Brand, requests []requestquery.Reque
 		}
 	}
 	<div id="game-request-list" data-game-request-list data-filter-query={ filterQuery(filter) } aria-live="polite" aria-busy="false">
+		if message != "" {
+			<div role="alert" class="alert alert-error mb-4"><span>{ message }</span></div>
+		}
 		<div class="request-list-skeleton" aria-hidden="true">
 			for range 3 {
 				<div class="request-skeleton-row"><span></span><span></span><span></span></div>
@@ -625,9 +625,11 @@ func romanDigit(word string) rune {
 	}
 }
 
-// updatedLabel stamps when the page rendered its data. app.ts refreshes it
-// after a live list update so it never claims data is newer than it is.
-func navigationWithCount(navigation components.NavigationState, openRequests int) components.NavigationState {
+// navigationWithCount carries how many Game Requests are open on the whole
+// installation, not how many the current filter matched. The badge sits in the
+// shell beside every section, so a number that changed meaning with the
+// viewer's filter would read as the instance suddenly going quiet.
+func navigationWithCount(navigation components.NavigationState, openRequests int64) components.NavigationState {
 	navigation.OpenRequests = openRequests
 	return navigation
 }

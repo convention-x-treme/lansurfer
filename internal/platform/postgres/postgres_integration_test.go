@@ -693,6 +693,19 @@ func TestForwardMigrationPreservesPrototypeGameRequests(t *testing.T) {
 				t.Fatalf("legacy event rows = %d, want 1", legacyEvents)
 			}
 			assertNoEventAssociation(t, pool)
+
+			// Reconstructed history describes activity that happened before
+			// there was a record of it. A notification consumer must be able to
+			// tell it apart from something that just happened, or the first
+			// start after an upgrade delivers the whole archive.
+			var live int
+			if err := pool.QueryRow(t.Context(),
+				"SELECT count(*) FROM game_request_activity WHERE origin <> 'backfill'").Scan(&live); err != nil {
+				t.Fatalf("count non-backfill activity: %v", err)
+			}
+			if live != 0 {
+				t.Fatalf("migration produced %d activity rows not marked as backfill, want 0", live)
+			}
 		})
 	}
 
@@ -892,6 +905,16 @@ func TestGameRequestActivityDiscoveryAndTrending(t *testing.T) {
 	}
 	if got := activityKinds(detail.Activity); !slices.Equal(got, wantKinds) {
 		t.Fatalf("activity = %v, want %v (rejected mutations must not record anything)", got, wantKinds)
+	}
+	// Everything written while the application is running is deliverable work;
+	// only the migration's reconstruction is not.
+	var backfilled int
+	if err := pool.QueryRow(t.Context(),
+		"SELECT count(*) FROM game_request_activity WHERE origin <> 'live'").Scan(&backfilled); err != nil {
+		t.Fatalf("count backfilled activity: %v", err)
+	}
+	if backfilled != 0 {
+		t.Fatalf("%d rows written at runtime are marked as backfill, want 0", backfilled)
 	}
 	// Leaving removed the membership but not the history of the round.
 	if detail.MemberCount != 1 {
@@ -1122,4 +1145,74 @@ func reopenTestPool(t *testing.T, schemaName string) *pgxpool.Pool {
 	}
 	t.Cleanup(pool.Close)
 	return pool
+}
+
+// Leaving removes current membership but not the record of having been there.
+// Issue #14 names join -> leave -> rejoin as the case that separates the two:
+// the player is a member once, and the history holds both joins and the leave.
+func TestGameRequestActivityKeepsHistoryAcrossRejoin(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+
+	users := user.NewService(userpostgres.NewStore(pool))
+	host, err := users.Register(t.Context(), "Rejoin Host")
+	if err != nil {
+		t.Fatalf("register host: %v", err)
+	}
+	guest, err := users.Register(t.Context(), "Rejoin Guest")
+	if err != nil {
+		t.Fatalf("register guest: %v", err)
+	}
+	catalog := game.NewService(gamepostgres.NewStore(pool))
+	selectedGame, err := catalog.Create(t.Context(), "Trackmania", "trackmania")
+	if err != nil {
+		t.Fatalf("create game: %v", err)
+	}
+
+	requests := gamerequest.NewService(gamerequestpostgres.NewStore(pool), catalog, nil)
+	readStore := gamerequestquery.NewStore(pool)
+	created, err := requests.Create(t.Context(), host.ID, selectedGame.ID, nil, time.Now().UTC().Add(time.Hour), "Rejoinable round")
+	if err != nil {
+		t.Fatalf("create game request: %v", err)
+	}
+
+	if err := requests.Join(t.Context(), created.ID, guest.ID); err != nil {
+		t.Fatalf("first join: %v", err)
+	}
+	if err := requests.Leave(t.Context(), created.ID, guest.ID); err != nil {
+		t.Fatalf("leave: %v", err)
+	}
+	if err := requests.Join(t.Context(), created.ID, guest.ID); err != nil {
+		t.Fatalf("rejoin: %v", err)
+	}
+
+	detail, err := readStore.ByID(t.Context(), created.ID, guest.ID)
+	if err != nil {
+		t.Fatalf("read rejoined request: %v", err)
+	}
+	want := []gamerequest.ActivityKind{
+		gamerequest.ActivityJoined, gamerequest.ActivityLeft,
+		gamerequest.ActivityJoined, gamerequest.ActivityCreated,
+	}
+	if got := activityKinds(detail.Activity); !slices.Equal(got, want) {
+		t.Fatalf("activity = %v, want %v", got, want)
+	}
+	if detail.MemberCount != 2 || !detail.ViewerJoined {
+		t.Fatalf("after rejoin member count = %d, viewer joined = %t, want 2 and true", detail.MemberCount, detail.ViewerJoined)
+	}
+	appearances := 0
+	for _, member := range detail.Members {
+		if member.ID == guest.ID {
+			appearances++
+		}
+	}
+	if appearances != 1 {
+		t.Fatalf("rejoined player appears %d times in the member list, want 1", appearances)
+	}
+	// The rejoin is a new entry rather than the old one resurfacing.
+	if detail.Activity[0].OccurredAt.Before(detail.Activity[1].OccurredAt) {
+		t.Fatalf("rejoin entry is older than the leave it followed: %#v", detail.Activity[:2])
+	}
 }

@@ -71,7 +71,9 @@ Do not infer delivery dates, staffing, owners, or completion percentages from th
 ### Cross-track contracts
 
 1. **Track A → Track E: Game Request notification contract**
-   - Track A owns Game Request writes and the transactional outbox integration point. That integration point is the `game_request_activity` table: one row per committed change, carrying `sequence` (total order and replay cursor), `game_request_id`, `actor_id`, `kind`, and `occurred_at`.
+   - Track A owns Game Request writes and the transactional outbox integration point. That integration point is the `game_request_activity` table: one row per committed change, carrying `sequence`, `game_request_id`, `actor_id`, `kind`, `origin`, and `occurred_at`.
+   - `sequence` is a stable row identifier and orders one Game Request's history. It is **not** a global replay cursor: sequence values are assigned at insert time, not commit time, so a consumer advancing a single high-watermark would skip a row whose transaction committed late. Track E keeps durable per-row delivery state instead, and relies only on ordering within a Game Request, which the request row lock guarantees.
+   - `origin` distinguishes `live` rows from the `backfill` rows the single-event migration reconstructed. Backfilled rows are history only and are never deliverable. A consumer's first start on an installation that already has `live` history establishes its own baseline so an upgrade does not deliver the archive.
    - Track E owns durable workers, retry behavior, delivery persistence, and transport adapters.
    - Domain write + notification intent commit in the same PostgreSQL transaction where notification work is required.
    - Agree stable request/work identifiers, change kinds, ordering, replay, and stale-update handling. A failed/rolled-back mutation leaves no notification intent.

@@ -413,6 +413,63 @@ func TestGameRequestDiscoveryFiltersAndTrending(t *testing.T) {
 	}
 }
 
+// The navigation badge sits in the shell beside every section, so it states how
+// many Game Requests are open on the installation. Deriving it from the
+// filtered list made the same instance look busy or quiet depending on what the
+// viewer had typed, and made an htmx filter and a reload of the same URL
+// disagree.
+func TestNavigationBadgeIgnoresDiscoveryFilters(t *testing.T) {
+	queries := &routerGameRequestQueries{
+		items: []requestquery.Request{{
+			ID: "request-1", GameName: "Warcraft III", CreatorID: "creator-1",
+			CreatorName: "Grace", StartsAt: time.Now(), Status: gamerequest.StatusOpen, MemberCount: 1,
+		}},
+		openTotal: 10,
+	}
+	router := gameRequestTestRouter(&routerGameRequests{}, queries)
+
+	request := httptest.NewRequest(http.MethodGet, "/game-requests?q=warcraft", nil)
+	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d", response.Code)
+	}
+	body := response.Body.String()
+	if !strings.Contains(body, `class="data-text count-hot ml-auto text-xs">10<`) {
+		t.Errorf("badge does not show the installation's open total: %s", body)
+	}
+	if !strings.Contains(body, "1 matching open request") {
+		t.Errorf("filtered list count is missing: %s", body)
+	}
+}
+
+// A rejected search has to explain itself on the htmx path too. Swapping in an
+// empty list with no message reads as "nothing matches" rather than "that
+// search was refused".
+func TestRejectedSearchExplainsItselfInTheFragment(t *testing.T) {
+	queries := &routerGameRequestQueries{listErr: requestquery.ErrInvalidSearch}
+	router := gameRequestTestRouter(&routerGameRequests{}, queries)
+
+	request := httptest.NewRequest(http.MethodGet, "/game-requests?q="+strings.Repeat("x", 200), nil)
+	request.Header.Set("HX-Request", "true")
+	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusUnprocessableEntity)
+	}
+	body := response.Body.String()
+	if !strings.Contains(body, "Search must be 120 characters or fewer.") {
+		t.Errorf("fragment does not explain the rejected search: %s", body)
+	}
+	if !strings.Contains(body, `id="game-request-list"`) {
+		t.Errorf("fragment is not the list region: %s", body)
+	}
+}
+
 func TestGameRequestBrowserWorkflow(t *testing.T) {
 	commands := &routerGameRequests{}
 	queries := &routerGameRequestQueries{
@@ -609,10 +666,12 @@ func (r *routerGameRequests) Cancel(_ context.Context, requestID, userID string)
 }
 
 type routerGameRequestQueries struct {
-	items    []requestquery.Request
-	options  []requestquery.GameOption
-	trending []requestquery.TrendingGame
-	filter   requestquery.Filter
+	items     []requestquery.Request
+	options   []requestquery.GameOption
+	trending  []requestquery.TrendingGame
+	filter    requestquery.Filter
+	openTotal int64
+	listErr   error
 }
 
 type routerRealtime struct{ events <-chan gamerequest.Event }
@@ -623,6 +682,9 @@ func (r *routerRealtime) Subscribe() (<-chan gamerequest.Event, func()) {
 
 func (r *routerGameRequestQueries) ListActive(_ context.Context, _ string, filter requestquery.Filter) ([]requestquery.Request, error) {
 	r.filter = filter
+	if r.listErr != nil {
+		return nil, r.listErr
+	}
 	return r.items, nil
 }
 func (r *routerGameRequestQueries) ByID(_ context.Context, id, _ string) (requestquery.Request, error) {
@@ -638,6 +700,12 @@ func (r *routerGameRequestQueries) CreationOptions(context.Context) ([]requestqu
 }
 func (r *routerGameRequestQueries) Trending(context.Context) ([]requestquery.TrendingGame, error) {
 	return r.trending, nil
+}
+func (r *routerGameRequestQueries) CountOpen(context.Context) (int64, error) {
+	if r.openTotal != 0 {
+		return r.openTotal, nil
+	}
+	return int64(len(r.items)), nil
 }
 
 func (r *routerSubscriptions) Browse(_ context.Context, _, search string) ([]game.SubscriptionGame, error) {

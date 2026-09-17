@@ -79,5 +79,11 @@ GROUP BY g.id, g.name
 ORDER BY count(*) DESC, count(DISTINCT a.game_request_id) DESC, lower(g.name), g.id
 LIMIT sqlc.arg(result_limit);
 
+-- CountOpenGameRequests backs the navigation badge, which states how many Game
+-- Requests are open on this installation and is therefore deliberately not
+-- affected by the viewer's discovery filters.
+-- name: CountOpenGameRequests :one
+SELECT count(*) FROM game_requests WHERE status = 'open';
+
 -- name: ActiveGamesForGameRequest :many
 SELECT id::text, name FROM games WHERE active ORDER BY lower(name), id;

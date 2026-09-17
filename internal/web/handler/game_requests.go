@@ -33,6 +33,7 @@ type GameRequestQueries interface {
 	ByID(context.Context, string, string) (requestquery.Request, error)
 	CreationOptions(context.Context) ([]requestquery.GameOption, error)
 	Trending(context.Context) ([]requestquery.TrendingGame, error)
+	CountOpen(context.Context) (int64, error)
 }
 
 type GameRequests struct {
@@ -67,7 +68,9 @@ func (h *GameRequests) List(w http.ResponseWriter, r *http.Request) {
 func (h *GameRequests) renderList(w http.ResponseWriter, r *http.Request, status int, requests []requestquery.Request, filter requestquery.Filter, message string) {
 	navigation := requestNavigation(r)
 	if r.Header.Get("HX-Request") == "true" {
-		render(w, r, status, pages.GameRequestListContent(h.brand, requests, filter, navigation.Viewer, "", true, nil))
+		// The fragment carries the message too, or a rejected search would
+		// swap in an empty list with nothing explaining why.
+		render(w, r, status, pages.GameRequestListContent(h.brand, requests, filter, navigation.Viewer, "", true, nil, message))
 		return
 	}
 	trending, err := h.queries.Trending(r.Context())
@@ -76,7 +79,13 @@ func (h *GameRequests) renderList(w http.ResponseWriter, r *http.Request, status
 		h.renderError(w, r)
 		return
 	}
-	render(w, r, status, pages.GameRequestList(h.brand, navigation, filter, requests, trending, message, notice(r)))
+	openRequests, err := h.queries.CountOpen(r.Context())
+	if err != nil {
+		webmiddleware.LogError(r, "count open Game Requests", err)
+		h.renderError(w, r)
+		return
+	}
+	render(w, r, status, pages.GameRequestList(h.brand, navigation, filter, requests, trending, openRequests, message, notice(r)))
 }
 
 func (h *GameRequests) RefreshList(w http.ResponseWriter, r *http.Request) {
@@ -95,7 +104,7 @@ func (h *GameRequests) RefreshList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	navigation := requestNavigation(r)
-	render(w, r, http.StatusOK, pages.GameRequestListContent(h.brand, requests, filter, navigation.Viewer, r.URL.Query().Get("highlight"), true, trending))
+	render(w, r, http.StatusOK, pages.GameRequestListContent(h.brand, requests, filter, navigation.Viewer, r.URL.Query().Get("highlight"), true, trending, ""))
 }
 
 // discoveryFilter reads the stable 1.0 Game Request discovery filters. An
