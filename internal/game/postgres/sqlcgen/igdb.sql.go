@@ -14,9 +14,15 @@ import (
 const activateIGDBGeneration = `-- name: ActivateIGDBGeneration :exec
 UPDATE igdb_provider_state
 SET active_generation_id = $1::uuid,
-    last_attempt_succeeded = true,
+    last_attempt_succeeded = CASE
+        WHEN latest_attempt_generation_id = $1::uuid THEN true
+        ELSE last_attempt_succeeded
+    END,
     last_success_at = now(),
-    last_error = NULL
+    last_error = CASE
+        WHEN latest_attempt_generation_id = $1::uuid THEN NULL
+        ELSE last_error
+    END
 WHERE singleton
 `
 
@@ -49,7 +55,8 @@ WITH generation AS (
     RETURNING id, started_at
 ), provider_state AS (
     UPDATE igdb_provider_state state
-    SET last_attempt_at = generation.started_at,
+    SET latest_attempt_generation_id = generation.id,
+        last_attempt_at = generation.started_at,
         last_attempt_succeeded = NULL,
         last_error = NULL
     FROM generation
@@ -94,6 +101,12 @@ func (q *Queries) CompleteIGDBGeneration(ctx context.Context, arg CompleteIGDBGe
 const deleteInactiveIGDBGenerations = `-- name: DeleteInactiveIGDBGenerations :exec
 DELETE FROM igdb_sync_generations
 WHERE id <> $1::uuid
+  AND status IN ('complete', 'failed')
+  AND id IS DISTINCT FROM (
+      SELECT latest_attempt_generation_id
+      FROM igdb_provider_state
+      WHERE singleton
+  )
 `
 
 func (q *Queries) DeleteInactiveIGDBGenerations(ctx context.Context, activeGenerationID pgtype.UUID) error {
@@ -163,10 +176,16 @@ UPDATE igdb_provider_state
 SET last_attempt_succeeded = false,
     last_error = $1
 WHERE singleton
+  AND latest_attempt_generation_id = $2::uuid
 `
 
-func (q *Queries) RecordIGDBGenerationFailure(ctx context.Context, error pgtype.Text) error {
-	_, err := q.db.Exec(ctx, recordIGDBGenerationFailure, error)
+type RecordIGDBGenerationFailureParams struct {
+	Error        pgtype.Text
+	GenerationID pgtype.UUID
+}
+
+func (q *Queries) RecordIGDBGenerationFailure(ctx context.Context, arg RecordIGDBGenerationFailureParams) error {
+	_, err := q.db.Exec(ctx, recordIGDBGenerationFailure, arg.Error, arg.GenerationID)
 	return err
 }
 
@@ -187,7 +206,14 @@ func (q *Queries) RestorePresentIGDBExternalIDs(ctx context.Context, generationI
 	return err
 }
 
-const storeIGDBProviderGame = `-- name: StoreIGDBProviderGame :exec
+const storeIGDBProviderGame = `-- name: StoreIGDBProviderGame :execrows
+WITH generation AS (
+    SELECT id
+    FROM igdb_sync_generations
+    WHERE id = $14::uuid
+      AND status = 'syncing'
+    FOR SHARE
+)
 INSERT INTO igdb_game_index (
     generation_id,
     igdb_id,
@@ -203,8 +229,9 @@ INSERT INTO igdb_game_index (
     igdb_updated_at,
     checksum,
     search_text
-) VALUES (
-    $1::uuid,
+) SELECT
+    generation.id,
+    $1,
     $2,
     $3,
     $4,
@@ -216,13 +243,11 @@ INSERT INTO igdb_game_index (
     $10,
     $11,
     $12,
-    $13,
-    $14
-)
+    $13
+FROM generation
 `
 
 type StoreIGDBProviderGameParams struct {
-	GenerationID        pgtype.UUID
 	IgdbID              int64
 	Name                string
 	Slug                string
@@ -236,11 +261,11 @@ type StoreIGDBProviderGameParams struct {
 	IgdbUpdatedAt       pgtype.Timestamptz
 	Checksum            pgtype.UUID
 	SearchText          string
+	GenerationID        pgtype.UUID
 }
 
-func (q *Queries) StoreIGDBProviderGame(ctx context.Context, arg StoreIGDBProviderGameParams) error {
-	_, err := q.db.Exec(ctx, storeIGDBProviderGame,
-		arg.GenerationID,
+func (q *Queries) StoreIGDBProviderGame(ctx context.Context, arg StoreIGDBProviderGameParams) (int64, error) {
+	result, err := q.db.Exec(ctx, storeIGDBProviderGame,
 		arg.IgdbID,
 		arg.Name,
 		arg.Slug,
@@ -254,6 +279,10 @@ func (q *Queries) StoreIGDBProviderGame(ctx context.Context, arg StoreIGDBProvid
 		arg.IgdbUpdatedAt,
 		arg.Checksum,
 		arg.SearchText,
+		arg.GenerationID,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

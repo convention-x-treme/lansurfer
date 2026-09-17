@@ -17,6 +17,7 @@ CREATE TABLE igdb_sync_generations (
 CREATE TABLE igdb_provider_state (
     singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton),
     active_generation_id uuid NULL REFERENCES igdb_sync_generations (id),
+    latest_attempt_generation_id uuid NULL REFERENCES igdb_sync_generations (id),
     last_attempt_at timestamptz NULL,
     last_attempt_succeeded boolean NULL,
     last_success_at timestamptz NULL,

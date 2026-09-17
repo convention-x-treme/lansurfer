@@ -30,14 +30,27 @@ func (s *Store) StoreProviderGames(ctx context.Context, generationID string, gam
 	if err != nil {
 		return fmt.Errorf("parse IGDB generation ID: %w", err)
 	}
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return fmt.Errorf("begin IGDB staging transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	queries := s.queries.WithTx(tx)
 	for _, providerGame := range games {
 		parameters, err := storeIGDBProviderGameParams(databaseGenerationID, providerGame)
 		if err != nil {
 			return err
 		}
-		if err := s.queries.StoreIGDBProviderGame(ctx, parameters); err != nil {
+		stored, err := queries.StoreIGDBProviderGame(ctx, parameters)
+		if err != nil {
 			return fmt.Errorf("store IGDB provider game %s: %w", providerGame.Reference.ExternalID, err)
 		}
+		if stored != 1 {
+			return fmt.Errorf("store IGDB provider game %s: generation is not syncing", providerGame.Reference.ExternalID)
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit IGDB staging: %w", err)
 	}
 	return nil
 }
@@ -105,7 +118,10 @@ func (s *Store) FailGeneration(ctx context.Context, generationID, failure string
 	if err != nil {
 		return fmt.Errorf("fail IGDB generation: %w", err)
 	}
-	if err := queries.RecordIGDBGenerationFailure(ctx, pgtype.Text{String: failure, Valid: true}); err != nil {
+	if err := queries.RecordIGDBGenerationFailure(ctx, sqlcgen.RecordIGDBGenerationFailureParams{
+		Error:        pgtype.Text{String: failure, Valid: true},
+		GenerationID: databaseGenerationID,
+	}); err != nil {
 		return fmt.Errorf("record IGDB generation failure: %w", err)
 	}
 	if err := tx.Commit(ctx); err != nil {

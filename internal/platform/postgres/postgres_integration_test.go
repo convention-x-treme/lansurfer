@@ -12,6 +12,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"testing/fstest"
@@ -226,6 +227,352 @@ func TestIGDBGenerationPersistence(t *testing.T) {
 	}
 	if after.State != game.ProviderCurrent || after.RecordCount != 1 {
 		t.Fatalf("after = %#v", after)
+	}
+}
+
+func TestIGDBGenerationRejectsWritesAfterActivation(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+
+	store := gamepostgres.NewStore(pool)
+	generationID, err := store.BeginGeneration(t.Context())
+	if err != nil {
+		t.Fatalf("BeginGeneration: %v", err)
+	}
+	if err := store.StoreProviderGames(t.Context(), generationID, []game.ProviderGame{testProviderGame("100")}); err != nil {
+		t.Fatalf("StoreProviderGames before activation: %v", err)
+	}
+	if err := store.ActivateGeneration(t.Context(), generationID, 1); err != nil {
+		t.Fatalf("ActivateGeneration: %v", err)
+	}
+	if err := store.StoreProviderGames(t.Context(), generationID, []game.ProviderGame{testProviderGame("101")}); err == nil {
+		t.Fatal("StoreProviderGames after activation unexpectedly succeeded")
+	}
+	var count int
+	if err := pool.QueryRow(t.Context(), `SELECT count(*) FROM igdb_game_index WHERE generation_id=$1`, generationID).Scan(&count); err != nil {
+		t.Fatalf("count active generation records: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("active generation record count = %d, want 1", count)
+	}
+}
+
+func TestIGDBGenerationActivationWaitsForAcceptedWrite(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+	if _, err := pool.Exec(t.Context(), `
+		CREATE FUNCTION block_igdb_test_insert() RETURNS trigger LANGUAGE plpgsql AS $$
+		BEGIN
+			PERFORM pg_advisory_xact_lock(730031);
+			RETURN NEW;
+		END $$;
+		CREATE TRIGGER block_igdb_test_insert
+		BEFORE INSERT ON igdb_game_index
+		FOR EACH ROW EXECUTE FUNCTION block_igdb_test_insert();
+	`); err != nil {
+		t.Fatalf("install blocking insert trigger: %v", err)
+	}
+
+	store := gamepostgres.NewStore(pool)
+	generationID, err := store.BeginGeneration(t.Context())
+	if err != nil {
+		t.Fatalf("BeginGeneration: %v", err)
+	}
+	blocker, err := pool.Begin(t.Context())
+	if err != nil {
+		t.Fatalf("begin advisory-lock transaction: %v", err)
+	}
+	blockerOpen := true
+	defer func() {
+		if blockerOpen {
+			_ = blocker.Rollback(context.Background())
+		}
+	}()
+	if _, err := blocker.Exec(t.Context(), `SELECT pg_advisory_xact_lock(730031)`); err != nil {
+		t.Fatalf("hold advisory lock: %v", err)
+	}
+
+	storeDone := make(chan error, 1)
+	go func() {
+		storeDone <- store.StoreProviderGames(t.Context(), generationID, []game.ProviderGame{testProviderGame("100")})
+	}()
+	waitForAdvisoryWaiter(t, pool)
+
+	activationDone := make(chan error, 1)
+	go func() {
+		activationDone <- store.ActivateGeneration(t.Context(), generationID, 1)
+	}()
+	var activationErr error
+	activationReturnedEarly := false
+	select {
+	case activationErr = <-activationDone:
+		activationReturnedEarly = true
+	case <-time.After(200 * time.Millisecond):
+	}
+	if err := blocker.Commit(t.Context()); err != nil {
+		t.Fatalf("release advisory lock: %v", err)
+	}
+	blockerOpen = false
+	if err := <-storeDone; err != nil {
+		t.Fatalf("StoreProviderGames: %v", err)
+	}
+	if !activationReturnedEarly {
+		activationErr = <-activationDone
+	}
+	if activationErr != nil {
+		t.Fatalf("ActivateGeneration: %v", activationErr)
+	}
+	if activationReturnedEarly {
+		t.Fatal("ActivateGeneration returned while an accepted staged write was still in flight")
+	}
+	var count int
+	if err := pool.QueryRow(t.Context(), `SELECT count(*) FROM igdb_game_index WHERE generation_id=$1`, generationID).Scan(&count); err != nil {
+		t.Fatalf("count active generation records: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("active generation record count = %d, want 1", count)
+	}
+}
+
+func TestIGDBActivationPreservesNewerSyncingGenerationAndCleansRetiredGeneration(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+	store := gamepostgres.NewStore(pool)
+	firstID, err := store.BeginGeneration(t.Context())
+	if err != nil {
+		t.Fatalf("begin first generation: %v", err)
+	}
+	if err := store.StoreProviderGames(t.Context(), firstID, []game.ProviderGame{testProviderGame("100")}); err != nil {
+		t.Fatalf("store first generation: %v", err)
+	}
+	secondID, err := store.BeginGeneration(t.Context())
+	if err != nil {
+		t.Fatalf("begin second generation: %v", err)
+	}
+	if err := store.ActivateGeneration(t.Context(), firstID, 1); err != nil {
+		t.Fatalf("activate first generation: %v", err)
+	}
+	var secondStatus string
+	if err := pool.QueryRow(t.Context(), `SELECT status FROM igdb_sync_generations WHERE id=$1`, secondID).Scan(&secondStatus); err != nil {
+		t.Fatalf("load newer generation after first activation: %v", err)
+	}
+	if secondStatus != "syncing" {
+		t.Fatalf("newer generation status = %q, want syncing", secondStatus)
+	}
+	if err := store.StoreProviderGames(t.Context(), secondID, []game.ProviderGame{testProviderGame("200")}); err != nil {
+		t.Fatalf("store newer generation: %v", err)
+	}
+	if err := store.ActivateGeneration(t.Context(), secondID, 1); err != nil {
+		t.Fatalf("activate second generation: %v", err)
+	}
+	var firstExists, secondExists bool
+	if err := pool.QueryRow(t.Context(), `
+		SELECT EXISTS(SELECT 1 FROM igdb_sync_generations WHERE id=$1),
+		       EXISTS(SELECT 1 FROM igdb_sync_generations WHERE id=$2)
+	`, firstID, secondID).Scan(&firstExists, &secondExists); err != nil {
+		t.Fatalf("load generation cleanup state: %v", err)
+	}
+	if firstExists || !secondExists {
+		t.Fatalf("generation existence after replacement = first:%t second:%t", firstExists, secondExists)
+	}
+}
+
+func TestIGDBLatestAttemptOutcomeRemainsCorrelated(t *testing.T) {
+	t.Run("older failure does not replace newer in-flight attempt", func(t *testing.T) {
+		pool := newTestPool(t)
+		if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+			t.Fatalf("Migrate() error = %v", err)
+		}
+		store := gamepostgres.NewStore(pool)
+		olderID, err := store.BeginGeneration(t.Context())
+		if err != nil {
+			t.Fatalf("begin older generation: %v", err)
+		}
+		newerID, err := store.BeginGeneration(t.Context())
+		if err != nil {
+			t.Fatalf("begin newer generation: %v", err)
+		}
+		if err := store.FailGeneration(t.Context(), olderID, "older failed"); err != nil {
+			t.Fatalf("fail older generation: %v", err)
+		}
+		status, err := store.Status(t.Context(), time.Now().UTC())
+		if err != nil {
+			t.Fatalf("Status: %v", err)
+		}
+		if status.State != game.ProviderNotSynced || status.LastError != "" {
+			t.Fatalf("status after older failure = %#v", status)
+		}
+		var latestID string
+		if err := pool.QueryRow(t.Context(), `SELECT latest_attempt_generation_id::text FROM igdb_provider_state`).Scan(&latestID); err != nil {
+			t.Fatalf("load latest attempt: %v", err)
+		}
+		if latestID != newerID {
+			t.Fatalf("latest attempt ID = %q, want %q", latestID, newerID)
+		}
+	})
+
+	t.Run("older success does not erase newer failure", func(t *testing.T) {
+		pool := newTestPool(t)
+		if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+			t.Fatalf("Migrate() error = %v", err)
+		}
+		store := gamepostgres.NewStore(pool)
+		olderID, err := store.BeginGeneration(t.Context())
+		if err != nil {
+			t.Fatalf("begin older generation: %v", err)
+		}
+		if err := store.StoreProviderGames(t.Context(), olderID, []game.ProviderGame{testProviderGame("100")}); err != nil {
+			t.Fatalf("store older generation: %v", err)
+		}
+		newerID, err := store.BeginGeneration(t.Context())
+		if err != nil {
+			t.Fatalf("begin newer generation: %v", err)
+		}
+		if err := store.FailGeneration(t.Context(), newerID, "newest failed"); err != nil {
+			t.Fatalf("fail newer generation: %v", err)
+		}
+		if err := store.ActivateGeneration(t.Context(), olderID, 1); err != nil {
+			t.Fatalf("activate older generation: %v", err)
+		}
+		status, err := store.Status(t.Context(), time.Now().UTC())
+		if err != nil {
+			t.Fatalf("Status: %v", err)
+		}
+		if status.State != game.ProviderFailed || status.LastError != "newest failed" || status.RecordCount != 1 {
+			t.Fatalf("status after older success = %#v", status)
+		}
+	})
+}
+
+func TestIGDBFailurePreservesActiveGenerationAndSanitizesError(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+	store := gamepostgres.NewStore(pool)
+	activeID, err := store.BeginGeneration(t.Context())
+	if err != nil {
+		t.Fatalf("begin active generation: %v", err)
+	}
+	if err := store.StoreProviderGames(t.Context(), activeID, []game.ProviderGame{testProviderGame("100")}); err != nil {
+		t.Fatalf("store active generation: %v", err)
+	}
+	if err := store.ActivateGeneration(t.Context(), activeID, 1); err != nil {
+		t.Fatalf("activate first generation: %v", err)
+	}
+	failedID, err := store.BeginGeneration(t.Context())
+	if err != nil {
+		t.Fatalf("begin failed generation: %v", err)
+	}
+	failure := "line one\nline two\r\n" + strings.Repeat("界", 600)
+	if err := store.FailGeneration(t.Context(), failedID, failure); err != nil {
+		t.Fatalf("FailGeneration: %v", err)
+	}
+	status, err := store.Status(t.Context(), time.Now().UTC())
+	if err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+	if status.State != game.ProviderFailed || status.RecordCount != 1 || status.LastError == "" {
+		t.Fatalf("status after failed refresh = %#v", status)
+	}
+	if strings.ContainsAny(status.LastError, "\r\n") || len([]rune(status.LastError)) != 500 || !strings.HasPrefix(status.LastError, "line one line two ") {
+		t.Fatalf("sanitized error length=%d value=%q", len([]rune(status.LastError)), status.LastError)
+	}
+	var gotActiveID, generationError string
+	if err := pool.QueryRow(t.Context(), `
+		SELECT state.active_generation_id::text, generation.error
+		FROM igdb_provider_state state
+		JOIN igdb_sync_generations generation ON generation.id=$1
+	`, failedID).Scan(&gotActiveID, &generationError); err != nil {
+		t.Fatalf("load active and failed generation: %v", err)
+	}
+	if gotActiveID != activeID || generationError != status.LastError {
+		t.Fatalf("failure state = active:%q error:%q", gotActiveID, generationError)
+	}
+}
+
+func TestIGDBStatusStaleBoundary(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+	store := gamepostgres.NewStore(pool)
+	generationID, err := store.BeginGeneration(t.Context())
+	if err != nil {
+		t.Fatalf("BeginGeneration: %v", err)
+	}
+	if err := store.ActivateGeneration(t.Context(), generationID, 0); err != nil {
+		t.Fatalf("ActivateGeneration: %v", err)
+	}
+	lastSuccess := time.Date(2026, time.September, 15, 12, 0, 0, 0, time.UTC)
+	if _, err := pool.Exec(t.Context(), `UPDATE igdb_provider_state SET last_success_at=$1`, lastSuccess); err != nil {
+		t.Fatalf("set last success: %v", err)
+	}
+	boundary, err := store.Status(t.Context(), lastSuccess.Add(36*time.Hour))
+	if err != nil {
+		t.Fatalf("Status at boundary: %v", err)
+	}
+	if boundary.State != game.ProviderCurrent {
+		t.Fatalf("status at stale boundary = %#v", boundary)
+	}
+	stale, err := store.Status(t.Context(), lastSuccess.Add(36*time.Hour+time.Microsecond))
+	if err != nil {
+		t.Fatalf("Status after boundary: %v", err)
+	}
+	if stale.State != game.ProviderStale {
+		t.Fatalf("status after stale boundary = %#v", stale)
+	}
+}
+
+func TestIGDBActivationArchivesAndRestoresExternalIdentity(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+	games := game.NewService(gamepostgres.NewStore(pool))
+	localGame, err := games.Create(t.Context(), "Materialized", "materialized")
+	if err != nil {
+		t.Fatalf("create local game: %v", err)
+	}
+	if _, err := pool.Exec(t.Context(), `INSERT INTO game_external_ids(game_id, provider, external_id) VALUES($1, 'igdb', '100')`, localGame.ID); err != nil {
+		t.Fatalf("insert IGDB external identity: %v", err)
+	}
+	store := gamepostgres.NewStore(pool)
+	absentID, err := store.BeginGeneration(t.Context())
+	if err != nil {
+		t.Fatalf("begin absent generation: %v", err)
+	}
+	if err := store.ActivateGeneration(t.Context(), absentID, 0); err != nil {
+		t.Fatalf("activate absent generation: %v", err)
+	}
+	var archived bool
+	if err := pool.QueryRow(t.Context(), `SELECT archived_at IS NOT NULL FROM game_external_ids WHERE external_id='100'`).Scan(&archived); err != nil {
+		t.Fatalf("load archived identity: %v", err)
+	}
+	if !archived {
+		t.Fatal("missing IGDB identity was not archived")
+	}
+	presentID, err := store.BeginGeneration(t.Context())
+	if err != nil {
+		t.Fatalf("begin present generation: %v", err)
+	}
+	if err := store.StoreProviderGames(t.Context(), presentID, []game.ProviderGame{testProviderGame("100")}); err != nil {
+		t.Fatalf("store present generation: %v", err)
+	}
+	if err := store.ActivateGeneration(t.Context(), presentID, 1); err != nil {
+		t.Fatalf("activate present generation: %v", err)
+	}
+	if err := pool.QueryRow(t.Context(), `SELECT archived_at IS NOT NULL FROM game_external_ids WHERE external_id='100'`).Scan(&archived); err != nil {
+		t.Fatalf("load restored identity: %v", err)
+	}
+	if archived {
+		t.Fatal("returned IGDB identity remained archived")
 	}
 }
 
@@ -547,4 +894,29 @@ func productionMigrationFS(t *testing.T) fs.FS {
 
 func testLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
+
+func testProviderGame(externalID string) game.ProviderGame {
+	return game.ProviderGame{
+		Reference: game.ProviderReference{Provider: "igdb", ExternalID: externalID},
+		Name:      "Provider Game " + externalID,
+		Slug:      "provider-game-" + externalID,
+		GameType:  "Main Game",
+	}
+}
+
+func waitForAdvisoryWaiter(t *testing.T, pool *pgxpool.Pool) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		var waiting bool
+		if err := pool.QueryRow(t.Context(), `SELECT EXISTS(SELECT 1 FROM pg_locks WHERE locktype='advisory' AND NOT granted)`).Scan(&waiting); err != nil {
+			t.Fatalf("check advisory lock waiter: %v", err)
+		}
+		if waiting {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("timed out waiting for staged insert to block on advisory lock")
 }
