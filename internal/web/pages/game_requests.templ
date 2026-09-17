@@ -12,6 +12,8 @@ import (
 
 type GameRequestForm struct {
 	GameID string
+	Provider string
+	ExternalID string
 	MaxPlayers string
 	StartsAt string
 	TimezoneOffset string
@@ -96,17 +98,23 @@ templ NewGameRequest(brand branding.Brand, navigation components.NavigationState
 			}
 			if options.EventID == "" {
 				<div class="card mt-8 border border-base-300 bg-base-200"><div class="card-body"><h2 class="card-title">No current Event</h2><p>An administrator must select a current Event before Game Requests can be created.</p></div></div>
-			} else if len(options.Games) == 0 {
+			} else if len(options.Games) == 0 && !providerPreselected(form) {
 				<div class="card mt-8 border border-base-300 bg-base-200"><div class="card-body"><h2 class="card-title">No active games</h2><p>An administrator must add or activate a game first.</p></div></div>
 			} else {
 				<form method="post" action="/game-requests" class="card mt-8 border border-base-300 bg-base-200 shadow-sm"><div class="card-body gap-5">
 					@components.CSRFInput()
 					<p>Event: <strong>{ options.EventName }</strong></p>
-					<label class="form-control"><span class="label-text mb-2 font-semibold">Game</span><select class="select select-bordered" name="game_id" required><option value="" disabled selected?={ form.GameID == "" }>Choose a game</option>
-						for _, game := range options.Games {
-							<option value={ game.ID } selected?={ form.GameID == game.ID }>{ game.Name }</option>
-						}
-					</select></label>
+					if providerPreselected(form) {
+						<input type="hidden" name="provider" value={ form.Provider }/>
+						<input type="hidden" name="external_id" value={ form.ExternalID }/>
+						<div class="rounded-lg border border-base-300 bg-base-100 px-4 py-3"><span class="label-text font-semibold">Game</span><p class="mt-1 text-base-content/80">Selected from IGDB search results.</p></div>
+					} else {
+						<label class="form-control"><span class="label-text mb-2 font-semibold">Game</span><select class="select select-bordered" name="game_id" required><option value="" disabled selected?={ form.GameID == "" }>Choose a game</option>
+							for _, game := range options.Games {
+								<option value={ game.ID } selected?={ form.GameID == game.ID }>{ game.Name }</option>
+							}
+						</select></label>
+					}
 					<label class="form-control"><span class="label-text mb-2 font-semibold">Maximum players <span class="font-normal text-base-content/60">(optional, includes you)</span></span><input class="input input-bordered" type="number" name="max_players" min="1" max="2147483647" inputmode="numeric" value={ form.MaxPlayers } placeholder="No limit"/></label>
 					<label class="form-control"><span class="label-text mb-2 font-semibold">Scheduled start <span class="font-normal text-base-content/60">(optional)</span></span><input class="input input-bordered" type="datetime-local" name="starts_at" value={ form.StartsAt }/><span class="mt-2 text-sm text-base-content/60">Uses your browser's local time. Leave blank to start now.</span></label>
 					<input type="hidden" name="timezone_offset" value={ form.TimezoneOffset } data-timezone-offset/>
@@ -170,6 +178,7 @@ templ GameRequestError(brand branding.Brand, navigation components.NavigationSta
 	}
 }
 
+func providerPreselected(form GameRequestForm) bool { return form.Provider != "" && form.ExternalID != "" }
 func requestFull(request requestquery.Request) bool { return request.MaxPlayers != nil && request.MemberCount >= int64(*request.MaxPlayers) }
 func playerCount(request requestquery.Request) string { if request.MaxPlayers == nil { return fmt.Sprintf("%d players", request.MemberCount) }; return fmt.Sprintf("%d / %d players", request.MemberCount, *request.MaxPlayers) }
 func playerBadgeClass(request requestquery.Request) string { if requestFull(request) { return "badge badge-neutral data-text" }; if request.MaxPlayers != nil && request.MemberCount+1 == int64(*request.MaxPlayers) { return "badge badge-accent data-text" }; return "badge badge-primary data-text" }

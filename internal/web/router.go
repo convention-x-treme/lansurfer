@@ -37,6 +37,7 @@ type RouterDependencies struct {
 	Games          handler.GameAdministration
 	ProviderSync   handler.ProviderSyncAdministration
 	Discovery      handler.GameDiscovery
+	GameResolver   handler.GameResolver
 	GameRequests   handler.GameRequestCommands
 	RequestQueries handler.GameRequestQueries
 	Realtime       handler.GameRequestEvents
@@ -51,7 +52,7 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 	authenticationHandler := handler.NewAuthentication(dependencies.Authentication, brand, dependencies.SecureCookies)
 	administrationHandler := handler.NewAdministration(dependencies.Events, dependencies.Games, dependencies.ProviderSync, brand)
 	gamesHandler := handler.NewGames(dependencies.Discovery, brand)
-	gameRequestsHandler := handler.NewGameRequests(dependencies.GameRequests, dependencies.RequestQueries, brand)
+	gameRequestsHandler := handler.NewGameRequests(dependencies.GameRequests, dependencies.RequestQueries, dependencies.GameResolver, brand)
 	realtimeHandler := handler.NewRealtime(dependencies.Realtime)
 	router := chi.NewRouter()
 	router.Use(middleware.RequestID)

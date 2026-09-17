@@ -88,6 +88,7 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 			Events:         eventService,
 			Games:          gameService,
 			Discovery:      gameDiscovery,
+			GameResolver:   gameDiscovery,
 			GameRequests:   gameRequests,
 			RequestQueries: gameRequestQueries,
 			Realtime:       realtime,

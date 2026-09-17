@@ -86,6 +86,7 @@ templ ProviderDiscoveryCard(item game.DiscoveryItem) {
 							@components.CSRFInput()
 							<button class="btn btn-primary btn-sm" type="submit">Follow Game</button>
 						</form>
+						<a class="btn btn-outline btn-sm" href={ providerGameRequestAction(item.Reference) }>Find Players</a>
 					</div>
 				</div>
 			</div>
@@ -170,6 +171,14 @@ func providerCoverURL(coverImageID string) string {
 // included in the request.
 func providerFollowAction(ref game.ProviderReference) string {
 	return "/games/providers/" + ref.Provider + "/" + ref.ExternalID + "/follow"
+}
+
+// providerGameRequestAction builds the "Find Players" link for an
+// unmaterialized provider discovery result, carrying only the opaque
+// provider reference (never a name/slug) so the create-request handler
+// resolves/materializes the authoritative local Game itself.
+func providerGameRequestAction(ref game.ProviderReference) string {
+	return "/game-requests/new?provider=" + ref.Provider + "&external_id=" + ref.ExternalID
 }
 
 // providerDisambiguation renders type/platform/release context so provider

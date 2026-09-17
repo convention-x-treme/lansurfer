@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/convention-x-treme/lansurfer/internal/game"
 	"github.com/convention-x-treme/lansurfer/internal/gamerequest"
 	requestquery "github.com/convention-x-treme/lansurfer/internal/query/gamerequest"
 	"github.com/convention-x-treme/lansurfer/internal/web/branding"
@@ -35,15 +36,25 @@ type GameRequestQueries interface {
 	CurrentEvent(context.Context) (requestquery.EventContext, error)
 }
 
+// GameResolver turns an opaque IGDB provider reference into the one
+// authoritative local Game for it, materializing that Game on first use
+// (spec: "Follow and Game Request integration"). Only provider and external
+// ID ever cross this boundary; the resolved Game's ID/name always come from
+// the resolver, never from browser-supplied form fields.
+type GameResolver interface {
+	Resolve(context.Context, game.ProviderReference) (game.Game, error)
+}
+
 type GameRequests struct {
 	commands GameRequestCommands
 	queries  GameRequestQueries
+	resolver GameResolver
 	brand    branding.Brand
 	now      func() time.Time
 }
 
-func NewGameRequests(commands GameRequestCommands, queries GameRequestQueries, brand branding.Brand) *GameRequests {
-	return &GameRequests{commands: commands, queries: queries, brand: brand, now: time.Now}
+func NewGameRequests(commands GameRequestCommands, queries GameRequestQueries, resolver GameResolver, brand branding.Brand) *GameRequests {
+	return &GameRequests{commands: commands, queries: queries, resolver: resolver, brand: brand, now: time.Now}
 }
 
 func (h *GameRequests) List(w http.ResponseWriter, r *http.Request) {
@@ -81,12 +92,27 @@ func (h *GameRequests) New(w http.ResponseWriter, r *http.Request) {
 		h.renderError(w, r)
 		return
 	}
-	form := pages.GameRequestForm{GameID: strings.TrimSpace(r.URL.Query().Get("game_id"))}
+	form := pages.GameRequestForm{
+		GameID:     strings.TrimSpace(r.URL.Query().Get("game_id")),
+		Provider:   strings.TrimSpace(r.URL.Query().Get("provider")),
+		ExternalID: strings.TrimSpace(r.URL.Query().Get("external_id")),
+	}
 	render(w, r, http.StatusOK, pages.NewGameRequest(h.brand, requestNavigation(r), options, form, ""))
 }
 
 func (h *GameRequests) Create(w http.ResponseWriter, r *http.Request) {
 	form, maxPlayers, startsAt, err := h.parseCreateForm(r)
+	if err == nil && form.GameID == "" && (form.Provider != "" || form.ExternalID != "") {
+		var ref game.ProviderReference
+		ref, err = game.NewProviderReference(form.Provider, form.ExternalID)
+		if err == nil {
+			var resolved game.Game
+			resolved, err = h.resolver.Resolve(r.Context(), ref)
+			if err == nil {
+				form.GameID = resolved.ID
+			}
+		}
+	}
 	if err == nil {
 		account, _ := webmiddleware.CurrentUser(r.Context())
 		var created gamerequest.GameRequest
@@ -193,6 +219,7 @@ func (h *GameRequests) parseCreateForm(r *http.Request) (pages.GameRequestForm, 
 		GameID: r.FormValue("game_id"), MaxPlayers: strings.TrimSpace(r.FormValue("max_players")),
 		StartsAt: strings.TrimSpace(r.FormValue("starts_at")), TimezoneOffset: strings.TrimSpace(r.FormValue("timezone_offset")),
 		Description: r.FormValue("description"),
+		Provider:    strings.TrimSpace(r.FormValue("provider")), ExternalID: strings.TrimSpace(r.FormValue("external_id")),
 	}
 	var maxPlayers *int32
 	if form.MaxPlayers != "" {
@@ -253,8 +280,10 @@ func gameRequestErrorStatus(err error) int {
 		return http.StatusConflict
 	case errors.Is(err, gamerequest.ErrNoCurrentEvent), errors.Is(err, gamerequest.ErrGameUnavailable),
 		errors.Is(err, gamerequest.ErrInvalidMaxPlayers), errors.Is(err, gamerequest.ErrInvalidStartsAt),
-		errors.Is(err, gamerequest.ErrInvalidDescription):
+		errors.Is(err, gamerequest.ErrInvalidDescription), errors.Is(err, game.ErrInvalidProviderReference):
 		return http.StatusUnprocessableEntity
+	case errors.Is(err, game.ErrProviderRecordNotFound):
+		return http.StatusNotFound
 	default:
 		return http.StatusInternalServerError
 	}
@@ -284,6 +313,10 @@ func gameRequestMessage(err error) string {
 		return "Only the creator can close or cancel this Game Request."
 	case errors.Is(err, gamerequest.ErrNotOpen):
 		return "This Game Request is no longer open."
+	case errors.Is(err, game.ErrInvalidProviderReference):
+		return "That provider game reference is invalid."
+	case errors.Is(err, game.ErrProviderRecordNotFound):
+		return "That provider game could not be found."
 	default:
 		return "The Game Request could not be changed. Please try again."
 	}
