@@ -4,7 +4,7 @@
 
 LANsurfer is a self-hosted web application for finding people to play games with at LAN parties and gaming events.
 
-The application is designed as a **modular monolith** with server-side rendering and minimal infrastructure.
+The application is a **modular Go monolith** with server-side rendering, PostgreSQL, and minimal runtime infrastructure.
 
 Primary goals:
 
@@ -43,7 +43,7 @@ PostgreSQL
 
 No Redis, queue, separate frontend runtime, or object storage is required.
 
-This document records both the implemented prototype baseline and the approved 1.0 target. The [roadmap development model](ROADMAP.md#development-model) defines which 1.0 tracks may proceed in parallel and where integration dependencies apply. Target descriptions do not authorize post-1.0 work.
+This document records both the implemented prototype baseline and the approved 1.0 target. The [roadmap development model](ROADMAP.md#development-model) defines which 1.0 tracks may proceed in parallel, the Pilot Gate, and where integration dependencies apply. Target descriptions do not authorize post-1.0 work.
 
 ---
 
@@ -89,12 +89,13 @@ LANsurfer does not require a SPA for its primary workflows.
 
 Typical operations are:
 
-- list games
+- list/search games
 - follow/unfollow a game
 - create a game request
 - join/leave a request
 - close/cancel a request
-- edit basic profile/admin data
+- update account settings
+- perform focused administrator operations
 
 The preferred flow is:
 
@@ -107,63 +108,23 @@ HTMX request
    -> HTML fragment
 ```
 
-This avoids maintaining:
-
-- duplicate frontend/backend models
-- a frontend router
-- a client-side state architecture
-- an internal JSON API only used by the same application
-- duplicated validation/business rules
+This avoids maintaining duplicate frontend/backend models, a frontend router, client-side state architecture, an internal JSON API used only by the same application, and duplicated validation/business rules.
 
 TypeScript is intentionally limited to progressive enhancement.
 
 ---
 
-## 4. Realtime Model
+## 4. Realtime and Durable Change Delivery
 
-SSE is used for realtime updates.
+SSE is used for realtime browser updates. Browser-to-server communication remains ordinary HTTP.
 
-Browser-to-server communication remains ordinary HTTP.
-
-Server-to-browser communication uses one or more SSE streams.
-
-Example:
-
-```text
-User A
-  |
-  | POST /game-requests
-  v
-GameRequest Service
-  |
-  | transaction
-  v
-PostgreSQL
-  |
-  | GameRequestCreated
-  v
-Event Publisher
-  |
-  +--> SSE broker
-        |
-        +--> Browser B
-        +--> Browser C
-```
-
-For the prototype and single-instance 1.0 release, the SSE event broker may run in memory. Durable external notifications use a PostgreSQL outbox and do not make SSE durable.
-
-The event publishing abstraction should remain replaceable so PostgreSQL `LISTEN/NOTIFY` can be used later if multiple LANsurfer application instances are ever approved. Multi-instance/high-availability operation is not part of 1.0.
-
-WebSockets are not part of the initial architecture. Introducing them requires approval and a meaningful bidirectional use case.
-
-### Durable external notifications (Track E)
-
-Game Request writes and durable notification intent commit together in the Game Request module's PostgreSQL transaction. A background worker claims outbox work and calls narrow transport adapters owned by the notification module.
+For the prototype and single-instance 1.0 release, the SSE broker may run in memory. Durable external notifications use PostgreSQL persistence and do not make SSE durable.
 
 ```text
 Game Request transaction
   ├── domain write
-  └── outbox record
+  ├── durable request activity when applicable
+  └── notification outbox record when applicable
           |
           v
 notification worker
@@ -171,19 +132,44 @@ notification worker
   └── Discord webhook adapter
 ```
 
-Track E may implement the worker model, retries, delivery persistence, and transport adapters in parallel with Track A. The final outbox hookup waits for Track A to stabilize Game Request write paths and transaction boundaries.
+Game Request writes, request-local activity, and notification intent that correspond to the same successful domain change must be transactionally consistent. A failed or rolled-back mutation must not leave successful activity or notification work behind.
 
-Persist delivery status, retry schedule, and external message references. External failure never fails or reverses the originating Game Request action. Honor `Retry-After` for HTTP 429 responses; use capped exponential backoff with jitter for network and 5xx failures; mark permanent or exhausted failures for authorized manual retry.
+Persist delivery status, retry schedule, ordering/replay identifiers, and external message references. External transport failure never fails or reverses the originating Game Request action. Honor `Retry-After` for HTTP 429 responses; use capped exponential backoff with jitter for network and 5xx failures; mark permanent or exhausted failures for authorized manual retry.
 
-Web Push uses VAPID behind a narrow adapter around the approved `github.com/marknefedov/go-webpush/v2` dependency. Store multiple labeled subscriptions and remove invalid endpoints when the push service reports permanent expiration. Push payload construction enforces the privacy and targeting rules in [PRODUCT.md](PRODUCT.md#12-live-and-durable-notifications).
+The event publishing abstraction should remain replaceable so PostgreSQL `LISTEN/NOTIFY` can be considered later if multiple application instances are ever approved. Multi-instance/high-availability operation is not part of 1.0.
 
-Discord delivery uses the `webhook.incoming` OAuth flow rather than pasted URLs or a bot/gateway. Encrypt webhook IDs and tokens at rest with AES-GCM and an operator-provided 32-byte key. Execute new messages with `wait=true`, retain the returned message ID, edit the same message for later changes, sanitize content, and send an empty `allowed_mentions` policy.
+WebSockets are not part of the initial architecture. Introducing them requires approval and a meaningful bidirectional use case.
+
+### Web Push
+
+Web Push uses VAPID behind a narrow adapter around the approved `github.com/marknefedov/go-webpush/v2` dependency. Store multiple labeled subscriptions and remove invalid endpoints when the push service reports permanent expiration.
+
+Push eligibility is evaluated at delivery time. The 1.0 audience modes are:
+
+- followed/My Games only (default)
+- all new Game Requests (explicit opt-in)
+
+The creator is excluded from the creation push for their own request. Push payloads remain identity-minimized: Game, planned time, deep link, and minimum instance context only. Creator identity, description, roster, and activity history are not part of Web Push payloads.
+
+### Discord delivery
+
+Discord delivery uses the `webhook.incoming` OAuth flow rather than pasted URLs or a bot/gateway. Encrypt webhook IDs and tokens at rest with AES-GCM and an operator-provided 32-byte key.
+
+Create one Discord message per Game Request with `wait=true`, retain the returned message ID, and edit that same message as the request changes. The public message may contain:
+
+- Game
+- planned start time
+- current request status
+- current capacity/free-place summary
+- creator's public LANsurfer Game Nick
+- short sanitized request description
+- deep link to LANsurfer
+
+Do not mirror the full participant roster or durable activity history. Provider identity names/emails are not public identity. Send an empty `allowed_mentions` policy.
 
 ---
 
 ## 5. Modular Monolith
-
-The application is separated by business capability.
 
 Business modules through the prototype are:
 
@@ -203,7 +189,7 @@ notification
 
 The prototype `event` module may remain while Track A preserves/migrates legacy Event-linked data, but normal 1.0 Game Request behavior must not depend on Event selection, membership, lifecycle, or authorization. `clan` is post-1.0 and must not be introduced until that work is explicitly scheduled.
 
-Supporting technical areas:
+Supporting technical areas include:
 
 ```text
 web
@@ -221,24 +207,14 @@ cmd/
 
 internal/
 ├── app/
-│   ├── app.go
-│   └── routes.go
-│
 ├── auth/
 ├── user/
 ├── game/
-├── event/         # prototype/migration compatibility only for 1.0
+├── event/         # prototype/migration compatibility only
 ├── gamerequest/
 ├── notification/  # Track E
-│
 ├── query/
-│
 ├── web/
-│   ├── handler/
-│   ├── middleware/
-│   ├── pages/
-│   └── components/
-│
 └── platform/
     ├── postgres/
     ├── sse/
@@ -246,9 +222,7 @@ internal/
     └── logging/
 ```
 
-This is guidance rather than a mandatory exact tree.
-
-Do not create empty architecture packages solely to match this diagram.
+This is guidance rather than a mandatory exact tree. Do not create empty architecture packages solely to match the diagram.
 
 ---
 
@@ -271,22 +245,7 @@ Repository      EventPublisher
 postgres            sse
 ```
 
-### Consumer-owned interfaces
-
-Interfaces should generally live where they are consumed.
-
-Example:
-
-```go
-package gamerequest
-
-type Repository interface {
-    Create(ctx context.Context, request GameRequest) (GameRequest, error)
-    ByID(ctx context.Context, id ID) (GameRequest, error)
-}
-```
-
-The PostgreSQL adapter implements this interface without the domain depending on PostgreSQL.
+Interfaces should generally live where they are consumed. Concrete PostgreSQL, provider, and transport adapters stay behind narrow interfaces. Wire them explicitly in the composition root.
 
 ---
 
@@ -294,23 +253,22 @@ The PostgreSQL adapter implements this interface without the domain depending on
 
 Each module owns its writes.
 
-Examples:
-
 ### `user`
 
 Owns:
 
 - users
-- user profile fields
 - internal LANsurfer roles
-- Game Nicks, biographies, and per-Game handles
+- unique public Game Nick
+
+Rich biographies, per-Game player handles, and richer public profiles are not stable-1.0 requirements.
 
 ### `auth`
 
 Owns:
 
 - external identities
-- authentication flow
+- authentication flows
 - browser sessions
 - one-use provider authentication/link flows
 
@@ -318,31 +276,37 @@ Owns:
 
 Owns:
 
-- games
+- authoritative local Games
 - aliases
-- external IDs
-- game subscriptions
-- admin game catalog behavior
+- provider/external identities attached to authoritative Games
+- Game subscriptions
+- administrator local-catalog behavior
+- atomic materialization/activation of a provider result into one authoritative local Game
+
+The synchronized provider index is discovery infrastructure. It must not become a second authoritative domain model or permit provider synchronization code to write Game Request state.
 
 ### `event` (prototype compatibility)
 
-Owns the existing prototype Event data while it remains in the schema. Track A decides the concrete forward migration needed to preserve prototype Game Requests while removing Event requirements from normal 1.0 behavior. Do not expand Event into new 1.0 membership, invitation, seat, lifecycle, or access-control features.
+Owns existing prototype Event data while it remains in the schema. Track A decides the concrete forward migration needed to preserve prototype Game Requests while removing Event requirements from normal 1.0 behavior. Do not expand Event into new 1.0 membership, invitation, seat, lifecycle, or access-control features.
 
 ### `gamerequest`
 
 Owns:
 
-- game requests
+- Game Requests
 - request membership
 - request lifecycle
 - capacity rules
+- durable request-local activity for successful create/join/leave/close/cancel changes
 - transactional notification outbox records describing Game Request changes
+
+Request-local activity is not event sourcing, generic audit logging, chat, or notification delivery history.
 
 ### `notification` (Track E)
 
 Owns:
 
-- Web Push subscriptions and global preferences
+- Web Push subscriptions and audience preferences
 - the single instance-level Discord destination
 - delivery attempts, retries, and external message references
 
@@ -354,42 +318,15 @@ A module must not directly update another module's tables merely because they ar
 
 ## 8. Cross-Module and Cross-Track Communication
 
-When a module needs another module's behavior, prefer a small explicit interface.
-
-Example:
-
-`gamerequest` needs to ensure a referenced game exists.
-
-It may define:
-
-```go
-type GameLookup interface {
-    Exists(ctx context.Context, id GameID) (bool, error)
-}
-```
-
-The `game` service can satisfy this interface.
-
-This is preferred over:
-
-```text
-gamerequest -> game repository implementation
-```
-
-or:
-
-```text
-gamerequest -> postgres generated queries
-```
-
-Parallel roadmap tracks follow the same principle. Agree on the smallest stable contract and let each track own its implementation.
+When a module needs another module's behavior, prefer a small explicit interface. Cross-module joins are allowed for read-only query models, not business writes.
 
 The main 1.0 cross-track contracts are:
 
-- **Track A → Track E:** Track A owns Game Request write transactions; Track E consumes durable outbox records. Track E may develop workers/transports first, but final outbox persistence belongs inside Track A's transaction boundary.
-- **Track B internal:** OIDC and Discord identities both resolve to the same local User. Game Nick onboarding is provider-independent and happens after authentication when required.
+- **Track A → Track E:** Track A owns Game Request write transactions and outbox creation; Track E consumes durable outbox records. Final persistence belongs inside Track A's transaction boundary.
+- **Track B internal:** OIDC and Discord identities resolve to the same local User. Game Nick onboarding is provider-independent and happens after authentication when required.
+- **Track B → A/E presentation:** public identity consumers use Game Nick rather than provider names/emails. This dependency is for final rendering only, not for core request writes or notification worker construction.
 - **Track D → Track E:** Track D owns service-worker registration/lifecycle. Track E owns push permission, subscriptions, push handling, and payload behavior. Backend Web Push work does not need to wait for Track D.
-- **Track F:** release automation can proceed independently; only final migration/backup/restore validation waits for the persistent schema from the other tracks to settle.
+- **Track F:** release automation can proceed independently; final migration/backup/restore validation waits for persistent migrations from the feature tracks to settle.
 
 Do not solve these contracts by sharing persistence implementations or creating generic cross-track frameworks.
 
@@ -397,37 +334,7 @@ Do not solve these contracts by sharing persistence implementations or creating 
 
 ## 9. Read Models / CQRS-light
 
-Cross-module joins are allowed for read-only UI use cases.
-
-Example dashboard:
-
-```text
-GameRequest
-Game
-Creator
-Member count
-Current user joined state
-```
-
-Rather than chaining several domain services only to build a page, use a dedicated query/read model.
-
-Conceptually:
-
-```text
-web handler
-   |
-   v
-dashboard query
-   |
-   v
-PostgreSQL JOIN
-   |
-   v
-DashboardViewModel
-   |
-   v
-templ
-```
+Dedicated read models may join multiple module tables for UI purposes, for example Game Request + Game + creator Game Nick + member count + current-user state.
 
 Rules:
 
@@ -436,7 +343,9 @@ Rules:
 - they return UI/read-specific models
 - they are not domain entities
 
-This is intentionally lightweight and does not imply event sourcing or a full CQRS architecture.
+Trending is a focused read model derived from Game Request activity over the product-defined rolling six-hour window. It does not authorize raw search-query tracking or a general analytics event store.
+
+This is intentionally lightweight and does not imply event sourcing or full CQRS.
 
 ---
 
@@ -444,55 +353,27 @@ This is intentionally lightweight and does not imply event sourcing or a full CQ
 
 PostgreSQL is the only supported database for the initial architecture.
 
-Use:
+Use explicit SQL, sqlc, pgx, and PostgreSQL invariants where appropriate. Generated sqlc types stay inside persistence/read infrastructure where practical.
 
-- explicit SQL
-- sqlc code generation
-- pgx
-
-Generated sqlc types stay inside the persistence/read layer where practical.
-
-Business modules should not depend on generated database row types.
-
-Important invariants should be enforced with PostgreSQL where appropriate.
-
-Examples:
-
-- foreign keys
-- unique constraints
-- transaction isolation
-- row locks
-- check constraints
+Important invariants include foreign keys, unique constraints, transactions, row locks, and check constraints.
 
 ---
 
 ## 11. GameRequest and Identity Concurrency
 
-Joining a GameRequest is a concurrency-sensitive operation.
+Joining a Game Request is concurrency-sensitive. If `MaxPlayers` is defined, concurrent joins must never exceed the limit. Enforce this with PostgreSQL transactions/locking rather than an unprotected read-check-insert sequence.
 
-If `MaxPlayers` is defined, concurrent joins must never allow the member count to exceed the limit.
+Case-insensitive Game Nick uniqueness must also hold under concurrent onboarding changes and be enforced at the persistence boundary.
 
-The implementation must use a PostgreSQL transaction and appropriate locking rather than:
+Provider-result materialization is concurrency-sensitive as well. Concurrent follow/request actions for the same provider/external ID must converge on one authoritative local Game through a unique provider identity constraint plus an atomic application transaction.
 
-1. read count
-2. check in application memory
-3. insert
-
-without protection.
-
-The exact SQL/locking strategy is intentionally left to implementation, but must be covered by PostgreSQL integration tests.
-
-The 1.0 identity work also requires case-insensitive Game Nick uniqueness to hold under concurrent onboarding/profile changes. Enforce this with an appropriate PostgreSQL constraint/index and test it at the persistence boundary.
-
-1.0 does not add Event-seat, Open Play, Clan ownership, Clan membership, or other post-1.0 invariants. Do not preserve those concepts through speculative constraints or abstractions.
+1.0 does not add Event-seat, Open Play, Clan ownership, Clan membership, or other post-1.0 invariants.
 
 ---
 
 ## 12. Migration Architecture
 
-Use goose.
-
-Migration files are embedded into the application binary.
+Use goose with embedded migration files.
 
 Startup sequence:
 
@@ -515,20 +396,11 @@ initialize application
 start HTTP server
 ```
 
-Migration failure is fatal.
+Migration failure is fatal. DOWN migrations are never run automatically.
 
-Down migrations are never run automatically.
+Tracks may add independent forward migrations in parallel. Keep migrations narrowly scoped to the owning module/track and avoid modifying another track's tables except through an explicitly approved migration contract.
 
-This is optimized for the self-hosting workflow:
-
-```bash
-docker compose pull
-docker compose up -d
-```
-
-An updated binary should bring the schema forward automatically.
-
-Tracks may add independent forward migrations in parallel. Keep migrations narrowly scoped to the owning module/track and avoid modifying another track's tables except through an explicitly approved migration contract. Track F's final prototype-to-1.0 upgrade validation runs only after the integrated migration sequence is stable.
+Track F's final prototype-to-1.0 upgrade validation runs only after the integrated migration sequence is stable. The selected pilot additionally requires at least one exercised upgrade path with existing data before the Pilot Gate is green.
 
 ---
 
@@ -541,20 +413,18 @@ LANsurfer User
       |
       +-- Identity: OIDC provider / subject
       |
-      +-- Identity: Discord provider / subject (Track B)
+      +-- Identity: Discord provider / subject
 ```
 
-The implemented prototype mechanism is generic OIDC. The 1.0 target also supports Discord OAuth2 authorization-code login as an independent provider while retaining OIDC.
+Stable 1.0 supports provider-neutral generic OIDC and Discord OAuth2 authorization-code login as independent providers. The selected pilot requires Discord login, but that pilot choice does not remove OIDC from stable 1.0.
 
-The initial deployment uses Keycloak, but application/domain code must not assume Keycloak.
+The initial deployment may use Keycloak, but application/domain code must not assume Keycloak.
 
-Do not use external provider IDs as LANsurfer user IDs.
+Do not use external provider IDs as LANsurfer user IDs and never merge identities based solely on email addresses.
 
-Do not automatically merge identities based solely on email addresses.
+Linking and unlinking are explicit authenticated account operations, and an account must retain at least one identity. Persist short-lived, one-use authentication/link flow records bound to the initiating browser, provider, operation, and current user where applicable.
 
-Linking and unlinking are explicit authenticated account operations, and an account must retain at least one identity. Persist short-lived, one-use authentication/link flow records bound to the initiating browser, provider, operation, and current user where applicable. Keep the existing OIDC callback and use a provider-specific Discord callback.
-
-Both authentication providers resolve to the same local User/session model. After authentication, onboarding checks such as required Game Nick selection are provider-independent; provider-specific handlers must not duplicate user-profile business rules.
+Both providers resolve to the same local User/session model. Required Game Nick selection is provider-independent. A Discord display name may seed the Game Nick form but does not become LANsurfer public identity automatically.
 
 Provider names and email addresses are private account data. Normal player and global administrator views must not expose them to anyone except the account owner.
 
@@ -562,32 +432,15 @@ Provider names and email addresses are private account data. Normal player and g
 
 ## 14. Sessions
 
-Use server-side sessions stored in PostgreSQL.
+Use server-side sessions stored in PostgreSQL. The browser receives only an opaque, high-entropy random session ID in a cookie with bounded lifetime, `HttpOnly`, `SameSite`, and `Secure` in production.
 
-Conceptual structure:
-
-```text
-auth_sessions
-- id
-- user_id
-- expires_at
-- created_at
-- last_seen_at
-```
-
-The browser receives only an opaque, high-entropy random session ID in a cookie with bounded lifetime, `HttpOnly`, `SameSite`, and `Secure` in production.
-
-No JWT browser sessions.
-
-Sessions must be revocable server-side.
+No JWT browser sessions. Sessions must be revocable server-side.
 
 ---
 
 ## 15. Configuration Architecture
 
-Infrastructure configuration is environment-based.
-
-Examples:
+Infrastructure configuration is environment-based. Examples include:
 
 ```text
 LANSURFER_DATABASE_URL
@@ -605,9 +458,11 @@ LANSURFER_IGDB_CLIENT_ID
 LANSURFER_IGDB_CLIENT_SECRET
 ```
 
-`LANSURFER_OIDC_CLIENT_SECRET` is optional for public clients using PKCE and is required when the provider configures LANsurfer as a confidential client. Opaque browser session tokens are generated randomly and stored only as hashes; they do not require a separate application session secret.
+`LANSURFER_OIDC_CLIENT_SECRET` is optional for public clients using PKCE and required when the provider configures LANsurfer as a confidential client.
 
-Instance display data and uploaded identity assets are product state stored in PostgreSQL. Provider credentials, the 32-byte data-encryption key, and VAPID private key remain operator configuration and must not be stored as ordinary product settings.
+Provider credentials, the 32-byte data-encryption key, and VAPID private key remain operator configuration and must not be stored as ordinary product settings.
+
+Minimum instance identity, if configurable, is deployment/product state with a deliberately small surface. Do not reintroduce the removed 1.0 welcome-text/contact/logo/icon branding editor through configuration indirection.
 
 Do not introduce a config file format unless a concrete requirement appears.
 
@@ -615,136 +470,106 @@ Do not introduce a config file format unless a concrete requirement appears.
 
 ## 16. Branding and Installable Web Shell Architecture
 
-Keep the product name, tagline, semantic colors, the operating community's name and public URL for the **Powered by …** attribution, and asset paths in one small centralized value/object near the web composition layer. Templates must consume it rather than repeat constants. Tailwind/DaisyUI theme definitions and CSS custom properties must map to the same semantic color roles in both dark and light modes.
+LANsurfer keeps a fixed, accessible visual system and bundled application branding. Templates consume centralized branding values instead of repeating constants. Bundle approved logos/mascot/font assets with the application; do not add a runtime font or branding CDN.
 
-The rendered document carries the visitor's theme. An explicit light/dark choice is a non-essential preference cookie that the web layer reads into the request context, and the layout writes it onto `<html>`; without a choice the element carries no theme attribute and the stylesheet's `prefers-color-scheme` default applies. The Content-Security-Policy forbids inline scripts, so a script that applied the theme after load would repaint every navigation; keep theme selection out of the startup path and let the toggle only update the live document and the cookie.
+Stable 1.0 does not require PostgreSQL-backed administrator-managed welcome text, contact link, uploaded logo, uploaded application icon, white-labeling, or theme controls. A deployment may expose only the minimum instance identity required to distinguish the installation.
 
-Bundle approved LANsurfer logos, mascot artwork, and the Schibsted Grotesk (upright and italic) and JetBrains Mono webfonts with the production assets. They must be served from the embedded application; do not add a runtime font or branding CDN. The wordmark remains text until an approved production signet is available.
+Serve a manifest with a stable application identity/start URL and bundled/default presentation. A minimal service worker supports installation and Web Push; it does not promise offline application behavior.
 
-The prototype branding is fixed application data. Track D adds PostgreSQL-backed instance display name, welcome text, contact link, logo, and icon, controlled by global administrators. Uploaded PNG assets are validated at the documented byte and pixel limits and stored in PostgreSQL. Colors, typography, accessibility behavior, component semantics, and the fixed “Powered by Convention-X-Treme” operator attribution remain fixed.
+Track D owns service-worker registration, lifecycle, and update behavior. Track E attaches Web Push behavior to that contract rather than creating a competing service worker or registration path.
 
-Serve a dynamic manifest with a stable application ID and start URL. Omit icon entries when no valid icon is configured and use a generated monogram in the regular UI. A minimal service worker supports installation and later Web Push, not offline application guarantees.
-
-Track D owns service-worker registration, lifecycle, and update behavior. Track E attaches Web Push behavior to that contract rather than creating a competing service worker or independent registration path.
-
-See [Product branding](PRODUCT.md#14-instance-identity-and-branding) for the 1.0 customization boundary and the [visual branding guide](BRANDING.md) for canonical design tokens and usage rules.
+Pilot validation names platform categories (Desktop, Android, iPhone), while concrete browser/version evidence belongs in the validation artifact rather than being permanently pinned in the architecture.
 
 ---
 
-## 17. Game Catalog Architecture
+## 17. Game Catalog and IGDB Architecture
 
-PostgreSQL owns the local game catalog.
+PostgreSQL owns the authoritative local Game catalog. IGDB is an optional discovery/enrichment integration for general deployments and is mandatory only for the selected pilot readiness criteria.
 
-External services are optional import/enrichment providers.
+The architecture separates two concepts:
 
 ```text
-External Catalog
-      |
-      | explicit admin import
-      v
-LANsurfer Game
-      |
-      v
-normal local operation
+IGDB
+  |
+  | background synchronization
+  v
+local provider index (discovery infrastructure)
+  |
+  | follow / create Game Request
+  v
+atomic materialization
+  |
+  v
+authoritative LANsurfer Game
 ```
 
-LANsurfer must continue to function without external catalog access.
+### Provider synchronization
 
-Provider boundary:
+When IGDB is disabled or unconfigured:
 
-```go
-type CatalogProvider interface {
-    Search(ctx context.Context, query string) ([]CatalogGame, error)
-    Get(ctx context.Context, externalID string) (CatalogGame, error)
-}
-```
+- no provider synchronization runs
+- application health is not failed merely because IGDB is absent
+- player search uses authoritative local Games only
+- global administrators may create/manage local Games manually
 
-Do not implement scraping.
+When enabled:
 
-Do not couple the primary `games` table to specific providers.
+- start the initial synchronization asynchronously after HTTP/application availability
+- synchronize lightweight search/classification metadata for all IGDB game records; do not filter game types at ingestion
+- keep enough provider data to search/disambiguate by name/alias, provider ID, type/category, useful relationships, platform/release context, and cover reference metadata
+- do not mirror the full provider graph or cover image bytes
+- do not expose partially synchronized IGDB results during the first baseline sync
+- after the first successful baseline, run automatic refresh once per day and offer global administrators **Sync now**
+- retry failures independently of core request traffic
+- keep serving the last successful index while a later refresh is running or has failed
+- expose at least `disabled`, `not synced`, `syncing`, `current`, `stale`, and `failed` operator states
 
-Use a generic `game_external_ids` relation.
+Default player-visible provider categories are semantic product policy rather than hardcoded numeric enum assumptions. Ordinary search includes main games, standalone expansions, remakes, remasters, ports, and independently playable expanded/edition variants. DLC/add-ons, bundles, mods, episodes/seasons, packs, and updates remain synchronized but hidden by default.
 
-Track C supplies an optional IGDB adapter authenticated with operator-provided Twitch credentials. Administrator actions search and preview provider results, then either create a local Game or explicitly attach an external ID. Refresh is also previewed and applies only administrator-selected fields. Never merge by name or silently overwrite local edits.
+### Materialization and authority
 
-The local model may store a summary, first release date, platform names, and one cover reference. Catalog and Game Request workflows must continue when IGDB is unconfigured or unavailable.
+Searching/viewing a provider result is read-only. Following it or creating a Game Request for it invokes the `game` module to atomically materialize one authoritative local Game keyed by provider/external ID. Any signed-in player may trigger this when IGDB is enabled; there is no administrator approval step.
 
-IGDB covers are the only approved remote content exception. Allow images only from `images.igdb.com` in the Content Security Policy, set `Referrer-Policy: no-referrer`, and render a local placeholder on failure. Loading the cover still discloses the viewer's IP address to IGDB and must be documented. Do not generalize this into a remote-asset system or cover proxy/cache.
+Never merge by name. Once materialized, local Games remain authoritative and usable if the provider is disabled, unavailable, changed, or later loses the source record.
 
-Track C may implement the catalog/provider work independently. Rendering new metadata inside Game Request read models/cards may be integrated after Track A stabilizes the affected read-model/template surface.
+If a synchronized provider record disappears:
+
+- delete it when no authoritative local Game references it
+- when referenced, retain an archived/tombstoned provider identity for stable identity/history/reconciliation and exclude it from ordinary provider discovery
+
+Disabling IGDB after prior use may leave the synchronized provider index stored, but that index is not exposed as active provider search while disabled. Re-enabling resumes synchronization without recreating authoritative local Games.
+
+### Provider boundary
+
+Provider API and synchronization mechanics live behind narrow interfaces. The exact interface may include paginated/batched synchronization operations rather than only interactive `Search`/`Get`, because the approved architecture is no longer operator-driven one-record-at-a-time import.
+
+Do not couple the primary `games` table schema to IGDB-specific fields. Use generic provider/external identity and focused provider-index storage.
+
+IGDB covers are the only approved remote content exception. Allow images only from `images.igdb.com` in Content Security Policy, use `Referrer-Policy: no-referrer`, render a local placeholder on failure, and document viewer IP disclosure. Do not generalize this into a remote-asset system or cover proxy/cache.
 
 ---
 
 ## 18. Frontend Architecture
 
-### templ
+`templ` renders full pages and HTMX fragments. DaisyUI provides the stable base component vocabulary; Tailwind handles layout/local variations. Avoid another UI framework.
 
-`templ` renders full pages and HTMX fragments.
+TypeScript handles only browser-specific progressive enhancement such as SSE connection handling, toast/dialog helpers, installability/service-worker registration, and Web Push permission/subscription behavior. Do not implement domain decisions in TypeScript.
 
-Example conceptual component hierarchy:
-
-```text
-pages/
-  dashboard.templ
-  games.templ
-  game_request.templ
-  admin_games.templ
-
-components/
-  navigation.templ
-  game_card.templ
-  game_request_card.templ
-  avatar.templ
-  alert.templ
-```
-
-### DaisyUI and Tailwind
-
-DaisyUI provides the stable base component vocabulary.
-
-Tailwind may handle layout and local variations.
-
-Avoid introducing another UI framework.
-
-### TypeScript
-
-TypeScript handles only browser-specific behavior.
-
-Likely examples:
-
-- SSE connection handling
-- toast behavior
-- dialog helpers
-- installability/service-worker registration
-- Web Push permission/subscription progressive enhancement
-
-Do not implement domain/business decisions in TypeScript.
-
-When Tracks D and E both need browser changes, Track D owns the service-worker shell/lifecycle and Track E owns push-specific behavior. Keep the integration contract narrow to avoid parallel branches replacing the same browser infrastructure.
+When Tracks D and E both need browser changes, Track D owns the service-worker shell/lifecycle and Track E owns push-specific behavior.
 
 ---
 
 ## 19. Static Assets
 
-Build frontend assets during development/CI.
+Build frontend assets during development/CI. Production artifacts are embedded using `go:embed`.
 
-Production artifacts are embedded using `go:embed`.
-
-The deployed application should not require:
-
-- Node.js
-- npm/pnpm
-- Tailwind CLI
-- templ CLI
-- esbuild
-
-These are build-time concerns only.
+The deployed application should not require Node.js, package managers, Tailwind CLI, templ CLI, or esbuild at runtime.
 
 ---
 
 ## 20. Operations
 
-Normal self-hosting:
+Normal self-hosting is:
 
 ```text
 Docker Compose
@@ -752,31 +577,27 @@ Docker Compose
 └── postgres
 ```
 
-Goal:
-
-```bash
-docker compose up -d
-```
-
-and the service becomes usable after startup/migrations.
-
 The standalone binary must also support an externally managed PostgreSQL instance.
 
-Provide:
+Provide structured logging, `/healthz`, `/readyz`, `lansurfer version`, healthcheck, data-encryption-key generation, and VAPID key-generation commands.
 
-- structured logging via `log/slog`
-- `/healthz`
-- `/readyz`
-- `lansurfer version`
-- healthcheck, data-encryption-key generation, and VAPID key-generation commands
+Track F may build release automation and operator tooling in parallel. Stable 1.0 publishes Linux amd64/arm64 binaries and a matching multi-architecture GHCR image using native Go tooling and pinned official Docker/GitHub Actions. Release outputs include checksums, SBOMs, and provenance attestations. Stable releases receive exact, major.minor, major, and `latest` tags; prereleases receive exact tags only.
 
-Additional observability is deferred.
+The production Compose example pins the LANsurfer image, does not publish PostgreSQL to the host, and retains only application + database as required services. TLS and reverse proxy remain operator responsibilities.
 
-Track F may build release automation and operator tooling in parallel with feature tracks. For 1.0, publish Linux amd64/arm64 binaries and a matching multi-architecture GHCR image using native Go tooling and pinned official Docker/GitHub Actions. Release outputs include checksums, SBOMs, and provenance attestations. Stable releases receive exact, major.minor, major, and `latest` tags; prereleases receive exact tags only.
+Migrations remain forward-only. Final prototype-to-1.0 upgrade, backup/restore, and key-backup validation belong to release integration after persistent migrations settle.
 
-The production Compose example pins the LANsurfer image, does not publish PostgreSQL to the host, and retains only the application and database as required services. TLS and reverse-proxy operation are documented operator responsibilities.
+The selected pilot additionally requires before admission:
 
-Migrations remain forward-only. Final prototype-to-1.0 upgrade, backup/restore, and key-backup validation belong to the Integration Gate after persistent migrations from the feature tracks have settled. Document the supported path for each release rather than promising arbitrary direct upgrades across all 1.x versions.
+- production deployment path exercised
+- clean-host installation exercised
+- documented backup with an actually exercised restore
+- at least one exercised upgrade path using existing data
+- representative load/performance rehearsal covering browsing/search, create/join/leave, SSE updates, and notification behavior
+
+Concrete tested hardware, network, browser versions, load envelope, and observed response/recovery results belong in the validation artifact rather than permanent architecture constants.
+
+Supported production deployment must preserve required HTTP behavior through the chosen proxy/deployment path, including normal regression coverage for core interactions. Issue #15's reported hang is not an open architecture investigation requirement.
 
 ---
 
@@ -797,7 +618,7 @@ Important baseline controls:
 - provider identity privacy
 - fixed CSP allowlisting for the IGDB cover exception
 - encrypted Discord webhook credentials with key rotation/backup guidance
-- push payload data minimization
+- Web Push payload data minimization and explicit permission/consent
 
 Do not invent cryptographic constructions. Use established protocol behavior, Go standard-library AES-GCM for approved credential encryption, and the approved Web Push library behind narrow adapters. Secrets and raw session/authentication-flow tokens must never be logged or stored in recoverable plaintext.
 
@@ -805,15 +626,11 @@ Do not invent cryptographic constructions. Use established protocol behavior, Go
 
 ## 22. Architectural Enforcement
 
-Where practical, CI/lint rules may enforce forbidden dependency directions.
-
-For example, business packages should not import concrete persistence adapters.
+Where practical, CI/lint rules may enforce forbidden dependency directions. Business packages should not import concrete persistence adapters.
 
 A dependency rule tool such as `depguard` may be considered if it remains simple and provides real enforcement value.
 
-Architecture documentation alone should not be the only defense against accidental boundary erosion.
-
-Parallel-track development makes these boundaries more important: contracts may be shared, implementations and persistence ownership may not. CI should continue to catch boundary violations regardless of which track introduced them.
+Parallel-track development makes boundaries especially important: contracts may be shared, implementations and persistence ownership may not.
 
 ---
 

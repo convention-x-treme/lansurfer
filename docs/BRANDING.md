@@ -143,16 +143,14 @@ The eventual LANsurfer signet must remain recognizable at 32 px, work with no mo
 
 ### Instance identity in 1.0
 
-An administrator may add an instance display name, welcome text, contact link, logo, and application icon. These values identify the hosting community; they do not replace the LANsurfer product identity.
+Stable 1.0 keeps fixed/default LANsurfer branding. A deployment may expose only the minimum configurable instance identity needed to distinguish the installation, as defined by [PRODUCT.md](PRODUCT.md) and [ROADMAP.md](ROADMAP.md); it does not require a branding-management surface.
 
 - Keep the fixed **Powered by Convention-X-Treme** operator attribution visible. It is not an instance-identity field and is not admin-editable.
 - Continue to use this document's palette, typography, component semantics, accessibility rules, and light/dark presentations.
-- Accept only a validated PNG logo up to 2 MiB and 2048×1024 pixels.
-- Accept only a validated square PNG icon from 192 to 512 pixels and up to 512 KiB.
-- Store uploaded identity assets in PostgreSQL and serve them from LANsurfer.
-- When an icon or logo is absent, omit missing manifest icons and use the generated instance monogram where the UI needs an identity mark.
+- Use bundled/default product assets for logo and application-icon presentation unless a later approved scope explicitly adds configurable assets.
+- Do not add stable-1.0 controls for welcome text, contact links, uploaded logos/icons, custom colors, fonts, CSS, white-labeling, or theme editing.
 
-Instance identity is not Event-specific. It does not permit custom colors, fonts, CSS, remote branding assets, removal of the operator attribution, or a theme editor.
+Minimum instance identity is not Event-specific and must not grow into a second branding system.
 
 ## Mascot
 
@@ -259,8 +257,8 @@ The design system does not introduce or imply:
 
 Keep the fixed LANsurfer brand definition near the web composition layer as one small value/object containing the product name, tagline, semantic colors, the operating community's name and public URL used by the **Powered by …** attribution, and built-in asset paths. Tailwind/DaisyUI theme values, CSS custom properties, and templ components should derive from that definition or its generated/static stylesheet rather than introduce parallel constants.
 
-Every **Powered by …** credit in the interface renders from the operator name and URL in that definition. Changing the credited community is a single-value change there, not a template edit.
+Every **Powered by …** credit in the interface renders from the operator name and URL in that definition. Changing the credited community is a single-value change there, not a template edit or administrator setting.
 
-Fixed brand values are not environment configuration or mutable PostgreSQL state. The limited instance identity fields are separate PostgreSQL product data with the validation rules above.
+Fixed brand values and the operator attribution are not environment configuration or mutable PostgreSQL state. Any minimum instance identity permitted by PRODUCT/ROADMAP is separate product state and must remain deliberately small rather than becoming a branding editor.
 
 The approved remote IGDB cover host is a catalog-content exception, not a branding exception. It does not permit remote logos, icons, fonts, theme assets, or arbitrary images.
