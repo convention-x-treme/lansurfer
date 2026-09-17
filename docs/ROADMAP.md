@@ -42,15 +42,17 @@ The prototype schema and behavior are an input to the 1.0 migration path, not a 
 
 Tracks A–G may run concurrently. A dependency blocks only the dependent integration work, not unrelated work inside the track.
 
-| Track | Scope | Planning status | Integration dependencies |
-| --- | --- | --- | --- |
-| **A** | Single-Event Core & Request Discovery | In progress — see delivery evidence below | Track B only for final public Game Nick rendering; Track E consumes A's outbox contract |
-| **B** | Game Nick & Authentication | Prioritized | None |
-| **C** | Game Catalog & IGDB Discovery | Prioritized | None for provider/index work; A for final request-card/read-model presentation where needed |
-| **D** | Minimum Instance Identity & PWA | Prioritized | None; service-worker contract is consumed by E; G owns visual presentation |
-| **E** | Durable Notifications | Prioritized with integration dependencies | A for Game Request outbox hookup; D for browser Web Push integration; B only where Game Nick is rendered; G presents settings/permission states |
-| **F** | Distribution & Operations | Prioritized | Final upgrade/restore validation depends on persistent migrations from A–E; release validation consumes G's production assets |
-| **G** | Default Brand & UI System Adoption | In progress — PRs #17, #19, #21 (`deto1986`) | None for shared tokens/shell/components; final feature-surface integration waits only for affected A–F contracts |
+Each track has a GitHub tracking issue carrying its current checklist. The issue records progress; this roadmap remains the authority for scope.
+
+| Track | Scope | Tracking issue | Planning status | Integration dependencies |
+| --- | --- | --- | --- | --- |
+| **A** | Single-Event Core & Request Discovery | [#24](https://github.com/convention-x-treme/lansurfer/issues/24) | In progress — see delivery evidence below | Track B only for final public Game Nick rendering; Track E consumes A's outbox contract |
+| **B** | Game Nick & Authentication | [#25](https://github.com/convention-x-treme/lansurfer/issues/25) | Prioritized | None |
+| **C** | Game Catalog & IGDB Discovery | [#26](https://github.com/convention-x-treme/lansurfer/issues/26) | Prioritized | None for provider/index work; A for final request-card/read-model presentation where needed |
+| **D** | Minimum Instance Identity & PWA | [#27](https://github.com/convention-x-treme/lansurfer/issues/27) | Prioritized | None; service-worker contract is consumed by E; G owns visual presentation |
+| **E** | Durable Notifications | [#28](https://github.com/convention-x-treme/lansurfer/issues/28) | Prioritized with integration dependencies | A for Game Request outbox hookup; D for browser Web Push integration; B only where Game Nick is rendered; G presents settings/permission states |
+| **F** | Distribution & Operations | [#29](https://github.com/convention-x-treme/lansurfer/issues/29) | Prioritized | Final upgrade/restore validation depends on persistent migrations from A–E; release validation consumes G's production assets |
+| **G** | Default Brand & UI System Adoption | [#30](https://github.com/convention-x-treme/lansurfer/issues/30) | In progress — PRs #17, #19, #21 (`deto1986`) | None for shared tokens/shell/components; final feature-surface integration waits only for affected A–F contracts |
 
 ### Planning status and delivery evidence
 
@@ -58,7 +60,9 @@ Tracks A–G may run concurrently. A dependency blocks only the dependent integr
 
 Review checkpoint: **2026-09-15**, against `main` at [`e356791`](https://github.com/convention-x-treme/lansurfer/commit/e356791affdef6a2eb4968c1256c17be870e8407). At that revision the current Game Request service still required a current Event during creation.
 
-Track A delivery evidence (**2026-09-17**): migration `00006_single_event_core` removes the Game Request/Event association and adds `game_request_activity`; the `event` module, its administration screens, and its routes are gone; Game Request discovery gained name/alias search, followed/My Games, and free-places filters; the Trending rail now ranks from recorded request activity over the stated 6-hour window; and the detail screen renders the durable activity record. Track G surfaces were updated in the same change so the list, detail, creation, and administration screens stay consistent. Repository checks run for that work: `task lint`, `go test -race ./...`, `task test:integration`, `task frontend:build`, and `task build`. **A delivery issue/PR link and responsible implementer still have to be recorded here before this status is authoritative.**
+Track A delivery evidence (**2026-09-17**): issue [#24](https://github.com/convention-x-treme/lansurfer/issues/24), PR [#23](https://github.com/convention-x-treme/lansurfer/pull/23), implementer `deto1986`. Migration `00006_single_event_core` removes the Game Request/Event association and adds `game_request_activity`; the `event` module, its administration screens, and its routes are gone; Game Request discovery gained name/alias search, followed/My Games, and free-places filters; the Trending rail now ranks from recorded request activity over the stated 6-hour window; and the detail screen renders the durable activity record. Track G surfaces were updated in the same change so the list, detail, creation, and administration screens stay consistent. Repository checks run for that work: `task lint`, `go test -race ./...`, `task test:integration`, `task frontend:build`, and `task build`.
+
+Track A is **not** complete. Issue #24 records the remainder: the accepted hardening scope of #15, public Game Nick rendering once Track B lands, migration fixtures for absent and historical Event states, an exercised restart-before-delivery case, and sign-off on using one `game_request_activity` table as both the durable activity record and the A/E notification intent.
 
 Track G's current delivery evidence is the stacked UI work in PRs #17, #19, and #21; it remains **In progress** until that work is merged and applicable integration checks are recorded.
 
