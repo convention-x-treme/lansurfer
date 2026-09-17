@@ -73,7 +73,7 @@ Before the Pilot Gate is green, repository evidence must cover the capabilities 
 - at least one exercised upgrade path with existing data
 - representative load/recovery rehearsal; record hardware, network, tested load envelope, response/update observations, and failures in the validation artifact rather than inventing permanent SLOs
 
-Issue #15 remains open until its accepted hardening scope is complete. PR #17 documents the confirmed SSE/HTTP/1.1 connection-exhaustion root cause and production HTTP/2 mitigation; PR #18 covers additional rapid-interaction hardening. Keep regression coverage for the original hang and supported production HTTP behavior, and do not treat HTTP/2 alone as the root cause.
+Issue #15 is closed. PR #17 documented the confirmed SSE/HTTP/1.1 connection-exhaustion root cause and production HTTP/2 mitigation; PR #18 covered additional rapid-interaction hardening. Its remainder was split into #31 (committed browser regression tests), #32 (request-outcome and stream-lifecycle diagnostics), and #33 (creation idempotency). Keep regression coverage for the original hang and supported production HTTP behavior — the stream-lifecycle fix lives in `web/src/app.ts` and no Go test reaches it — and do not treat HTTP/2 alone as the root cause.
 
 ## Constraints requiring approval
 

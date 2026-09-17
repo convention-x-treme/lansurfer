@@ -62,7 +62,7 @@ Review checkpoint: **2026-09-15**, against `main` at [`e356791`](https://github.
 
 Track A delivery evidence (**2026-09-17**): issue [#24](https://github.com/convention-x-treme/lansurfer/issues/24), PR [#23](https://github.com/convention-x-treme/lansurfer/pull/23), implementer `deto1986`. Migration `00006_single_event_core` removes the Game Request/Event association and adds `game_request_activity`; the `event` module, its administration screens, and its routes are gone; Game Request discovery gained name/alias search, followed/My Games, and free-places filters; the Trending rail now ranks from recorded request activity over the stated 6-hour window; and the detail screen renders the durable activity record. Track G surfaces were updated in the same change so the list, detail, creation, and administration screens stay consistent. Repository checks run for that work: `task lint`, `go test -race ./...`, `task test:integration`, `task frontend:build`, and `task build`.
 
-Track A is **not** complete. Issue #24 records the remainder: the accepted hardening scope of #15, public Game Nick rendering once Track B lands, migration fixtures for absent and historical Event states, an exercised restart-before-delivery case, and sign-off on using one `game_request_activity` table as both the durable activity record and the A/E notification intent.
+Track A is **not** complete. Issue [#24](https://github.com/convention-x-treme/lansurfer/issues/24) records the remainder: committed browser regression coverage for rapid HTMX/SSE interaction ([#31](https://github.com/convention-x-treme/lansurfer/issues/31)), public Game Nick rendering once Track B lands, and sign-off on using one `game_request_activity` table as both the durable activity record and the A/E notification intent. The Event-state migration fixtures and the restart-before-delivery case are done.
 
 Track G's current delivery evidence is the stacked UI work in PRs #17, #19, and #21; it remains **In progress** until that work is merged and applicable integration checks are recorded.
 
@@ -160,7 +160,7 @@ The complete Game Request flow works without Event/Clan/context selection or mem
 - Prove failed/rejected/duplicate mutations do not produce durable activity.
 - Prove the 6-hour Trending window and filters use the intended read model without raw-query tracking.
 - At the A/E boundary, prove a rollback leaves neither the domain change nor its outbox work, while a committed change retains notification intent across restart-before-delivery.
-- Keep regression coverage for rapid HTMX/SSE interaction and supported production HTTP behavior. Issue #15 remains open until its accepted hardening scope is complete: PR #17 documents the confirmed SSE/HTTP/1.1 connection-exhaustion root cause and production HTTP/2 mitigation, while PR #18 covers additional rapid-interaction hardening. HTTP/2 is a mitigation for the original browser connection-pool symptom, not the root cause itself.
+- Keep regression coverage for rapid HTMX/SSE interaction and supported production HTTP behavior. This is Track A's own standing obligation, tracked in issue #31. Issue #15 is closed: PR #17 documented the confirmed SSE/HTTP/1.1 connection-exhaustion root cause and production HTTP/2 mitigation, and PR #18 covered additional rapid-interaction hardening; its remaining work was split into #31 (committed browser regression tests), #32 (request-outcome and stream-lifecycle diagnostics), and #33 (Game Request creation idempotency). HTTP/2 remains a mitigation for the original browser connection-pool symptom, not the root cause itself.
 
 # Track B — Game Nick & Authentication
 
@@ -491,7 +491,7 @@ The Pilot Gate is green only when the following approved pilot subset is impleme
 - At least one upgrade path using existing data is exercised.
 - A representative documented load/recovery rehearsal covers realistic parallel browsing/search, request create/join/leave flows, SSE updates, and notification behavior.
 - The validation artifact records tested hardware, network conditions, client/browser mix where relevant, tested load envelope, observed response/update behavior, failures, and recovery characteristics. Do not invent permanent concurrency/latency numbers in the roadmap.
-- Supported production deployment preserves required HTTP behavior and core interaction reliability under normal regression testing. Issue #15 is not waived by this documentation: a reproducible persistent hang in a supported core workflow remains a pilot blocker until the relevant fix and regression evidence are merged.
+- Supported production deployment preserves required HTTP behavior and core interaction reliability under normal regression testing. This is not waived by documentation: a reproducible persistent hang in a supported core workflow remains a pilot blocker. Issue #15's fix is merged; the outstanding regression evidence for it is issue #31.
 
 ## Pilot evidence
 
@@ -554,7 +554,7 @@ Review snapshot: **2026-09-15**. Issue existence is not evidence of implementati
 
 | Issue / topic | Stable 1.0 disposition |
 | --- | --- |
-| [#15 — interaction hangs](https://github.com/convention-x-treme/lansurfer/issues/15) | Open until its accepted hardening scope is complete. The confirmed original hang was caused by long-lived SSE `EventSource` connections exhausting the browser's HTTP/1.1 per-origin connection pool; HTTP/2 multiplexing prevents that production-path pool exhaustion but is not the root cause. PR #17 addresses the stream-lifecycle problem and PR #18 adds rapid-interaction hardening; closure still depends on the issue's remaining acceptance evidence. |
+| [#15 — interaction hangs](https://github.com/convention-x-treme/lansurfer/issues/15) | Closed. The confirmed original hang was caused by long-lived SSE `EventSource` connections exhausting the browser's HTTP/1.1 per-origin connection pool; HTTP/2 multiplexing prevents that production-path pool exhaustion but is not the root cause. PR #17 addressed the stream-lifecycle problem and PR #18 added rapid-interaction hardening. The remainder was split into [#31](https://github.com/convention-x-treme/lansurfer/issues/31) (committed browser regression tests, the only Track A dependency), [#32](https://github.com/convention-x-treme/lansurfer/issues/32) (diagnostics), and [#33](https://github.com/convention-x-treme/lansurfer/issues/33) (creation idempotency). |
 | [#12 — request search and filters](https://github.com/convention-x-treme/lansurfer/issues/12) | Include Game name/alias search, followed/My Games, and open capacity/free places. Other proposed filters are not automatically approved by this review. |
 | [#11 — English/German i18n](https://github.com/convention-x-treme/lansurfer/issues/11) | Deferred beyond stable 1.0. Stable 1.0 is English-only. |
 | [#10 — curated request tags](https://github.com/convention-x-treme/lansurfer/issues/10) | Deferred beyond stable 1.0. Free-text request descriptions remain sufficient. |
