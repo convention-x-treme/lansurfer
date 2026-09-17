@@ -66,6 +66,61 @@ func (f *fakeSubscriptions) Unfollow(_ context.Context, userID, gameID string) e
 	return f.unfollowErr
 }
 
+type fakeMaterializer struct {
+	result    Game
+	err       error
+	calls     int
+	lastRefer ProviderReference
+}
+
+func (f *fakeMaterializer) Materialize(_ context.Context, reference ProviderReference) (Game, error) {
+	f.calls++
+	f.lastRefer = reference
+	return f.result, f.err
+}
+
+func TestDiscoveryResolveNormalizesReferenceBeforeMaterializing(t *testing.T) {
+	materializer := &fakeMaterializer{result: Game{ID: "local-1", Name: "Local", Slug: "local"}}
+	service := NewDiscoveryService(&fakeDiscoveryRepository{}, materializer, &fakeSubscriptions{})
+	got, err := service.Resolve(t.Context(), ProviderReference{Provider: " IGDB ", ExternalID: " 100 "})
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if got.ID != "local-1" {
+		t.Fatalf("got = %#v", got)
+	}
+	want := ProviderReference{Provider: "igdb", ExternalID: "100"}
+	if materializer.calls != 1 || materializer.lastRefer != want {
+		t.Fatalf("calls=%d reference=%#v, want 1/%#v", materializer.calls, materializer.lastRefer, want)
+	}
+}
+
+func TestDiscoveryResolveRejectsInvalidReference(t *testing.T) {
+	materializer := &fakeMaterializer{}
+	service := NewDiscoveryService(&fakeDiscoveryRepository{}, materializer, &fakeSubscriptions{})
+	if _, err := service.Resolve(t.Context(), ProviderReference{Provider: "steam", ExternalID: "100"}); !errors.Is(err, ErrInvalidProviderReference) {
+		t.Fatalf("err = %v, want %v", err, ErrInvalidProviderReference)
+	}
+	if materializer.calls != 0 {
+		t.Fatalf("materializer.calls = %d, want 0", materializer.calls)
+	}
+}
+
+func TestDiscoveryResolveWithoutMaterializerReportsNoProviderRecord(t *testing.T) {
+	service := NewDiscoveryService(&fakeDiscoveryRepository{}, nil, &fakeSubscriptions{})
+	if _, err := service.Resolve(t.Context(), ProviderReference{Provider: "igdb", ExternalID: "100"}); !errors.Is(err, ErrProviderRecordNotFound) {
+		t.Fatalf("err = %v, want %v", err, ErrProviderRecordNotFound)
+	}
+}
+
+func TestDiscoveryResolvePropagatesMaterializationError(t *testing.T) {
+	materializer := &fakeMaterializer{err: ErrProviderRecordNotFound}
+	service := NewDiscoveryService(&fakeDiscoveryRepository{}, materializer, &fakeSubscriptions{})
+	if _, err := service.Resolve(t.Context(), ProviderReference{Provider: "igdb", ExternalID: "100"}); !errors.Is(err, ErrProviderRecordNotFound) {
+		t.Fatalf("err = %v, want %v", err, ErrProviderRecordNotFound)
+	}
+}
+
 func TestDiscoveryBrowseFiltersHiddenTypes(t *testing.T) {
 	repo := &fakeDiscoveryRepository{items: []DiscoveryItem{
 		{Reference: ProviderReference{Provider: "igdb", ExternalID: "1"}, Name: "Visible", GameType: "Main Game"},

@@ -139,6 +139,75 @@ FROM igdb_provider_state state
 LEFT JOIN igdb_sync_generations generation ON generation.id = state.active_generation_id
 WHERE state.singleton;
 
+-- name: FindIGDBMaterializedGame :one
+-- Loads the authoritative local Game already mapped to an IGDB external ID.
+-- The unique (lower(provider), external_id) index makes this at most one row,
+-- and that index is also the concurrency anchor materialization retries on.
+SELECT local_game.id::text AS id,
+       local_game.name AS name,
+       local_game.slug AS slug,
+       local_game.active AS active,
+       local_game.created_at AS created_at,
+       local_game.updated_at AS updated_at,
+       (mapping.archived_at IS NOT NULL)::boolean AS archived
+FROM game_external_ids mapping
+JOIN games local_game ON local_game.id = mapping.game_id
+WHERE lower(btrim(mapping.provider)) = 'igdb'
+  AND mapping.external_id = sqlc.arg(external_id)::text;
+
+-- name: RestoreIGDBExternalID :exec
+-- Spec section 9 step 2: resolving a mapping whose provider record is present
+-- in the active generation again clears the archive tombstone. The local
+-- Game, its follows, requests, and activity are never touched by archival.
+UPDATE game_external_ids mapping
+SET archived_at = NULL
+WHERE lower(btrim(mapping.provider)) = 'igdb'
+  AND mapping.external_id = sqlc.arg(external_id)::text
+  AND mapping.archived_at IS NOT NULL
+  AND EXISTS (
+      SELECT 1
+      FROM igdb_game_index provider_game
+      JOIN igdb_provider_state state
+        ON state.singleton
+       AND state.active_generation_id = provider_game.generation_id
+      WHERE provider_game.igdb_id::text = mapping.external_id
+  );
+
+-- name: ActiveIGDBProviderGame :one
+-- Reloads the authoritative provider row from the ACTIVE generation only.
+-- Materialization never trusts browser-supplied provider metadata: only the
+-- provider reference crosses the boundary, and every value used to create the
+-- local Game (name, slug, alternative names) is read here. An incomplete or
+-- retired generation is invisible, so no row means the provider record is not
+-- currently offered and nothing may be fabricated from it.
+SELECT provider_game.name,
+       provider_game.slug,
+       provider_game.alternative_names
+FROM igdb_game_index provider_game
+JOIN igdb_provider_state state
+  ON state.singleton
+ AND state.active_generation_id = provider_game.generation_id
+WHERE provider_game.igdb_id = sqlc.arg(igdb_id);
+
+-- name: GameSlugTaken :one
+SELECT EXISTS (
+    SELECT 1 FROM games WHERE games.slug = sqlc.arg(slug)::text
+)::boolean AS taken;
+
+-- name: CreateMaterializedGameAlias :exec
+-- Copying a provider alternative name is best effort: a duplicate alias must
+-- never abort materialization, so any uniqueness conflict is ignored.
+INSERT INTO game_aliases (game_id, alias)
+VALUES (sqlc.arg(game_id)::uuid, sqlc.arg(alias))
+ON CONFLICT DO NOTHING;
+
+-- name: CreateIGDBExternalID :exec
+-- The final persistence guard for concurrent materialization. A SQLSTATE
+-- 23505 here means another transaction already committed the authoritative
+-- local Game for this provider record.
+INSERT INTO game_external_ids (game_id, provider, external_id)
+VALUES (sqlc.arg(game_id)::uuid, 'igdb', sqlc.arg(external_id)::text);
+
 -- name: SearchDiscoveryGames :many
 -- Combines authoritative local Games (matched by name/alias, exactly like
 -- the pre-IGDB local browse) with the active IGDB generation (matched by

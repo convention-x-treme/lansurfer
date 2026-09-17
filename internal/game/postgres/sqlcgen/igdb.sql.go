@@ -31,6 +31,36 @@ func (q *Queries) ActivateIGDBGeneration(ctx context.Context, generationID pgtyp
 	return err
 }
 
+const activeIGDBProviderGame = `-- name: ActiveIGDBProviderGame :one
+SELECT provider_game.name,
+       provider_game.slug,
+       provider_game.alternative_names
+FROM igdb_game_index provider_game
+JOIN igdb_provider_state state
+  ON state.singleton
+ AND state.active_generation_id = provider_game.generation_id
+WHERE provider_game.igdb_id = $1
+`
+
+type ActiveIGDBProviderGameRow struct {
+	Name             string
+	Slug             string
+	AlternativeNames []string
+}
+
+// Reloads the authoritative provider row from the ACTIVE generation only.
+// Materialization never trusts browser-supplied provider metadata: only the
+// provider reference crosses the boundary, and every value used to create the
+// local Game (name, slug, alternative names) is read here. An incomplete or
+// retired generation is invisible, so no row means the provider record is not
+// currently offered and nothing may be fabricated from it.
+func (q *Queries) ActiveIGDBProviderGame(ctx context.Context, igdbID int64) (ActiveIGDBProviderGameRow, error) {
+	row := q.db.QueryRow(ctx, activeIGDBProviderGame, igdbID)
+	var i ActiveIGDBProviderGameRow
+	err := row.Scan(&i.Name, &i.Slug, &i.AlternativeNames)
+	return i, err
+}
+
 const archiveMissingIGDBExternalIDs = `-- name: ArchiveMissingIGDBExternalIDs :exec
 UPDATE game_external_ids external_id
 SET archived_at = now()
@@ -98,6 +128,42 @@ func (q *Queries) CompleteIGDBGeneration(ctx context.Context, arg CompleteIGDBGe
 	return result.RowsAffected(), nil
 }
 
+const createIGDBExternalID = `-- name: CreateIGDBExternalID :exec
+INSERT INTO game_external_ids (game_id, provider, external_id)
+VALUES ($1::uuid, 'igdb', $2::text)
+`
+
+type CreateIGDBExternalIDParams struct {
+	GameID     pgtype.UUID
+	ExternalID string
+}
+
+// The final persistence guard for concurrent materialization. A SQLSTATE
+// 23505 here means another transaction already committed the authoritative
+// local Game for this provider record.
+func (q *Queries) CreateIGDBExternalID(ctx context.Context, arg CreateIGDBExternalIDParams) error {
+	_, err := q.db.Exec(ctx, createIGDBExternalID, arg.GameID, arg.ExternalID)
+	return err
+}
+
+const createMaterializedGameAlias = `-- name: CreateMaterializedGameAlias :exec
+INSERT INTO game_aliases (game_id, alias)
+VALUES ($1::uuid, $2)
+ON CONFLICT DO NOTHING
+`
+
+type CreateMaterializedGameAliasParams struct {
+	GameID pgtype.UUID
+	Alias  string
+}
+
+// Copying a provider alternative name is best effort: a duplicate alias must
+// never abort materialization, so any uniqueness conflict is ignored.
+func (q *Queries) CreateMaterializedGameAlias(ctx context.Context, arg CreateMaterializedGameAliasParams) error {
+	_, err := q.db.Exec(ctx, createMaterializedGameAlias, arg.GameID, arg.Alias)
+	return err
+}
+
 const deleteInactiveIGDBGenerations = `-- name: DeleteInactiveIGDBGenerations :exec
 DELETE FROM igdb_sync_generations
 WHERE id <> $1::uuid
@@ -134,6 +200,61 @@ func (q *Queries) FailIGDBGeneration(ctx context.Context, arg FailIGDBGeneration
 	var completed_at pgtype.Timestamptz
 	err := row.Scan(&completed_at)
 	return completed_at, err
+}
+
+const findIGDBMaterializedGame = `-- name: FindIGDBMaterializedGame :one
+SELECT local_game.id::text AS id,
+       local_game.name AS name,
+       local_game.slug AS slug,
+       local_game.active AS active,
+       local_game.created_at AS created_at,
+       local_game.updated_at AS updated_at,
+       (mapping.archived_at IS NOT NULL)::boolean AS archived
+FROM game_external_ids mapping
+JOIN games local_game ON local_game.id = mapping.game_id
+WHERE lower(btrim(mapping.provider)) = 'igdb'
+  AND mapping.external_id = $1::text
+`
+
+type FindIGDBMaterializedGameRow struct {
+	ID        string
+	Name      string
+	Slug      string
+	Active    bool
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	Archived  bool
+}
+
+// Loads the authoritative local Game already mapped to an IGDB external ID.
+// The unique (lower(provider), external_id) index makes this at most one row,
+// and that index is also the concurrency anchor materialization retries on.
+func (q *Queries) FindIGDBMaterializedGame(ctx context.Context, externalID string) (FindIGDBMaterializedGameRow, error) {
+	row := q.db.QueryRow(ctx, findIGDBMaterializedGame, externalID)
+	var i FindIGDBMaterializedGameRow
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Slug,
+		&i.Active,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Archived,
+	)
+	return i, err
+}
+
+const gameSlugTaken = `-- name: GameSlugTaken :one
+SELECT EXISTS (
+    SELECT 1 FROM games WHERE games.slug = $1::text
+)::boolean AS taken
+`
+
+func (q *Queries) GameSlugTaken(ctx context.Context, slug string) (bool, error) {
+	row := q.db.QueryRow(ctx, gameSlugTaken, slug)
+	var taken bool
+	err := row.Scan(&taken)
+	return taken, err
 }
 
 const iGDBProviderStatus = `-- name: IGDBProviderStatus :one
@@ -186,6 +307,30 @@ type RecordIGDBGenerationFailureParams struct {
 
 func (q *Queries) RecordIGDBGenerationFailure(ctx context.Context, arg RecordIGDBGenerationFailureParams) error {
 	_, err := q.db.Exec(ctx, recordIGDBGenerationFailure, arg.Error, arg.GenerationID)
+	return err
+}
+
+const restoreIGDBExternalID = `-- name: RestoreIGDBExternalID :exec
+UPDATE game_external_ids mapping
+SET archived_at = NULL
+WHERE lower(btrim(mapping.provider)) = 'igdb'
+  AND mapping.external_id = $1::text
+  AND mapping.archived_at IS NOT NULL
+  AND EXISTS (
+      SELECT 1
+      FROM igdb_game_index provider_game
+      JOIN igdb_provider_state state
+        ON state.singleton
+       AND state.active_generation_id = provider_game.generation_id
+      WHERE provider_game.igdb_id::text = mapping.external_id
+  )
+`
+
+// Spec section 9 step 2: resolving a mapping whose provider record is present
+// in the active generation again clears the archive tombstone. The local
+// Game, its follows, requests, and activity are never touched by archival.
+func (q *Queries) RestoreIGDBExternalID(ctx context.Context, externalID string) error {
+	_, err := q.db.Exec(ctx, restoreIGDBExternalID, externalID)
 	return err
 }
 

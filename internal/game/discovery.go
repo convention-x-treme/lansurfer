@@ -67,6 +67,23 @@ func (s *DiscoveryService) Browse(ctx context.Context, userID, search string) ([
 	return result, nil
 }
 
+// Resolve turns an opaque provider reference into the one authoritative
+// local Game for it, materializing that Game on first use. Only the provider
+// and external ID cross this boundary: the materializer reloads the provider
+// row from the active index itself, so browser-supplied names, slugs, or
+// other provider metadata can never reach the local catalog. Concurrent
+// Resolve calls for the same reference converge on a single local Game.
+func (s *DiscoveryService) Resolve(ctx context.Context, ref ProviderReference) (Game, error) {
+	normalized, err := NewProviderReference(ref.Provider, ref.ExternalID)
+	if err != nil {
+		return Game{}, err
+	}
+	if s.materializer == nil {
+		return Game{}, ErrProviderRecordNotFound
+	}
+	return s.materializer.Materialize(ctx, normalized)
+}
+
 // MyGames returns the current user's followed local Games.
 func (s *DiscoveryService) MyGames(ctx context.Context, userID string) ([]SubscriptionGame, error) {
 	return s.subscriptions.MyGames(ctx, userID)

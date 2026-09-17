@@ -74,7 +74,7 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	eventService := event.NewService(eventpostgres.NewStore(pool))
 	gameStore := gamepostgres.NewStore(pool)
 	gameService := game.NewService(gameStore)
-	gameDiscovery := game.NewDiscoveryService(gameStore, nil, gameStore)
+	gameDiscovery := game.NewDiscoveryService(gameStore, gameStore, gameStore)
 	realtime := sse.NewBroker()
 	gameRequests := gamerequest.NewService(gamerequestpostgres.NewStore(pool), gameService, eventService, realtime)
 	gameRequestQueries := gamerequestquery.NewStore(pool)

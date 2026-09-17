@@ -808,6 +808,451 @@ func TestDiscoverySearchPostgreSQL(t *testing.T) {
 	})
 }
 
+func TestIGDBMaterializationPostgreSQL(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+
+	gameStore := gamepostgres.NewStore(pool)
+	catalog := game.NewService(gameStore)
+	discovery := game.NewDiscoveryService(gameStore, gameStore, gameStore)
+
+	// Two distinct provider records deliberately share one display name AND
+	// one provider slug: materialization must never merge by name, and the
+	// deterministic "-igdb-<external ID>" suffix must break the slug tie.
+	activateIGDBGeneration(t, gameStore, []game.ProviderGame{
+		{
+			Reference:        game.ProviderReference{Provider: "igdb", ExternalID: "100"},
+			Name:             "Shared Display Name",
+			Slug:             "shared-display-name",
+			GameType:         "Main Game",
+			AlternativeNames: []string{"Shared Alt", "  shared alt  ", "", strings.Repeat("x", 121)},
+		},
+		{
+			Reference: game.ProviderReference{Provider: "igdb", ExternalID: "101"},
+			Name:      "Shared Display Name",
+			Slug:      "shared-display-name",
+			GameType:  "Main Game",
+		},
+	})
+
+	first, err := discovery.Resolve(t.Context(), game.ProviderReference{Provider: "igdb", ExternalID: "100"})
+	if err != nil {
+		t.Fatalf("Resolve first: %v", err)
+	}
+	again, err := discovery.Resolve(t.Context(), game.ProviderReference{Provider: "igdb", ExternalID: "100"})
+	if err != nil {
+		t.Fatalf("Resolve again: %v", err)
+	}
+	second, err := discovery.Resolve(t.Context(), game.ProviderReference{Provider: "igdb", ExternalID: "101"})
+	if err != nil {
+		t.Fatalf("Resolve second: %v", err)
+	}
+	if first.ID != again.ID {
+		t.Fatalf("same ID produced %s/%s", first.ID, again.ID)
+	}
+	if first.ID == second.ID || first.Slug == second.Slug {
+		t.Fatalf("distinct provider games collapsed: %#v %#v", first, second)
+	}
+	if first.Name != "Shared Display Name" || second.Name != "Shared Display Name" {
+		t.Fatalf("local names = %q/%q, want the provider display name on both", first.Name, second.Name)
+	}
+	if first.Slug != "shared-display-name" {
+		t.Fatalf("first.Slug = %q, want the unused provider slug", first.Slug)
+	}
+	if second.Slug != "shared-display-name-igdb-101" {
+		t.Fatalf("second.Slug = %q, want the deterministic IGDB suffix", second.Slug)
+	}
+
+	var gameCount int
+	if err := pool.QueryRow(t.Context(), `SELECT count(*) FROM games WHERE name='Shared Display Name'`).Scan(&gameCount); err != nil {
+		t.Fatalf("count materialized games: %v", err)
+	}
+	if gameCount != 2 {
+		t.Fatalf("games with the shared name = %d, want 2", gameCount)
+	}
+
+	t.Run("aliases copy only provider names that satisfy local validation", func(t *testing.T) {
+		rows, err := pool.Query(t.Context(), `SELECT alias FROM game_aliases WHERE game_id=$1 ORDER BY alias`, first.ID)
+		if err != nil {
+			t.Fatalf("load aliases: %v", err)
+		}
+		defer rows.Close()
+		aliases := []string{}
+		for rows.Next() {
+			var alias string
+			if err := rows.Scan(&alias); err != nil {
+				t.Fatalf("scan alias: %v", err)
+			}
+			aliases = append(aliases, alias)
+		}
+		if err := rows.Err(); err != nil {
+			t.Fatalf("iterate aliases: %v", err)
+		}
+		if len(aliases) != 1 || aliases[0] != "Shared Alt" {
+			t.Fatalf("aliases = %#v, want only the single valid alternative name", aliases)
+		}
+	})
+
+	t.Run("unknown provider records are never fabricated into local games", func(t *testing.T) {
+		if _, err := discovery.Resolve(t.Context(), game.ProviderReference{Provider: "igdb", ExternalID: "999999"}); !errors.Is(err, game.ErrProviderRecordNotFound) {
+			t.Fatalf("Resolve unknown = %v, want %v", err, game.ErrProviderRecordNotFound)
+		}
+		var count int
+		if err := pool.QueryRow(t.Context(), `SELECT count(*) FROM game_external_ids WHERE external_id='999999'`).Scan(&count); err != nil {
+			t.Fatalf("count unknown mappings: %v", err)
+		}
+		if count != 0 {
+			t.Fatalf("mappings for an unknown provider record = %d, want 0", count)
+		}
+	})
+
+	t.Run("a later provider refresh never renames the authoritative local game", func(t *testing.T) {
+		if _, err := catalog.Update(t.Context(), first.ID, "Renamed Locally", first.Slug); err != nil {
+			t.Fatalf("rename local game: %v", err)
+		}
+		activateIGDBGeneration(t, gameStore, []game.ProviderGame{
+			{
+				Reference: game.ProviderReference{Provider: "igdb", ExternalID: "100"},
+				Name:      "Provider Renamed It",
+				Slug:      "provider-renamed-it",
+				GameType:  "Main Game",
+			},
+		})
+		resolved, err := discovery.Resolve(t.Context(), game.ProviderReference{Provider: "igdb", ExternalID: "100"})
+		if err != nil {
+			t.Fatalf("Resolve after refresh: %v", err)
+		}
+		if resolved.ID != first.ID || resolved.Name != "Renamed Locally" || resolved.Slug != first.Slug {
+			t.Fatalf("resolved = %#v, want the unchanged local game %s", resolved, first.ID)
+		}
+	})
+
+	t.Run("resolving an archived identity restores it without recreating the game", func(t *testing.T) {
+		var archived bool
+		if err := pool.QueryRow(t.Context(), `SELECT archived_at IS NOT NULL FROM game_external_ids WHERE external_id='101'`).Scan(&archived); err != nil {
+			t.Fatalf("load archived identity: %v", err)
+		}
+		if !archived {
+			t.Fatal("external ID 101 was not archived by the refresh that dropped it")
+		}
+		// Bring 101 back into the active generation, but leave the mapping
+		// archived so Resolve itself has to clear it (spec section 9 step 2).
+		activateIGDBGeneration(t, gameStore, []game.ProviderGame{
+			{
+				Reference: game.ProviderReference{Provider: "igdb", ExternalID: "101"},
+				Name:      "Shared Display Name",
+				Slug:      "shared-display-name-again",
+				GameType:  "Main Game",
+			},
+		})
+		if _, err := pool.Exec(t.Context(), `UPDATE game_external_ids SET archived_at=now() WHERE external_id='101'`); err != nil {
+			t.Fatalf("re-archive identity: %v", err)
+		}
+		resolved, err := discovery.Resolve(t.Context(), game.ProviderReference{Provider: "igdb", ExternalID: "101"})
+		if err != nil {
+			t.Fatalf("Resolve archived: %v", err)
+		}
+		if resolved.ID != second.ID || resolved.Slug != second.Slug {
+			t.Fatalf("resolved = %#v, want the existing local game %s", resolved, second.ID)
+		}
+		if err := pool.QueryRow(t.Context(), `SELECT archived_at IS NOT NULL FROM game_external_ids WHERE external_id='101'`).Scan(&archived); err != nil {
+			t.Fatalf("load restored identity: %v", err)
+		}
+		if archived {
+			t.Fatal("resolving a present provider record left the identity archived")
+		}
+	})
+}
+
+// TestIGDBMaterializationConvergesOnSlugConflict proves the common race: two
+// or more players materialize the same provider record at once, every racer
+// derives the same deterministic slug, and the games.slug unique index rejects
+// all but one. An advisory-lock barrier on the local Game insert holds every
+// racer inside its own transaction, past the already-materialized check, until
+// all of them are there. Without that barrier the first racer normally commits
+// before the others even begin, and the uniqueness race is never exercised at
+// all: the sabotaged implementation passes such a test.
+func TestIGDBMaterializationConvergesOnSlugConflict(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+
+	gameStore := gamepostgres.NewStore(pool)
+	discovery := game.NewDiscoveryService(gameStore, gameStore, gameStore)
+	activateIGDBGeneration(t, gameStore, []game.ProviderGame{
+		{
+			Reference:        game.ProviderReference{Provider: "igdb", ExternalID: "100"},
+			Name:             "Contended Game",
+			Slug:             "contended-game",
+			GameType:         "Main Game",
+			AlternativeNames: []string{"Contended", "CG"},
+		},
+	})
+	installAdvisoryInsertBarrier(t, pool, "games", 730032)
+	release := holdAdvisoryLock(t, pool, 730032)
+
+	const racers = 4
+	results := make([]game.Game, racers)
+	failures := make([]error, racers)
+	var waitGroup sync.WaitGroup
+	waitGroup.Add(racers)
+	for i := range racers {
+		go func() {
+			defer waitGroup.Done()
+			results[i], failures[i] = discovery.Resolve(context.Background(), game.ProviderReference{Provider: "igdb", ExternalID: "100"})
+		}()
+	}
+	waitForAdvisoryWaiters(t, pool, 730032, racers)
+	release()
+	waitGroup.Wait()
+
+	for i, err := range failures {
+		if err != nil {
+			t.Fatalf("concurrent Resolve %d: %v", i, err)
+		}
+	}
+	for i, resolved := range results {
+		if resolved.ID != results[0].ID || resolved.Slug != results[0].Slug {
+			t.Fatalf("concurrent Resolve %d = %#v, want the same local game as %#v", i, resolved, results[0])
+		}
+	}
+	if results[0].ID == "" || results[0].Slug != "contended-game" || results[0].Name != "Contended Game" {
+		t.Fatalf("converged game = %#v", results[0])
+	}
+
+	mappings, games, aliases := countMaterializedState(t, pool, "100")
+	if mappings != 1 || games != 1 || aliases != 2 {
+		t.Fatalf("mappings=%d games=%d aliases=%d, want 1/1/2", mappings, games, aliases)
+	}
+}
+
+// TestIGDBMaterializationConvergesOnExternalIDConflict drives the guard the
+// design names as final: the game_external_ids (provider, external_id) unique
+// index. Reaching it needs two racers that pick different local slugs for one
+// provider record, which happens when a generation swap changes the provider
+// slug while the first racer is still in flight. Both racers are then held at
+// the external-identity insert, so exactly one mapping can win and the loser
+// must re-read that winner rather than fail.
+func TestIGDBMaterializationConvergesOnExternalIDConflict(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+
+	gameStore := gamepostgres.NewStore(pool)
+	discovery := game.NewDiscoveryService(gameStore, gameStore, gameStore)
+	activateIGDBGeneration(t, gameStore, []game.ProviderGame{
+		{
+			Reference: game.ProviderReference{Provider: "igdb", ExternalID: "100"},
+			Name:      "Contended Game",
+			Slug:      "contended-game",
+			GameType:  "Main Game",
+		},
+	})
+	installAdvisoryInsertBarrier(t, pool, "game_external_ids", 730033)
+	release := holdAdvisoryLock(t, pool, 730033)
+
+	var results [2]game.Game
+	var failures [2]error
+	var waitGroup sync.WaitGroup
+	waitGroup.Add(1)
+	go func() {
+		defer waitGroup.Done()
+		results[0], failures[0] = discovery.Resolve(context.Background(), game.ProviderReference{Provider: "igdb", ExternalID: "100"})
+	}()
+	waitForAdvisoryWaiters(t, pool, 730033, 1)
+
+	// The provider record keeps its identity but gains a new slug, so the
+	// second racer creates a differently slugged local Game and only collides
+	// on the external identity itself.
+	activateIGDBGeneration(t, gameStore, []game.ProviderGame{
+		{
+			Reference: game.ProviderReference{Provider: "igdb", ExternalID: "100"},
+			Name:      "Contended Game",
+			Slug:      "contended-game-v2",
+			GameType:  "Main Game",
+		},
+	})
+	waitGroup.Add(1)
+	go func() {
+		defer waitGroup.Done()
+		results[1], failures[1] = discovery.Resolve(context.Background(), game.ProviderReference{Provider: "igdb", ExternalID: "100"})
+	}()
+	waitForAdvisoryWaiters(t, pool, 730033, 2)
+	release()
+	waitGroup.Wait()
+
+	for i, err := range failures {
+		if err != nil {
+			t.Fatalf("concurrent Resolve %d: %v", i, err)
+		}
+	}
+	if results[0].ID != results[1].ID || results[0].Slug != results[1].Slug {
+		t.Fatalf("racers diverged: %#v %#v", results[0], results[1])
+	}
+	if results[0].Slug != "contended-game" && results[0].Slug != "contended-game-v2" {
+		t.Fatalf("converged slug = %q", results[0].Slug)
+	}
+
+	mappings, games, _ := countMaterializedState(t, pool, "100")
+	if mappings != 1 || games != 1 {
+		t.Fatalf("mappings=%d games=%d, want 1/1 (the losing racer's local Game must roll back)", mappings, games)
+	}
+	var mappedID string
+	if err := pool.QueryRow(t.Context(), `SELECT game_id::text FROM game_external_ids WHERE external_id='100'`).Scan(&mappedID); err != nil {
+		t.Fatalf("load surviving mapping: %v", err)
+	}
+	if mappedID != results[0].ID {
+		t.Fatalf("mapped game %s != resolved game %s", mappedID, results[0].ID)
+	}
+}
+
+// TestIGDBMaterializationUnsynchronizedRacers repeats the same race without an
+// artificial barrier, so the production code path runs exactly as deployed.
+// It is a smoke test: the barrier-driven tests above are what actually prove
+// the conflict handling.
+func TestIGDBMaterializationUnsynchronizedRacers(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+
+	gameStore := gamepostgres.NewStore(pool)
+	discovery := game.NewDiscoveryService(gameStore, gameStore, gameStore)
+	activateIGDBGeneration(t, gameStore, []game.ProviderGame{
+		{
+			Reference:        game.ProviderReference{Provider: "igdb", ExternalID: "100"},
+			Name:             "Contended Game",
+			Slug:             "contended-game",
+			GameType:         "Main Game",
+			AlternativeNames: []string{"Contended", "CG"},
+		},
+	})
+
+	const racers = 8
+	results := make([]game.Game, racers)
+	failures := make([]error, racers)
+	start := make(chan struct{})
+	var waitGroup sync.WaitGroup
+	waitGroup.Add(racers)
+	for i := range racers {
+		go func() {
+			defer waitGroup.Done()
+			<-start
+			results[i], failures[i] = discovery.Resolve(context.Background(), game.ProviderReference{Provider: "igdb", ExternalID: "100"})
+		}()
+	}
+	close(start)
+	waitGroup.Wait()
+
+	for i, err := range failures {
+		if err != nil {
+			t.Fatalf("concurrent Resolve %d: %v", i, err)
+		}
+	}
+	for i, resolved := range results {
+		if resolved.ID != results[0].ID || resolved.Slug != results[0].Slug {
+			t.Fatalf("concurrent Resolve %d = %#v, want the same local game as %#v", i, resolved, results[0])
+		}
+	}
+	mappings, games, aliases := countMaterializedState(t, pool, "100")
+	if mappings != 1 || games != 1 || aliases != 2 {
+		t.Fatalf("mappings=%d games=%d aliases=%d, want 1/1/2", mappings, games, aliases)
+	}
+}
+
+func activateIGDBGeneration(t *testing.T, store *gamepostgres.Store, providerGames []game.ProviderGame) {
+	t.Helper()
+	generationID, err := store.BeginGeneration(t.Context())
+	if err != nil {
+		t.Fatalf("begin generation: %v", err)
+	}
+	if err := store.StoreProviderGames(t.Context(), generationID, providerGames); err != nil {
+		t.Fatalf("store generation games: %v", err)
+	}
+	if err := store.ActivateGeneration(t.Context(), generationID, int64(len(providerGames))); err != nil {
+		t.Fatalf("activate generation: %v", err)
+	}
+}
+
+// installAdvisoryInsertBarrier makes every INSERT into table wait for the
+// advisory lock key, which lets a test park concurrent transactions at an
+// exact statement instead of hoping the Go scheduler interleaves them.
+func installAdvisoryInsertBarrier(t *testing.T, pool *pgxpool.Pool, table string, key int64) {
+	t.Helper()
+	name := "block_" + table + "_insert"
+	statement := "CREATE FUNCTION " + name + "() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN PERFORM pg_advisory_xact_lock(" +
+		strconv.FormatInt(key, 10) + "); RETURN NEW; END $$; CREATE TRIGGER " + name +
+		" BEFORE INSERT ON " + table + " FOR EACH ROW EXECUTE FUNCTION " + name + "();"
+	if _, err := pool.Exec(t.Context(), statement); err != nil {
+		t.Fatalf("install %s barrier: %v", table, err)
+	}
+	t.Cleanup(func() {
+		if _, err := pool.Exec(context.Background(), "DROP TRIGGER "+name+" ON "+table); err != nil {
+			t.Logf("drop %s barrier: %v", table, err)
+		}
+	})
+}
+
+func holdAdvisoryLock(t *testing.T, pool *pgxpool.Pool, key int64) func() {
+	t.Helper()
+	blocker, err := pool.Begin(t.Context())
+	if err != nil {
+		t.Fatalf("begin advisory-lock transaction: %v", err)
+	}
+	open := true
+	t.Cleanup(func() {
+		if open {
+			_ = blocker.Rollback(context.Background())
+		}
+	})
+	if _, err := blocker.Exec(t.Context(), `SELECT pg_advisory_xact_lock($1)`, key); err != nil {
+		t.Fatalf("hold advisory lock: %v", err)
+	}
+	return func() {
+		t.Helper()
+		if err := blocker.Commit(t.Context()); err != nil {
+			t.Fatalf("release advisory lock: %v", err)
+		}
+		open = false
+	}
+}
+
+func waitForAdvisoryWaiters(t *testing.T, pool *pgxpool.Pool, key int64, want int) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	waiting := 0
+	for time.Now().Before(deadline) {
+		if err := pool.QueryRow(t.Context(), `
+			SELECT count(*) FROM pg_locks
+			WHERE locktype='advisory' AND NOT granted
+			  AND classid=($1::bigint >> 32)::oid AND objid=($1::bigint & 4294967295)::oid
+		`, key).Scan(&waiting); err != nil {
+			t.Fatalf("count advisory lock waiters: %v", err)
+		}
+		if waiting >= want {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for %d advisory lock waiters on %d, saw %d", want, key, waiting)
+}
+
+func countMaterializedState(t *testing.T, pool *pgxpool.Pool, externalID string) (mappings, games, aliases int) {
+	t.Helper()
+	if err := pool.QueryRow(t.Context(), `
+		SELECT (SELECT count(*) FROM game_external_ids WHERE lower(btrim(provider))='igdb' AND external_id=$1),
+		       (SELECT count(*) FROM games),
+		       (SELECT count(*) FROM game_aliases)
+	`, externalID).Scan(&mappings, &games, &aliases); err != nil {
+		t.Fatalf("count materialized state: %v", err)
+	}
+	return mappings, games, aliases
+}
+
 func TestGameSubscriptionPersistence(t *testing.T) {
 	pool := newTestPool(t)
 	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
@@ -1097,6 +1542,11 @@ func newTestPool(t *testing.T) *pgxpool.Pool {
 	if err != nil {
 		t.Fatalf("parse test database URL: %v", err)
 	}
+	// Concurrency tests deliberately hold several transactions open at once.
+	// The default maximum tracks the host CPU count, which would starve those
+	// tests (and deadlock a barrier that waits for every racer) on small CI
+	// machines, so give the pool fixed headroom instead.
+	poolConfig.MaxConns = 16
 	poolConfig.AfterConnect = func(ctx context.Context, connection *pgx.Conn) error {
 		_, err := connection.Exec(ctx, "SET search_path TO "+identifier+", public")
 		return err
