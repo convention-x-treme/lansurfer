@@ -13,7 +13,6 @@ const maxDescriptionLength = 1000
 
 var (
 	ErrNotFound           = errors.New("game request not found")
-	ErrNoCurrentEvent     = errors.New("no current event")
 	ErrGameUnavailable    = errors.New("game unavailable")
 	ErrInvalidMaxPlayers  = errors.New("invalid maximum players")
 	ErrInvalidStartsAt    = errors.New("invalid start time")
@@ -52,6 +51,20 @@ type Event struct {
 	GameID    string    `json:"gameId,omitempty"`
 }
 
+// ActivityKind names a durable request-local activity entry. The repository
+// records one entry per successful change in the same transaction as the change
+// itself, which is also what makes the record usable as Track E's notification
+// intent: a rolled-back mutation leaves neither.
+type ActivityKind string
+
+const (
+	ActivityCreated   ActivityKind = "created"
+	ActivityJoined    ActivityKind = "joined"
+	ActivityLeft      ActivityKind = "left"
+	ActivityClosed    ActivityKind = "closed"
+	ActivityCancelled ActivityKind = "cancelled"
+)
+
 // EventPublisher is implemented by delivery infrastructure. Publishing is a
 // best-effort signal: PostgreSQL remains the source of truth for refreshed UI.
 type EventPublisher interface {
@@ -60,7 +73,6 @@ type EventPublisher interface {
 
 type GameRequest struct {
 	ID          string
-	EventID     string
 	GameID      string
 	CreatorID   string
 	MaxPlayers  *int32
@@ -83,20 +95,14 @@ type GameLookup interface {
 	ActiveExists(context.Context, string) (bool, error)
 }
 
-// EventLookup is implemented by the event module and keeps current-event selection with its owner.
-type EventLookup interface {
-	Current(context.Context) (string, error)
-}
-
 type Service struct {
 	repository Repository
 	games      GameLookup
-	events     EventLookup
 	publisher  EventPublisher
 }
 
-func NewService(repository Repository, games GameLookup, events EventLookup, publisher EventPublisher) *Service {
-	return &Service{repository: repository, games: games, events: events, publisher: publisher}
+func NewService(repository Repository, games GameLookup, publisher EventPublisher) *Service {
+	return &Service{repository: repository, games: games, publisher: publisher}
 }
 
 func (s *Service) Create(ctx context.Context, creatorID, gameID string, maxPlayers *int32, startsAt time.Time, description string) (GameRequest, error) {
@@ -117,15 +123,8 @@ func (s *Service) Create(ctx context.Context, creatorID, gameID string, maxPlaye
 	if !available {
 		return GameRequest{}, ErrGameUnavailable
 	}
-	eventID, err := s.events.Current(ctx)
-	if err != nil {
-		return GameRequest{}, err
-	}
-	if eventID == "" {
-		return GameRequest{}, ErrNoCurrentEvent
-	}
 	created, err := s.repository.Create(ctx, GameRequest{
-		EventID: eventID, GameID: gameID, CreatorID: creatorID,
+		GameID: gameID, CreatorID: creatorID,
 		MaxPlayers: maxPlayers, StartsAt: startsAt, Description: description, Status: StatusOpen,
 	})
 	if err == nil {

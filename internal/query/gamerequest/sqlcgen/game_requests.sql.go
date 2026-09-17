@@ -40,24 +40,22 @@ func (q *Queries) ActiveGamesForGameRequest(ctx context.Context) ([]ActiveGamesF
 	return items, nil
 }
 
-const currentEventForGameRequest = `-- name: CurrentEventForGameRequest :one
-SELECT id::text, name FROM events WHERE is_current
+const countOpenGameRequests = `-- name: CountOpenGameRequests :one
+SELECT count(*) FROM game_requests WHERE status = 'open'
 `
 
-type CurrentEventForGameRequestRow struct {
-	ID   string
-	Name string
-}
-
-func (q *Queries) CurrentEventForGameRequest(ctx context.Context) (CurrentEventForGameRequestRow, error) {
-	row := q.db.QueryRow(ctx, currentEventForGameRequest)
-	var i CurrentEventForGameRequestRow
-	err := row.Scan(&i.ID, &i.Name)
-	return i, err
+// CountOpenGameRequests backs the navigation badge, which states how many Game
+// Requests are open on this installation and is therefore deliberately not
+// affected by the viewer's discovery filters.
+func (q *Queries) CountOpenGameRequests(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, countOpenGameRequests)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
 }
 
 const getGameRequest = `-- name: GetGameRequest :one
-SELECT gr.id::text AS request_id, e.name AS event_name,
+SELECT gr.id::text AS request_id,
        g.name AS game_name,
        gr.creator_id::text AS creator_id, u.display_name AS creator_name,
        gr.max_players, gr.starts_at, gr.description, gr.status,
@@ -66,14 +64,13 @@ SELECT gr.id::text AS request_id, e.name AS event_name,
        bool_or(m.user_id = $1::uuid) AS viewer_joined,
        bool_or(gs.user_id IS NOT NULL) AS viewer_subscribed
 FROM game_requests gr
-JOIN events e ON e.id = gr.event_id
 JOIN games g ON g.id = gr.game_id
 JOIN users u ON u.id = gr.creator_id
 JOIN game_request_members m ON m.game_request_id = gr.id
 LEFT JOIN game_subscriptions gs ON gs.game_id = gr.game_id
   AND gs.user_id = $1::uuid
 WHERE gr.id = $2::uuid
-GROUP BY gr.id, e.name, g.name, u.display_name
+GROUP BY gr.id, g.name, u.display_name
 `
 
 type GetGameRequestParams struct {
@@ -83,7 +80,6 @@ type GetGameRequestParams struct {
 
 type GetGameRequestRow struct {
 	RequestID        string
-	EventName        string
 	GameName         string
 	CreatorID        string
 	CreatorName      string
@@ -103,7 +99,6 @@ func (q *Queries) GetGameRequest(ctx context.Context, arg GetGameRequestParams) 
 	var i GetGameRequestRow
 	err := row.Scan(
 		&i.RequestID,
-		&i.EventName,
 		&i.GameName,
 		&i.CreatorID,
 		&i.CreatorName,
@@ -121,7 +116,7 @@ func (q *Queries) GetGameRequest(ctx context.Context, arg GetGameRequestParams) 
 }
 
 const listActiveGameRequests = `-- name: ListActiveGameRequests :many
-SELECT gr.id::text AS request_id, e.name AS event_name,
+SELECT gr.id::text AS request_id,
        g.name AS game_name,
        gr.creator_id::text AS creator_id, u.display_name AS creator_name,
        gr.max_players, gr.starts_at, gr.description, gr.status,
@@ -130,20 +125,39 @@ SELECT gr.id::text AS request_id, e.name AS event_name,
        bool_or(m.user_id = $1::uuid) AS viewer_joined,
        bool_or(gs.user_id IS NOT NULL) AS viewer_subscribed
 FROM game_requests gr
-JOIN events e ON e.id = gr.event_id
 JOIN games g ON g.id = gr.game_id
 JOIN users u ON u.id = gr.creator_id
 JOIN game_request_members m ON m.game_request_id = gr.id
 LEFT JOIN game_subscriptions gs ON gs.game_id = gr.game_id
   AND gs.user_id = $1::uuid
-WHERE gr.status = 'open' AND e.is_current
-GROUP BY gr.id, e.name, g.name, u.display_name
+WHERE gr.status = 'open'
+  AND (
+      $2::text = ''
+      OR strpos(lower(g.name), lower($2::text)) > 0
+      OR EXISTS (
+          SELECT 1
+          FROM game_aliases ga
+          WHERE ga.game_id = g.id
+            AND strpos(lower(ga.alias), lower($2::text)) > 0
+      )
+  )
+  AND (NOT $3::boolean OR gs.user_id IS NOT NULL)
+GROUP BY gr.id, g.name, u.display_name
+HAVING NOT $4::boolean
+    OR gr.max_players IS NULL
+    OR count(m.user_id) < gr.max_players
 ORDER BY gr.starts_at, gr.created_at, gr.id
 `
 
+type ListActiveGameRequestsParams struct {
+	ViewerID       pgtype.UUID
+	Search         string
+	FollowedOnly   bool
+	OpenPlacesOnly bool
+}
+
 type ListActiveGameRequestsRow struct {
 	RequestID        string
-	EventName        string
 	GameName         string
 	CreatorID        string
 	CreatorName      string
@@ -158,8 +172,13 @@ type ListActiveGameRequestsRow struct {
 	ViewerSubscribed bool
 }
 
-func (q *Queries) ListActiveGameRequests(ctx context.Context, viewerID pgtype.UUID) ([]ListActiveGameRequestsRow, error) {
-	rows, err := q.db.Query(ctx, listActiveGameRequests, viewerID)
+func (q *Queries) ListActiveGameRequests(ctx context.Context, arg ListActiveGameRequestsParams) ([]ListActiveGameRequestsRow, error) {
+	rows, err := q.db.Query(ctx, listActiveGameRequests,
+		arg.ViewerID,
+		arg.Search,
+		arg.FollowedOnly,
+		arg.OpenPlacesOnly,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -169,7 +188,6 @@ func (q *Queries) ListActiveGameRequests(ctx context.Context, viewerID pgtype.UU
 		var i ListActiveGameRequestsRow
 		if err := rows.Scan(
 			&i.RequestID,
-			&i.EventName,
 			&i.GameName,
 			&i.CreatorID,
 			&i.CreatorName,
@@ -182,6 +200,46 @@ func (q *Queries) ListActiveGameRequests(ctx context.Context, viewerID pgtype.UU
 			&i.MemberCount,
 			&i.ViewerJoined,
 			&i.ViewerSubscribed,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listGameRequestActivity = `-- name: ListGameRequestActivity :many
+SELECT a.kind, a.occurred_at, a.actor_id::text AS actor_id, u.display_name AS actor_name
+FROM game_request_activity a
+JOIN users u ON u.id = a.actor_id
+WHERE a.game_request_id = $1::uuid
+ORDER BY a.sequence DESC
+`
+
+type ListGameRequestActivityRow struct {
+	Kind       string
+	OccurredAt pgtype.Timestamptz
+	ActorID    string
+	ActorName  string
+}
+
+func (q *Queries) ListGameRequestActivity(ctx context.Context, gameRequestID pgtype.UUID) ([]ListGameRequestActivityRow, error) {
+	rows, err := q.db.Query(ctx, listGameRequestActivity, gameRequestID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListGameRequestActivityRow
+	for rows.Next() {
+		var i ListGameRequestActivityRow
+		if err := rows.Scan(
+			&i.Kind,
+			&i.OccurredAt,
+			&i.ActorID,
+			&i.ActorName,
 		); err != nil {
 			return nil, err
 		}
@@ -217,6 +275,60 @@ func (q *Queries) ListGameRequestMembers(ctx context.Context, gameRequestID pgty
 	for rows.Next() {
 		var i ListGameRequestMembersRow
 		if err := rows.Scan(&i.UserID, &i.DisplayName, &i.JoinedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const trendingGames = `-- name: TrendingGames :many
+SELECT g.id::text AS game_id, g.name AS game_name,
+       count(*) AS activity_count,
+       count(DISTINCT a.game_request_id) AS request_count
+FROM game_request_activity a
+JOIN game_requests gr ON gr.id = a.game_request_id
+JOIN games g ON g.id = gr.game_id
+WHERE a.occurred_at >= $1
+  AND a.kind IN ('created', 'joined')
+GROUP BY g.id, g.name
+ORDER BY count(*) DESC, count(DISTINCT a.game_request_id) DESC, lower(g.name), g.id
+LIMIT $2
+`
+
+type TrendingGamesParams struct {
+	Since       pgtype.Timestamptz
+	ResultLimit int32
+}
+
+type TrendingGamesRow struct {
+	GameID        string
+	GameName      string
+	ActivityCount int64
+	RequestCount  int64
+}
+
+// TrendingGames ranks games by Game Request activity inside the rolling window
+// the caller states in the UI. Ranking comes from recorded request activity, not
+// from search queries or page views.
+func (q *Queries) TrendingGames(ctx context.Context, arg TrendingGamesParams) ([]TrendingGamesRow, error) {
+	rows, err := q.db.Query(ctx, trendingGames, arg.Since, arg.ResultLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []TrendingGamesRow
+	for rows.Next() {
+		var i TrendingGamesRow
+		if err := rows.Scan(
+			&i.GameID,
+			&i.GameName,
+			&i.ActivityCount,
+			&i.RequestCount,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

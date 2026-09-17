@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/convention-x-treme/lansurfer/internal/auth"
-	"github.com/convention-x-treme/lansurfer/internal/event"
 	"github.com/convention-x-treme/lansurfer/internal/game"
 	"github.com/convention-x-treme/lansurfer/internal/gamerequest"
 	requestquery "github.com/convention-x-treme/lansurfer/internal/query/gamerequest"
@@ -215,7 +214,7 @@ func TestAdminRoutesRequireAdmin(t *testing.T) {
 	dependencies := RouterDependencies{
 		Ready:          func(context.Context) error { return nil },
 		Authentication: &routerAuthentication{account: user.User{DisplayName: "Player", Role: user.RoleUser}},
-		Events:         &routerEvents{}, Games: &routerGames{},
+		Games:          &routerGames{},
 	}
 	request := httptest.NewRequest(http.MethodGet, "/admin/games", nil)
 	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
@@ -228,35 +227,13 @@ func TestAdminRoutesRequireAdmin(t *testing.T) {
 	}
 }
 
-func TestAdminCanCreateEvent(t *testing.T) {
-	events := &routerEvents{}
-	router := adminTestRouter(events, &routerGames{})
-	form := url.Values{
-		"name": {"CXT 2027"}, "starts_at": {"2027-05-01T10:00"}, "ends_at": {"2027-05-03T10:00"},
-	}
-	request := httptest.NewRequest(http.MethodPost, "/admin/events", strings.NewReader(form.Encode()))
-	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
-	addCSRF(request)
-	response := httptest.NewRecorder()
-
-	router.ServeHTTP(response, request)
-
-	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/admin/events?notice=event-created" {
-		t.Fatalf("response = %d %q", response.Code, response.Header().Get("Location"))
-	}
-	if events.created.Name != "CXT 2027" || events.created.StartsAt.Location() != time.UTC {
-		t.Fatalf("created event = %#v", events.created)
-	}
-}
-
 func TestAdminGameSearchRendersAliasMatch(t *testing.T) {
 	games := &routerGames{items: []game.Game{{ID: "game-1", Name: "Warcraft III", Slug: "warcraft-3", Active: true, Aliases: []game.Alias{{ID: "alias-1", Value: "WC3"}}}}}
 	request := httptest.NewRequest(http.MethodGet, "/admin/games?q=wc3", nil)
 	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
 	response := httptest.NewRecorder()
 
-	adminTestRouter(&routerEvents{}, games).ServeHTTP(response, request)
+	adminTestRouter(games).ServeHTTP(response, request)
 
 	if response.Code != http.StatusOK || games.search != "wc3" {
 		t.Fatalf("response status = %d, search = %q", response.Code, games.search)
@@ -362,7 +339,7 @@ func TestRealtimeRequiresAuthentication(t *testing.T) {
 
 func TestRealtimeRefreshHighlightsFollowedGame(t *testing.T) {
 	queries := &routerGameRequestQueries{items: []requestquery.Request{{
-		ID: "request-1", EventName: "CXT 2027", GameName: "Warcraft III",
+		ID: "request-1", GameName: "Warcraft III",
 		CreatorID: "creator-1", CreatorName: "Grace", StartsAt: time.Now(),
 		Status: gamerequest.StatusOpen, MemberCount: 1, ViewerSubscribed: true,
 	}}}
@@ -385,18 +362,123 @@ func TestRealtimeRefreshHighlightsFollowedGame(t *testing.T) {
 	}
 }
 
+// Discovery filters are read from the query string and answered server-side:
+// an htmx submission gets the list alone, a plain GET gets the whole screen.
+func TestGameRequestDiscoveryFiltersAndTrending(t *testing.T) {
+	queries := &routerGameRequestQueries{
+		items: []requestquery.Request{{
+			ID: "request-1", GameName: "Warcraft III", CreatorID: "creator-1",
+			CreatorName: "Grace", StartsAt: time.Now(), Status: gamerequest.StatusOpen, MemberCount: 1,
+		}},
+		trending: []requestquery.TrendingGame{{GameID: "game-1", GameName: "Warcraft III", ActivityCount: 4, RequestCount: 2}},
+	}
+	router := gameRequestTestRouter(&routerGameRequests{}, queries)
+
+	page := httptest.NewRequest(http.MethodGet, "/game-requests?q=wc3&followed=1&open_places=1", nil)
+	page.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	pageResponse := httptest.NewRecorder()
+	router.ServeHTTP(pageResponse, page)
+
+	if pageResponse.Code != http.StatusOK {
+		t.Fatalf("status = %d", pageResponse.Code)
+	}
+	want := requestquery.Filter{Search: "wc3", FollowedOnly: true, OpenPlacesOnly: true}
+	if queries.filter != want {
+		t.Fatalf("filter = %#v, want %#v", queries.filter, want)
+	}
+	body := pageResponse.Body.String()
+	// The window has to be stated next to the ranking, and the ranking itself
+	// comes from recorded request activity.
+	for _, fragment := range []string{`id="trending-rail"`, "Trending", "last 6 hours", "My Games", "Free places", "1 matching open request"} {
+		if !strings.Contains(body, fragment) {
+			t.Errorf("page does not contain %q", fragment)
+		}
+	}
+
+	fragment := httptest.NewRequest(http.MethodGet, "/game-requests?q=wc3", nil)
+	fragment.Header.Set("HX-Request", "true")
+	fragment.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	fragmentResponse := httptest.NewRecorder()
+	router.ServeHTTP(fragmentResponse, fragment)
+
+	if fragmentResponse.Code != http.StatusOK {
+		t.Fatalf("fragment status = %d", fragmentResponse.Code)
+	}
+	fragmentBody := fragmentResponse.Body.String()
+	if strings.Contains(fragmentBody, "<!doctype html>") {
+		t.Error("filter submission returned a whole page instead of the list")
+	}
+	if !strings.Contains(fragmentBody, `id="game-request-list"`) {
+		t.Errorf("filter submission did not return the list: %s", fragmentBody)
+	}
+}
+
+// The navigation badge sits in the shell beside every section, so it states how
+// many Game Requests are open on the installation. Deriving it from the
+// filtered list made the same instance look busy or quiet depending on what the
+// viewer had typed, and made an htmx filter and a reload of the same URL
+// disagree.
+func TestNavigationBadgeIgnoresDiscoveryFilters(t *testing.T) {
+	queries := &routerGameRequestQueries{
+		items: []requestquery.Request{{
+			ID: "request-1", GameName: "Warcraft III", CreatorID: "creator-1",
+			CreatorName: "Grace", StartsAt: time.Now(), Status: gamerequest.StatusOpen, MemberCount: 1,
+		}},
+		openTotal: 10,
+	}
+	router := gameRequestTestRouter(&routerGameRequests{}, queries)
+
+	request := httptest.NewRequest(http.MethodGet, "/game-requests?q=warcraft", nil)
+	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d", response.Code)
+	}
+	body := response.Body.String()
+	if !strings.Contains(body, `class="data-text count-hot ml-auto text-xs">10<`) {
+		t.Errorf("badge does not show the installation's open total: %s", body)
+	}
+	if !strings.Contains(body, "1 matching open request") {
+		t.Errorf("filtered list count is missing: %s", body)
+	}
+}
+
+// A rejected search has to explain itself on the htmx path too. Swapping in an
+// empty list with no message reads as "nothing matches" rather than "that
+// search was refused".
+func TestRejectedSearchExplainsItselfInTheFragment(t *testing.T) {
+	queries := &routerGameRequestQueries{listErr: requestquery.ErrInvalidSearch}
+	router := gameRequestTestRouter(&routerGameRequests{}, queries)
+
+	request := httptest.NewRequest(http.MethodGet, "/game-requests?q="+strings.Repeat("x", 200), nil)
+	request.Header.Set("HX-Request", "true")
+	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusUnprocessableEntity)
+	}
+	body := response.Body.String()
+	if !strings.Contains(body, "Search must be 120 characters or fewer.") {
+		t.Errorf("fragment does not explain the rejected search: %s", body)
+	}
+	if !strings.Contains(body, `id="game-request-list"`) {
+		t.Errorf("fragment is not the list region: %s", body)
+	}
+}
+
 func TestGameRequestBrowserWorkflow(t *testing.T) {
 	commands := &routerGameRequests{}
 	queries := &routerGameRequestQueries{
 		items: []requestquery.Request{{
-			ID: "request-1", EventName: "CXT 2027", GameName: "Warcraft III",
+			ID: "request-1", GameName: "Warcraft III",
 			CreatorID: "creator-1", CreatorName: "Grace", StartsAt: time.Now(),
 			Status: gamerequest.StatusOpen, MemberCount: 1,
 		}},
-		options: requestquery.CreationOptions{
-			EventID: "event-1", EventName: "CXT 2027",
-			Games: []requestquery.GameOption{{ID: "game-1", Name: "Warcraft III"}},
-		},
+		options: []requestquery.GameOption{{ID: "game-1", Name: "Warcraft III"}},
 	}
 	router := gameRequestTestRouter(commands, queries)
 
@@ -491,11 +573,10 @@ type routerAuthentication struct {
 	account user.User
 }
 
-func adminTestRouter(events *routerEvents, games *routerGames) http.Handler {
+func adminTestRouter(games *routerGames) http.Handler {
 	return NewRouter(RouterDependencies{
 		Ready:          func(context.Context) error { return nil },
 		Authentication: &routerAuthentication{account: user.User{DisplayName: "Ada Admin", Role: user.RoleAdmin}},
-		Events:         events,
 		Games:          games,
 	})
 }
@@ -519,18 +600,6 @@ func gameRequestTestRouter(commands *routerGameRequests, queries *routerGameRequ
 		GameRequests: commands, RequestQueries: queries,
 	})
 }
-
-type routerEvents struct{ created event.Event }
-
-func (*routerEvents) List(context.Context) ([]event.Event, error) { return nil, nil }
-func (r *routerEvents) Create(_ context.Context, name string, startsAt, endsAt time.Time) (event.Event, error) {
-	r.created = event.Event{Name: name, StartsAt: startsAt, EndsAt: endsAt}
-	return r.created, nil
-}
-func (*routerEvents) Update(context.Context, string, string, time.Time, time.Time) (event.Event, error) {
-	return event.Event{}, nil
-}
-func (*routerEvents) SetCurrent(context.Context, string) error { return nil }
 
 type routerGames struct {
 	items  []game.Game
@@ -597,8 +666,12 @@ func (r *routerGameRequests) Cancel(_ context.Context, requestID, userID string)
 }
 
 type routerGameRequestQueries struct {
-	items   []requestquery.Request
-	options requestquery.CreationOptions
+	items     []requestquery.Request
+	options   []requestquery.GameOption
+	trending  []requestquery.TrendingGame
+	filter    requestquery.Filter
+	openTotal int64
+	listErr   error
 }
 
 type routerRealtime struct{ events <-chan gamerequest.Event }
@@ -607,7 +680,13 @@ func (r *routerRealtime) Subscribe() (<-chan gamerequest.Event, func()) {
 	return r.events, func() {}
 }
 
-func (r *routerGameRequestQueries) ListActive(context.Context, string) ([]requestquery.Request, error) {
+func (r *routerRealtime) Subscribers() int { return 1 }
+
+func (r *routerGameRequestQueries) ListActive(_ context.Context, _ string, filter requestquery.Filter) ([]requestquery.Request, error) {
+	r.filter = filter
+	if r.listErr != nil {
+		return nil, r.listErr
+	}
 	return r.items, nil
 }
 func (r *routerGameRequestQueries) ByID(_ context.Context, id, _ string) (requestquery.Request, error) {
@@ -618,11 +697,17 @@ func (r *routerGameRequestQueries) ByID(_ context.Context, id, _ string) (reques
 	}
 	return requestquery.Request{}, gamerequest.ErrNotFound
 }
-func (r *routerGameRequestQueries) CreationOptions(context.Context) (requestquery.CreationOptions, error) {
+func (r *routerGameRequestQueries) CreationOptions(context.Context) ([]requestquery.GameOption, error) {
 	return r.options, nil
 }
-func (r *routerGameRequestQueries) CurrentEvent(context.Context) (requestquery.EventContext, error) {
-	return requestquery.EventContext{ID: r.options.EventID, Name: r.options.EventName}, nil
+func (r *routerGameRequestQueries) Trending(context.Context) ([]requestquery.TrendingGame, error) {
+	return r.trending, nil
+}
+func (r *routerGameRequestQueries) CountOpen(context.Context) (int64, error) {
+	if r.openTotal != 0 {
+		return r.openTotal, nil
+	}
+	return int64(len(r.items)), nil
 }
 
 func (r *routerSubscriptions) Browse(_ context.Context, _, search string) ([]game.SubscriptionGame, error) {

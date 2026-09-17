@@ -39,7 +39,6 @@ type Authentication interface {
 type RouterDependencies struct {
 	Ready          ReadyCheck
 	Authentication Authentication
-	Events         handler.EventAdministration
 	Games          handler.GameAdministration
 	Subscriptions  handler.GameSubscriptions
 	GameRequests   handler.GameRequestCommands
@@ -54,15 +53,18 @@ type RouterDependencies struct {
 func NewRouter(dependencies RouterDependencies) http.Handler {
 	brand := branding.Default()
 	authenticationHandler := handler.NewAuthentication(dependencies.Authentication, brand, dependencies.SecureCookies)
-	administrationHandler := handler.NewAdministration(dependencies.Events, dependencies.Games, brand)
+	administrationHandler := handler.NewAdministration(dependencies.Games, brand)
 	gamesHandler := handler.NewGames(dependencies.Subscriptions, brand)
 	gameRequestsHandler := handler.NewGameRequests(dependencies.GameRequests, dependencies.RequestQueries, brand)
 	realtimeHandler := handler.NewRealtime(dependencies.Realtime)
 	router := chi.NewRouter()
 	router.Use(middleware.RequestID)
+	// RequestTimeout wraps RequestLogging so the logger sees the context the
+	// timeout derived, and can report a timed-out request as such instead of
+	// as a completed one.
+	router.Use(webmiddleware.RequestTimeout(requestTimeout))
 	router.Use(webmiddleware.RequestLogging(dependencies.Logger, dependencies.TrustedProxies))
 	router.Use(middleware.Recoverer)
-	router.Use(webmiddleware.RequestTimeout(requestTimeout))
 	router.Use(webmiddleware.SecurityHeaders(dependencies.SecureCookies))
 	router.Use(webmiddleware.CSRF(dependencies.SecureCookies))
 	router.Use(webmiddleware.Theme)
@@ -98,13 +100,9 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 		if dependencies.Realtime != nil {
 			authenticated.With(handler.RequireAuthentication).Get("/events/game-requests", realtimeHandler.GameRequests)
 		}
-		if dependencies.Events != nil && dependencies.Games != nil {
+		if dependencies.Games != nil {
 			authenticated.Route("/admin", func(admin chi.Router) {
 				admin.Use(handler.RequireAdmin)
-				admin.Get("/events", administrationHandler.Events)
-				admin.Post("/events", administrationHandler.CreateEvent)
-				admin.Post("/events/{eventID}", administrationHandler.UpdateEvent)
-				admin.Post("/events/{eventID}/current", administrationHandler.SetCurrentEvent)
 				admin.Get("/games", administrationHandler.Games)
 				admin.Post("/games", administrationHandler.CreateGame)
 				admin.Post("/games/{gameID}", administrationHandler.UpdateGame)

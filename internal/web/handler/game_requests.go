@@ -29,10 +29,11 @@ type GameRequestCommands interface {
 }
 
 type GameRequestQueries interface {
-	ListActive(context.Context, string) ([]requestquery.Request, error)
+	ListActive(context.Context, string, requestquery.Filter) ([]requestquery.Request, error)
 	ByID(context.Context, string, string) (requestquery.Request, error)
-	CreationOptions(context.Context) (requestquery.CreationOptions, error)
-	CurrentEvent(context.Context) (requestquery.EventContext, error)
+	CreationOptions(context.Context) ([]requestquery.GameOption, error)
+	Trending(context.Context) ([]requestquery.TrendingGame, error)
+	CountOpen(context.Context) (int64, error)
 }
 
 type GameRequests struct {
@@ -48,31 +49,73 @@ func NewGameRequests(commands GameRequestCommands, queries GameRequestQueries, b
 
 func (h *GameRequests) List(w http.ResponseWriter, r *http.Request) {
 	account, _ := webmiddleware.CurrentUser(r.Context())
-	eventContext, err := h.queries.CurrentEvent(r.Context())
-	if err != nil {
-		webmiddleware.LogError(r, "load current Event for Game Requests", err)
-		h.renderError(w, r)
+	filter := discoveryFilter(r)
+	requests, err := h.queries.ListActive(r.Context(), account.ID, filter)
+	if errors.Is(err, requestquery.ErrInvalidSearch) {
+		h.renderList(w, r, http.StatusUnprocessableEntity, nil, filter, "Search must be 120 characters or fewer.")
 		return
 	}
-	requests, err := h.queries.ListActive(r.Context(), account.ID)
 	if err != nil {
 		webmiddleware.LogError(r, "list active Game Requests", err)
 		h.renderError(w, r)
 		return
 	}
-	render(w, r, http.StatusOK, pages.GameRequestList(h.brand, requestNavigation(r), eventContext, requests, notice(r)))
+	h.renderList(w, r, http.StatusOK, requests, filter, "")
+}
+
+// renderList answers a filter submission with the list alone and a full page
+// load with the whole screen, so filtering stays server-rendered either way.
+func (h *GameRequests) renderList(w http.ResponseWriter, r *http.Request, status int, requests []requestquery.Request, filter requestquery.Filter, message string) {
+	navigation := requestNavigation(r)
+	if r.Header.Get("HX-Request") == "true" {
+		// The fragment carries the message too, or a rejected search would
+		// swap in an empty list with nothing explaining why.
+		render(w, r, status, pages.GameRequestListContent(h.brand, requests, filter, navigation.Viewer, "", true, nil, message))
+		return
+	}
+	trending, err := h.queries.Trending(r.Context())
+	if err != nil {
+		webmiddleware.LogError(r, "rank trending Games", err)
+		h.renderError(w, r)
+		return
+	}
+	openRequests, err := h.queries.CountOpen(r.Context())
+	if err != nil {
+		webmiddleware.LogError(r, "count open Game Requests", err)
+		h.renderError(w, r)
+		return
+	}
+	render(w, r, status, pages.GameRequestList(h.brand, navigation, filter, requests, trending, openRequests, message, notice(r)))
 }
 
 func (h *GameRequests) RefreshList(w http.ResponseWriter, r *http.Request) {
 	account, _ := webmiddleware.CurrentUser(r.Context())
-	requests, err := h.queries.ListActive(r.Context(), account.ID)
+	filter := discoveryFilter(r)
+	requests, err := h.queries.ListActive(r.Context(), account.ID, filter)
 	if err != nil {
 		webmiddleware.LogError(r, "refresh active Game Requests", err)
 		http.Error(w, "refresh game requests", http.StatusInternalServerError)
 		return
 	}
+	trending, err := h.queries.Trending(r.Context())
+	if err != nil {
+		webmiddleware.LogError(r, "refresh trending Games", err)
+		http.Error(w, "refresh game requests", http.StatusInternalServerError)
+		return
+	}
 	navigation := requestNavigation(r)
-	render(w, r, http.StatusOK, pages.GameRequestListContent(h.brand, requests, navigation.Viewer, r.URL.Query().Get("highlight"), true))
+	render(w, r, http.StatusOK, pages.GameRequestListContent(h.brand, requests, filter, navigation.Viewer, r.URL.Query().Get("highlight"), true, trending, ""))
+}
+
+// discoveryFilter reads the stable 1.0 Game Request discovery filters. An
+// unknown or absent value simply leaves the list unfiltered.
+func discoveryFilter(r *http.Request) requestquery.Filter {
+	query := r.URL.Query()
+	return requestquery.Filter{
+		Search:         strings.TrimSpace(query.Get("q")),
+		FollowedOnly:   query.Get("followed") == "1",
+		OpenPlacesOnly: query.Get("open_places") == "1",
+	}
 }
 
 func (h *GameRequests) New(w http.ResponseWriter, r *http.Request) {
@@ -291,7 +334,7 @@ func gameRequestErrorStatus(err error) int {
 		errors.Is(err, gamerequest.ErrNotMember), errors.Is(err, gamerequest.ErrCreatorCannotLeave),
 		errors.Is(err, gamerequest.ErrNotOpen):
 		return http.StatusConflict
-	case errors.Is(err, gamerequest.ErrNoCurrentEvent), errors.Is(err, gamerequest.ErrGameUnavailable),
+	case errors.Is(err, gamerequest.ErrGameUnavailable),
 		errors.Is(err, gamerequest.ErrInvalidMaxPlayers), errors.Is(err, gamerequest.ErrInvalidStartsAt),
 		errors.Is(err, gamerequest.ErrInvalidDescription):
 		return http.StatusUnprocessableEntity
@@ -302,8 +345,6 @@ func gameRequestErrorStatus(err error) int {
 
 func gameRequestMessage(err error) string {
 	switch {
-	case errors.Is(err, gamerequest.ErrNoCurrentEvent):
-		return "No current Event is configured. Ask an administrator to select one."
 	case errors.Is(err, gamerequest.ErrGameUnavailable):
 		return "Choose an active game from the list."
 	case errors.Is(err, gamerequest.ErrInvalidMaxPlayers):

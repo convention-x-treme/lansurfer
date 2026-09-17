@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net"
 	"net/http"
@@ -29,17 +30,43 @@ func RequestLogging(logger *slog.Logger, trustedProxies []netip.Prefix) func(htt
 			)
 			wrapped := chimiddleware.NewWrapResponseWriter(w, r.ProtoMajor)
 			next.ServeHTTP(wrapped, r.WithContext(context.WithValue(r.Context(), requestLoggerKey{}, requestLogger)))
-			requestLogger.Info("HTTP request completed", "status", wrapped.Status(), "bytes", wrapped.BytesWritten(), "duration", time.Since(started))
+			message, outcome := requestOutcome(r.Context())
+			requestLogger.Info(message, "outcome", outcome, "status", wrapped.Status(), "bytes", wrapped.BytesWritten(), "duration", time.Since(started))
 		})
 	}
 }
 
-func LogError(r *http.Request, message string, err error) {
+// requestOutcome reads why a request ended from its context's cancellation
+// cause rather than from the status code, which stays 200 for a response the
+// client never received. It only works while RequestLogging runs inside
+// RequestTimeout: the cause lives on the context that middleware derives.
+func requestOutcome(ctx context.Context) (message string, outcome string) {
+	switch cause := context.Cause(ctx); {
+	case cause == nil:
+		return "HTTP request completed", "completed"
+	case errors.Is(cause, ErrRequestTimeout):
+		return "HTTP request timed out", "timed-out"
+	default:
+		// net/http's disconnect cause is not a stable sentinel across
+		// versions, so anything that is not our own timeout is the client
+		// going away.
+		return "HTTP request aborted", "client-aborted"
+	}
+}
+
+// RequestLogger returns the per-request logger, already carrying the request
+// ID, method, path and client IP. Handlers that log more than an error use it
+// so their lines correlate with the request's own.
+func RequestLogger(r *http.Request) *slog.Logger {
 	logger, _ := r.Context().Value(requestLoggerKey{}).(*slog.Logger)
 	if logger == nil {
-		logger = slog.Default()
+		return slog.Default()
 	}
-	logger.Error(message, "error", err)
+	return logger
+}
+
+func LogError(r *http.Request, message string, err error) {
+	RequestLogger(r).Error(message, "error", err)
 }
 
 func clientIP(r *http.Request, trustedProxies []netip.Prefix) string {

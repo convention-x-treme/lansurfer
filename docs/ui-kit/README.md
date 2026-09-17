@@ -32,7 +32,8 @@ The leading source for colour and typography is the Claude Design project [LANsu
 
 - Corner radii are tighter than the kit: `--radius-selector` `0.25rem`, `--radius-field` `0.375rem`, `--radius-box` `0.5rem`.
 - Panel headings are sentence-case text in the UI font; the tracked uppercase mono eyebrow is gone.
-- Filter segment, "Free places only", "My Games" chip, list search, and "Load more" are not rendered. The kit shows them, but non-functional controls are not shipped; they return with server-side filtering and paging.
+- List search, the "My Games" toggle, and the "Free places" toggle are rendered now that Track A backs them with server-side discovery filters. Search applies while typing, debounced, and replaces the URL instead of pushing history; the submit button remains for the no-scripting path. "Load more" is still not rendered; it returns with server-side paging.
+- The rail ranks games as **Trending** over the rolling window Track A's read model states (`Trending · last 6 hours`), not as an unbounded "most requested" tally.
 - Player rows in the detail view are separated by rules inside the Players panel instead of being filled cards inside a card.
 
 ## Open

@@ -19,3 +19,7 @@ __debug_bin*
 .zed/
 .DS_Store
 Thumbs.db
+
+# Playwright browser test output
+/test-results/
+/playwright-report/

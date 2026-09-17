@@ -1,0 +1,81 @@
+import { expect, test } from "@playwright/test";
+import { htmxCounters, instrumentHtmx, resetFixture, waitForRealtime } from "./helpers";
+
+// SSE updates arriving around an htmx swap were one of the suspected causes in
+// issue #15, and Track A widened that surface: the list refresh now carries the
+// active discovery filters, and the Trending rail is swapped out of band during
+// the same refresh.
+
+test.beforeEach(async ({ request }) => {
+  await resetFixture(request);
+});
+
+test("a live update refreshes the list without disturbing the page", async ({ page, request }) => {
+  await page.goto("/game-requests");
+  await waitForRealtime(page, request, 1);
+  await instrumentHtmx(page);
+
+  await request.post("/__test__/publish?type=GameRequestJoined");
+
+  // The stream signal has to turn into a real fetch. Comparing the rendered
+  // "updated" stamp instead would pass or fail on whether the refresh happened
+  // to land in the same second.
+  await expect
+    .poll(async () => (await htmxCounters(page)).after, { timeout: 10_000 })
+    .toBeGreaterThan(0);
+  await expect(page.locator("#game-request-list")).toBeVisible();
+  await expect(page.locator("article[data-game-request-id]")).toHaveCount(3);
+});
+
+// A live update must not silently widen the player's view back to everything.
+// The list carries its filters in data-filter-query for exactly this reason.
+test("a live update keeps the active discovery filter", async ({ page, request }) => {
+  await page.goto("/game-requests?q=warcraft");
+  await waitForRealtime(page, request, 1);
+  await expect(page.locator("article[data-game-request-id]")).toHaveCount(1);
+
+  await request.post("/__test__/publish?type=GameRequestJoined");
+  await page.waitForTimeout(1000);
+
+  await expect(page.locator("article[data-game-request-id]")).toHaveCount(1);
+  await expect(page.locator("#game-request-list")).toHaveAttribute("data-filter-query", /q=warcraft/);
+  await expect(page.locator("#request-search")).toHaveValue("warcraft");
+});
+
+// The Trending rail rides along on the same refresh as an out-of-band swap.
+// An out-of-band target that stops matching silently drops the swap, so the
+// rail has to keep its id through a live update.
+test("a live update keeps the out-of-band Trending rail", async ({ page, request }) => {
+  await page.goto("/game-requests");
+  await waitForRealtime(page, request, 1);
+
+  await request.post("/__test__/publish?type=GameRequestJoined");
+  await page.waitForTimeout(1000);
+
+  await expect(page.locator("#trending-rail")).toHaveCount(1);
+  await expect(page.locator("#trending-rail")).toContainText("last 6 hours");
+});
+
+// The interaction the original bug report described: act, and have a live
+// update land in the middle of it.
+test("a live update arriving during a mutation leaves htmx balanced", async ({ page, request }) => {
+  await request.post("/__test__/mode?delay=500");
+  await page.goto("/game-requests");
+  await waitForRealtime(page, request, 1);
+  await instrumentHtmx(page);
+
+  const row = page.locator("article[data-game-request-id]").first();
+  await row.getByRole("button", { name: /Join|Leave/ }).click({ noWaitAfter: true });
+  await request.post("/__test__/publish?type=GameRequestJoined");
+  await request.post("/__test__/publish?type=GameRequestLeft");
+
+  await expect
+    .poll(async () => {
+      const counters = await htmxCounters(page);
+      return counters.before > 0 && counters.before === counters.after;
+    }, { timeout: 15_000 })
+    .toBe(true);
+
+  await expect(page.locator("#game-request-list")).toBeVisible();
+  await request.post("/__test__/mode?delay=0");
+});

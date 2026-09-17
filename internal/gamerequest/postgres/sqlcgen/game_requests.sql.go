@@ -53,21 +53,19 @@ func (q *Queries) CountGameRequestMembers(ctx context.Context, gameRequestID pgt
 }
 
 const createGameRequest = `-- name: CreateGameRequest :one
-INSERT INTO game_requests (event_id, game_id, creator_id, max_players, starts_at, description)
+INSERT INTO game_requests (game_id, creator_id, max_players, starts_at, description)
 VALUES (
     $1::uuid,
     $2::uuid,
-    $3::uuid,
-    $4::integer,
-    $5,
-    $6
+    $3::integer,
+    $4,
+    $5
 )
-RETURNING id::text, event_id::text, game_id::text, creator_id::text, max_players,
+RETURNING id::text, game_id::text, creator_id::text, max_players,
           starts_at, description, status, created_at, updated_at
 `
 
 type CreateGameRequestParams struct {
-	EventID     pgtype.UUID
 	GameID      pgtype.UUID
 	CreatorID   pgtype.UUID
 	MaxPlayers  pgtype.Int4
@@ -77,7 +75,6 @@ type CreateGameRequestParams struct {
 
 type CreateGameRequestRow struct {
 	ID          string
-	EventID     string
 	GameID      string
 	CreatorID   string
 	MaxPlayers  pgtype.Int4
@@ -90,7 +87,6 @@ type CreateGameRequestRow struct {
 
 func (q *Queries) CreateGameRequest(ctx context.Context, arg CreateGameRequestParams) (CreateGameRequestRow, error) {
 	row := q.db.QueryRow(ctx, createGameRequest,
-		arg.EventID,
 		arg.GameID,
 		arg.CreatorID,
 		arg.MaxPlayers,
@@ -100,7 +96,6 @@ func (q *Queries) CreateGameRequest(ctx context.Context, arg CreateGameRequestPa
 	var i CreateGameRequestRow
 	err := row.Scan(
 		&i.ID,
-		&i.EventID,
 		&i.GameID,
 		&i.CreatorID,
 		&i.MaxPlayers,
@@ -151,6 +146,22 @@ func (q *Queries) LockGameRequest(ctx context.Context, id pgtype.UUID) (LockGame
 	var i LockGameRequestRow
 	err := row.Scan(&i.CreatorID, &i.MaxPlayers, &i.Status)
 	return i, err
+}
+
+const recordGameRequestActivity = `-- name: RecordGameRequestActivity :exec
+INSERT INTO game_request_activity (game_request_id, actor_id, kind)
+VALUES ($1::uuid, $2::uuid, $3)
+`
+
+type RecordGameRequestActivityParams struct {
+	GameRequestID pgtype.UUID
+	ActorID       pgtype.UUID
+	Kind          string
+}
+
+func (q *Queries) RecordGameRequestActivity(ctx context.Context, arg RecordGameRequestActivityParams) error {
+	_, err := q.db.Exec(ctx, recordGameRequestActivity, arg.GameRequestID, arg.ActorID, arg.Kind)
+	return err
 }
 
 const removeGameRequestMember = `-- name: RemoveGameRequestMember :execrows

@@ -1,5 +1,20 @@
 @source "../../internal/web/**/*.templ";
 
+/* Tailwind's automatic source detection walks the whole repository, so files
+   that hold no class names still feed the scanner and ordinary prose turns
+   into shipped CSS: the word "invisible" in a Go test comment emits
+   .invisible, and a task name such as [frontend:build] emits a utility
+   invented from it. Test code and build configuration are excluded for that
+   reason. Production class names come from the templates and from app.ts,
+   which builds a few of them at runtime.
+
+   Only this change's own files are excluded. The same leak from Go test
+   comments and documentation prose exists repository-wide and predates it;
+   narrowing that is Track G's call, tracked separately. */
+@source not "../../web/tests/**";
+@source not "../../playwright.config.ts";
+@source not "../../Taskfile.yml";
+
 /* One token set for both presentations, switched by the document's colour
    scheme. DaisyUI sets color-scheme on every theme selector it emits —
    including the no-cookie :root:not([data-theme]) case under
@@ -397,6 +412,31 @@
     align-items: center;
     gap: 0.5rem;
     padding-bottom: 0.875rem;
+  }
+
+  /* A filter toggle is a control, so it carries the same minimum target size
+     as the buttons beside it and shows focus on the whole label. */
+  .filter-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4375rem;
+    min-height: 2.75rem;
+    border-radius: var(--radius-field);
+    padding-inline: 0.5rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: color-mix(in srgb, var(--color-base-content) 78%, transparent);
+    cursor: pointer;
+  }
+
+  .filter-toggle:has(:focus-visible) {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+
+  .filter-toggle:has(:checked) {
+    background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+    color: var(--color-base-content);
   }
 
   .request-search {

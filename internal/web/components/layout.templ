@@ -30,9 +30,10 @@ type NavigationState struct {
 	Viewer *Viewer
 	LoginAvailable bool
 	Section string
-	// OpenRequests is rendered beside the Game Requests link. Sections without
-	// a count on the current page simply omit it.
-	OpenRequests int
+	// OpenRequests is rendered beside the Game Requests link. It counts every
+	// open Game Request on the installation, never the subset a discovery
+	// filter matched. Sections without a count on the current page omit it.
+	OpenRequests int64
 }
 
 templ Layout(brand branding.Brand, title string, navigation NavigationState) {

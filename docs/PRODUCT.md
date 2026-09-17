@@ -186,7 +186,7 @@ A 1.0 LANsurfer installation represents one LAN party or gaming event context.
 - There is no Event switcher, Event invitation model, Event roster, seat assignment, Event lifecycle/history access model, or Event-scoped authorization in 1.0.
 - A minimum instance display identity may distinguish the deployment, but 1.0 does not require a branding-management surface.
 
-The prototype contains Event data and Game Request/Event relationships. The 1.0 migration must preserve existing Game Requests while making Event selection/membership irrelevant to normal Game Request behavior. The exact persistence migration is an architectural decision; the product requirement is that a user never needs to understand or satisfy a hidden Event model to use 1.0.
+The prototype contained Event data and Game Request/Event relationships. The forward migration removed the association while preserving every existing Game Request, its creator, members, status, and timestamps; legacy Event rows are kept in the database but are no longer read. Administrators no longer manage Events, and no user needs to understand or satisfy a hidden Event model.
 
 Do not introduce a generic `context`, polymorphic parent, or similar abstraction solely to preserve future flexibility.
 
@@ -269,6 +269,7 @@ Core properties include Game, creator, optional maximum players, start time, des
 - The creator closes or cancels their request instead of leaving as an ordinary member; ownership transfer is not included.
 - A player cannot join the same request twice.
 - Concurrent joins must never overfill a limited request.
+- One player may hold several open requests for the same Game at the same start time, because organizing two separate groups is legitimate. The application therefore does not treat a repeated creation as the same request; accidental double submission is prevented in the interface instead.
 - Any signed-in player may discover and use current Game Requests according to the normal application rules; Event membership is not an access prerequisite.
 
 The primary UI should show Game, player count/capacity, start time, short description, and the Join action without forcing the player through a detail page.
