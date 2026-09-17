@@ -32,6 +32,15 @@ tasks:
     cmds:
       - go test -race ./...
 
+  test:browser:
+    desc: Run browser regression tests for rapid interaction and realtime streams
+    # The fixture embeds the generated assets at compile time, so the bundle has
+    # to be rebuilt before the run or the tests exercise a stale app.ts.
+    deps: [frontend:build]
+    cmds:
+      - npx playwright install --with-deps chromium
+      - npx playwright test
+
   test:integration:
     desc: Run PostgreSQL integration tests in an isolated container
     cmds:

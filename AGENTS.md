@@ -11,6 +11,7 @@ Use Taskfile workflows, not Makefiles; run `task --list` for the authoritative t
 - `task build`: build `bin/lansurfer`.
 - `task test`: run race-enabled unit tests.
 - `task test:integration`: run PostgreSQL integration tests in an isolated container.
+- `task test:browser`: run Chromium interaction-hardening regression tests against the `internal/web/browsertest` fixture.
 - `task generate`: regenerate sqlc code.
 - `task lint`: check formatting, modules, and Go source.
 
@@ -27,6 +28,7 @@ Use Taskfile workflows, not Makefiles; run `task --list` for the authoritative t
 - Use explicit domain errors and translate them to HTTP behavior only in the web layer. Domain packages must not encode HTTP semantics.
 - Protect important invariants in PostgreSQL with constraints, indexes, transactions, locks, and foreign keys where appropriate. Treat joining a `GameRequest`, enforcing capacity, claiming a case-insensitive Game Nick, and materializing the same provider Game concurrently as concurrency-sensitive behavior.
 - Test meaningful domain behavior, PostgreSQL behavior, concurrent joins/capacity, provider materialization races, and important HTTP behavior. Avoid excessive mocking.
+- Browser tests cover only interaction hardening that no Go test can reach: rapid-click guards, realtime stream lifecycle, abort/failure recovery, and SSE-versus-swap behavior. Keep product behavior in Go tests; do not grow `web/tests` into a general end-to-end suite.
 - Use templ/HTMX SSR and SSE; keep TypeScript limited to progressive enhancement. Prefer native browser primitives. Embed production assets. The only approved remote-content exception is the IGDB cover host and safeguards documented in `docs/PRODUCT.md`; it does not permit other runtime CDNs or a general external-asset system.
 - Run migrations before HTTP startup; migration failure must prevent startup. Never run DOWN migrations automatically.
 - Keep generic OIDC provider-neutral; Discord OAuth2 login is an independent provider. Use local user IDs, explicit identity linking, revocable PostgreSQL sessions, and opaque cookies. No local passwords, JWT browser sessions, or identity merging based only on email.
