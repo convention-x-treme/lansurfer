@@ -1,8 +1,8 @@
 # LANsurfer Roadmap
 
-This roadmap carries LANsurfer from its completed web prototype to a focused stable 1.0 self-hosting release. The 1.0 work is organized as **parallel development tracks**, not a linear sequence of feature milestones. Track dependencies describe only the points where work must converge; otherwise tracks may advance independently.
+This roadmap carries LANsurfer from its completed web prototype to a focused stable 1.0 self-hosting release. The 1.0 work is organized as **parallel development tracks**, not a linear sequence of feature milestones. Track dependencies describe only the points where work must converge; otherwise tracks may advance independently. Track G carries the fixed LANsurfer brand and UI system across those product capabilities; it changes presentation, not approved product scope.
 
-Product behavior and scope are governed by [PRODUCT.md](PRODUCT.md). Technical decisions and module boundaries are governed by [ARCHITECTURE.md](ARCHITECTURE.md) and [AGENTS.md](../AGENTS.md).
+Product behavior and scope are governed by [PRODUCT.md](PRODUCT.md). Technical decisions and module boundaries are governed by [ARCHITECTURE.md](ARCHITECTURE.md) and [AGENTS.md](../AGENTS.md). The canonical default visual system is governed jointly by [BRANDING.md](BRANDING.md) and [`docs/ui-kit`](ui-kit/README.md); those design sources may not redefine product behavior, domain terminology, approved scope, technology, or module ownership.
 
 Do not implement post-1.0 candidates for completeness. Within 1.0, work may proceed in any track whose stated integration dependencies are satisfied.
 
@@ -19,7 +19,7 @@ For stable 1.0:
 - Public player identity in 1.0 is the unique, case-insensitive **Game Nick**. Rich biographies, per-Game player handles, and richer public profile pages are deferred beyond 1.0.
 - English-only is acceptable for stable 1.0. Internationalization/localization is deferred beyond 1.0.
 - Curated Game Request quick-info tags and tag-based filtering are deferred beyond 1.0.
-- LANsurfer keeps fixed/default branding. A full administrator-managed branding editor, uploaded instance logos/icons, white-labeling, and custom theming are outside 1.0. Only minimum instance identity needed for a recognizable deployment may remain configurable.
+- LANsurfer's fixed/default branding is the complete default brand and UI system defined by [BRANDING.md](BRANDING.md) and [`docs/ui-kit`](ui-kit/README.md), including its palette, typography, dark/light presentation, accessibility rules, component semantics, and bundled brand assets. A full administrator-managed branding editor, uploaded instance logos/icons, white-labeling, custom colors/fonts/CSS, and custom theming are outside 1.0. Only minimum instance identity needed for a recognizable deployment may remain configurable.
 - LANsurfer owns an authoritative local Game catalog. IGDB is an optional general deployment integration that provides a locally synchronized discovery index; it is mandatory only for the selected LAN pilot gate.
 - Durable notifications use Web Push and one instance-level Discord destination. There is no persistent in-app notification inbox.
 
@@ -36,26 +36,27 @@ The completed prototype established:
 - SSE-driven live updates with polling fallback
 - embedded production assets, responsive desktop/mobile UX, security controls, integration coverage, and self-hosting foundations
 
-The prototype schema and behavior are an input to the 1.0 migration path, not a promise that every prototype interface or relationship remains part of the 1.0 product model.
+The prototype schema and behavior are an input to the 1.0 migration path, not a promise that every prototype interface, relationship, or visual treatment remains part of the 1.0 product model.
 
 ## Development model
 
-Tracks A–F may run concurrently. A dependency blocks only the dependent integration work, not unrelated work inside the track.
+Tracks A–G may run concurrently. A dependency blocks only the dependent integration work, not unrelated work inside the track.
 
 | Track | Scope | Planning status | Integration dependencies |
 | --- | --- | --- | --- |
 | **A** | Single-Event Core & Request Discovery | Prioritized | Track B only for final public Game Nick rendering; Track E consumes A's outbox contract |
 | **B** | Game Nick & Authentication | Prioritized | None |
 | **C** | Game Catalog & IGDB Discovery | Prioritized | None for provider/index work; A for final request-card/read-model presentation where needed |
-| **D** | Minimum Instance Identity & PWA | Prioritized | None; service-worker contract is consumed by E |
-| **E** | Durable Notifications | Prioritized with integration dependencies | A for Game Request outbox hookup; D for browser Web Push integration; B only where Game Nick is rendered |
-| **F** | Distribution & Operations | Prioritized | Final upgrade/restore validation depends on persistent migrations from A–E |
+| **D** | Minimum Instance Identity & PWA | Prioritized | None; service-worker contract is consumed by E; G owns visual presentation |
+| **E** | Durable Notifications | Prioritized with integration dependencies | A for Game Request outbox hookup; D for browser Web Push integration; B only where Game Nick is rendered; G presents settings/permission states |
+| **F** | Distribution & Operations | Prioritized | Final upgrade/restore validation depends on persistent migrations from A–E; release validation consumes G's production assets |
+| **G** | Default Brand & UI System Adoption | In progress — PRs #17, #19, #21 (`deto1986`) | None for shared tokens/shell/components; final feature-surface integration waits only for affected A–F contracts |
 
 ### Planning status and delivery evidence
 
 **Prioritized** describes planning, not verified implementation progress. Mark work **In progress** only with a linked delivery issue/PR and a responsible implementer. **Integration ready** requires demonstrated track-local outcomes, stable contracts, and a linked list of remaining cross-track checks. **Done** additionally requires merged work and applicable integration checks.
 
-Review checkpoint: **2026-09-15**, against `main` at [`e356791`](https://github.com/convention-x-treme/lansurfer/commit/e356791affdef6a2eb4968c1256c17be870e8407). At that revision the current Game Request service still requires a current Event during creation, so the single-event target is not evidence that Track A is delivered.
+Review checkpoint: **2026-09-15**, against `main` at [`e356791`](https://github.com/convention-x-treme/lansurfer/commit/e356791affdef6a2eb4968c1256c17be870e8407). At that revision the current Game Request service still requires a current Event during creation, so the single-event target is not evidence that Track A is delivered. Track G's current delivery evidence is the stacked UI work in PRs #17, #19, and #21; it remains **In progress** until that work is merged and applicable integration checks are recorded.
 
 Do not infer delivery dates, staffing, owners, or completion percentages from this roadmap.
 
@@ -77,12 +78,21 @@ Do not infer delivery dates, staffing, owners, or completion percentages from th
    - Only final presentation depends on this contract; core request writes and notification transport work do not wait for it.
 
 4. **Track D → Track E: service-worker contract**
-   - Track D owns the installable web shell, manifest, service-worker registration/lifecycle/update behavior.
+   - Track D owns the manifest, service-worker registration/lifecycle/update behavior, and installability contract. Track G owns the visual application shell and theme presentation.
    - Track E owns push permission, subscriptions, push event handling, eligibility, and payloads.
 
-5. **Track F consumes all tracks at validation**
+5. **Tracks A–F ↔ Track G: presentation contract**
+   - [BRANDING.md](BRANDING.md) and [`docs/ui-kit`](ui-kit/README.md) jointly govern LANsurfer's fixed/default visual system. BRANDING owns brand semantics, palette/tokens, typography, themes, accessibility, asset policy, and component semantics; the UI kit owns represented screen composition, dimensions, states, and interactions. PRODUCT, ROADMAP, ARCHITECTURE, and AGENTS remain authoritative if a design source implies different product behavior, terminology, technology, module ownership, or scope.
+   - Track G owns the shared visual shell, design-token implementation, reusable presentation components, and adoption of the default LANsurfer brand across supported screens. Tracks A–F continue to own domain behavior, writes, queries/read models, handler contracts, security rules, and domain-error translation.
+   - Track G may build against existing contracts and representative states immediately. Final integration of a changed feature surface waits only for the affected track's user-visible behavior and read/command contract to stabilize.
+   - Tracks A–F consume Track G's established components and interaction vocabulary for new screens rather than creating parallel component systems or copying visual constants.
+   - Theme choice is a user presentation preference within the fixed LANsurfer design system. It is not instance-brand customization and must not grow into custom colors, fonts, CSS, uploaded brand assets, white-labeling, or a branding editor.
+   - Production remains templ/HTMX server rendering with Tailwind, DaisyUI, limited progressive TypeScript, embedded approved assets, and no internal JSON API created solely for the UI.
+
+6. **Track F consumes all tracks at validation**
    - Release automation/tooling may proceed early.
    - Final migration, backup/restore, and upgrade rehearsals wait until the relevant persistent schema is stable enough to validate.
+   - Final release builds also consume Track G's production styles, scripts, fonts, and other approved default-brand assets and verify they are generated, embedded, licensed, and served without unapproved runtime build tooling or remote dependencies.
 
 # Track A — Single-Event Core & Request Discovery
 
@@ -273,26 +283,27 @@ Local-only operation remains fully usable; enabled-provider discovery uses a com
 
 ## Goal
 
-Keep LANsurfer recognizable as an installation while providing the PWA/service-worker behavior required for installability and Web Push, without building a branding-management product.
+Keep LANsurfer recognizable as an installation while providing the PWA/service-worker behavior required for installability and Web Push, without building a branding-management product. Track D owns instance identity and installability contracts; the fixed/default visual brand itself is defined by BRANDING/UI kit and implemented through Track G.
 
 ## Expected outcomes
 
-- Keep fixed/default LANsurfer colors, typography, accessibility behavior, component semantics, and bundled branding.
+- Consume the fixed/default LANsurfer colors, typography, accessibility behavior, component semantics, and bundled branding defined by [BRANDING.md](BRANDING.md) and [`docs/ui-kit`](ui-kit/README.md); do not redefine them as instance configuration.
 - Permit only the minimum configurable instance identity needed to distinguish a deployment where necessary.
-- Do not add a stable-1.0 administrator surface for configurable welcome text, contact link, uploaded logo, uploaded application icon, custom theme, or white-labeling.
+- Do not add a stable-1.0 administrator surface for configurable welcome text, contact link, uploaded logo, uploaded application icon, custom theme, custom colors/fonts/CSS, or white-labeling.
 - Serve a manifest with stable application identity/start URL and appropriate bundled/default presentation.
 - Add the minimal service-worker shell needed for installation and Web Push; do not promise offline application behavior.
 - Define service-worker registration, lifecycle, update, and logout behavior so Track E can attach push handling safely.
 
 ## Acceptance
 
-The application is recognizable/installable, the manifest/service worker are stable enough for Track E, and no removed full-branding surface reappears indirectly.
+The application is recognizable/installable, the manifest/service worker are stable enough for Track E, the presentation uses Track G's canonical default design system, and no removed administrator-managed branding surface reappears indirectly.
 
 ### Verification evidence
 
 - Record install/update behavior in the required pilot platform categories and later release validation matrix.
 - Verify service-worker update/logout behavior does not expose private stale content.
 - Verify unsupported installation/push capability leaves ordinary browser workflows usable.
+- Verify minimum instance identity remains distinct from the fixed product branding and cannot mutate the palette, typography, theme tokens, or bundled LANsurfer brand assets.
 
 # Track E — Durable Notifications
 
@@ -374,6 +385,54 @@ Release artifacts are reproducible/verifiable, clean-host deployment works, back
 - Run documented clean-host installation without developer checkout/unlisted tools/exposed PostgreSQL.
 - Restore populated DB + required keys into a clean deployment and verify Games/subscriptions, users/Game Nicks, requests/memberships/activity, provider identities/index state as applicable, and notification references.
 - Exercise a documented populated upgrade plus migration-failure/restart recovery; failed migration prevents HTTP startup.
+- Verify final release builds contain Track G's generated production CSS/JS/fonts/default-brand assets and their required licenses without depending on runtime font/CDN delivery.
+
+# Track G — Default Brand & UI System Adoption
+
+## Goal
+
+Ship the canonical LANsurfer brand and design system as the fixed/default presentation for stable 1.0 across current and future product surfaces, replacing the prototype's presentation without changing product behavior or creating a branding-management product.
+
+## Expected outcomes
+
+### Design authority and default branding
+
+- Implement [BRANDING.md](BRANDING.md) as the canonical fixed/default LANsurfer brand foundation through 1.0: palette, semantic tokens, Schibsted Grotesk/JetBrains Mono typography roles, supported dark/light presentation, accessibility rules, action hierarchy, asset policy, wordmark/mascot guidance, voice, and operator attribution.
+- Use [`docs/ui-kit`](ui-kit/README.md) for represented composition, dimensions, states, and interactions, with BRANDING owning semantic tokens and accessibility behavior.
+- Treat the new design system as the default product branding. “Fixed/default branding” means this canonical system may replace the prototype's old colors, typography, layout, and component treatments; it does **not** mean preserving the prototype visually.
+- Do not add administrator-managed colors, fonts, CSS, uploaded logos/application icons, white-labeling, custom themes, or a general branding editor. Minimum instance identity remains Track D scope and must stay distinct from the product brand.
+
+### Shared UI platform
+
+- Provide one shared application shell, centralized design tokens, reusable components, consistent action/state semantics, responsive behavior, keyboard focus, reduced-motion behavior, and supported contrast behavior.
+- Keep dark mode and light mode as equally supported presentations of the same default design system; theme choice is a user presentation preference, not instance branding.
+- Keep production rendering in templ/HTMX with Tailwind and DaisyUI plus limited progressive TypeScript. Bundle approved fonts and product assets with the application; runtime font CDNs are not allowed.
+- Keep generated frontend assets reproducible and embedded for production. The existing approved IGDB remote-cover exception remains a catalog concern and does not generalize into remote brand assets.
+
+### Feature-surface adoption
+
+- Adopt the design system across the shared shell and current authentication, Game Request, Games/My Games, administration, empty/error, and related supported surfaces represented by the existing product.
+- As Tracks A–F add or change user-visible states, render them through the established shell, tokens, components, and interaction vocabulary rather than creating parallel visual systems.
+- Track G does not own domain rules, persistence, read models, authorization, or product-scope decisions. It consumes the affected track's server-side contracts and translates them into consistent presentation.
+- Preserve SSR/HTMX behavior and progressive enhancement; do not create an internal JSON API solely to serve the UI.
+
+### Presentation audit and remediation
+
+- Keep [`UI-AUDIT.md`](UI-AUDIT.md) as Track G implementation evidence rather than design authority.
+- Verify both themes, desktop/mobile behavior, status text independent of color, keyboard focus, touch targets, reduced motion, increased-contrast behavior, form/control boundaries, live notices, and generated theme cascade behavior.
+- Re-run the documented full audit when a new score is claimed; per-finding remediation is not itself a replacement full-audit score.
+
+## Acceptance
+
+Stable-1.0 web surfaces use one coherent default LANsurfer brand/UI system derived from BRANDING and the UI kit; dark/light and responsive/accessibility behavior are supported; approved production assets are generated and embedded; new A–F surfaces can consume the same components; and no administrator branding editor, white-label system, custom theme surface, or parallel prototype visual system is introduced.
+
+### Verification evidence
+
+- Current delivery work is tracked in PR #17 (initial UI-kit adoption), PR #19 (complete design-system adoption), and PR #21 (presentation audit remediation), with `deto1986` as the responsible implementer while the track is In progress.
+- Run the repository's applicable formatting/lint, unit/integration, generated-asset, and build checks for the integrated revision.
+- Exercise representative supported screens in dark/light presentation at desktop/mobile sizes, including keyboard and coarse-pointer interaction where applicable.
+- Verify the production build serves the bundled fonts/assets and generated CSS/JS without unapproved remote design dependencies.
+- Verify representative A–F states render through the shared components without moving domain behavior into templates or client-side code.
 
 # Pilot Gate
 
@@ -387,7 +446,7 @@ The Pilot Gate is green only when the following approved pilot subset is impleme
 - After first successful Discord login, every participant chooses/confirms a unique case-insensitive Game Nick before using core Game Request flows.
 - OIDC is not a pilot prerequisite, but remains stable-1.0 scope.
 - English UI is sufficient for the pilot.
-- Rich profiles, localization, curated request tags, and full branding are not pilot prerequisites.
+- Rich profiles, localization, curated request tags, and administrator-managed branding/customization are not pilot prerequisites.
 
 ## Game discovery and requests
 
@@ -412,6 +471,7 @@ The Pilot Gate is green only when the following approved pilot subset is impleme
 ## Instance/PWA presentation
 
 - Minimum recognizable instance identity is sufficient.
+- Pilot-facing supported surfaces use the canonical default LANsurfer branding/design system; no administrator customization surface is required.
 - Manifest/service-worker behavior required for installability and Web Push is working.
 - No full administrator branding editor is required.
 
@@ -447,6 +507,8 @@ Run cross-track integration checks as contracts land. The formal stable-1.0 Inte
 - IGDB-disabled local-only operation works with administrator-managed local Games.
 - IGDB-enabled operation handles complete baseline, daily/manual refresh, provider failure, disable/re-enable, type visibility, materialization races, and removal/archive policy.
 - Minimum instance identity, manifest, service worker, CSP, and remote-cover exception coexist correctly.
+- Track G's canonical default branding/UI system is applied across stable-1.0 surfaces in both supported themes without introducing administrator branding customization or a parallel visual system.
+- Production-generated UI assets, fonts, and licenses are embedded and compatible with the release/operations path.
 - A populated prototype installation upgrades through 1.0 migrations without data loss.
 - Production build, Compose deployment, backup/restore, and documented operator flows are exercised against the integrated application.
 
@@ -468,7 +530,8 @@ The stable 1.0 Integration Gate being green.
 - Reconcile accepted/deferred scope decisions before the candidate. Unapproved proposals remain unscheduled.
 - After the candidate, accept only release blockers, security fixes, migration fixes, and documentation corrections.
 - Re-run integrated OIDC/Discord onboarding, Game Nick identity, instance-wide Game Request, discovery/Trending/activity, provider-failure, notification-retry, backup/restore, and supported upgrade paths.
-- Verify no 1.0 workflow requires Event selection/membership, Open Play, Clans, rich profiles, localization, curated tags, or a full branding editor.
+- Verify no 1.0 workflow requires Event selection/membership, Open Play, Clans, rich profiles, localization, curated tags, or an administrator-managed branding editor.
+- Verify the canonical default LANsurfer branding/design system from BRANDING/UI kit is present across supported release surfaces and that minimum instance identity does not mutate that system.
 - Verify accessibility, responsive behavior, Content Security Policy, secret handling, rate limits, and production asset embedding.
 - Update [SECURITY.md](../SECURITY.md) from its pre-stable policy to the supported 1.0 policy as part of release preparation.
 - Publish `v1.0.0` only when release-candidate blockers are resolved.
@@ -490,7 +553,7 @@ Review snapshot: **2026-09-15**. Issue existence is not evidence of implementati
 | [#13 — trending/current interest](https://github.com/convention-x-treme/lansurfer/issues/13) | Include request-based Trending with a visible rolling 6-hour window. Do not persist raw search queries or introduce search-interest tracking. |
 | [#14 — request activity history](https://github.com/convention-x-treme/lansurfer/issues/14) | Include durable request-local create/join/leave/close/cancel activity, separate from membership and notification delivery. |
 | Rich player profiles | Deferred beyond stable 1.0. Game Nick is the required public identity. |
-| Full instance branding | Removed from stable 1.0. Keep fixed/default LANsurfer branding plus only minimum instance identity; no branding editor/white-label/theme surface. |
+| Administrator-managed instance branding/customization | Removed from stable 1.0. The canonical fixed/default LANsurfer branding and design system in BRANDING/UI kit remains stable-1.0 scope through Track G; only operator controls for uploaded logos/icons, welcome/contact branding, custom colors/fonts/CSS/themes, white-labeling, and a general branding editor are excluded. Minimum instance identity remains Track D scope. |
 | Generic OIDC | Remains stable-1.0 scope even though Discord is sufficient/required for the selected pilot. |
 | [#7 — optional dotenv](https://github.com/convention-x-treme/lansurfer/issues/7), [#8 — development database modes](https://github.com/convention-x-treme/lansurfer/issues/8) | Contributor-workflow items; track separately from production release acceptance. |
 
