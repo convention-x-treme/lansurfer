@@ -229,7 +229,8 @@ func (h *Administration) redirect(w http.ResponseWriter, r *http.Request, target
 func adminNavigation(r *http.Request) components.NavigationState {
 	account, _ := webmiddleware.CurrentUser(r.Context())
 	return components.NavigationState{
-		Viewer: &components.Viewer{DisplayName: account.DisplayName, Role: string(account.Role)},
+		Viewer:  &components.Viewer{ID: account.ID, DisplayName: account.DisplayName, Role: string(account.Role)},
+		Section: "administration",
 	}
 }
 

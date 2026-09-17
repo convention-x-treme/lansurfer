@@ -1,65 +1,64 @@
 package pages
 
 import (
-	"time"
 	"github.com/convention-x-treme/lansurfer/internal/event"
 	"github.com/convention-x-treme/lansurfer/internal/game"
 	"github.com/convention-x-treme/lansurfer/internal/web/branding"
 	"github.com/convention-x-treme/lansurfer/internal/web/components"
+	"time"
 )
 
 templ AdminEvents(brand branding.Brand, navigation components.NavigationState, events []event.Event, formError, notice string) {
 	@components.Layout(brand, "Manage Events", navigation) {
-		<section class="page-shell py-10">
-			<div class="flex flex-wrap items-end justify-between gap-4">
-				<div>
-					<p class="data-text text-sm font-semibold uppercase tracking-widest text-secondary">Administration</p>
-					<h1 class="mt-2 text-3xl font-bold">Events</h1>
-					<p class="mt-2 text-base-content/70">Keep historical events and select the one currently used by LANsurfer.</p>
-				</div>
-				<a class="btn btn-ghost" href="/admin/games">Manage games</a>
-			</div>
+		<header class="app-topbar">
+			<h1 class="app-title">Manage Events</h1>
+			<a class="btn btn-quiet btn-sm" href="/admin/games">Game catalog</a>
+		</header>
+		<div class="content-page">
+			<p class="mb-5 max-w-2xl text-sm text-base-content/70">Keep historical events and select the one currently used by LANsurfer.</p>
 			if formError != "" {
-				<div role="alert" class="alert alert-error mt-6"><span>{ formError }</span></div>
+				<div role="alert" class="alert alert-error mb-4"><span>{ formError }</span></div>
 			}
 			if notice != "" {
-				<div role="status" class="alert alert-info mt-6"><span>{ notice }</span></div>
+				<div role="status" class="alert alert-info mb-4"><span>{ notice }</span></div>
 			}
-			<div class="mt-8 grid gap-8 lg:grid-cols-[minmax(18rem,0.7fr)_minmax(0,1.3fr)]">
-				<form method="post" action="/admin/events" class="card h-fit border border-base-300 bg-base-200 shadow-sm">
-					@components.CSRFInput()
-					<div class="card-body">
-						<h2 class="card-title">Create event</h2>
+			<div class="grid items-start gap-6 lg:grid-cols-[minmax(18rem,0.7fr)_minmax(0,1.3fr)]">
+				<section class="grid gap-2">
+					<p class="section-label">Create event</p>
+					<form method="post" action="/admin/events" class="detail-card">
+						@components.CSRFInput()
 						@EventFields("", time.Time{}, time.Time{})
-						<div class="card-actions justify-end"><button class="btn btn-primary" type="submit">Create event</button></div>
-					</div>
-				</form>
-				<div class="space-y-4">
-					if len(events) == 0 {
-						<div class="card border border-base-300 bg-base-200"><div class="card-body"><h2 class="card-title">No events yet</h2><p>Create the LAN event you want to prepare.</p></div></div>
-					}
-					for _, item := range events {
-						<article class="card border border-base-300 bg-base-200 shadow-sm">
-							<div class="card-body">
+						<div class="flex justify-end"><button class="btn btn-primary btn-sm" type="submit">Create event</button></div>
+					</form>
+				</section>
+				<section class="grid gap-2">
+					<p class="section-label">Existing events</p>
+					<div class="grid gap-3">
+						if len(events) == 0 {
+							<div class="detail-card"><h2 class="text-[1.0625rem] font-semibold">No events yet</h2><p class="text-sm text-base-content/70">Create the LAN event you want to prepare.</p></div>
+						}
+						for _, item := range events {
+							<article class="game-card">
 								<div class="flex flex-wrap items-center justify-between gap-3">
-									<h2 class="card-title">{ item.Name }</h2>
+									<h2 class="text-[1.0625rem] font-semibold">{ item.Name }</h2>
 									if item.IsCurrent {
-										<span class="badge badge-primary">Current event</span>
+										<span class="status-chip status-chip-open">Current event</span>
 									} else {
-										<form method="post" action={ "/admin/events/" + item.ID + "/current" }>@components.CSRFInput()<button class="btn btn-outline btn-sm" type="submit">Make current</button></form>
+										<form method="post" action={ "/admin/events/" + item.ID + "/current" }>@components.CSRFInput()
+<button class="btn btn-quiet btn-sm" type="submit">Make current</button></form>
 									}
 								</div>
 								<form method="post" action={ "/admin/events/" + item.ID } class="mt-3 grid gap-4 sm:grid-cols-2">
 									@components.CSRFInput()
 									@EventFields(item.Name, item.StartsAt, item.EndsAt)
-									<div class="sm:col-span-2 flex justify-end"><button class="btn btn-outline btn-sm" type="submit">Save event</button></div>
+									<div class="sm:col-span-2 flex justify-end"><button class="btn btn-quiet btn-sm" type="submit">Save event</button></div>
 								</form>
-							</div>
-						</article>
-					}
-				</div>
+							</article>
+						}
+					</div>
+				</section>
 			</div>
-		</section>
+		</div>
 	}
 }
 
@@ -71,97 +70,94 @@ templ EventFields(name string, startsAt, endsAt time.Time) {
 
 templ AdminGames(brand branding.Brand, navigation components.NavigationState, games []game.Game, search, formError, notice string) {
 	@components.Layout(brand, "Manage Games", navigation) {
-		<section class="page-shell py-10">
-			<div class="flex flex-wrap items-end justify-between gap-4">
-				<div>
-					<p class="data-text text-sm font-semibold uppercase tracking-widest text-secondary">Administration</p>
-					<h1 class="mt-2 text-3xl font-bold">Game catalog</h1>
-					<p class="mt-2 text-base-content/70">Maintain the local games available for Looking for Group.</p>
-				</div>
-				<a class="btn btn-ghost" href="/admin/events">Manage events</a>
-			</div>
+		<header class="app-topbar">
+			<h1 class="app-title">Manage Games</h1>
+			<a class="btn btn-quiet btn-sm" href="/admin/events">Events</a>
+		</header>
+		<div class="content-page">
+			<p class="mb-5 max-w-2xl text-sm text-base-content/70">Maintain the local games available for Looking for Group.</p>
 			if formError != "" {
-				<div role="alert" class="alert alert-error mt-6"><span>{ formError }</span></div>
+				<div role="alert" class="alert alert-error mb-4"><span>{ formError }</span></div>
 			}
 			if notice != "" {
-				<div role="status" class="alert alert-info mt-6"><span>{ notice }</span></div>
+				<div role="status" class="alert alert-info mb-4"><span>{ notice }</span></div>
 			}
-			<div class="mt-8 grid gap-8 xl:grid-cols-[minmax(18rem,0.55fr)_minmax(0,1.45fr)]">
-				<div class="space-y-5">
-					<form method="post" action="/admin/games" class="card border border-base-300 bg-base-200 shadow-sm">
+			<form class="request-toolbar" method="get" action="/admin/games">
+				<label class="sr-only" for="admin-game-search">Search by game name or alias</label>
+				<input id="admin-game-search" class="input input-sm request-search" type="search" name="q" value={ search } maxlength="120" placeholder="Search by name or alias"/>
+				<button class="btn btn-quiet btn-sm" type="submit">Search</button>
+				if search != "" {
+					<a class="btn btn-ghost btn-sm" href="/admin/games">Clear</a>
+				}
+			</form>
+			<div class="grid items-start gap-6 xl:grid-cols-[minmax(18rem,0.55fr)_minmax(0,1.45fr)]">
+				<section class="grid gap-2">
+					<p class="section-label">Add game</p>
+					<form method="post" action="/admin/games" class="detail-card">
 						@components.CSRFInput()
-						<div class="card-body">
-							<h2 class="card-title">Add game</h2>
-							@GameFields("", "")
-							<div class="card-actions justify-end"><button class="btn btn-primary" type="submit">Add game</button></div>
-						</div>
+						@GameFields("", "")
+						<div class="flex justify-end"><button class="btn btn-primary btn-sm" type="submit">Add game</button></div>
 					</form>
-					<form method="get" action="/admin/games" class="card border border-base-300 bg-base-200 shadow-sm">
-						<div class="card-body">
-							<h2 class="card-title">Search catalog</h2>
-							<label class="form-control"><span class="label"><span class="label-text">Name or alias</span></span><input class="input input-bordered" type="search" name="q" value={ search } maxlength="120" placeholder="e.g. wc3"/></label>
-							<div class="card-actions justify-end"><a class="btn btn-ghost" href="/admin/games">Clear</a><button class="btn btn-outline" type="submit">Search</button></div>
-						</div>
-					</form>
-				</div>
-				<div class="space-y-4">
-					if len(games) == 0 {
-						<div class="card border border-base-300 bg-base-200"><div class="card-body"><h2 class="card-title">No games found</h2><p>Add a game or try a different name or alias.</p></div></div>
-					}
-					for _, item := range games {
-						@AdminGameCard(item)
-					}
-				</div>
+				</section>
+				<section class="grid gap-2">
+					<p class="section-label">Catalog games</p>
+					<div class="grid gap-3">
+						if len(games) == 0 {
+							<div class="detail-card"><h2 class="text-[1.0625rem] font-semibold">No games found</h2><p class="text-sm text-base-content/70">Add a game or try a different name or alias.</p></div>
+						}
+						for _, item := range games {
+							@AdminGameCard(item)
+						}
+					</div>
+				</section>
 			</div>
-		</section>
+		</div>
 	}
 }
 
 templ AdminGameCard(item game.Game) {
-	<article class="card border border-base-300 bg-base-200 shadow-sm">
-		<div class="card-body">
-			<div class="flex flex-wrap items-center justify-between gap-3">
-				<div><h2 class="card-title">{ item.Name }</h2><p class="data-text text-sm text-base-content/60">{ item.Slug }</p></div>
-				if item.Active {
-					<span class="badge badge-primary">Active</span>
-				} else {
-					<span class="badge badge-ghost">Inactive</span>
-				}
-			</div>
-			<form method="post" action={ "/admin/games/" + item.ID } class="mt-3 grid gap-4 sm:grid-cols-2">
-				@components.CSRFInput()
-				@GameFields(item.Name, item.Slug)
-				<div class="sm:col-span-2 flex flex-wrap justify-end gap-2">
-					<button class="btn btn-outline btn-sm" type="submit">Save game</button>
-				</div>
-			</form>
-			<form method="post" action={ "/admin/games/" + item.ID + "/active" } class="flex justify-end" data-confirm={ gameActiveConfirmation(item.Active) }>
-				@components.CSRFInput()
-				if item.Active {
-					<input type="hidden" name="active" value="false"/><button class="btn btn-error btn-sm" type="submit">Deactivate game</button>
-				} else {
-					<input type="hidden" name="active" value="true"/><button class="btn btn-primary btn-sm" type="submit">Activate game</button>
-				}
-			</form>
-			<div class="divider my-1">Aliases</div>
-			<div class="flex flex-wrap gap-2">
-				for _, alias := range item.Aliases {
-					<form method="post" action={ "/admin/games/" + item.ID + "/aliases/" + alias.ID + "/remove" } data-confirm={ "Remove the alias " + alias.Value + "?" }>
-						@components.CSRFInput()
-						<button class="badge badge-outline h-auto min-h-11 gap-1 py-2" type="submit" aria-label={ "Remove alias " + alias.Value }>{ alias.Value } <span aria-hidden="true">×</span></button>
-					</form>
-				}
-				if len(item.Aliases) == 0 {
-					<span class="text-sm text-base-content/60">No aliases</span>
-				}
-			</div>
-			<form method="post" action={ "/admin/games/" + item.ID + "/aliases" } class="flex flex-col gap-2 sm:flex-row">
-				@components.CSRFInput()
-				<label class="sr-only" for={ "alias-" + item.ID }>New alias</label>
-				<input id={ "alias-" + item.ID } class="input input-bordered input-sm flex-1" name="alias" maxlength="120" placeholder="Add search alias" required/>
-				<button class="btn btn-outline btn-sm" type="submit">Add alias</button>
-			</form>
+	<article class="game-card">
+		<div class="flex flex-wrap items-center justify-between gap-3">
+			<div><h2 class="text-[1.0625rem] font-semibold">{ item.Name }</h2><p class="data-text text-xs text-base-content/65">{ item.Slug }</p></div>
+			if item.Active {
+				<span class="status-chip status-chip-open">Active</span>
+			} else {
+				<span class="status-chip">Inactive</span>
+			}
 		</div>
+		<form method="post" action={ "/admin/games/" + item.ID } class="mt-3 grid gap-4 sm:grid-cols-2">
+			@components.CSRFInput()
+			@GameFields(item.Name, item.Slug)
+			<div class="sm:col-span-2 flex flex-wrap justify-end gap-2">
+				<button class="btn btn-quiet btn-sm" type="submit">Save game</button>
+			</div>
+		</form>
+		<form method="post" action={ "/admin/games/" + item.ID + "/active" } class="flex justify-end" data-confirm={ gameActiveConfirmation(item.Active) }>
+			@components.CSRFInput()
+			if item.Active {
+				<input type="hidden" name="active" value="false"/><button class="btn btn-step-back btn-sm" type="submit">Deactivate game</button>
+			} else {
+				<input type="hidden" name="active" value="true"/><button class="btn btn-primary btn-sm" type="submit">Activate game</button>
+			}
+		</form>
+		<div class="divider my-1">Aliases</div>
+		<div class="flex flex-wrap gap-2">
+			for _, alias := range item.Aliases {
+				<form method="post" action={ "/admin/games/" + item.ID + "/aliases/" + alias.ID + "/remove" } data-confirm={ "Remove the alias " + alias.Value + "?" }>
+					@components.CSRFInput()
+					<button class="badge badge-outline h-auto min-h-11 gap-1 py-2" type="submit" aria-label={ "Remove alias " + alias.Value }>{ alias.Value } <span aria-hidden="true">×</span></button>
+				</form>
+			}
+			if len(item.Aliases) == 0 {
+				<span class="text-sm text-base-content/70">No aliases</span>
+			}
+		</div>
+		<form method="post" action={ "/admin/games/" + item.ID + "/aliases" } class="flex flex-col gap-2 sm:flex-row">
+			@components.CSRFInput()
+			<label class="sr-only" for={ "alias-" + item.ID }>New alias</label>
+			<input id={ "alias-" + item.ID } class="input input-bordered input-sm flex-1" name="alias" maxlength="120" placeholder="Add search alias" required/>
+			<button class="btn btn-quiet btn-sm" type="submit">Add alias</button>
+		</form>
 	</article>
 }
 
@@ -172,16 +168,21 @@ templ GameFields(name, slug string) {
 
 templ AdminError(brand branding.Brand, navigation components.NavigationState) {
 	@components.Layout(brand, "Administration error", navigation) {
-		<section class="page-shell py-16"><div role="alert" class="alert alert-error"><div><h1 class="font-bold">Administration could not be loaded</h1><p>Try the request again.</p></div></div></section>
+		<header class="app-topbar"><h1 class="app-title">Administration</h1></header>
+		<div class="content-page"><div role="alert" class="alert alert-error"><div><p class="font-bold">Administration could not be loaded</p><p>Try the request again.</p></div></div></div>
 	}
 }
 
 func adminDateTime(value time.Time) string {
-	if value.IsZero() { return "" }
+	if value.IsZero() {
+		return ""
+	}
 	return value.UTC().Format("2006-01-02T15:04")
 }
 
 func gameActiveConfirmation(active bool) string {
-	if active { return "Deactivate this game? Existing Game Requests are not changed." }
+	if active {
+		return "Deactivate this game? Existing Game Requests are not changed."
+	}
 	return ""
 }

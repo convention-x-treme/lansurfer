@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -86,11 +87,15 @@ func TestHealthEndpointsRejectOtherMethods(t *testing.T) {
 	}
 }
 
-func TestHomeRendersFrontendFoundation(t *testing.T) {
+func TestRootRendersLoginLandingPage(t *testing.T) {
+	authentication := &routerAuthentication{}
 	request := httptest.NewRequest(http.MethodGet, "/", nil)
 	response := httptest.NewRecorder()
 
-	NewRouter(RouterDependencies{Ready: func(context.Context) error { return nil }}).ServeHTTP(response, request)
+	NewRouter(RouterDependencies{
+		Ready:          func(context.Context) error { return nil },
+		Authentication: authentication,
+	}).ServeHTTP(response, request)
 
 	result := response.Result()
 	defer result.Body.Close()
@@ -107,19 +112,26 @@ func TestHomeRendersFrontendFoundation(t *testing.T) {
 	for _, want := range []string{
 		"LANsurfer",
 		"Find your crew. Catch the next game.",
+		"Continue with your CXT account",
+		"CXT IdP",
+		"Continue with Discord",
+		`href="https://www.convention-x-treme.de"`,
 		`href="/assets/app.css"`,
 		`src="/assets/app.js"`,
-		`id="how-it-works"`,
 		`data-theme-toggle`,
 	} {
 		if !strings.Contains(string(body), want) {
 			t.Errorf("body does not contain %q", want)
 		}
 	}
-	if strings.Contains(string(body), "https://") {
-		t.Error("home page unexpectedly contains a runtime external dependency")
+	if remoteAssetPattern.Match(body) {
+		t.Error("login page unexpectedly loads a remote runtime asset")
 	}
 }
+
+// remoteAssetPattern matches elements that fetch remote content at runtime.
+// Outbound anchors to the operating community are not runtime dependencies.
+var remoteAssetPattern = regexp.MustCompile(`(?i)<(?:script|link|img|iframe|source|video|audio|embed)\b[^>]*\b(?:src|href)\s*=\s*["']https?://`)
 
 func TestHomeRendersAuthenticatedViewer(t *testing.T) {
 	authentication := &routerAuthentication{account: user.User{DisplayName: "Ada Player", Role: user.RoleAdmin}}
@@ -132,13 +144,8 @@ func TestHomeRendersAuthenticatedViewer(t *testing.T) {
 		Authentication: authentication,
 	}).ServeHTTP(response, request)
 
-	if response.Code != http.StatusOK {
+	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/game-requests" {
 		t.Fatalf("status = %d", response.Code)
-	}
-	for _, want := range []string{"Ada Player", "admin", `action="/auth/logout"`, `data-realtime-url="/events/game-requests"`} {
-		if !strings.Contains(response.Body.String(), want) {
-			t.Errorf("body does not contain %q", want)
-		}
 	}
 }
 
@@ -147,7 +154,7 @@ func TestPatternFragments(t *testing.T) {
 		path string
 		want string
 	}{
-		{path: "/ui/patterns/empty", want: "No Game Requests yet"},
+		{path: "/ui/patterns/empty", want: "Quiet out there. Start something?"},
 		{path: "/ui/patterns/error", want: "Something went wrong"},
 	}
 
@@ -178,11 +185,12 @@ func TestEmbeddedAssetsAreServed(t *testing.T) {
 	for _, path := range []string{
 		"/assets/app.css",
 		"/assets/app.js",
-		"/assets/fonts/montserrat-latin-wght-normal.woff2",
+		"/assets/fonts/schibsted-grotesk-latin-wght-normal.woff2",
+		"/assets/fonts/schibsted-grotesk-latin-wght-italic.woff2",
 		"/assets/fonts/jetbrains-mono-latin-wght-normal.woff2",
 		"/assets/images/otter.png",
 		"/assets/licenses/htmx-BSD-2-Clause.txt",
-		"/assets/licenses/montserrat-OFL-1.1.txt",
+		"/assets/licenses/schibsted-grotesk-OFL-1.1.txt",
 		"/assets/licenses/jetbrains-mono-OFL-1.1.txt",
 		"/assets/licenses/tailwindcss-MIT.txt",
 		"/assets/licenses/daisyui-MIT.txt",
@@ -367,7 +375,10 @@ func TestRealtimeRefreshHighlightsFollowedGame(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d", response.Code)
 	}
-	for _, want := range []string{`id="game-request-list"`, "New · followed game", `hx-swap-oob="beforeend:#live-notices"`} {
+	// The refresh also carries the top bar counters out of band, so the stats
+	// above the list cannot drift away from the rows below it.
+	for _, want := range []string{`id="game-request-list"`, "request-row-incoming", "New Game Request for Warcraft III",
+		`hx-swap-oob="beforeend:#live-notices"`, `hx-swap-oob="true"`, `id="request-stats"`, "player in open requests"} {
 		if !strings.Contains(response.Body.String(), want) {
 			t.Errorf("body does not contain %q: %q", want, response.Body.String())
 		}
@@ -396,13 +407,15 @@ func TestGameRequestBrowserWorkflow(t *testing.T) {
 	if listResponse.Code != http.StatusOK {
 		t.Fatalf("list status = %d", listResponse.Code)
 	}
-	for _, want := range []string{"Active Game Requests", "Warcraft III", `action="/game-requests/request-1/join"`} {
+	for _, want := range []string{"Game Requests", "Warcraft III", `class="request-row"`, `hx-post="/game-requests/request-1/join"`} {
 		if !strings.Contains(listResponse.Body.String(), want) {
 			t.Errorf("list body does not contain %q", want)
 		}
 	}
-	if !strings.Contains(listResponse.Body.String(), "Current Event: <strong>CXT 2027</strong>") {
-		t.Errorf("list does not show current Event context: %q", listResponse.Body.String())
+	for _, unwanted := range []string{"Live <span>· CXT 2027</span>"} {
+		if strings.Contains(listResponse.Body.String(), unwanted) {
+			t.Errorf("list body unexpectedly contains %q", unwanted)
+		}
 	}
 
 	newRequest := httptest.NewRequest(http.MethodGet, "/game-requests/new?game_id=game-1", nil)
@@ -434,6 +447,18 @@ func TestGameRequestBrowserWorkflow(t *testing.T) {
 	router.ServeHTTP(joinResponse, join)
 	if joinResponse.Code != http.StatusSeeOther || commands.joined != "request-1/user-1" {
 		t.Fatalf("join response = %d, command = %q", joinResponse.Code, commands.joined)
+	}
+
+	queries.items[0].ViewerJoined = true
+	htmxJoin := httptest.NewRequest(http.MethodPost, "/game-requests/request-1/join", strings.NewReader(url.Values{"return_to": {"list"}}.Encode()))
+	htmxJoin.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	htmxJoin.Header.Set("HX-Request", "true")
+	htmxJoin.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	addCSRF(htmxJoin)
+	htmxResponse := httptest.NewRecorder()
+	router.ServeHTTP(htmxResponse, htmxJoin)
+	if htmxResponse.Code != http.StatusOK || !strings.Contains(htmxResponse.Body.String(), ">Leave</button>") {
+		t.Fatalf("htmx join response = %d %q", htmxResponse.Code, htmxResponse.Body.String())
 	}
 }
 
@@ -541,6 +566,7 @@ type routerGameRequests struct {
 	left      string
 	closed    string
 	cancelled string
+	joinError error
 }
 
 func (r *routerGameRequests) Create(_ context.Context, creatorID, gameID string, maximum *int32, startsAt time.Time, description string) (gamerequest.GameRequest, error) {
@@ -551,6 +577,9 @@ func (r *routerGameRequests) Create(_ context.Context, creatorID, gameID string,
 	return r.created, nil
 }
 func (r *routerGameRequests) Join(_ context.Context, requestID, userID string) error {
+	if r.joinError != nil {
+		return r.joinError
+	}
 	r.joined = requestID + "/" + userID
 	return nil
 }
@@ -624,4 +653,41 @@ func (*routerAuthentication) Logout(context.Context, string) error { return nil 
 
 func (a *routerAuthentication) Authenticate(context.Context, string) (user.User, error) {
 	return a.account, nil
+}
+
+// A second Join that lands after the first already succeeded must resolve into
+// a dismissible notice, leaving the row and the rest of the page usable.
+func TestDuplicateJoinReportsRecoverableConflict(t *testing.T) {
+	commands := &routerGameRequests{joinError: gamerequest.ErrAlreadyMember}
+	queries := &routerGameRequestQueries{items: []requestquery.Request{{
+		ID: "request-1", GameName: "Warcraft III", CreatorID: "user-2",
+		CreatorName: "Other", MemberCount: 2, ViewerJoined: true, Status: gamerequest.StatusOpen,
+		StartsAt: time.Now().Add(time.Hour),
+	}}}
+	router := gameRequestTestRouter(commands, queries)
+
+	duplicate := httptest.NewRequest(http.MethodPost, "/game-requests/request-1/join", strings.NewReader(url.Values{"return_to": {"list"}}.Encode()))
+	duplicate.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	duplicate.Header.Set("HX-Request", "true")
+	duplicate.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	addCSRF(duplicate)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, duplicate)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("duplicate join status = %d, want %d", response.Code, http.StatusOK)
+	}
+	if got := response.Header().Get("HX-Retarget"); got != "#live-notices" {
+		t.Errorf("HX-Retarget = %q, want %q", got, "#live-notices")
+	}
+	if got := response.Header().Get("HX-Reswap"); got != "beforeend" {
+		t.Errorf("HX-Reswap = %q, want %q", got, "beforeend")
+	}
+	body := response.Body.String()
+	if !strings.Contains(body, "You have already joined this Game Request.") {
+		t.Errorf("duplicate join body does not explain the conflict: %s", body)
+	}
+	if !strings.Contains(body, "data-dismiss-live-toast") {
+		t.Errorf("duplicate join notice cannot be dismissed: %s", body)
+	}
 }

@@ -43,6 +43,10 @@ func NewAuthentication(authentication Authentication, brand branding.Brand, secu
 }
 
 func (h *AuthenticationHandler) Login(w http.ResponseWriter, r *http.Request) {
+	render(w, r, http.StatusOK, pages.Login(h.brand, h.authentication != nil && h.authentication.Available()))
+}
+
+func (h *AuthenticationHandler) BeginLogin(w http.ResponseWriter, r *http.Request) {
 	if h.authentication == nil || !h.authentication.Available() {
 		h.renderError(w, r, http.StatusServiceUnavailable, "Login is not configured for this LANsurfer instance.")
 		return
@@ -96,7 +100,7 @@ func (h *AuthenticationHandler) Callback(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	http.SetCookie(w, webmiddleware.SessionCookie(session.Token, session.ExpiresAt, h.secureCookies))
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	http.Redirect(w, r, "/game-requests", http.StatusSeeOther)
 }
 
 func (h *AuthenticationHandler) Logout(w http.ResponseWriter, r *http.Request) {

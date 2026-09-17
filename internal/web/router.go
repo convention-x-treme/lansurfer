@@ -20,7 +20,13 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 )
 
-const readinessTimeout = time.Second
+const (
+	readinessTimeout = time.Second
+	// requestTimeout is a safety boundary, not a latency target: it keeps a
+	// blocked query or an exhausted connection pool from leaving the browser
+	// waiting forever on a request it can never complete.
+	requestTimeout = 15 * time.Second
+)
 
 // ReadyCheck reports whether dependencies required to serve traffic are ready.
 type ReadyCheck func(context.Context) error
@@ -56,13 +62,15 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 	router.Use(middleware.RequestID)
 	router.Use(webmiddleware.RequestLogging(dependencies.Logger, dependencies.TrustedProxies))
 	router.Use(middleware.Recoverer)
+	router.Use(webmiddleware.RequestTimeout(requestTimeout))
 	router.Use(webmiddleware.SecurityHeaders(dependencies.SecureCookies))
 	router.Use(webmiddleware.CSRF(dependencies.SecureCookies))
+	router.Use(webmiddleware.Theme)
 
 	router.Handle("/assets/*", http.StripPrefix("/assets/", assets.Handler()))
 	router.Group(func(authenticated chi.Router) {
 		authenticated.Use(webmiddleware.Authentication(dependencies.Authentication, dependencies.SecureCookies))
-		authenticated.Get("/", homeHandler(brand, dependencies.Authentication))
+		authenticated.Get("/", rootHandler(brand, dependencies.Authentication))
 		if dependencies.Subscriptions != nil {
 			authenticated.Route("/games", func(games chi.Router) {
 				games.Use(handler.RequireAuthentication)
@@ -107,6 +115,7 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 		}
 	})
 	router.Get("/auth/login", authenticationHandler.Login)
+	router.Get("/auth/oidc", authenticationHandler.BeginLogin)
 	router.Get("/auth/callback", authenticationHandler.Callback)
 	router.Post("/auth/logout", authenticationHandler.Logout)
 	router.Get("/ui/patterns/empty", componentHandler(components.EmptyState(brand)))
@@ -117,16 +126,13 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 	return router
 }
 
-func homeHandler(brand branding.Brand, authentication Authentication) http.HandlerFunc {
+func rootHandler(brand branding.Brand, authentication Authentication) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		navigation := components.NavigationState{LoginAvailable: authentication != nil && authentication.Available()}
-		if currentUser, ok := webmiddleware.CurrentUser(r.Context()); ok {
-			navigation.Viewer = &components.Viewer{
-				DisplayName: currentUser.DisplayName,
-				Role:        string(currentUser.Role),
-			}
+		if _, ok := webmiddleware.CurrentUser(r.Context()); ok {
+			http.Redirect(w, r, "/game-requests", http.StatusSeeOther)
+			return
 		}
-		componentHandler(pages.Home(brand, navigation)).ServeHTTP(w, r)
+		componentHandler(pages.Login(brand, authentication != nil && authentication.Available())).ServeHTTP(w, r)
 	}
 }
 

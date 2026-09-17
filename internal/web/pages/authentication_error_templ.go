@@ -13,7 +13,7 @@ import (
 	"github.com/convention-x-treme/lansurfer/internal/web/components"
 )
 
-func AuthenticationError(brand branding.Brand, message string, loginAvailable bool) templ.Component {
+func Login(brand branding.Brand, loginAvailable bool) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -46,36 +46,119 @@ func AuthenticationError(brand branding.Brand, message string, loginAvailable bo
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<section class=\"page-shell flex min-h-[28rem] items-center py-16\"><div role=\"alert\" class=\"card w-full border border-error bg-base-200 shadow-xl\"><div class=\"card-body\"><p class=\"data-text text-sm font-semibold uppercase tracking-widest text-error\">Authentication</p><h1 class=\"card-title text-3xl\">Login could not be completed</h1><p class=\"max-w-2xl text-base-content/75\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<section class=\"auth-stage\"><svg class=\"auth-waves\" viewBox=\"0 0 1440 420\" preserveAspectRatio=\"none\" aria-hidden=\"true\" focusable=\"false\"><path d=\"M0,230 C230,120 400,320 610,220 C810,128 980,320 1180,210 C1320,132 1390,250 1440,210 L1440,420 L0,420 Z\" fill=\"var(--brand-deep-ocean)\" opacity=\"0.55\"></path> <path d=\"M0,300 C210,200 410,380 630,290 C830,206 990,378 1190,286 C1330,224 1400,320 1440,290 L1440,420 L0,420 Z\" fill=\"var(--brand-surf-blue)\" opacity=\"0.28\"></path> <path d=\"M0,360 C200,280 430,420 640,350 C840,286 1010,420 1210,348 C1350,300 1410,372 1440,352 L1440,420 L0,420 Z\" fill=\"var(--brand-aqua-wave)\" opacity=\"0.22\"></path></svg> <img class=\"auth-mascot\" src=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var3 string
-			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(message)
+			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.ResolveAttributeValue(brand.Assets.Mascot)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/authentication_error.templ`, Line: 15, Col: 56}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/authentication_error.templ`, Line: 16, Col: 53}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var3)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</p><div class=\"card-actions mt-4\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "\" alt=\"LANsurfer otter ready to help players find a game\"><div class=\"auth-panel\"><h1 class=\"text-[1.75rem] font-black leading-tight tracking-tight\">Find your crew.<br>Catch the next game.</h1><p class=\"mt-2.5 text-base-content/70\">Sign in with the account you already have. LANsurfer never stores a password.</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if loginAvailable {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<a class=\"btn btn-primary\" href=\"/auth/login\">Start login again</a> ")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<a class=\"btn btn-primary mt-7 w-full justify-between\" href=\"/auth/oidc\"><span>Continue with your CXT account</span> <span class=\"data-text rounded-sm bg-primary-content/15 px-2 py-1 text-xs font-bold\">CXT IdP</span></a><div class=\"divider my-5 text-sm text-base-content/70\">or</div><button class=\"btn btn-quiet w-full justify-start gap-3\" type=\"button\" disabled aria-label=\"Continue with Discord (coming soon)\"><span class=\"data-text flex h-6 w-6 items-center justify-center rounded-sm bg-[#5865F2] text-xs font-bold text-white\" aria-hidden=\"true\">D</span> <span>Continue with Discord</span> <span class=\"ml-auto text-xs font-semibold text-base-content/70\">Coming soon</span></button>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			} else {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "<div role=\"alert\" class=\"alert alert-warning mt-7\"><span>Login is not configured for this LANsurfer instance.</span></div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "<a class=\"btn btn-ghost\" href=\"/\">Return home</a></div></div></div></section>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<div class=\"mt-7 border-t border-base-300 pt-5\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = components.OperatorAttribution("text-xs text-base-content/70").Render(ctx, templ_7745c5c3_Buffer)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "</div></div></section>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			return nil
 		})
-		templ_7745c5c3_Err = components.Layout(brand, "Login problem", components.NavigationState{LoginAvailable: loginAvailable}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var2), templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = components.AuthLayout(brand, "Log in").Render(templ.WithChildren(ctx, templ_7745c5c3_Var2), templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		return nil
+	})
+}
+
+func AuthenticationError(brand branding.Brand, message string, loginAvailable bool) templ.Component {
+	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
+			return templ_7745c5c3_CtxErr
+		}
+		templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+		if !templ_7745c5c3_IsBuffer {
+			defer func() {
+				templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err == nil {
+					templ_7745c5c3_Err = templ_7745c5c3_BufErr
+				}
+			}()
+		}
+		ctx = templ.InitializeContext(ctx)
+		templ_7745c5c3_Var4 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var4 == nil {
+			templ_7745c5c3_Var4 = templ.NopComponent
+		}
+		ctx = templ.ClearChildren(ctx)
+		templ_7745c5c3_Var5 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+			templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+			templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+			if !templ_7745c5c3_IsBuffer {
+				defer func() {
+					templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+					if templ_7745c5c3_Err == nil {
+						templ_7745c5c3_Err = templ_7745c5c3_BufErr
+					}
+				}()
+			}
+			ctx = templ.InitializeContext(ctx)
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "<section class=\"auth-stage\"><div role=\"alert\" class=\"auth-panel justify-self-center border-error\"><h1 class=\"text-3xl font-bold\">Login could not be completed</h1><p class=\"mt-4 text-base-content/70\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var6 string
+			templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(message)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/authentication_error.templ`, Line: 47, Col: 50}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "</p><div class=\"mt-7 flex flex-wrap gap-3\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if loginAvailable {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<a class=\"btn btn-primary\" href=\"/auth/login\">Start login again</a> ")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "<a class=\"btn btn-ghost\" href=\"/\">Return to login</a></div></div></section>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			return nil
+		})
+		templ_7745c5c3_Err = components.AuthLayout(brand, "Login problem").Render(templ.WithChildren(ctx, templ_7745c5c3_Var5), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

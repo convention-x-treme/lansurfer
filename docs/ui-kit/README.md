@@ -2,6 +2,8 @@
 
 Target design for login and Game Requests. Dark first, desktop 1440, English as the UI language.
 
+The leading source for colour and typography is the Claude Design project [LANsurfer UI Kit](https://claude.ai/design/p/c259a8f4-c239-427e-8e18-32443502b873); `index.html` is an older snapshot and still shows Montserrat type and the pre-Harbour palette. Follow [BRANDING.md](../BRANDING.md) for tokens.
+
 `index.html` is a standalone file (fonts, images, and scripts embedded) and runs without a build step. Open it in the browser, then pan and zoom with the trackpad or scroll.
 
 ## Frames
@@ -22,10 +24,17 @@ Target design for login and Game Requests. Dark first, desktop 1440, English as 
 - Join changes the row to "Leave"; no toast. Toasts are only for errors and things outside the current viewport.
 - Vocabulary: **places** for available spots, **max players** for the field. "Seat" is not used.
 - Status: `open` / `closed` / `cancelled`; no waitlist, no mode, no voice field. This matches `internal/gamerequest` and `internal/query/gamerequest`.
+- Seat and voice-channel concepts are excluded because they do not exist in the approved 1.0 model; visual references must not add them implicitly.
 - Sunset (`#FF6B35`) is the semantic color for "last place" and "now", but is not a `--color-*` in the DaisyUI theme: consume it through the central brand definition.
 - Muted inks (`#8DA9BF`, `#C7DCEA`) are blends of White Sand and Deep Ocean, not standalone palette colors.
 
+## Deviations from the Kit Snapshot
+
+- Corner radii are tighter than the kit: `--radius-selector` `0.25rem`, `--radius-field` `0.375rem`, `--radius-box` `0.5rem`.
+- Panel headings are sentence-case text in the UI font; the tracked uppercase mono eyebrow is gone.
+- Filter segment, "Free places only", "My Games" chip, list search, and "Load more" are not rendered. The kit shows them, but non-functional controls are not shipped; they return with server-side filtering and paging.
+- Player rows in the detail view are separated by rules inside the Players panel instead of being filled cards inside a card.
+
 ## Open
 
-- Seat and voice channel were part of the concept, but do not exist in the model. If they should be added, they need fields on the request or user.
-- According to BRANDING.md, light mode is equally supported, but it is not yet represented in the kit.
+- According to BRANDING.md, light mode is equally supported, but it is not yet represented in the kit. The implemented light presentation is the Sea Mist canvas with White Sand surfaces and Tide Line borders described there; a future kit frame should follow it rather than the kit's original near-white sketch.

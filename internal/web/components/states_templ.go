@@ -31,20 +31,20 @@ func EmptyState(brand branding.Brand) templ.Component {
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<section class=\"card border border-base-300 bg-base-200 shadow-sm\" aria-labelledby=\"empty-state-title\"><div class=\"card-body items-center gap-4 text-center sm:flex-row sm:text-left\"><img class=\"h-32 w-32 shrink-0 object-contain\" src=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<section class=\"request-empty\" aria-labelledby=\"empty-state-title\"><img src=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var2 string
 		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.ResolveAttributeValue(brand.Assets.Mascot)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/states.templ`, Line: 8, Col: 75}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/states.templ`, Line: 7, Col: 32}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var2)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "\" alt=\"LANsurfer otter ready to help players find a game\"><div><h3 id=\"empty-state-title\" class=\"card-title text-xl\">No Game Requests yet</h3><p class=\"mt-1 max-w-xl text-base-content/75\">When players start looking for a game, their requests will appear here. Clear copy and a useful next action keep an empty screen from becoming a dead end.</p><button type=\"button\" class=\"btn btn-primary btn-sm mt-4\" disabled>Create Game Request</button><p class=\"mt-2 text-xs text-base-content/60\">Creating requests arrives in a later milestone.</p></div></div></section>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "\" alt=\"\"><div><h3 id=\"empty-state-title\" class=\"text-2xl font-bold\">Quiet out there. Start something?</h3><p class=\"mt-2 max-w-xl text-base-content/70\">No open requests right now. Post one so other players can join.</p><a class=\"btn btn-primary btn-sm mt-5\" href=\"/game-requests/new\">Create Game Request</a></div></section>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -73,7 +73,7 @@ func ErrorState() templ.Component {
 			templ_7745c5c3_Var3 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<div role=\"alert\" class=\"alert alert-error border border-error\"><div><h3 class=\"font-bold\">Something went wrong</h3><p class=\"text-sm\">We could not load this section. Try the request again.</p></div><button type=\"button\" class=\"btn btn-sm border-error-content/30 bg-transparent text-error-content hover:bg-error-content/10\" hx-get=\"/ui/patterns/empty\" hx-target=\"#pattern-preview\" hx-swap=\"innerHTML\">Try again</button></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<div role=\"alert\" class=\"alert alert-error\"><div><h3 class=\"font-bold\">Something went wrong</h3><p class=\"text-sm\">We could not load this section. Try the request again.</p></div><button type=\"button\" class=\"btn btn-sm border-error-content/40 bg-transparent text-error-content hover:border-error-content hover:bg-error-content/15\" hx-get=\"/ui/patterns/empty\" hx-target=\"#pattern-preview\" hx-swap=\"innerHTML\">Try again</button></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

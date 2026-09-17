@@ -18,6 +18,7 @@ const (
 	csrfTokenBytes = 32
 	maxFormBytes   = 64 << 10
 	csrfLifetime   = 7 * 24 * time.Hour
+	realtimePath   = "/events/game-requests"
 )
 
 type csrfTokenKey struct{}
@@ -107,7 +108,7 @@ func issuesCSRFToken(path string) bool {
 
 func csrfExempt(path string) bool {
 	return strings.HasPrefix(path, "/assets/") || path == "/healthz" || path == "/readyz" ||
-		path == "/events/game-requests"
+		path == realtimePath
 }
 
 func newCSRFToken() (string, error) {
