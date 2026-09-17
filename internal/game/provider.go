@@ -3,6 +3,7 @@ package game
 import (
 	"context"
 	"errors"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -58,11 +59,32 @@ type ProviderIndexRepository interface {
 	StoreProviderGames(context.Context, string, []ProviderGame) error
 	ActivateGeneration(context.Context, string, int64) error
 	FailGeneration(context.Context, string, string) error
-	Status(context.Context, bool, bool, time.Time) (ProviderStatus, error)
+	Status(context.Context, time.Time) (ProviderStatus, error)
+}
+
+type DiscoveryItem struct {
+	LocalGameID      string
+	Reference        ProviderReference
+	Name             string
+	Slug             string
+	GameType         string
+	PlatformNames    []string
+	FirstReleaseDate *time.Time
+	CoverImageID     string
+	Subscribed       bool
+	Materialized     bool
+}
+
+type DiscoveryRepository interface {
+	Search(context.Context, string, string, int) ([]DiscoveryItem, error)
+}
+
+type MaterializationRepository interface {
+	Materialize(context.Context, ProviderReference) (Game, error)
 }
 
 func NewProviderReference(provider, externalID string) (ProviderReference, error) {
-	provider = strings.TrimSpace(provider)
+	provider = strings.ToLower(strings.TrimSpace(provider))
 	externalID = strings.TrimSpace(externalID)
 	if provider != "igdb" || externalID == "" {
 		return ProviderReference{}, ErrInvalidProviderReference
@@ -71,6 +93,10 @@ func NewProviderReference(provider, externalID string) (ProviderReference, error
 		if char < '0' || char > '9' {
 			return ProviderReference{}, ErrInvalidProviderReference
 		}
+	}
+	value, err := strconv.ParseInt(externalID, 10, 64)
+	if err != nil || value <= 0 {
+		return ProviderReference{}, ErrInvalidProviderReference
 	}
 	return ProviderReference{Provider: provider, ExternalID: externalID}, nil
 }

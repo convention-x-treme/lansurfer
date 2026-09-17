@@ -1,9 +1,46 @@
 package game
 
 import (
+	"context"
 	"errors"
 	"testing"
+	"time"
 )
+
+type finalProviderIndexRepositoryContract struct{}
+
+func (finalProviderIndexRepositoryContract) BeginGeneration(context.Context) (string, error) {
+	return "", nil
+}
+func (finalProviderIndexRepositoryContract) StoreProviderGames(context.Context, string, []ProviderGame) error {
+	return nil
+}
+func (finalProviderIndexRepositoryContract) ActivateGeneration(context.Context, string, int64) error {
+	return nil
+}
+func (finalProviderIndexRepositoryContract) FailGeneration(context.Context, string, string) error {
+	return nil
+}
+func (finalProviderIndexRepositoryContract) Status(context.Context, time.Time) (ProviderStatus, error) {
+	return ProviderStatus{}, nil
+}
+
+var _ ProviderIndexRepository = finalProviderIndexRepositoryContract{}
+
+type finalDiscoveryRepositoryContract struct{}
+
+func (finalDiscoveryRepositoryContract) Search(context.Context, string, string, int) ([]DiscoveryItem, error) {
+	return nil, nil
+}
+
+type finalMaterializationRepositoryContract struct{}
+
+func (finalMaterializationRepositoryContract) Materialize(context.Context, ProviderReference) (Game, error) {
+	return Game{}, nil
+}
+
+var _ DiscoveryRepository = finalDiscoveryRepositoryContract{}
+var _ MaterializationRepository = finalMaterializationRepositoryContract{}
 
 func TestVisibleProviderGameType(t *testing.T) {
 	visible := []string{"Main Game", "Standalone Expansion", "Remake", "Remaster", "Port", "Expanded Game"}
@@ -34,7 +71,7 @@ func TestProviderReferenceValidation(t *testing.T) {
 			t.Fatalf("reference %q/%q unexpectedly valid", tc[0], tc[1])
 		}
 	}
-	for _, id := range []string{"12.3", "-1", "abc", "１２３"} {
+	for _, id := range []string{"0", "00", "12.3", "-1", "abc", "１２３"} {
 		if _, err := NewProviderReference("igdb", id); !errors.Is(err, ErrInvalidProviderReference) {
 			t.Fatalf("external ID %q error = %v, want ErrInvalidProviderReference", id, err)
 		}
