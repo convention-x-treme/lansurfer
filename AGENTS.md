@@ -72,7 +72,7 @@ Before the Pilot Gate is green, repository evidence must cover the capabilities 
 - at least one exercised upgrade path with existing data
 - representative load/recovery rehearsal; record hardware, network, tested load envelope, response/update observations, and failures in the validation artifact rather than inventing permanent SLOs
 
-Issue #15's previously reported interaction hang is considered resolved as a deployment-path HTTP/2 problem. Do not keep a roadmap requirement to rediscover its root cause; retain normal regression coverage and ensure supported production deployment preserves required HTTP behavior.
+Issue #15 remains open until its accepted hardening scope is complete. PR #17 documents the confirmed SSE/HTTP/1.1 connection-exhaustion root cause and production HTTP/2 mitigation; PR #18 covers additional rapid-interaction hardening. Keep regression coverage for the original hang and supported production HTTP behavior, and do not treat HTTP/2 alone as the root cause.
 
 ## Constraints requiring approval
 
