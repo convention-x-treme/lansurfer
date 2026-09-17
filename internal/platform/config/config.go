@@ -21,12 +21,18 @@ type OIDC struct {
 	ClientSecret string
 }
 
+type IGDB struct {
+	ClientID     string
+	ClientSecret string
+}
+
 // Config contains the technical settings required by the application foundation.
 type Config struct {
 	DatabaseURL    string
 	ListenAddr     string
 	BaseURL        string
 	OIDC           *OIDC
+	IGDB           *IGDB
 	TrustedProxies []netip.Prefix
 }
 
@@ -56,6 +62,10 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	igdb, err := loadIGDB()
+	if err != nil {
+		return Config{}, err
+	}
 
 	trustedProxies, err := loadTrustedProxies()
 	if err != nil {
@@ -67,6 +77,7 @@ func Load() (Config, error) {
 		ListenAddr:     listenAddr,
 		BaseURL:        baseURL,
 		OIDC:           oidc,
+		IGDB:           igdb,
 		TrustedProxies: trustedProxies,
 	}, nil
 }
@@ -91,6 +102,18 @@ func loadTrustedProxies() ([]netip.Prefix, error) {
 		proxies = append(proxies, prefix.Masked())
 	}
 	return proxies, nil
+}
+
+func loadIGDB() (*IGDB, error) {
+	clientID := strings.TrimSpace(os.Getenv("LANSURFER_IGDB_CLIENT_ID"))
+	clientSecret := strings.TrimSpace(os.Getenv("LANSURFER_IGDB_CLIENT_SECRET"))
+	if clientID == "" && clientSecret == "" {
+		return nil, nil
+	}
+	if clientID == "" || clientSecret == "" {
+		return nil, errors.New("LANSURFER_IGDB_CLIENT_ID and LANSURFER_IGDB_CLIENT_SECRET must be configured together")
+	}
+	return &IGDB{ClientID: clientID, ClientSecret: clientSecret}, nil
 }
 
 func loadOIDC() (*OIDC, error) {

@@ -117,6 +117,47 @@ func TestLoadAllowsPublicOIDCClientWithoutSecret(t *testing.T) {
 	}
 }
 
+func TestLoadIGDBConfiguration(t *testing.T) {
+	clearOptionalEnvironment(t)
+	t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
+	t.Setenv("LANSURFER_IGDB_CLIENT_ID", "client")
+	t.Setenv("LANSURFER_IGDB_CLIENT_SECRET", "secret")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.IGDB == nil || cfg.IGDB.ClientID != "client" || cfg.IGDB.ClientSecret != "secret" {
+		t.Fatalf("IGDB = %#v", cfg.IGDB)
+	}
+}
+
+func TestLoadRejectsPartialIGDBConfiguration(t *testing.T) {
+	clearOptionalEnvironment(t)
+	t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
+	t.Setenv("LANSURFER_IGDB_CLIENT_ID", "client")
+	t.Setenv("LANSURFER_IGDB_CLIENT_SECRET", "")
+
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() unexpectedly accepted partial IGDB configuration")
+	}
+}
+
+func TestLoadLeavesIGDBUnsetWhenCredentialsAreEmpty(t *testing.T) {
+	clearOptionalEnvironment(t)
+	t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
+	t.Setenv("LANSURFER_IGDB_CLIENT_ID", "")
+	t.Setenv("LANSURFER_IGDB_CLIENT_SECRET", "")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.IGDB != nil {
+		t.Fatalf("IGDB = %#v, want nil", cfg.IGDB)
+	}
+}
+
 func clearOptionalEnvironment(t *testing.T) {
 	t.Helper()
 	for _, name := range []string{
@@ -125,6 +166,8 @@ func clearOptionalEnvironment(t *testing.T) {
 		"LANSURFER_OIDC_CLIENT_ID",
 		"LANSURFER_OIDC_CLIENT_SECRET",
 		"LANSURFER_TRUSTED_PROXIES",
+		"LANSURFER_IGDB_CLIENT_ID",
+		"LANSURFER_IGDB_CLIENT_SECRET",
 	} {
 		t.Setenv(name, "")
 	}
