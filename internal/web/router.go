@@ -36,7 +36,7 @@ type RouterDependencies struct {
 	Events         handler.EventAdministration
 	Games          handler.GameAdministration
 	ProviderSync   handler.ProviderSyncAdministration
-	Subscriptions  handler.GameSubscriptions
+	Discovery      handler.GameDiscovery
 	GameRequests   handler.GameRequestCommands
 	RequestQueries handler.GameRequestQueries
 	Realtime       handler.GameRequestEvents
@@ -50,7 +50,7 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 	brand := branding.Default()
 	authenticationHandler := handler.NewAuthentication(dependencies.Authentication, brand, dependencies.SecureCookies)
 	administrationHandler := handler.NewAdministration(dependencies.Events, dependencies.Games, dependencies.ProviderSync, brand)
-	gamesHandler := handler.NewGames(dependencies.Subscriptions, brand)
+	gamesHandler := handler.NewGames(dependencies.Discovery, brand)
 	gameRequestsHandler := handler.NewGameRequests(dependencies.GameRequests, dependencies.RequestQueries, brand)
 	realtimeHandler := handler.NewRealtime(dependencies.Realtime)
 	router := chi.NewRouter()
@@ -64,7 +64,7 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 	router.Group(func(authenticated chi.Router) {
 		authenticated.Use(webmiddleware.Authentication(dependencies.Authentication, dependencies.SecureCookies))
 		authenticated.Get("/", homeHandler(brand, dependencies.Authentication))
-		if dependencies.Subscriptions != nil {
+		if dependencies.Discovery != nil {
 			authenticated.Route("/games", func(games chi.Router) {
 				games.Use(handler.RequireAuthentication)
 				games.Get("/", gamesHandler.Browse)

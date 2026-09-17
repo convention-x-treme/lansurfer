@@ -28,7 +28,7 @@ func SecurityHeaders(secure bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			headers := w.Header()
-			headers.Set("Content-Security-Policy", "default-src 'self'; base-uri 'none'; connect-src 'self'; font-src 'self'; form-action 'self'; frame-ancestors 'none'; img-src 'self' data:; object-src 'none'; script-src 'self'; style-src 'self'")
+			headers.Set("Content-Security-Policy", "default-src 'self'; base-uri 'none'; connect-src 'self'; font-src 'self'; form-action 'self'; frame-ancestors 'none'; img-src 'self' data: https://images.igdb.com; object-src 'none'; script-src 'self'; style-src 'self'")
 			headers.Set("Permissions-Policy", "camera=(), geolocation=(), microphone=()")
 			headers.Set("Referrer-Policy", "no-referrer")
 			headers.Set("X-Content-Type-Options", "nosniff")

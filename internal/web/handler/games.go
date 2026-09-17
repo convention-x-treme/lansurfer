@@ -13,26 +13,30 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-type GameSubscriptions interface {
-	Browse(context.Context, string, string) ([]game.SubscriptionGame, error)
+// GameDiscovery combines the authoritative local Game catalog with the
+// active synchronized IGDB provider index. Provider search results are
+// read-only display in this handler; following/requesting an unmaterialized
+// provider result is not implemented here.
+type GameDiscovery interface {
+	Browse(context.Context, string, string) ([]game.DiscoveryItem, error)
 	MyGames(context.Context, string) ([]game.SubscriptionGame, error)
-	Follow(context.Context, string, string) error
+	FollowLocal(context.Context, string, string) error
 	Unfollow(context.Context, string, string) error
 }
 
 type Games struct {
-	subscriptions GameSubscriptions
-	brand         branding.Brand
+	discovery GameDiscovery
+	brand     branding.Brand
 }
 
-func NewGames(subscriptions GameSubscriptions, brand branding.Brand) *Games {
-	return &Games{subscriptions: subscriptions, brand: brand}
+func NewGames(discovery GameDiscovery, brand branding.Brand) *Games {
+	return &Games{discovery: discovery, brand: brand}
 }
 
 func (h *Games) Browse(w http.ResponseWriter, r *http.Request) {
 	account, _ := webmiddleware.CurrentUser(r.Context())
 	search := r.URL.Query().Get("q")
-	items, err := h.subscriptions.Browse(r.Context(), account.ID, search)
+	items, err := h.discovery.Browse(r.Context(), account.ID, search)
 	if err != nil {
 		if errors.Is(err, game.ErrInvalidSearch) {
 			h.renderBrowse(w, r, http.StatusUnprocessableEntity, nil, search, "Search must be 120 characters or fewer.")
@@ -47,7 +51,7 @@ func (h *Games) Browse(w http.ResponseWriter, r *http.Request) {
 
 func (h *Games) MyGames(w http.ResponseWriter, r *http.Request) {
 	account, _ := webmiddleware.CurrentUser(r.Context())
-	items, err := h.subscriptions.MyGames(r.Context(), account.ID)
+	items, err := h.discovery.MyGames(r.Context(), account.ID)
 	if err != nil {
 		webmiddleware.LogError(r, "load followed games", err)
 		h.renderError(w, r)
@@ -58,7 +62,7 @@ func (h *Games) MyGames(w http.ResponseWriter, r *http.Request) {
 
 func (h *Games) Follow(w http.ResponseWriter, r *http.Request) {
 	account, _ := webmiddleware.CurrentUser(r.Context())
-	if err := h.subscriptions.Follow(r.Context(), account.ID, chi.URLParam(r, "gameID")); err != nil {
+	if err := h.discovery.FollowLocal(r.Context(), account.ID, chi.URLParam(r, "gameID")); err != nil {
 		h.renderMutationError(w, r, err)
 		return
 	}
@@ -67,14 +71,14 @@ func (h *Games) Follow(w http.ResponseWriter, r *http.Request) {
 
 func (h *Games) Unfollow(w http.ResponseWriter, r *http.Request) {
 	account, _ := webmiddleware.CurrentUser(r.Context())
-	if err := h.subscriptions.Unfollow(r.Context(), account.ID, chi.URLParam(r, "gameID")); err != nil {
+	if err := h.discovery.Unfollow(r.Context(), account.ID, chi.URLParam(r, "gameID")); err != nil {
 		h.renderMutationError(w, r, err)
 		return
 	}
 	h.mutationSuccess(w, r, false)
 }
 
-func (h *Games) renderBrowse(w http.ResponseWriter, r *http.Request, status int, items []game.SubscriptionGame, search, message string) {
+func (h *Games) renderBrowse(w http.ResponseWriter, r *http.Request, status int, items []game.DiscoveryItem, search, message string) {
 	if r.Header.Get("HX-Request") == "true" {
 		render(w, r, status, pages.GameCatalogResults(items, search, message))
 		return

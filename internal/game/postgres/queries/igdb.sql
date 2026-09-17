@@ -138,3 +138,91 @@ SELECT state.active_generation_id,
 FROM igdb_provider_state state
 LEFT JOIN igdb_sync_generations generation ON generation.id = state.active_generation_id
 WHERE state.singleton;
+
+-- name: SearchDiscoveryGames :many
+-- Combines authoritative local Games (matched by name/alias, exactly like
+-- the pre-IGDB local browse) with the active IGDB generation (matched by
+-- normalized search_text), so local search keeps working unchanged when
+-- IGDB is disabled or has no active generation yet. Never calls the
+-- provider live. Visible-type filtering happens before the provider row
+-- limit so hidden-type matches cannot crowd out visible ones. A provider
+-- row already materialized into an active local Game is returned exactly
+-- once, as that authoritative local Game (materialized = true), sourced
+-- from the provider side when its own search_text also matched, or from
+-- the local side otherwise; it is never duplicated.
+WITH active_generation AS (
+    SELECT active_generation_id AS id
+    FROM igdb_provider_state
+    WHERE singleton AND active_generation_id IS NOT NULL
+), provider_matches AS (
+    SELECT provider_game.igdb_id,
+           provider_game.name,
+           provider_game.slug,
+           provider_game.game_type,
+           provider_game.platform_names,
+           provider_game.first_release_date,
+           provider_game.cover_image_id
+    FROM igdb_game_index provider_game
+    JOIN active_generation ON active_generation.id = provider_game.generation_id
+    WHERE lower(provider_game.game_type) = ANY(sqlc.arg(visible_game_types)::text[])
+      AND strpos(provider_game.search_text, lower(sqlc.arg(search)::text)) > 0
+    ORDER BY lower(provider_game.name), provider_game.igdb_id
+    LIMIT sqlc.arg(row_limit)::int
+), provider_rows AS (
+    SELECT
+        provider_matches.igdb_id::text AS external_id,
+        COALESCE(local_game.id::text, '')::text AS local_game_id,
+        COALESCE(local_game.name, provider_matches.name)::text AS name,
+        COALESCE(local_game.slug, provider_matches.slug)::text AS slug,
+        provider_matches.game_type,
+        provider_matches.platform_names,
+        provider_matches.first_release_date,
+        provider_matches.cover_image_id,
+        (local_game.id IS NOT NULL)::boolean AS materialized,
+        (subscription.game_id IS NOT NULL)::boolean AS subscribed
+    FROM provider_matches
+    LEFT JOIN game_external_ids external_id
+        ON lower(btrim(external_id.provider)) = 'igdb'
+       AND external_id.external_id = provider_matches.igdb_id::text
+       AND external_id.archived_at IS NULL
+    LEFT JOIN games local_game
+        ON local_game.id = external_id.game_id
+       AND local_game.active
+    LEFT JOIN game_subscriptions subscription
+        ON subscription.game_id = local_game.id
+       AND subscription.user_id = sqlc.arg(user_id)::uuid
+), local_rows AS (
+    SELECT
+        ''::text AS external_id,
+        g.id::text AS local_game_id,
+        g.name::text AS name,
+        g.slug::text AS slug,
+        NULL::text AS game_type,
+        ARRAY[]::text[] AS platform_names,
+        NULL::timestamptz AS first_release_date,
+        NULL::text AS cover_image_id,
+        true::boolean AS materialized,
+        EXISTS (
+            SELECT 1 FROM game_subscriptions gs
+            WHERE gs.game_id = g.id AND gs.user_id = sqlc.arg(user_id)::uuid
+        )::boolean AS subscribed
+    FROM games g
+    WHERE g.active
+      AND (
+          strpos(lower(g.name), lower(sqlc.arg(search)::text)) > 0
+          OR EXISTS (
+              SELECT 1 FROM game_aliases ga
+              WHERE ga.game_id = g.id
+                AND strpos(lower(ga.alias), lower(sqlc.arg(search)::text)) > 0
+          )
+      )
+      AND NOT EXISTS (
+          SELECT 1 FROM provider_rows pr WHERE pr.local_game_id = g.id::text
+      )
+)
+SELECT combined.* FROM (
+    SELECT * FROM local_rows
+    UNION ALL
+    SELECT * FROM provider_rows
+) combined
+ORDER BY lower(combined.name), combined.external_id;

@@ -206,6 +206,151 @@ func (q *Queries) RestorePresentIGDBExternalIDs(ctx context.Context, generationI
 	return err
 }
 
+const searchDiscoveryGames = `-- name: SearchDiscoveryGames :many
+WITH active_generation AS (
+    SELECT active_generation_id AS id
+    FROM igdb_provider_state
+    WHERE singleton AND active_generation_id IS NOT NULL
+), provider_matches AS (
+    SELECT provider_game.igdb_id,
+           provider_game.name,
+           provider_game.slug,
+           provider_game.game_type,
+           provider_game.platform_names,
+           provider_game.first_release_date,
+           provider_game.cover_image_id
+    FROM igdb_game_index provider_game
+    JOIN active_generation ON active_generation.id = provider_game.generation_id
+    WHERE lower(provider_game.game_type) = ANY($1::text[])
+      AND strpos(provider_game.search_text, lower($2::text)) > 0
+    ORDER BY lower(provider_game.name), provider_game.igdb_id
+    LIMIT $3::int
+), provider_rows AS (
+    SELECT
+        provider_matches.igdb_id::text AS external_id,
+        COALESCE(local_game.id::text, '')::text AS local_game_id,
+        COALESCE(local_game.name, provider_matches.name)::text AS name,
+        COALESCE(local_game.slug, provider_matches.slug)::text AS slug,
+        provider_matches.game_type,
+        provider_matches.platform_names,
+        provider_matches.first_release_date,
+        provider_matches.cover_image_id,
+        (local_game.id IS NOT NULL)::boolean AS materialized,
+        (subscription.game_id IS NOT NULL)::boolean AS subscribed
+    FROM provider_matches
+    LEFT JOIN game_external_ids external_id
+        ON lower(btrim(external_id.provider)) = 'igdb'
+       AND external_id.external_id = provider_matches.igdb_id::text
+       AND external_id.archived_at IS NULL
+    LEFT JOIN games local_game
+        ON local_game.id = external_id.game_id
+       AND local_game.active
+    LEFT JOIN game_subscriptions subscription
+        ON subscription.game_id = local_game.id
+       AND subscription.user_id = $4::uuid
+), local_rows AS (
+    SELECT
+        ''::text AS external_id,
+        g.id::text AS local_game_id,
+        g.name::text AS name,
+        g.slug::text AS slug,
+        NULL::text AS game_type,
+        ARRAY[]::text[] AS platform_names,
+        NULL::timestamptz AS first_release_date,
+        NULL::text AS cover_image_id,
+        true::boolean AS materialized,
+        EXISTS (
+            SELECT 1 FROM game_subscriptions gs
+            WHERE gs.game_id = g.id AND gs.user_id = $4::uuid
+        )::boolean AS subscribed
+    FROM games g
+    WHERE g.active
+      AND (
+          strpos(lower(g.name), lower($2::text)) > 0
+          OR EXISTS (
+              SELECT 1 FROM game_aliases ga
+              WHERE ga.game_id = g.id
+                AND strpos(lower(ga.alias), lower($2::text)) > 0
+          )
+      )
+      AND NOT EXISTS (
+          SELECT 1 FROM provider_rows pr WHERE pr.local_game_id = g.id::text
+      )
+)
+SELECT combined.external_id, combined.local_game_id, combined.name, combined.slug, combined.game_type, combined.platform_names, combined.first_release_date, combined.cover_image_id, combined.materialized, combined.subscribed FROM (
+    SELECT external_id, local_game_id, name, slug, game_type, platform_names, first_release_date, cover_image_id, materialized, subscribed FROM local_rows
+    UNION ALL
+    SELECT external_id, local_game_id, name, slug, game_type, platform_names, first_release_date, cover_image_id, materialized, subscribed FROM provider_rows
+) combined
+ORDER BY lower(combined.name), combined.external_id
+`
+
+type SearchDiscoveryGamesParams struct {
+	VisibleGameTypes []string
+	Search           string
+	RowLimit         int32
+	UserID           pgtype.UUID
+}
+
+type SearchDiscoveryGamesRow struct {
+	ExternalID       string
+	LocalGameID      string
+	Name             string
+	Slug             string
+	GameType         pgtype.Text
+	PlatformNames    []string
+	FirstReleaseDate pgtype.Timestamptz
+	CoverImageID     pgtype.Text
+	Materialized     bool
+	Subscribed       bool
+}
+
+// Combines authoritative local Games (matched by name/alias, exactly like
+// the pre-IGDB local browse) with the active IGDB generation (matched by
+// normalized search_text), so local search keeps working unchanged when
+// IGDB is disabled or has no active generation yet. Never calls the
+// provider live. Visible-type filtering happens before the provider row
+// limit so hidden-type matches cannot crowd out visible ones. A provider
+// row already materialized into an active local Game is returned exactly
+// once, as that authoritative local Game (materialized = true), sourced
+// from the provider side when its own search_text also matched, or from
+// the local side otherwise; it is never duplicated.
+func (q *Queries) SearchDiscoveryGames(ctx context.Context, arg SearchDiscoveryGamesParams) ([]SearchDiscoveryGamesRow, error) {
+	rows, err := q.db.Query(ctx, searchDiscoveryGames,
+		arg.VisibleGameTypes,
+		arg.Search,
+		arg.RowLimit,
+		arg.UserID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SearchDiscoveryGamesRow
+	for rows.Next() {
+		var i SearchDiscoveryGamesRow
+		if err := rows.Scan(
+			&i.ExternalID,
+			&i.LocalGameID,
+			&i.Name,
+			&i.Slug,
+			&i.GameType,
+			&i.PlatformNames,
+			&i.FirstReleaseDate,
+			&i.CoverImageID,
+			&i.Materialized,
+			&i.Subscribed,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const storeIGDBProviderGame = `-- name: StoreIGDBProviderGame :execrows
 WITH generation AS (
     SELECT id

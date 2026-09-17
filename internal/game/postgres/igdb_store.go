@@ -155,6 +155,50 @@ func (s *Store) Status(ctx context.Context, now time.Time) (game.ProviderStatus,
 	return status, nil
 }
 
+// Search combines authoritative local Games (matched by name/alias, exactly
+// as before this feature) with the active IGDB generation from PostgreSQL;
+// it never calls the IGDB provider. Empty search is handled entirely by the
+// caller (DiscoveryService) using the local catalog, so this method is only
+// invoked for a non-empty search.
+func (s *Store) Search(ctx context.Context, userID, search string, limit int) ([]game.DiscoveryItem, error) {
+	databaseUserID, err := parseUUID(userID)
+	if err != nil {
+		return nil, fmt.Errorf("parse user ID: %w", err)
+	}
+	rows, err := s.queries.SearchDiscoveryGames(ctx, sqlcgen.SearchDiscoveryGamesParams{
+		UserID:           databaseUserID,
+		VisibleGameTypes: game.VisibleProviderGameTypes(),
+		Search:           search,
+		RowLimit:         int32(limit),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("search discovery games: %w", err)
+	}
+	result := make([]game.DiscoveryItem, 0, len(rows))
+	for _, row := range rows {
+		var reference game.ProviderReference
+		if row.ExternalID != "" {
+			reference, err = game.NewProviderReference("igdb", row.ExternalID)
+			if err != nil {
+				return nil, fmt.Errorf("parse IGDB external ID %s: %w", row.ExternalID, err)
+			}
+		}
+		result = append(result, game.DiscoveryItem{
+			LocalGameID:      row.LocalGameID,
+			Reference:        reference,
+			Name:             row.Name,
+			Slug:             row.Slug,
+			GameType:         row.GameType.String,
+			PlatformNames:    row.PlatformNames,
+			FirstReleaseDate: timestamptzPointer(row.FirstReleaseDate),
+			CoverImageID:     row.CoverImageID.String,
+			Subscribed:       row.Subscribed,
+			Materialized:     row.Materialized,
+		})
+	}
+	return result, nil
+}
+
 func storeIGDBProviderGameParams(generationID pgtype.UUID, providerGame game.ProviderGame) (sqlcgen.StoreIGDBProviderGameParams, error) {
 	reference, err := game.NewProviderReference(providerGame.Reference.Provider, providerGame.Reference.ExternalID)
 	if err != nil {

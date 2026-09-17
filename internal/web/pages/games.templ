@@ -1,12 +1,15 @@
 package pages
 
 import (
+	"strconv"
+	"strings"
+
 	"github.com/convention-x-treme/lansurfer/internal/game"
 	"github.com/convention-x-treme/lansurfer/internal/web/branding"
 	"github.com/convention-x-treme/lansurfer/internal/web/components"
 )
 
-templ GameCatalog(brand branding.Brand, navigation components.NavigationState, games []game.SubscriptionGame, search, message string) {
+templ GameCatalog(brand branding.Brand, navigation components.NavigationState, games []game.DiscoveryItem, search, message string) {
 	@components.Layout(brand, "Games", navigation) {
 		<section class="page-shell py-10">
 			<div class="flex flex-wrap items-end justify-between gap-4">
@@ -29,7 +32,7 @@ templ GameCatalog(brand branding.Brand, navigation components.NavigationState, g
 	}
 }
 
-templ GameCatalogResults(games []game.SubscriptionGame, search, message string) {
+templ GameCatalogResults(games []game.DiscoveryItem, search, message string) {
 	<div id="game-catalog-results" aria-live="polite">
 		if message != "" {
 			<div role="alert" class="alert alert-error mb-5"><span>{ message }</span></div>
@@ -45,10 +48,42 @@ templ GameCatalogResults(games []game.SubscriptionGame, search, message string) 
 		}
 		<div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
 			for _, item := range games {
-				@GameSubscriptionCard(item, false)
+				@GameDiscoveryCard(item)
 			}
 		</div>
 	</div>
+}
+
+// GameDiscoveryCard renders one Browse result. A materialized item is
+// already an authoritative local Game, so it renders with the usual
+// follow/unfollow controls. An unmaterialized provider item is read-only
+// display in this task: name plus type/platform/release disambiguation and
+// a remote cover derived only from CoverImageID. No provider name, slug, or
+// other metadata is ever posted back to the server from this card; only the
+// opaque provider reference could ever be used for a future action.
+templ GameDiscoveryCard(item game.DiscoveryItem) {
+	if item.Materialized {
+		@GameSubscriptionCard(game.SubscriptionGame{ID: item.LocalGameID, Name: item.Name, Slug: item.Slug, Subscribed: item.Subscribed}, false)
+	} else {
+		@ProviderDiscoveryCard(item)
+	}
+}
+
+templ ProviderDiscoveryCard(item game.DiscoveryItem) {
+	<article class="card border border-base-300 bg-base-200 shadow-sm">
+		<div class="card-body">
+			<div class="flex gap-4">
+				if item.CoverImageID != "" {
+					<img class="h-24 w-16 flex-none rounded object-cover bg-base-300" src={ providerCoverURL(item.CoverImageID) } alt="" referrerpolicy="no-referrer" loading="lazy"/>
+				}
+				<div class="min-w-0">
+					<h2 class="card-title text-2xl">{ item.Name }</h2>
+					<p class="data-text mt-1 text-sm text-base-content/60">{ providerDisambiguation(item) }</p>
+					<span class="badge badge-ghost mt-2">Not yet in LANsurfer catalog</span>
+				</div>
+			</div>
+		</div>
+	</article>
 }
 
 templ MyGames(brand branding.Brand, navigation components.NavigationState, games []game.SubscriptionGame) {
@@ -111,4 +146,29 @@ templ GameCatalogError(brand branding.Brand, navigation components.NavigationSta
 	@components.Layout(brand, "Games unavailable", navigation) {
 		<section class="page-shell py-16"><div role="alert" class="alert alert-error"><div><h1 class="font-bold">Games could not be loaded</h1><p>Try the request again.</p></div></div></section>
 	}
+}
+
+// providerCoverURL constructs the approved images.igdb.com cover URL from
+// only the persisted cover_image_id (spec: "Covers"). It never accepts or
+// echoes any other provider-supplied metadata; the CSP img-src allowlist and
+// Referrer-Policy: no-referrer safeguards live in internal/web/middleware.
+func providerCoverURL(coverImageID string) string {
+	return "https://images.igdb.com/igdb/image/upload/t_cover_small/" + coverImageID + ".jpg"
+}
+
+// providerDisambiguation renders type/platform/release context so provider
+// search results without a unique display name can still be told apart
+// (spec: "Local Game name uniqueness must change").
+func providerDisambiguation(item game.DiscoveryItem) string {
+	parts := make([]string, 0, 3)
+	if item.GameType != "" {
+		parts = append(parts, item.GameType)
+	}
+	if len(item.PlatformNames) > 0 {
+		parts = append(parts, strings.Join(item.PlatformNames, ", "))
+	}
+	if item.FirstReleaseDate != nil {
+		parts = append(parts, strconv.Itoa(item.FirstReleaseDate.Year()))
+	}
+	return strings.Join(parts, " · ")
 }

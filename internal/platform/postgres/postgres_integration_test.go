@@ -12,6 +12,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -574,6 +575,173 @@ func TestIGDBActivationArchivesAndRestoresExternalIdentity(t *testing.T) {
 	if archived {
 		t.Fatal("returned IGDB identity remained archived")
 	}
+}
+
+func TestDiscoverySearchPostgreSQL(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+
+	users := user.NewService(userpostgres.NewStore(pool))
+	viewer, err := users.Register(t.Context(), "Discovery Viewer")
+	if err != nil {
+		t.Fatalf("register viewer: %v", err)
+	}
+	other, err := users.Register(t.Context(), "Other Player")
+	if err != nil {
+		t.Fatalf("register other player: %v", err)
+	}
+
+	gameStore := gamepostgres.NewStore(pool)
+	catalog := game.NewService(gameStore)
+	discovery := game.NewDiscoveryService(gameStore, nil, gameStore)
+
+	t.Run("empty search never touches the discovery repository", func(t *testing.T) {
+		local, err := catalog.Create(t.Context(), "Local Only Game", "local-only-game")
+		if err != nil {
+			t.Fatalf("create local game: %v", err)
+		}
+		got, err := discovery.Browse(t.Context(), viewer.ID, "")
+		if err != nil {
+			t.Fatalf("Browse: %v", err)
+		}
+		found := false
+		for _, item := range got {
+			if item.LocalGameID == local.ID {
+				found = true
+			}
+			if (item.Reference != game.ProviderReference{}) {
+				t.Fatalf("empty search unexpectedly returned a provider reference: %#v", item)
+			}
+		}
+		if !found {
+			t.Fatalf("empty search browse = %#v, want local game present", got)
+		}
+	})
+
+	t.Run("non-empty search still finds local games without an active IGDB generation", func(t *testing.T) {
+		local, err := catalog.Create(t.Context(), "Never Synced Game", "never-synced-game")
+		if err != nil {
+			t.Fatalf("create local game: %v", err)
+		}
+		got, err := discovery.Browse(t.Context(), viewer.ID, "never synced")
+		if err != nil {
+			t.Fatalf("Browse: %v", err)
+		}
+		if len(got) != 1 || got[0].LocalGameID != local.ID || !got[0].Materialized {
+			t.Fatalf("Browse = %#v", got)
+		}
+	})
+
+	t.Run("active generation only, hidden types excluded", func(t *testing.T) {
+		activeID, err := gameStore.BeginGeneration(t.Context())
+		if err != nil {
+			t.Fatalf("begin active generation: %v", err)
+		}
+		if err := gameStore.StoreProviderGames(t.Context(), activeID, []game.ProviderGame{
+			{Reference: game.ProviderReference{Provider: "igdb", ExternalID: "9001"}, Name: "Quest Runner", Slug: "quest-runner", GameType: "Main Game"},
+			{Reference: game.ProviderReference{Provider: "igdb", ExternalID: "9002"}, Name: "Quest Runner DLC", Slug: "quest-runner-dlc", GameType: "DLC Addon"},
+		}); err != nil {
+			t.Fatalf("store active generation games: %v", err)
+		}
+		if err := gameStore.ActivateGeneration(t.Context(), activeID, 2); err != nil {
+			t.Fatalf("activate generation: %v", err)
+		}
+
+		// A newer, still-syncing generation must be invisible to search.
+		syncingID, err := gameStore.BeginGeneration(t.Context())
+		if err != nil {
+			t.Fatalf("begin syncing generation: %v", err)
+		}
+		if err := gameStore.StoreProviderGames(t.Context(), syncingID, []game.ProviderGame{
+			{Reference: game.ProviderReference{Provider: "igdb", ExternalID: "9003"}, Name: "Quest Runner Beta", Slug: "quest-runner-beta", GameType: "Main Game"},
+		}); err != nil {
+			t.Fatalf("store syncing generation games: %v", err)
+		}
+
+		got, err := discovery.Browse(t.Context(), viewer.ID, "quest runner")
+		if err != nil {
+			t.Fatalf("Browse: %v", err)
+		}
+		if len(got) != 1 || got[0].Name != "Quest Runner" || got[0].Materialized {
+			t.Fatalf("Browse = %#v", got)
+		}
+	})
+
+	t.Run("materialized provider row returns exactly once as the local Game", func(t *testing.T) {
+		generationID, err := gameStore.BeginGeneration(t.Context())
+		if err != nil {
+			t.Fatalf("begin generation: %v", err)
+		}
+		if err := gameStore.StoreProviderGames(t.Context(), generationID, []game.ProviderGame{
+			{Reference: game.ProviderReference{Provider: "igdb", ExternalID: "9101"}, Name: "Provider Name", Slug: "provider-name", GameType: "Main Game"},
+		}); err != nil {
+			t.Fatalf("store generation games: %v", err)
+		}
+		if err := gameStore.ActivateGeneration(t.Context(), generationID, 1); err != nil {
+			t.Fatalf("activate generation: %v", err)
+		}
+		localGame, err := catalog.Create(t.Context(), "Authoritative Local Name", "authoritative-local-name")
+		if err != nil {
+			t.Fatalf("create local game: %v", err)
+		}
+		if _, err := pool.Exec(t.Context(), `INSERT INTO game_external_ids(game_id, provider, external_id) VALUES($1, 'igdb', '9101')`, localGame.ID); err != nil {
+			t.Fatalf("insert external identity: %v", err)
+		}
+		subscriptions := game.NewSubscriptionService(gameStore)
+		if err := subscriptions.Follow(t.Context(), viewer.ID, localGame.ID); err != nil {
+			t.Fatalf("follow local game: %v", err)
+		}
+
+		viewerResult, err := discovery.Browse(t.Context(), viewer.ID, "authoritative")
+		if err != nil {
+			t.Fatalf("Browse (viewer): %v", err)
+		}
+		if len(viewerResult) != 1 || !viewerResult[0].Materialized || viewerResult[0].LocalGameID != localGame.ID ||
+			viewerResult[0].Name != "Authoritative Local Name" || !viewerResult[0].Subscribed {
+			t.Fatalf("Browse (viewer) = %#v", viewerResult)
+		}
+
+		otherResult, err := discovery.Browse(t.Context(), other.ID, "authoritative")
+		if err != nil {
+			t.Fatalf("Browse (other): %v", err)
+		}
+		if len(otherResult) != 1 || otherResult[0].Subscribed {
+			t.Fatalf("Browse (other) = %#v", otherResult)
+		}
+	})
+
+	t.Run("provider rows are capped at 50", func(t *testing.T) {
+		generationID, err := gameStore.BeginGeneration(t.Context())
+		if err != nil {
+			t.Fatalf("begin generation: %v", err)
+		}
+		batch := make([]game.ProviderGame, 0, 60)
+		for i := range 60 {
+			externalID := strconv.Itoa(9200 + i)
+			batch = append(batch, game.ProviderGame{
+				Reference: game.ProviderReference{Provider: "igdb", ExternalID: externalID},
+				Name:      "Capped Result " + externalID,
+				Slug:      "capped-result-" + externalID,
+				GameType:  "Main Game",
+			})
+		}
+		if err := gameStore.StoreProviderGames(t.Context(), generationID, batch); err != nil {
+			t.Fatalf("store generation games: %v", err)
+		}
+		if err := gameStore.ActivateGeneration(t.Context(), generationID, int64(len(batch))); err != nil {
+			t.Fatalf("activate generation: %v", err)
+		}
+
+		got, err := discovery.Browse(t.Context(), viewer.ID, "capped result")
+		if err != nil {
+			t.Fatalf("Browse: %v", err)
+		}
+		if len(got) != 50 {
+			t.Fatalf("len(got) = %d, want 50", len(got))
+		}
+	})
 }
 
 func TestGameSubscriptionPersistence(t *testing.T) {

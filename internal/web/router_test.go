@@ -347,8 +347,8 @@ func TestGameCatalogRequiresAuthentication(t *testing.T) {
 	response := httptest.NewRecorder()
 
 	NewRouter(RouterDependencies{
-		Ready:         func(context.Context) error { return nil },
-		Subscriptions: &routerSubscriptions{},
+		Ready:     func(context.Context) error { return nil },
+		Discovery: &routerDiscovery{},
 	}).ServeHTTP(response, request)
 
 	if response.Code != http.StatusUnauthorized {
@@ -357,8 +357,8 @@ func TestGameCatalogRequiresAuthentication(t *testing.T) {
 }
 
 func TestAuthenticatedUserCanBrowseAndFollowGames(t *testing.T) {
-	subscriptions := &routerSubscriptions{items: []game.SubscriptionGame{{
-		ID: "game-1", Name: "Warcraft III", Slug: "warcraft-3",
+	subscriptions := &routerDiscovery{items: []game.DiscoveryItem{{
+		LocalGameID: "game-1", Name: "Warcraft III", Slug: "warcraft-3", Materialized: true,
 	}}}
 	router := gameTestRouter(subscriptions)
 
@@ -390,7 +390,7 @@ func TestAuthenticatedUserCanBrowseAndFollowGames(t *testing.T) {
 }
 
 func TestMyGamesRendersOnlySubscriptions(t *testing.T) {
-	subscriptions := &routerSubscriptions{mine: []game.SubscriptionGame{{
+	subscriptions := &routerDiscovery{mine: []game.SubscriptionGame{{
 		ID: "game-1", Name: "Warcraft III", Slug: "warcraft-3", Subscribed: true,
 	}}}
 	request := httptest.NewRequest(http.MethodGet, "/games/mine", nil)
@@ -401,6 +401,47 @@ func TestMyGamesRendersOnlySubscriptions(t *testing.T) {
 
 	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "Warcraft III") {
 		t.Fatalf("response = %d %q", response.Code, response.Body.String())
+	}
+}
+
+func TestGameCatalogRendersUnmaterializedProviderResultReadOnly(t *testing.T) {
+	releaseDate := time.Date(2002, time.July, 3, 0, 0, 0, 0, time.UTC)
+	discovery := &routerDiscovery{items: []game.DiscoveryItem{{
+		Reference:        game.ProviderReference{Provider: "igdb", ExternalID: "42"},
+		Name:             "Warcraft III: Reign of Chaos",
+		GameType:         "Main Game",
+		PlatformNames:    []string{"PC (Microsoft Windows)"},
+		FirstReleaseDate: &releaseDate,
+		CoverImageID:     "co1abc",
+		Materialized:     false,
+	}}}
+	router := gameTestRouter(discovery)
+
+	request := httptest.NewRequest(http.MethodGet, "/games?q=warcraft", nil)
+	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d", response.Code)
+	}
+	body := response.Body.String()
+	for _, want := range []string{
+		"Warcraft III: Reign of Chaos",
+		"Main Game",
+		"PC (Microsoft Windows)",
+		"2002",
+		"https://images.igdb.com/igdb/image/upload/t_cover_small/co1abc.jpg",
+		"Not yet in LANsurfer catalog",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("body does not contain %q", want)
+		}
+	}
+	for _, notWanted := range []string{"Follow Game", "hx-post=\"/games//follow\""} {
+		if strings.Contains(body, notWanted) {
+			t.Errorf("body unexpectedly contains %q", notWanted)
+		}
 	}
 }
 
@@ -566,13 +607,13 @@ func adminIGDBTestRouter(providerSync *routerProviderSync) http.Handler {
 	})
 }
 
-func gameTestRouter(subscriptions *routerSubscriptions) http.Handler {
+func gameTestRouter(discovery *routerDiscovery) http.Handler {
 	return NewRouter(RouterDependencies{
 		Ready: func(context.Context) error { return nil },
 		Authentication: &routerAuthentication{account: user.User{
 			ID: "user-1", DisplayName: "Ada Player", Role: user.RoleUser,
 		}},
-		Subscriptions: subscriptions,
+		Discovery: discovery,
 	})
 }
 
@@ -634,11 +675,12 @@ func (r *routerProviderSync) TryStart(context.Context) bool {
 	return true
 }
 
-type routerSubscriptions struct {
-	items, mine []game.SubscriptionGame
-	search      string
-	followed    string
-	unfollowed  string
+type routerDiscovery struct {
+	items      []game.DiscoveryItem
+	mine       []game.SubscriptionGame
+	search     string
+	followed   string
+	unfollowed string
 }
 
 type routerGameRequests struct {
@@ -702,18 +744,18 @@ func (r *routerGameRequestQueries) CurrentEvent(context.Context) (requestquery.E
 	return requestquery.EventContext{ID: r.options.EventID, Name: r.options.EventName}, nil
 }
 
-func (r *routerSubscriptions) Browse(_ context.Context, _, search string) ([]game.SubscriptionGame, error) {
+func (r *routerDiscovery) Browse(_ context.Context, _, search string) ([]game.DiscoveryItem, error) {
 	r.search = search
 	return r.items, nil
 }
-func (r *routerSubscriptions) MyGames(context.Context, string) ([]game.SubscriptionGame, error) {
+func (r *routerDiscovery) MyGames(context.Context, string) ([]game.SubscriptionGame, error) {
 	return r.mine, nil
 }
-func (r *routerSubscriptions) Follow(_ context.Context, userID, gameID string) error {
+func (r *routerDiscovery) FollowLocal(_ context.Context, userID, gameID string) error {
 	r.followed = userID + "/" + gameID
 	return nil
 }
-func (r *routerSubscriptions) Unfollow(_ context.Context, userID, gameID string) error {
+func (r *routerDiscovery) Unfollow(_ context.Context, userID, gameID string) error {
 	r.unfollowed = userID + "/" + gameID
 	return nil
 }

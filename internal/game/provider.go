@@ -101,11 +101,30 @@ func NewProviderReference(provider, externalID string) (ProviderReference, error
 	return ProviderReference{Provider: provider, ExternalID: externalID}, nil
 }
 
+// visibleProviderGameTypes is the single source of truth for the
+// player-visible Game Type policy (spec: "Player-visible Game Type
+// policy"). Values are normalized (trimmed, lowercase) IGDB semantic
+// game_type.type strings. Unknown or newly introduced types default to
+// hidden until explicitly reviewed here.
+var visibleProviderGameTypes = []string{
+	"main game", "standalone expansion", "remake", "remaster", "port", "expanded game",
+}
+
 func VisibleProviderGameType(gameType string) bool {
-	switch strings.ToLower(strings.TrimSpace(gameType)) {
-	case "main game", "standalone expansion", "remake", "remaster", "port", "expanded game":
-		return true
-	default:
-		return false
+	gameType = strings.ToLower(strings.TrimSpace(gameType))
+	for _, visible := range visibleProviderGameTypes {
+		if gameType == visible {
+			return true
+		}
 	}
+	return false
+}
+
+// VisibleProviderGameTypes returns the normalized (lowercase) Game Type
+// values considered player-visible, for read-model queries that must filter
+// by type before paging/limiting provider rows (rather than after, which
+// could let a page fill entirely with hidden-type matches). The returned
+// slice is a copy; callers may not mutate the canonical policy through it.
+func VisibleProviderGameTypes() []string {
+	return append([]string(nil), visibleProviderGameTypes...)
 }
