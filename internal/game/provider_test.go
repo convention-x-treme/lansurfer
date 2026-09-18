@@ -34,6 +34,14 @@ func (finalDiscoveryRepositoryContract) Search(context.Context, string, string, 
 	return DiscoverySearchResult{}, nil
 }
 
+func (finalDiscoveryRepositoryContract) FindLocal(context.Context, string, string) (DiscoveryItem, error) {
+	return DiscoveryItem{}, nil
+}
+
+func (finalDiscoveryRepositoryContract) FindProvider(context.Context, string, ProviderReference) (DiscoveryItem, error) {
+	return DiscoveryItem{}, nil
+}
+
 type finalMaterializationRepositoryContract struct{}
 
 func (finalMaterializationRepositoryContract) Materialize(context.Context, ProviderReference) (Game, error) {

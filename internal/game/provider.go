@@ -96,8 +96,22 @@ type DiscoverySearchResult struct {
 // still matches by its current local name/alias), exactly like the provider
 // being disabled did before this contract existed, but through the same
 // ranked query rather than a separate local-only code path.
+//
+// FindLocal and FindProvider (Task 5) are targeted single-row read-only
+// lookups for the Game Request composer, each keyed by its own precise
+// identity (a local Game ID, or one provider reference) rather than
+// deduplicating across a ranked candidate set the way Search does. FindLocal
+// takes (ctx, userID, localGameID) and reports the local Game's current
+// presentation, last-known-good enrichment, and the given viewer's own
+// Follow state; it never returns Reference. FindProvider takes (ctx, userID,
+// ProviderReference) and reports either the linked local Game's presentation
+// (already materialized) or the active generation's own provider
+// presentation (not yet materialized) -- never both, and never a row at all
+// for a provider record mapped only to a deactivated local Game.
 type DiscoveryRepository interface {
 	Search(context.Context, string, string, int, bool) (DiscoverySearchResult, error)
+	FindLocal(context.Context, string, string) (DiscoveryItem, error)
+	FindProvider(context.Context, string, ProviderReference) (DiscoveryItem, error)
 }
 
 type MaterializationRepository interface {

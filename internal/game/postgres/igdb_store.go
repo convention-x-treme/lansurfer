@@ -242,6 +242,86 @@ func (s *Store) Search(ctx context.Context, userID, search string, limit int, in
 	return game.DiscoverySearchResult{Items: items, HasMore: hasMore}, nil
 }
 
+// FindLocal is the read-only composer lookup for DiscoveryRepository
+// (Task 5, GameSelection.LocalGameID): one active local Game by ID, its
+// retained last-known-good enrichment, and the given viewer's own Follow
+// state. It never sets Reference -- like the existing local Browse/MyGames
+// projections, a local ID lookup does not surface the local Game's provider
+// mapping. No row (missing or inactive Game) reports game.ErrNotFound.
+func (s *Store) FindLocal(ctx context.Context, userID, localGameID string) (game.DiscoveryItem, error) {
+	databaseUserID, err := parseUUID(userID)
+	if err != nil {
+		return game.DiscoveryItem{}, fmt.Errorf("parse user ID: %w", err)
+	}
+	databaseGameID, err := parseUUID(localGameID)
+	if err != nil {
+		return game.DiscoveryItem{}, game.ErrNotFound
+	}
+	row, err := s.queries.FindLocalDiscoveryGame(ctx, sqlcgen.FindLocalDiscoveryGameParams{
+		UserID: databaseUserID,
+		GameID: databaseGameID,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return game.DiscoveryItem{}, game.ErrNotFound
+	}
+	if err != nil {
+		return game.DiscoveryItem{}, fmt.Errorf("find local discovery game: %w", err)
+	}
+	return game.DiscoveryItem{
+		LocalGameID:      row.GID,
+		GamePresentation: presentation(row.Name, row.Slug, row.GameType, row.CoverImageID, row.PlatformNames, row.FirstReleaseDate),
+		Subscribed:       row.Subscribed,
+		Materialized:     true,
+	}, nil
+}
+
+// FindProvider is the read-only composer lookup for DiscoveryRepository
+// (Task 5, GameSelection.Reference): the provider row must belong to the
+// active generation. If it already maps to an active local Game, this
+// returns that Game's own presentation and the viewer's Follow state
+// (Materialized=true); otherwise it returns the active generation's own
+// provider presentation, unmaterialized (Materialized=false). A provider
+// record absent from the active generation, or mapped only to a
+// deactivated local Game, reports game.ErrProviderRecordNotFound rather
+// than fabricating or resurrecting a result -- see
+// FindProviderDiscoveryGame's own comment for why those two cases collapse
+// to "no row" together.
+func (s *Store) FindProvider(ctx context.Context, userID string, reference game.ProviderReference) (game.DiscoveryItem, error) {
+	normalized, err := game.NewProviderReference(reference.Provider, reference.ExternalID)
+	if err != nil {
+		return game.DiscoveryItem{}, err
+	}
+	databaseUserID, err := parseUUID(userID)
+	if err != nil {
+		return game.DiscoveryItem{}, fmt.Errorf("parse user ID: %w", err)
+	}
+	igdbID, err := strconv.ParseInt(normalized.ExternalID, 10, 64)
+	if err != nil {
+		return game.DiscoveryItem{}, game.ErrInvalidProviderReference
+	}
+	row, err := s.queries.FindProviderDiscoveryGame(ctx, sqlcgen.FindProviderDiscoveryGameParams{
+		UserID: databaseUserID,
+		IgdbID: igdbID,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return game.DiscoveryItem{}, game.ErrProviderRecordNotFound
+	}
+	if err != nil {
+		return game.DiscoveryItem{}, fmt.Errorf("find provider discovery game: %w", err)
+	}
+	rowReference, err := game.NewProviderReference("igdb", row.ExternalID)
+	if err != nil {
+		return game.DiscoveryItem{}, fmt.Errorf("parse IGDB external ID %s: %w", row.ExternalID, err)
+	}
+	return game.DiscoveryItem{
+		LocalGameID:      row.LocalGameID,
+		Reference:        rowReference,
+		GamePresentation: presentation(row.Name, row.Slug, row.GameType, row.CoverImageID, row.PlatformNames, row.FirstReleaseDate),
+		Subscribed:       row.Subscribed,
+		Materialized:     row.Materialized,
+	}, nil
+}
+
 func storeIGDBProviderGameParams(generationID pgtype.UUID, providerGame game.ProviderGame) (sqlcgen.StoreIGDBProviderGameParams, error) {
 	reference, err := game.NewProviderReference(providerGame.Reference.Provider, providerGame.Reference.ExternalID)
 	if err != nil {

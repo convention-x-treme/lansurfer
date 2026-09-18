@@ -17,6 +17,18 @@ type fakeDiscoveryRepository struct {
 	lastQuery           string
 	lastLimit           int
 	lastIncludeProvider bool
+
+	findLocalItem     DiscoveryItem
+	findLocalErr      error
+	findLocalCalls    int
+	lastFindLocalUser string
+	lastFindLocalID   string
+
+	findProviderItem     DiscoveryItem
+	findProviderErr      error
+	findProviderCalls    int
+	lastFindProviderUser string
+	lastFindProviderRef  ProviderReference
 }
 
 func (f *fakeDiscoveryRepository) Search(_ context.Context, userID, search string, limit int, includeProvider bool) (DiscoverySearchResult, error) {
@@ -32,6 +44,20 @@ func (f *fakeDiscoveryRepository) Search(_ context.Context, userID, search strin
 		return DiscoverySearchResult{Items: f.items, HasMore: f.result.HasMore}, nil
 	}
 	return f.result, nil
+}
+
+func (f *fakeDiscoveryRepository) FindLocal(_ context.Context, userID, localGameID string) (DiscoveryItem, error) {
+	f.findLocalCalls++
+	f.lastFindLocalUser = userID
+	f.lastFindLocalID = localGameID
+	return f.findLocalItem, f.findLocalErr
+}
+
+func (f *fakeDiscoveryRepository) FindProvider(_ context.Context, userID string, reference ProviderReference) (DiscoveryItem, error) {
+	f.findProviderCalls++
+	f.lastFindProviderUser = userID
+	f.lastFindProviderRef = reference
+	return f.findProviderItem, f.findProviderErr
 }
 
 type fakeProviderStatus struct {
@@ -380,5 +406,102 @@ func TestDiscoveryUnfollowDelegatesToSubscriptions(t *testing.T) {
 	}
 	if subs.unfollowUser != "user-1" || subs.unfollowGame != "local-1" {
 		t.Fatalf("unfollowUser=%q unfollowGame=%q", subs.unfollowUser, subs.unfollowGame)
+	}
+}
+
+// TestDiscoverySelectLocalIsReadOnly proves a LocalGameID-only selection
+// reads through DiscoveryRepository.FindLocal and never touches the
+// materializer: Select is a read-only composer lookup, not a creation path.
+func TestDiscoverySelectLocalIsReadOnly(t *testing.T) {
+	repo := &fakeDiscoveryRepository{
+		findLocalItem: DiscoveryItem{LocalGameID: "local-1", GamePresentation: GamePresentation{Name: "Local"}, Materialized: true},
+	}
+	materializer := &fakeMaterializer{}
+	service := NewDiscoveryService(repo, materializer, &fakeSubscriptions{}, enabledProviderStatus())
+
+	got, err := service.Select(t.Context(), "user-1", GameSelection{LocalGameID: "local-1"})
+	if err != nil {
+		t.Fatalf("Select: %v", err)
+	}
+	if got.LocalGameID != "local-1" {
+		t.Fatalf("got = %#v", got)
+	}
+	if repo.findLocalCalls != 1 || repo.lastFindLocalUser != "user-1" || repo.lastFindLocalID != "local-1" {
+		t.Fatalf("findLocalCalls=%d user=%q id=%q, want 1/user-1/local-1", repo.findLocalCalls, repo.lastFindLocalUser, repo.lastFindLocalID)
+	}
+	if repo.findProviderCalls != 0 || materializer.calls != 0 {
+		t.Fatalf("findProviderCalls=%d materializer.calls=%d, want 0/0", repo.findProviderCalls, materializer.calls)
+	}
+}
+
+// TestDiscoverySelectProviderIsReadOnly proves a provider-reference-only
+// selection normalizes the reference and reads through
+// DiscoveryRepository.FindProvider without ever calling the materializer.
+func TestDiscoverySelectProviderIsReadOnly(t *testing.T) {
+	repo := &fakeDiscoveryRepository{
+		findProviderItem: DiscoveryItem{
+			Reference:        ProviderReference{Provider: "igdb", ExternalID: "100"},
+			GamePresentation: GamePresentation{Name: "Provider Game"},
+		},
+	}
+	materializer := &fakeMaterializer{}
+	service := NewDiscoveryService(repo, materializer, &fakeSubscriptions{}, enabledProviderStatus())
+
+	got, err := service.Select(t.Context(), "user-1", GameSelection{Reference: ProviderReference{Provider: " IGDB ", ExternalID: " 100 "}})
+	if err != nil {
+		t.Fatalf("Select: %v", err)
+	}
+	if got.Reference.ExternalID != "100" {
+		t.Fatalf("got = %#v", got)
+	}
+	want := ProviderReference{Provider: "igdb", ExternalID: "100"}
+	if repo.findProviderCalls != 1 || repo.lastFindProviderUser != "user-1" || repo.lastFindProviderRef != want {
+		t.Fatalf("findProviderCalls=%d user=%q ref=%#v, want 1/user-1/%#v", repo.findProviderCalls, repo.lastFindProviderUser, repo.lastFindProviderRef, want)
+	}
+	if repo.findLocalCalls != 0 || materializer.calls != 0 {
+		t.Fatalf("findLocalCalls=%d materializer.calls=%d, want 0/0", repo.findLocalCalls, materializer.calls)
+	}
+}
+
+// TestDiscoverySelectRejectsMissingOrAmbiguousIdentity proves Select
+// validates exactly one identity source before touching either repository
+// method or the materializer: neither LocalGameID nor Reference set, and
+// both set, are equally invalid.
+func TestDiscoverySelectRejectsMissingOrAmbiguousIdentity(t *testing.T) {
+	tests := []GameSelection{
+		{},
+		{LocalGameID: "local-1", Reference: ProviderReference{Provider: "igdb", ExternalID: "100"}},
+	}
+	for _, selection := range tests {
+		repo := &fakeDiscoveryRepository{}
+		materializer := &fakeMaterializer{}
+		service := NewDiscoveryService(repo, materializer, &fakeSubscriptions{}, enabledProviderStatus())
+
+		if _, err := service.Select(t.Context(), "user-1", selection); !errors.Is(err, ErrInvalidGameSelection) {
+			t.Fatalf("Select(%#v): err = %v, want %v", selection, err, ErrInvalidGameSelection)
+		}
+		if repo.findLocalCalls != 0 || repo.findProviderCalls != 0 || materializer.calls != 0 {
+			t.Fatalf("Select(%#v): findLocalCalls=%d findProviderCalls=%d materializer.calls=%d, want 0/0/0",
+				selection, repo.findLocalCalls, repo.findProviderCalls, materializer.calls)
+		}
+	}
+}
+
+// TestDiscoverySelectProviderRejectsDisabledProvider proves a disabled
+// provider rejects a provider-reference selection with
+// ErrProviderRecordNotFound before ever calling FindProvider, matching
+// Resolve's existing disabled-provider gate.
+func TestDiscoverySelectProviderRejectsDisabledProvider(t *testing.T) {
+	repo := &fakeDiscoveryRepository{}
+	materializer := &fakeMaterializer{}
+	service := NewDiscoveryService(repo, materializer, &fakeSubscriptions{}, &fakeProviderStatus{
+		status: ProviderStatus{State: ProviderDisabled},
+	})
+
+	if _, err := service.Select(t.Context(), "user-1", GameSelection{Reference: ProviderReference{Provider: "igdb", ExternalID: "100"}}); !errors.Is(err, ErrProviderRecordNotFound) {
+		t.Fatalf("err = %v, want %v", err, ErrProviderRecordNotFound)
+	}
+	if repo.findProviderCalls != 0 {
+		t.Fatalf("findProviderCalls = %d, want 0", repo.findProviderCalls)
 	}
 }

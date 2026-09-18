@@ -2,6 +2,7 @@ package game
 
 import (
 	"context"
+	"strings"
 	"unicode/utf8"
 )
 
@@ -119,6 +120,45 @@ func (s *DiscoveryService) Resolve(ctx context.Context, ref ProviderReference) (
 		return Game{}, ErrProviderRecordNotFound
 	}
 	return s.materializer.Materialize(ctx, normalized)
+}
+
+// Select is a read-only composer lookup (Task 5) for one already-presented
+// Game: it never materializes, regardless of which identity the selection
+// carries -- unlike Follow/Resolve, it never calls the materializer, so a
+// player can review an unmaterialized provider choice (e.g. in a Game
+// Request composer) without that alone creating a local Game. Exactly one
+// of GameSelection.LocalGameID or GameSelection.Reference must be set;
+// either both set or neither set is ErrInvalidGameSelection before either
+// repository method or the provider status is even consulted for the local
+// case.
+//
+// A local selection reads straight through DiscoveryRepository.FindLocal. A
+// provider selection normalizes the reference, rejects a disabled provider
+// exactly like Resolve does (ErrProviderRecordNotFound, without ever
+// calling FindProvider), and otherwise reads through
+// DiscoveryRepository.FindProvider.
+func (s *DiscoveryService) Select(ctx context.Context, userID string, selection GameSelection) (DiscoveryItem, error) {
+	hasLocal := strings.TrimSpace(selection.LocalGameID) != ""
+	hasProvider := selection.Reference != (ProviderReference{})
+	if hasLocal == hasProvider {
+		return DiscoveryItem{}, ErrInvalidGameSelection
+	}
+	if hasLocal {
+		return s.discovery.FindLocal(ctx, userID, selection.LocalGameID)
+	}
+
+	normalized, err := NewProviderReference(selection.Reference.Provider, selection.Reference.ExternalID)
+	if err != nil {
+		return DiscoveryItem{}, err
+	}
+	status, err := s.providerStatus.Status(ctx)
+	if err != nil {
+		return DiscoveryItem{}, err
+	}
+	if status.State == ProviderDisabled {
+		return DiscoveryItem{}, ErrProviderRecordNotFound
+	}
+	return s.discovery.FindProvider(ctx, userID, normalized)
 }
 
 // Follow materializes the authoritative local Game for an IGDB discovery

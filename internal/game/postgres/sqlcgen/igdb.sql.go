@@ -295,6 +295,195 @@ func (q *Queries) FindIGDBMaterializedGame(ctx context.Context, externalID strin
 	return i, err
 }
 
+const findLocalDiscoveryGame = `-- name: FindLocalDiscoveryGame :one
+SELECT g.id::text, g.name, g.slug,
+       enrichment.cover_image_id,
+       enrichment.game_type,
+       enrichment.platform_names,
+       enrichment.first_release_date,
+       EXISTS (
+           SELECT 1
+           FROM game_subscriptions gs
+           WHERE gs.game_id = g.id
+             AND gs.user_id = $1::uuid
+       ) AS subscribed
+FROM games g
+LEFT JOIN game_igdb_enrichment enrichment ON enrichment.game_id = g.id
+WHERE g.id = $2::uuid
+  AND g.active
+`
+
+type FindLocalDiscoveryGameParams struct {
+	UserID pgtype.UUID
+	GameID pgtype.UUID
+}
+
+type FindLocalDiscoveryGameRow struct {
+	GID              string
+	Name             string
+	Slug             string
+	CoverImageID     pgtype.Text
+	GameType         pgtype.Text
+	PlatformNames    []string
+	FirstReleaseDate pgtype.Timestamptz
+	Subscribed       bool
+}
+
+// Read-only composer selection by local Game ID (Task 5,
+// GameSelection.LocalGameID). Targets one precise row by primary key -- not
+// the ranked/deduplicated Search query -- so it never inherits Search's
+// DISTINCT ON tie-break nondeterminism. Returns the active local Game's own
+// current name/slug, its retained last-known-good game_igdb_enrichment
+// snapshot, and the given viewer's own Follow state. No row means the Game
+// does not exist or is not active; the caller (DiscoveryService.Select)
+// never fabricates a result for it.
+func (q *Queries) FindLocalDiscoveryGame(ctx context.Context, arg FindLocalDiscoveryGameParams) (FindLocalDiscoveryGameRow, error) {
+	row := q.db.QueryRow(ctx, findLocalDiscoveryGame, arg.UserID, arg.GameID)
+	var i FindLocalDiscoveryGameRow
+	err := row.Scan(
+		&i.GID,
+		&i.Name,
+		&i.Slug,
+		&i.CoverImageID,
+		&i.GameType,
+		&i.PlatformNames,
+		&i.FirstReleaseDate,
+		&i.Subscribed,
+	)
+	return i, err
+}
+
+const findProviderDiscoveryGame = `-- name: FindProviderDiscoveryGame :one
+WITH active_generation AS (
+    SELECT active_generation_id AS id
+    FROM igdb_provider_state
+    WHERE singleton AND active_generation_id IS NOT NULL
+), provider_row AS (
+    SELECT provider_game.igdb_id::text AS external_id,
+           provider_game.name,
+           provider_game.slug,
+           provider_game.game_type,
+           provider_game.platform_names,
+           provider_game.first_release_date,
+           provider_game.cover_image_id
+    FROM igdb_game_index provider_game
+    JOIN active_generation ON active_generation.id = provider_game.generation_id
+    WHERE provider_game.igdb_id = $1
+), materialized_row AS (
+    SELECT
+        provider_row.external_id,
+        local_game.id::text AS local_game_id,
+        local_game.name::text AS name,
+        local_game.slug::text AS slug,
+        enrichment.game_type,
+        enrichment.platform_names,
+        enrichment.first_release_date,
+        enrichment.cover_image_id,
+        true::boolean AS materialized,
+        (subscription.game_id IS NOT NULL)::boolean AS subscribed
+    FROM provider_row
+    JOIN game_external_ids mapping
+        ON lower(btrim(mapping.provider)) = 'igdb'
+       AND mapping.external_id = provider_row.external_id
+       AND mapping.archived_at IS NULL
+    JOIN games local_game
+        ON local_game.id = mapping.game_id
+       AND local_game.active
+    LEFT JOIN game_igdb_enrichment enrichment ON enrichment.game_id = local_game.id
+    LEFT JOIN game_subscriptions subscription
+        ON subscription.game_id = local_game.id
+       AND subscription.user_id = $2::uuid
+), unmaterialized_row AS (
+    SELECT
+        provider_row.external_id,
+        ''::text AS local_game_id,
+        provider_row.name::text AS name,
+        provider_row.slug::text AS slug,
+        provider_row.game_type,
+        provider_row.platform_names,
+        provider_row.first_release_date,
+        provider_row.cover_image_id,
+        false::boolean AS materialized,
+        false::boolean AS subscribed
+    FROM provider_row
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM game_external_ids mapping
+        WHERE lower(btrim(mapping.provider)) = 'igdb'
+          AND mapping.external_id = provider_row.external_id
+          AND mapping.archived_at IS NULL
+    )
+)
+SELECT external_id, local_game_id, name, slug, game_type, platform_names,
+       first_release_date, cover_image_id, materialized, subscribed
+FROM materialized_row
+UNION ALL
+SELECT external_id, local_game_id, name, slug, game_type, platform_names,
+       first_release_date, cover_image_id, materialized, subscribed
+FROM unmaterialized_row
+`
+
+type FindProviderDiscoveryGameParams struct {
+	IgdbID int64
+	UserID pgtype.UUID
+}
+
+type FindProviderDiscoveryGameRow struct {
+	ExternalID       string
+	LocalGameID      string
+	Name             string
+	Slug             string
+	GameType         pgtype.Text
+	PlatformNames    []string
+	FirstReleaseDate pgtype.Timestamptz
+	CoverImageID     pgtype.Text
+	Materialized     bool
+	Subscribed       bool
+}
+
+// Read-only composer selection by IGDB provider reference (Task 5,
+// GameSelection.Reference). The provider row must belong to the ACTIVE
+// generation, exactly like ActiveIGDBProviderGame/Search's provider_matches
+// CTE: a still-syncing or already-retired generation is invisible, so an
+// absent row here (empty provider_row) means ErrProviderRecordNotFound to
+// the caller regardless of which arm below it would otherwise have hit.
+//
+// materialized_row and unmaterialized_row are constructed to be mutually
+// exclusive so this can never return more than one row:
+//   - materialized_row exists only when a non-archived game_external_ids
+//     mapping exists AND it points at a still-active local Game. It
+//     returns that Game's own current name/slug plus its retained
+//     game_igdb_enrichment snapshot and the viewer's own Follow state,
+//     mirroring Search's materialized_provider_rows.
+//   - unmaterialized_row exists only when NO non-archived mapping exists
+//     at all (independent of any local Game's active state, same as
+//     Search's unmaterialized_provider_rows exclusion, Track C fix
+//     c2cea97). It returns the active generation's own provider
+//     presentation directly.
+//
+// A mapping that exists but points only at a deactivated local Game
+// therefore satisfies neither arm: materialized_row's active-Game join
+// fails, and unmaterialized_row's NOT EXISTS is blocked by the mapping's
+// own presence, so the deactivated Game's provider record renders as no
+// row at all rather than resurfacing as a duplicate unmaterialized choice.
+func (q *Queries) FindProviderDiscoveryGame(ctx context.Context, arg FindProviderDiscoveryGameParams) (FindProviderDiscoveryGameRow, error) {
+	row := q.db.QueryRow(ctx, findProviderDiscoveryGame, arg.IgdbID, arg.UserID)
+	var i FindProviderDiscoveryGameRow
+	err := row.Scan(
+		&i.ExternalID,
+		&i.LocalGameID,
+		&i.Name,
+		&i.Slug,
+		&i.GameType,
+		&i.PlatformNames,
+		&i.FirstReleaseDate,
+		&i.CoverImageID,
+		&i.Materialized,
+		&i.Subscribed,
+	)
+	return i, err
+}
+
 const gameSlugTaken = `-- name: GameSlugTaken :one
 SELECT EXISTS (
     SELECT 1 FROM games WHERE games.slug = $1::text

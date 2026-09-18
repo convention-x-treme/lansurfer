@@ -1697,6 +1697,175 @@ func TestDiscoverySearchPostgreSQL(t *testing.T) {
 	})
 }
 
+// TestDiscoverySelectPostgreSQL covers the read-only composer selection
+// DiscoveryService.Select adds in Task 5: it never materializes (no
+// Materialize call anywhere in this test), only reads through
+// DiscoveryRepository.FindLocal/FindProvider.
+func TestDiscoverySelectPostgreSQL(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+
+	users := user.NewService(userpostgres.NewStore(pool))
+	viewer, err := users.Register(t.Context(), "Select Viewer")
+	if err != nil {
+		t.Fatalf("register viewer: %v", err)
+	}
+
+	gameStore := gamepostgres.NewStore(pool)
+	catalog := game.NewService(gameStore)
+	subscriptions := game.NewSubscriptionService(gameStore)
+	discovery := game.NewDiscoveryService(gameStore, gameStore, gameStore, storeProviderStatus{store: gameStore})
+
+	// Assertion 1: local selection returns local name/slug plus retained
+	// enrichment plus the current viewer's own Follow state.
+	t.Run("local selection returns local name/slug, retained enrichment, and viewer Follow state", func(t *testing.T) {
+		activateIGDBGeneration(t, gameStore, []game.ProviderGame{
+			{Reference: game.ProviderReference{Provider: "igdb", ExternalID: "31001"}, Name: "Select Local Source", Slug: "select-local-source", GameType: "Main Game", CoverImageID: "co-select-local"},
+		})
+		materialized, err := discovery.Resolve(t.Context(), game.ProviderReference{Provider: "igdb", ExternalID: "31001"})
+		if err != nil {
+			t.Fatalf("materialize provider record: %v", err)
+		}
+		if err := subscriptions.Follow(t.Context(), viewer.ID, materialized.ID); err != nil {
+			t.Fatalf("follow local game: %v", err)
+		}
+
+		item, err := discovery.Select(t.Context(), viewer.ID, game.GameSelection{LocalGameID: materialized.ID})
+		if err != nil {
+			t.Fatalf("Select: %v", err)
+		}
+		if item.LocalGameID != materialized.ID || item.Name != materialized.Name || item.Slug != materialized.Slug {
+			t.Fatalf("Select = %#v, want the local Game's own name/slug", item)
+		}
+		if item.CoverImageID != "co-select-local" || item.GameType != "Main Game" {
+			t.Fatalf("Select = %#v, want the retained IGDB enrichment snapshot", item)
+		}
+		if !item.Subscribed || !item.Materialized {
+			t.Fatalf("Select = %#v, want Subscribed and Materialized true for the following viewer", item)
+		}
+
+		otherViewer, err := users.Register(t.Context(), "Select Non-Follower")
+		if err != nil {
+			t.Fatalf("register other viewer: %v", err)
+		}
+		otherItem, err := discovery.Select(t.Context(), otherViewer.ID, game.GameSelection{LocalGameID: materialized.ID})
+		if err != nil {
+			t.Fatalf("Select (other viewer): %v", err)
+		}
+		if otherItem.Subscribed {
+			t.Fatalf("Select (other viewer) = %#v, want Subscribed false for a non-follower", otherItem)
+		}
+	})
+
+	// Assertion 2: an unmaterialized provider selection returns the
+	// active-generation provider presentation and never inserts into games
+	// or game_external_ids -- Select must stay read-only.
+	t.Run("unmaterialized provider selection returns active-generation presentation without inserting a local Game", func(t *testing.T) {
+		activateIGDBGeneration(t, gameStore, []game.ProviderGame{
+			{Reference: game.ProviderReference{Provider: "igdb", ExternalID: "31002"}, Name: "Select Provider Only", Slug: "select-provider-only", GameType: "Main Game", CoverImageID: "co-select-provider"},
+		})
+
+		item, err := discovery.Select(t.Context(), viewer.ID, game.GameSelection{Reference: game.ProviderReference{Provider: "igdb", ExternalID: "31002"}})
+		if err != nil {
+			t.Fatalf("Select: %v", err)
+		}
+		if item.Materialized {
+			t.Fatalf("Select = %#v, want an unmaterialized provider selection", item)
+		}
+		if item.LocalGameID != "" {
+			t.Fatalf("Select = %#v, want no local Game ID for an unmaterialized selection", item)
+		}
+		if item.Name != "Select Provider Only" || item.Slug != "select-provider-only" || item.CoverImageID != "co-select-provider" {
+			t.Fatalf("Select = %#v, want the active-generation provider presentation", item)
+		}
+		if item.Reference.ExternalID != "31002" {
+			t.Fatalf("Select = %#v, want the requested provider reference", item)
+		}
+
+		var gameCount, mappingCount int
+		if err := pool.QueryRow(t.Context(), `SELECT count(*) FROM games WHERE slug = 'select-provider-only'`).Scan(&gameCount); err != nil {
+			t.Fatalf("count games: %v", err)
+		}
+		if err := pool.QueryRow(t.Context(), `SELECT count(*) FROM game_external_ids WHERE provider = 'igdb' AND external_id = '31002'`).Scan(&mappingCount); err != nil {
+			t.Fatalf("count external ids: %v", err)
+		}
+		if gameCount != 0 || mappingCount != 0 {
+			t.Fatalf("gameCount=%d mappingCount=%d, want 0/0: a read-only selection must never materialize", gameCount, mappingCount)
+		}
+	})
+
+	// Assertion 3: a materialized provider reference returns the linked
+	// local Game's own presentation, consistently, without ever inserting a
+	// second mapping.
+	t.Run("materialized provider reference returns the linked local Game's presentation once", func(t *testing.T) {
+		activateIGDBGeneration(t, gameStore, []game.ProviderGame{
+			{Reference: game.ProviderReference{Provider: "igdb", ExternalID: "31003"}, Name: "Select Materialized Source", Slug: "select-materialized-source", GameType: "Main Game"},
+		})
+		materialized, err := discovery.Resolve(t.Context(), game.ProviderReference{Provider: "igdb", ExternalID: "31003"})
+		if err != nil {
+			t.Fatalf("materialize provider record: %v", err)
+		}
+
+		first, err := discovery.Select(t.Context(), viewer.ID, game.GameSelection{Reference: game.ProviderReference{Provider: "igdb", ExternalID: "31003"}})
+		if err != nil {
+			t.Fatalf("Select (1st): %v", err)
+		}
+		second, err := discovery.Select(t.Context(), viewer.ID, game.GameSelection{Reference: game.ProviderReference{Provider: "igdb", ExternalID: "31003"}})
+		if err != nil {
+			t.Fatalf("Select (2nd): %v", err)
+		}
+		if !first.Materialized || first.LocalGameID != materialized.ID {
+			t.Fatalf("Select (1st) = %#v, want the materialized Game %s", first, materialized.ID)
+		}
+		if second.LocalGameID != first.LocalGameID || second.Name != first.Name || !second.Materialized {
+			t.Fatalf("Select (2nd) = %#v, want the same stable materialized result as %#v", second, first)
+		}
+
+		var mappingCount int
+		if err := pool.QueryRow(t.Context(), `SELECT count(*) FROM game_external_ids WHERE provider = 'igdb' AND external_id = '31003'`).Scan(&mappingCount); err != nil {
+			t.Fatalf("count external ids: %v", err)
+		}
+		if mappingCount != 1 {
+			t.Fatalf("mappingCount = %d, want 1: Select must never insert a second mapping", mappingCount)
+		}
+	})
+
+	// Assertion 4: a provider record absent from the active generation
+	// reports ErrProviderRecordNotFound.
+	t.Run("a provider record absent from the active generation returns ErrProviderRecordNotFound", func(t *testing.T) {
+		activateIGDBGeneration(t, gameStore, []game.ProviderGame{
+			{Reference: game.ProviderReference{Provider: "igdb", ExternalID: "31004"}, Name: "Select Present Sibling", Slug: "select-present-sibling", GameType: "Main Game"},
+		})
+
+		if _, err := discovery.Select(t.Context(), viewer.ID, game.GameSelection{Reference: game.ProviderReference{Provider: "igdb", ExternalID: "31099"}}); !errors.Is(err, game.ErrProviderRecordNotFound) {
+			t.Fatalf("Select: err = %v, want %v", err, game.ErrProviderRecordNotFound)
+		}
+	})
+
+	// Assertion 5: a deactivated materialized local Game must not
+	// resurface as an unmaterialized provider choice -- selecting its
+	// provider reference must report ErrProviderRecordNotFound, not a
+	// duplicate unmaterialized card.
+	t.Run("a deactivated materialized local Game is not resurrected as an unmaterialized provider choice", func(t *testing.T) {
+		activateIGDBGeneration(t, gameStore, []game.ProviderGame{
+			{Reference: game.ProviderReference{Provider: "igdb", ExternalID: "31005"}, Name: "Select Deactivated Source", Slug: "select-deactivated-source", GameType: "Main Game"},
+		})
+		materialized, err := discovery.Resolve(t.Context(), game.ProviderReference{Provider: "igdb", ExternalID: "31005"})
+		if err != nil {
+			t.Fatalf("materialize provider record: %v", err)
+		}
+		if err := catalog.SetActive(t.Context(), materialized.ID, false); err != nil {
+			t.Fatalf("deactivate local game: %v", err)
+		}
+
+		if _, err := discovery.Select(t.Context(), viewer.ID, game.GameSelection{Reference: game.ProviderReference{Provider: "igdb", ExternalID: "31005"}}); !errors.Is(err, game.ErrProviderRecordNotFound) {
+			t.Fatalf("Select: err = %v, want %v: a deactivated materialized Game must not resurface as unmaterialized", err, game.ErrProviderRecordNotFound)
+		}
+	})
+}
+
 // TestDiscoveryProviderDisabledAfterSuccessfulSyncOnlyReturnsLocalGames
 // covers the scenario an operator hits by removing IGDB credentials after a
 // generation already synchronized successfully: the active generation is
