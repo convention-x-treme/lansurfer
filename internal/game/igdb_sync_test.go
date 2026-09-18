@@ -14,7 +14,7 @@ func TestIGDBSyncActivatesOnlyAfterCatalogCompletes(t *testing.T) {
 		{{Reference: ProviderReference{Provider: "igdb", ExternalID: "1"}, Name: "One"}},
 		{{Reference: ProviderReference{Provider: "igdb", ExternalID: "2"}, Name: "Two"}},
 	}}
-	service := NewIGDBSyncService(catalog, repo, time.Now)
+	service := NewIGDBSyncService(catalog, repo, time.Now, nil)
 	if !service.TryStart(t.Context()) {
 		t.Fatal("TryStart=false")
 	}
@@ -27,7 +27,7 @@ func TestIGDBSyncActivatesOnlyAfterCatalogCompletes(t *testing.T) {
 func TestIGDBSyncFailureDoesNotActivate(t *testing.T) {
 	repo := newFakeProviderIndexRepository()
 	catalog := fakeCatalog{err: errors.New("upstream failed")}
-	service := NewIGDBSyncService(catalog, repo, time.Now)
+	service := NewIGDBSyncService(catalog, repo, time.Now, nil)
 	if !service.TryStart(t.Context()) {
 		t.Fatal("TryStart=false")
 	}
@@ -40,7 +40,7 @@ func TestIGDBSyncFailureDoesNotActivate(t *testing.T) {
 func TestIGDBSyncSingleFlight(t *testing.T) {
 	repo := newFakeProviderIndexRepository()
 	block := make(chan struct{})
-	service := NewIGDBSyncService(blockingCatalog{release: block}, repo, time.Now)
+	service := NewIGDBSyncService(blockingCatalog{release: block}, repo, time.Now, nil)
 	if !service.TryStart(t.Context()) {
 		t.Fatal("first TryStart=false")
 	}
@@ -54,7 +54,7 @@ func TestIGDBSyncSingleFlight(t *testing.T) {
 func TestIGDBSyncStatusOverlaysSyncingWhileRunning(t *testing.T) {
 	repo := newFakeProviderIndexRepository()
 	block := make(chan struct{})
-	service := NewIGDBSyncService(blockingCatalog{release: block}, repo, time.Now)
+	service := NewIGDBSyncService(blockingCatalog{release: block}, repo, time.Now, nil)
 	if !service.TryStart(t.Context()) {
 		t.Fatal("TryStart=false")
 	}

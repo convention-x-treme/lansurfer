@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"log/slog"
 	"time"
 
 	"github.com/convention-x-treme/lansurfer/internal/game"
@@ -53,12 +54,12 @@ func (a appBoundIGDBSync) TryStart(context.Context) bool {
 // newIGDBSync builds the sync service wired to the application's root
 // context when IGDB credentials are configured, or a disabled adapter
 // otherwise. It never makes a network call.
-func newIGDBSync(ctx context.Context, cfg *config.IGDB, repo game.ProviderIndexRepository) igdbSync {
+func newIGDBSync(ctx context.Context, cfg *config.IGDB, repo game.ProviderIndexRepository, logger *slog.Logger) igdbSync {
 	if cfg == nil {
 		return disabledIGDBSync{}
 	}
 	client := igdb.NewClient(cfg.ClientID, cfg.ClientSecret)
-	return appBoundIGDBSync{ctx: ctx, syncer: game.NewIGDBSyncService(client, repo, time.Now)}
+	return appBoundIGDBSync{ctx: ctx, syncer: game.NewIGDBSyncService(client, repo, time.Now, logger)}
 }
 
 // syncStarter is the minimal capability the daily scheduler needs.

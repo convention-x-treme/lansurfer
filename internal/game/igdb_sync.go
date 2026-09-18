@@ -2,6 +2,7 @@ package game
 
 import (
 	"context"
+	"log/slog"
 	"sync"
 	"time"
 )
@@ -19,6 +20,7 @@ type IGDBSyncService struct {
 	catalog ProviderCatalog
 	repo    ProviderIndexRepository
 	now     func() time.Time
+	logger  *slog.Logger
 
 	mu      sync.Mutex
 	running bool
@@ -26,9 +28,13 @@ type IGDBSyncService struct {
 
 // NewIGDBSyncService constructs a sync service over the given provider
 // catalog and index repository. now is used to derive operator status
-// staleness and is normally time.Now.
-func NewIGDBSyncService(catalog ProviderCatalog, repo ProviderIndexRepository, now func() time.Time) *IGDBSyncService {
-	return &IGDBSyncService{catalog: catalog, repo: repo, now: now}
+// staleness and is normally time.Now. logger records sync failures that
+// would otherwise be silent; if nil, slog.Default() is used.
+func NewIGDBSyncService(catalog ProviderCatalog, repo ProviderIndexRepository, now func() time.Time, logger *slog.Logger) *IGDBSyncService {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return &IGDBSyncService{catalog: catalog, repo: repo, now: now, logger: logger}
 }
 
 // TryStart begins a sync in a new goroutine and reports true, unless a sync
@@ -56,6 +62,7 @@ func (s *IGDBSyncService) TryStart(ctx context.Context) bool {
 func (s *IGDBSyncService) run(ctx context.Context) {
 	generationID, err := s.repo.BeginGeneration(ctx)
 	if err != nil {
+		s.logger.Error("begin IGDB sync generation", "error", err)
 		return
 	}
 
@@ -82,9 +89,12 @@ func (s *IGDBSyncService) run(ctx context.Context) {
 }
 
 func (s *IGDBSyncService) fail(generationID string, cause error) {
+	s.logger.Error("IGDB sync failed", "generation_id", generationID, "error", cause)
 	failCtx, cancel := context.WithTimeout(context.Background(), failureRecordTimeout)
 	defer cancel()
-	_ = s.repo.FailGeneration(failCtx, generationID, cause.Error())
+	if err := s.repo.FailGeneration(failCtx, generationID, cause.Error()); err != nil {
+		s.logger.Error("record IGDB sync failure", "generation_id", generationID, "error", err)
+	}
 }
 
 // Status reports the persisted operator status, overlaid with ProviderSyncing

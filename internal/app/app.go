@@ -78,7 +78,7 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	realtime := sse.NewBroker()
 	gameRequests := gamerequest.NewService(gamerequestpostgres.NewStore(pool), gameService, eventService, realtime)
 	gameRequestQueries := gamerequestquery.NewStore(pool)
-	igdbSyncService := newIGDBSync(ctx, cfg.IGDB, gameStore)
+	igdbSyncService := newIGDBSync(ctx, cfg.IGDB, gameStore, logger)
 
 	server := &http.Server{
 		Addr: cfg.ListenAddr,
