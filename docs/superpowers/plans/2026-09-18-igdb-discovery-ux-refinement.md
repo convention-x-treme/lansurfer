@@ -562,6 +562,32 @@ func TestDiscoveryBrowseDisabledProviderStillUsesUnifiedLocalSearch(t *testing.T
 
 Also add a test that `DiscoveryPage.ProviderStatus` is returned unchanged for player copy decisions.
 
+Add a `Resolve` counterpart proving the disabled-provider rule Step 6 describes actually has coverage, not only Browse:
+
+```go
+func TestDiscoveryResolveRejectsWhenProviderDisabled(t *testing.T) {
+    materializer := &fakeMaterializer{result: Game{ID: "local-1"}}
+    service := NewDiscoveryService(&fakeDiscoveryRepository{}, materializer, &fakeSubscriptions{}, &fakeProviderStatus{
+        status: ProviderStatus{State: ProviderDisabled},
+    })
+
+    if _, err := service.Resolve(t.Context(), ProviderReference{Provider: "igdb", ExternalID: "100"}); !errors.Is(err, ErrProviderRecordNotFound) {
+        t.Fatalf("err = %v, want %v", err, ErrProviderRecordNotFound)
+    }
+    if materializer.calls != 0 {
+        t.Fatalf("materializer.calls = %d, want 0", materializer.calls)
+    }
+}
+```
+
+Step 6 removes the mutable `DisableProvider` method this task's own predecessor commit (c2cea97) added, together with its two tests
+(`TestDiscoveryBrowseWithProviderDisabledUsesLocalSearchOnlyEvenForNonEmptySearch`,
+`TestDiscoveryResolveWithProviderDisabledReportsNoProviderRecordWithoutMaterializing`)
+in `discovery_test.go` — both call `service.DisableProvider()`, which no longer
+exists once Step 6 lands, so the package will not compile until they are deleted.
+Delete both; the two tests above (plus the Browse ones already listed in this
+Step) are their status-source-driven replacements, covering the same scenarios.
+
 - [ ] **Step 2: Add failing provider-status tests**
 
 Update store/sync tests so:
