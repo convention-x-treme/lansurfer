@@ -99,16 +99,30 @@ func NewService(repository Repository, games GameLookup, events EventLookup, pub
 	return &Service{repository: repository, games: games, events: events, publisher: publisher}
 }
 
-func (s *Service) Create(ctx context.Context, creatorID, gameID string, maxPlayers *int32, startsAt time.Time, description string) (GameRequest, error) {
+// ValidateCreateInput applies the game-independent Create validation rules
+// (max players, start time, description length) and returns the trimmed
+// description. It is exported so callers that must resolve a gameID (such as
+// materializing a provider-referenced Game) can confirm these rules pass
+// before triggering that side effect, while Service.Create itself keeps
+// using it as the single source of truth for the same checks.
+func ValidateCreateInput(maxPlayers *int32, startsAt time.Time, description string) (string, error) {
 	description = strings.TrimSpace(description)
 	if maxPlayers != nil && *maxPlayers < 1 {
-		return GameRequest{}, ErrInvalidMaxPlayers
+		return description, ErrInvalidMaxPlayers
 	}
 	if startsAt.IsZero() {
-		return GameRequest{}, ErrInvalidStartsAt
+		return description, ErrInvalidStartsAt
 	}
 	if utf8.RuneCountInString(description) > maxDescriptionLength {
-		return GameRequest{}, ErrInvalidDescription
+		return description, ErrInvalidDescription
+	}
+	return description, nil
+}
+
+func (s *Service) Create(ctx context.Context, creatorID, gameID string, maxPlayers *int32, startsAt time.Time, description string) (GameRequest, error) {
+	description, err := ValidateCreateInput(maxPlayers, startsAt, description)
+	if err != nil {
+		return GameRequest{}, err
 	}
 	available, err := s.games.ActiveExists(ctx, gameID)
 	if err != nil {

@@ -102,6 +102,9 @@ func (h *GameRequests) New(w http.ResponseWriter, r *http.Request) {
 
 func (h *GameRequests) Create(w http.ResponseWriter, r *http.Request) {
 	form, maxPlayers, startsAt, err := h.parseCreateForm(r)
+	if err == nil {
+		form.Description, err = gamerequest.ValidateCreateInput(maxPlayers, startsAt, form.Description)
+	}
 	if err == nil && form.GameID == "" && (form.Provider != "" || form.ExternalID != "") {
 		var ref game.ProviderReference
 		ref, err = game.NewProviderReference(form.Provider, form.ExternalID)

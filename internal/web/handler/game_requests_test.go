@@ -124,6 +124,34 @@ func TestCreateGameRequestSkipsResolutionOnValidationFailure(t *testing.T) {
 	}
 }
 
+func TestCreateGameRequestSkipsResolutionOnDescriptionTooLong(t *testing.T) {
+	commands := &fakeGameRequestCommands{}
+	resolver := &fakeGameResolver{game: game.Game{ID: "local-1"}}
+	handler := NewGameRequests(commands, fakeGameRequestQueries{}, resolver, branding.Default())
+
+	form := url.Values{
+		"provider":    {"igdb"},
+		"external_id": {"100"},
+		"max_players": {"4"},
+		"description": {strings.Repeat("x", 1001)},
+	}
+	request := httptest.NewRequest(http.MethodPost, "/game-requests", strings.NewReader(form.Encode()))
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	response := httptest.NewRecorder()
+
+	handler.Create(response, request)
+
+	if resolver.calls != 0 {
+		t.Fatalf("resolver.calls = %d, want 0", resolver.calls)
+	}
+	if commands.createCalls != 0 {
+		t.Fatalf("commands.createCalls = %d, want 0", commands.createCalls)
+	}
+	if response.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusUnprocessableEntity, response.Body.String())
+	}
+}
+
 func TestCreateGameRequestWithLocalGameIDDoesNotResolve(t *testing.T) {
 	commands := &fakeGameRequestCommands{created: gamerequest.GameRequest{ID: "request-2"}}
 	resolver := &fakeGameResolver{game: game.Game{ID: "local-1"}}
