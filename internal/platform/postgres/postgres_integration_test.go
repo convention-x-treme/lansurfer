@@ -403,10 +403,14 @@ func TestIGDBLatestAttemptOutcomeRemainsCorrelated(t *testing.T) {
 		if err != nil {
 			t.Fatalf("begin older generation: %v", err)
 		}
-		newerID, err := store.BeginGeneration(t.Context())
-		if err != nil {
-			t.Fatalf("begin newer generation: %v", err)
-		}
+		// The newer generation is started with the raw BeginIGDBGeneration
+		// statement rather than store.BeginGeneration: a second
+		// store.BeginGeneration call would run the Task 9 abandoned-generation
+		// cleanup first and retire olderID to 'failed' before this test's own
+		// FailGeneration(olderID) call below, corrupting the exact scenario
+		// this test protects (an older attempt failing after a newer one is
+		// already in flight). See beginRawIGDBGeneration's doc comment.
+		newerID := beginRawIGDBGeneration(t, pool)
 		if err := store.FailGeneration(t.Context(), olderID, "older failed"); err != nil {
 			t.Fatalf("fail older generation: %v", err)
 		}
@@ -439,10 +443,13 @@ func TestIGDBLatestAttemptOutcomeRemainsCorrelated(t *testing.T) {
 		if err := store.StoreProviderGames(t.Context(), olderID, []game.ProviderGame{testProviderGame("100")}); err != nil {
 			t.Fatalf("store older generation: %v", err)
 		}
-		newerID, err := store.BeginGeneration(t.Context())
-		if err != nil {
-			t.Fatalf("begin newer generation: %v", err)
-		}
+		// See the sibling subtest above: the newer generation is started with
+		// the raw BeginIGDBGeneration statement rather than
+		// store.BeginGeneration so the Task 9 abandoned-generation cleanup
+		// does not retire olderID to 'failed' before this test's later
+		// ActivateGeneration(olderID) call, which needs olderID to still be
+		// 'syncing'.
+		newerID := beginRawIGDBGeneration(t, pool)
 		if err := store.FailGeneration(t.Context(), newerID, "newest failed"); err != nil {
 			t.Fatalf("fail newer generation: %v", err)
 		}
