@@ -682,6 +682,226 @@ func TestIGDBDisappearanceArchivesIdentityWithoutDeletingLocalGameThenReappearan
 	}
 }
 
+// TestIGDBMaterializationPersistsEnrichment covers Task 1's baseline case:
+// materializing a provider record copies its full presentation snapshot
+// (cover, type, platforms, release date, provider-updated-at) into
+// game_igdb_enrichment, keyed by the local Game it just materialized.
+func TestIGDBMaterializationPersistsEnrichment(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+	gameStore := gamepostgres.NewStore(pool)
+	discovery := game.NewDiscoveryService(gameStore, gameStore, gameStore)
+
+	releaseDate := time.Date(2020, time.March, 1, 0, 0, 0, 0, time.UTC)
+	providerUpdatedAt := time.Date(2024, time.June, 1, 12, 0, 0, 0, time.UTC)
+	provider := game.ProviderGame{
+		Reference:         game.ProviderReference{Provider: "igdb", ExternalID: "100"},
+		Name:              "Enrichment Quest",
+		Slug:              "enrichment-quest",
+		GameType:          "Main Game",
+		FirstReleaseDate:  &releaseDate,
+		PlatformNames:     []string{"PC", "Switch"},
+		CoverImageID:      "co-old",
+		ProviderUpdatedAt: &providerUpdatedAt,
+	}
+	activateIGDBGeneration(t, gameStore, []game.ProviderGame{provider})
+
+	materialized, err := discovery.Resolve(t.Context(), game.ProviderReference{Provider: "igdb", ExternalID: "100"})
+	if err != nil {
+		t.Fatalf("materialize provider record 100: %v", err)
+	}
+
+	var (
+		externalID       string
+		coverImageID     string
+		gameType         string
+		platformNames    []string
+		firstReleaseDate time.Time
+		providerUpdated  time.Time
+	)
+	if err := pool.QueryRow(t.Context(), `
+		SELECT external_id, cover_image_id, game_type, platform_names, first_release_date, provider_updated_at
+		FROM game_igdb_enrichment WHERE game_id=$1
+	`, materialized.ID).Scan(&externalID, &coverImageID, &gameType, &platformNames, &firstReleaseDate, &providerUpdated); err != nil {
+		t.Fatalf("load enrichment for materialized game: %v", err)
+	}
+	if externalID != "100" {
+		t.Fatalf("enrichment external_id = %q, want %q", externalID, "100")
+	}
+	if coverImageID != provider.CoverImageID {
+		t.Fatalf("enrichment cover_image_id = %q, want %q", coverImageID, provider.CoverImageID)
+	}
+	if gameType != provider.GameType {
+		t.Fatalf("enrichment game_type = %q, want %q", gameType, provider.GameType)
+	}
+	if !slices.Equal(platformNames, provider.PlatformNames) {
+		t.Fatalf("enrichment platform_names = %#v, want %#v", platformNames, provider.PlatformNames)
+	}
+	if !firstReleaseDate.Equal(*provider.FirstReleaseDate) {
+		t.Fatalf("enrichment first_release_date = %v, want %v", firstReleaseDate, *provider.FirstReleaseDate)
+	}
+	if !providerUpdated.Equal(*provider.ProviderUpdatedAt) {
+		t.Fatalf("enrichment provider_updated_at = %v, want %v", providerUpdated, *provider.ProviderUpdatedAt)
+	}
+}
+
+// TestIGDBRefreshUpdatesOnlyNonEmptyEnrichment covers the last-known-good
+// merge: a later generation's thinner provider row (empty type, empty
+// platforms, no release date) must overwrite only the fields it actually
+// carries non-empty values for -- cover and provider-updated-at here --
+// and must never blank out a previously stored non-empty field.
+func TestIGDBRefreshUpdatesOnlyNonEmptyEnrichment(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+	gameStore := gamepostgres.NewStore(pool)
+	discovery := game.NewDiscoveryService(gameStore, gameStore, gameStore)
+
+	oldRelease := time.Date(2019, time.January, 1, 0, 0, 0, 0, time.UTC)
+	oldUpdatedAt := time.Date(2023, time.January, 1, 0, 0, 0, 0, time.UTC)
+	activateIGDBGeneration(t, gameStore, []game.ProviderGame{
+		{
+			Reference:         game.ProviderReference{Provider: "igdb", ExternalID: "100"},
+			Name:              "Refresh Quest",
+			Slug:              "refresh-quest",
+			GameType:          "Main Game",
+			FirstReleaseDate:  &oldRelease,
+			PlatformNames:     []string{"PC"},
+			CoverImageID:      "co-old",
+			ProviderUpdatedAt: &oldUpdatedAt,
+		},
+	})
+	materialized, err := discovery.Resolve(t.Context(), game.ProviderReference{Provider: "igdb", ExternalID: "100"})
+	if err != nil {
+		t.Fatalf("materialize provider record 100: %v", err)
+	}
+
+	// Generation 2 carries the same ID with a newer cover/provider-updated-at
+	// but an otherwise thinner provider row: empty type, empty platforms, no
+	// release date.
+	newUpdatedAt := time.Date(2024, time.January, 1, 0, 0, 0, 0, time.UTC)
+	activateIGDBGeneration(t, gameStore, []game.ProviderGame{
+		{
+			Reference:         game.ProviderReference{Provider: "igdb", ExternalID: "100"},
+			Name:              "Refresh Quest",
+			Slug:              "refresh-quest",
+			CoverImageID:      "co-new",
+			ProviderUpdatedAt: &newUpdatedAt,
+		},
+	})
+
+	var (
+		coverImageID     string
+		gameType         string
+		platformNames    []string
+		firstReleaseDate time.Time
+		providerUpdated  time.Time
+	)
+	if err := pool.QueryRow(t.Context(), `
+		SELECT cover_image_id, game_type, platform_names, first_release_date, provider_updated_at
+		FROM game_igdb_enrichment WHERE game_id=$1
+	`, materialized.ID).Scan(&coverImageID, &gameType, &platformNames, &firstReleaseDate, &providerUpdated); err != nil {
+		t.Fatalf("load enrichment after refresh: %v", err)
+	}
+	if coverImageID != "co-new" {
+		t.Fatalf("enrichment cover_image_id = %q, want %q: must track the newer non-empty value", coverImageID, "co-new")
+	}
+	if !providerUpdated.Equal(newUpdatedAt) {
+		t.Fatalf("enrichment provider_updated_at = %v, want %v: must track the newer non-empty value", providerUpdated, newUpdatedAt)
+	}
+	if gameType != "Main Game" {
+		t.Fatalf("enrichment game_type = %q, want the previous non-empty value %q", gameType, "Main Game")
+	}
+	if !slices.Equal(platformNames, []string{"PC"}) {
+		t.Fatalf("enrichment platform_names = %#v, want the previous non-empty value %#v", platformNames, []string{"PC"})
+	}
+	if !firstReleaseDate.Equal(oldRelease) {
+		t.Fatalf("enrichment first_release_date = %v, want the previous non-empty value %v", firstReleaseDate, oldRelease)
+	}
+}
+
+// TestIGDBDisappearanceKeepsEnrichmentAndReappearanceRefreshesIt covers the
+// enrichment side of the disappearance/reappearance lifecycle already
+// exercised for external ID archival above: while a materialized provider
+// record is missing from the active generation, its last-known-good
+// enrichment must stay exactly as it was, and reappearing with fresh data
+// must refresh it again.
+func TestIGDBDisappearanceKeepsEnrichmentAndReappearanceRefreshesIt(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+	gameStore := gamepostgres.NewStore(pool)
+	discovery := game.NewDiscoveryService(gameStore, gameStore, gameStore)
+
+	activateIGDBGeneration(t, gameStore, []game.ProviderGame{
+		{
+			Reference:    game.ProviderReference{Provider: "igdb", ExternalID: "100"},
+			Name:         "Disappearance Quest",
+			Slug:         "disappearance-quest",
+			GameType:     "Main Game",
+			CoverImageID: "co-old",
+		},
+	})
+	materialized, err := discovery.Resolve(t.Context(), game.ProviderReference{Provider: "igdb", ExternalID: "100"})
+	if err != nil {
+		t.Fatalf("materialize provider record 100: %v", err)
+	}
+
+	// Activate a generation that omits 100 entirely.
+	activateIGDBGeneration(t, gameStore, []game.ProviderGame{testProviderGame("200")})
+
+	var archived bool
+	if err := pool.QueryRow(t.Context(), `
+		SELECT archived_at IS NOT NULL FROM game_external_ids WHERE lower(provider)='igdb' AND external_id='100'
+	`).Scan(&archived); err != nil {
+		t.Fatalf("load archived identity: %v", err)
+	}
+	if !archived {
+		t.Fatal("disappeared IGDB identity was not archived")
+	}
+	var coverImageID string
+	if err := pool.QueryRow(t.Context(), `
+		SELECT cover_image_id FROM game_igdb_enrichment WHERE game_id=$1
+	`, materialized.ID).Scan(&coverImageID); err != nil {
+		t.Fatalf("load enrichment while disappeared: %v", err)
+	}
+	if coverImageID != "co-old" {
+		t.Fatalf("enrichment cover_image_id while disappeared = %q, want %q: disappearance must keep last-known-good enrichment", coverImageID, "co-old")
+	}
+
+	// Activate a later generation that carries 100 again with fresh data.
+	activateIGDBGeneration(t, gameStore, []game.ProviderGame{
+		{
+			Reference:    game.ProviderReference{Provider: "igdb", ExternalID: "100"},
+			Name:         "Disappearance Quest",
+			Slug:         "disappearance-quest",
+			GameType:     "Main Game",
+			CoverImageID: "co-returned",
+		},
+	})
+
+	if err := pool.QueryRow(t.Context(), `
+		SELECT archived_at IS NOT NULL FROM game_external_ids WHERE lower(provider)='igdb' AND external_id='100'
+	`).Scan(&archived); err != nil {
+		t.Fatalf("load restored identity: %v", err)
+	}
+	if archived {
+		t.Fatal("reappeared IGDB identity remained archived")
+	}
+	if err := pool.QueryRow(t.Context(), `
+		SELECT cover_image_id FROM game_igdb_enrichment WHERE game_id=$1
+	`, materialized.ID).Scan(&coverImageID); err != nil {
+		t.Fatalf("load enrichment after reappearance: %v", err)
+	}
+	if coverImageID != "co-returned" {
+		t.Fatalf("enrichment cover_image_id after reappearance = %q, want %q", coverImageID, "co-returned")
+	}
+}
+
 // TestIGDBBeginGenerationFailsAbandonedSyncingGeneration exercises the
 // plan's Step 2 lifecycle scenario: a generation left 'syncing' by a process
 // that exited before completing or failing it (simulated by inserting the
@@ -1918,8 +2138,8 @@ func TestMigrateAndReadyCheck(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get migration version: %v", err)
 	}
-	if version != 7 {
-		t.Errorf("migration version = %d, want 7", version)
+	if version != 8 {
+		t.Errorf("migration version = %d, want 8", version)
 	}
 
 	if err := migrateFS(t.Context(), pool, migrationFS, logger); err != nil {

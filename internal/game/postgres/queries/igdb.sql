@@ -245,6 +245,79 @@ ON CONFLICT DO NOTHING;
 INSERT INTO game_external_ids (game_id, provider, external_id)
 VALUES (sqlc.arg(game_id)::uuid, 'igdb', sqlc.arg(external_id)::text);
 
+-- name: UpsertIGDBEnrichmentForExternalID :exec
+-- Copies the active-generation provider row's presentation snapshot for one
+-- already-linked local Game. Called from materialization, for both a
+-- freshly-created mapping and one found/restored from an earlier
+-- materialization. The ON CONFLICT clause is a last-known-good merge: a new
+-- empty/null provider value never blanks out a previously stored non-empty
+-- one, only a genuinely non-empty new value replaces it.
+INSERT INTO game_igdb_enrichment (
+    game_id, external_id, cover_image_id, game_type, platform_names,
+    first_release_date, provider_updated_at
+)
+SELECT
+    mapping.game_id,
+    mapping.external_id,
+    provider_game.cover_image_id,
+    provider_game.game_type,
+    provider_game.platform_names,
+    provider_game.first_release_date,
+    provider_game.igdb_updated_at
+FROM game_external_ids mapping
+JOIN igdb_provider_state state ON state.singleton
+JOIN igdb_game_index provider_game
+  ON provider_game.generation_id = state.active_generation_id
+ AND provider_game.igdb_id::text = mapping.external_id
+WHERE lower(btrim(mapping.provider)) = 'igdb'
+  AND mapping.external_id = sqlc.arg(external_id)::text
+ON CONFLICT (game_id) DO UPDATE
+SET cover_image_id = COALESCE(NULLIF(EXCLUDED.cover_image_id, ''), game_igdb_enrichment.cover_image_id),
+    game_type = COALESCE(NULLIF(btrim(EXCLUDED.game_type), ''), game_igdb_enrichment.game_type),
+    platform_names = CASE
+        WHEN cardinality(EXCLUDED.platform_names) > 0 THEN EXCLUDED.platform_names
+        ELSE game_igdb_enrichment.platform_names
+    END,
+    first_release_date = COALESCE(EXCLUDED.first_release_date, game_igdb_enrichment.first_release_date),
+    provider_updated_at = COALESCE(EXCLUDED.provider_updated_at, game_igdb_enrichment.provider_updated_at),
+    updated_at = now();
+
+-- name: RefreshIGDBEnrichmentFromGeneration :exec
+-- Refreshes last-known-good enrichment for every IGDB mapping whose
+-- provider record is present in the generation just activated. Called from
+-- ActivateGeneration, atomically with generation activation. A mapping
+-- whose provider record is absent from this generation (disappeared) has no
+-- matching provider_game row here and is simply left untouched, keeping its
+-- last-known-good snapshot exactly as it was. Uses the same last-known-good
+-- ON CONFLICT semantics as UpsertIGDBEnrichmentForExternalID.
+INSERT INTO game_igdb_enrichment (
+    game_id, external_id, cover_image_id, game_type, platform_names,
+    first_release_date, provider_updated_at
+)
+SELECT
+    mapping.game_id,
+    mapping.external_id,
+    provider_game.cover_image_id,
+    provider_game.game_type,
+    provider_game.platform_names,
+    provider_game.first_release_date,
+    provider_game.igdb_updated_at
+FROM game_external_ids mapping
+JOIN igdb_game_index provider_game
+  ON provider_game.generation_id = sqlc.arg(generation_id)::uuid
+ AND provider_game.igdb_id::text = mapping.external_id
+WHERE lower(btrim(mapping.provider)) = 'igdb'
+ON CONFLICT (game_id) DO UPDATE
+SET cover_image_id = COALESCE(NULLIF(EXCLUDED.cover_image_id, ''), game_igdb_enrichment.cover_image_id),
+    game_type = COALESCE(NULLIF(btrim(EXCLUDED.game_type), ''), game_igdb_enrichment.game_type),
+    platform_names = CASE
+        WHEN cardinality(EXCLUDED.platform_names) > 0 THEN EXCLUDED.platform_names
+        ELSE game_igdb_enrichment.platform_names
+    END,
+    first_release_date = COALESCE(EXCLUDED.first_release_date, game_igdb_enrichment.first_release_date),
+    provider_updated_at = COALESCE(EXCLUDED.provider_updated_at, game_igdb_enrichment.provider_updated_at),
+    updated_at = now();
+
 -- name: SearchDiscoveryGames :many
 -- Combines authoritative local Games (matched by name/alias, exactly like
 -- the pre-IGDB local browse) with the active IGDB generation (matched by

@@ -120,6 +120,9 @@ func (s *Store) ActivateGeneration(ctx context.Context, generationID string, rec
 	if err := queries.RestorePresentIGDBExternalIDs(ctx, databaseGenerationID); err != nil {
 		return fmt.Errorf("restore present IGDB external IDs: %w", err)
 	}
+	if err := queries.RefreshIGDBEnrichmentFromGeneration(ctx, databaseGenerationID); err != nil {
+		return fmt.Errorf("refresh IGDB enrichment: %w", err)
+	}
 	if err := queries.DeleteInactiveIGDBGenerations(ctx, databaseGenerationID); err != nil {
 		return fmt.Errorf("delete inactive IGDB generations: %w", err)
 	}

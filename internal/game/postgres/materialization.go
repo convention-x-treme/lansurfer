@@ -102,6 +102,9 @@ func (s *Store) materializeIGDBGame(ctx context.Context, externalID string, igdb
 		return game.Game{}, err
 	}
 	if found {
+		if err := queries.UpsertIGDBEnrichmentForExternalID(ctx, externalID); err != nil {
+			return game.Game{}, fmt.Errorf("refresh IGDB enrichment for %s: %w", externalID, err)
+		}
 		if err := transaction.Commit(ctx); err != nil {
 			return game.Game{}, fmt.Errorf("commit IGDB materialization: %w", err)
 		}
@@ -149,6 +152,9 @@ func (s *Store) materializeIGDBGame(ctx context.Context, externalID string, igdb
 		ExternalID: externalID,
 	}); err != nil {
 		return game.Game{}, fmt.Errorf("map IGDB external ID %s: %w", externalID, err)
+	}
+	if err := queries.UpsertIGDBEnrichmentForExternalID(ctx, externalID); err != nil {
+		return game.Game{}, fmt.Errorf("store IGDB enrichment for %s: %w", externalID, err)
 	}
 	if err := transaction.Commit(ctx); err != nil {
 		return game.Game{}, fmt.Errorf("commit IGDB materialization: %w", err)
