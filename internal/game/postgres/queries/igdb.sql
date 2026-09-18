@@ -119,9 +119,29 @@ WHERE lower(btrim(external_id.provider)) = 'igdb'
         AND provider_game.igdb_id::text = external_id.external_id
   );
 
+-- name: ActiveIGDBGenerationID :one
+-- Read outside BeginGeneration's own writes so DeleteInactiveIGDBGenerations
+-- can run before FailAbandonedIGDBGenerations/BeginIGDBGeneration touch
+-- anything in that same transaction (see BeginGeneration's ordering
+-- comment).
+SELECT active_generation_id FROM igdb_provider_state WHERE singleton;
+
 -- name: DeleteInactiveIGDBGenerations :exec
+-- Terminal (complete/failed) generations other than the currently active one
+-- carry no further diagnostic value -- igdb_provider_state.last_error/
+-- last_attempt_succeeded already hold the operator-visible failure state
+-- independently of this table -- so they must not survive here. This keeps
+-- a full-sync retry that fails late from leaving its staged
+-- igdb_game_index rows in PostgreSQL forever. A generation still pointed to
+-- by igdb_provider_state.latest_attempt_generation_id must stay excluded
+-- regardless: that column's FK forbids deleting it, and it is exactly the
+-- generation whichever call is running right now may itself have just
+-- created or just marked failed/complete, so it must never be swept up in
+-- the same call. active_generation_id is NULL until the first sync ever
+-- succeeds, so that comparison must stay NULL-safe or nothing would ever be
+-- deleted before that first success.
 DELETE FROM igdb_sync_generations
-WHERE id <> sqlc.arg(active_generation_id)::uuid
+WHERE (sqlc.arg(active_generation_id)::uuid IS NULL OR id <> sqlc.arg(active_generation_id)::uuid)
   AND status IN ('complete', 'failed')
   AND id IS DISTINCT FROM (
       SELECT latest_attempt_generation_id
@@ -300,10 +320,15 @@ WITH active_generation AS (
         false::boolean AS subscribed
     FROM provider_matches
     WHERE lower(provider_matches.game_type) = ANY(sqlc.arg(visible_game_types)::text[])
+      -- A non-archived mapping means this provider record is already
+      -- materialized, independent of the mapped local Game's active state:
+      -- an admin deactivating that Game must not make the same provider
+      -- record reappear here as if it were new (it stays invisible instead,
+      -- exactly like a deactivated local Game in local_rows below, because
+      -- materialized_provider_rows also requires local_game.active).
       AND NOT EXISTS (
           SELECT 1
           FROM game_external_ids mapping
-          JOIN games local_game ON local_game.id = mapping.game_id AND local_game.active
           WHERE lower(btrim(mapping.provider)) = 'igdb'
             AND mapping.external_id = provider_matches.igdb_id::text
             AND mapping.archived_at IS NULL

@@ -25,6 +25,22 @@ func (s *Store) BeginGeneration(ctx context.Context) (string, error) {
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	queries := s.queries.WithTx(tx)
+
+	// Clean up terminal generations left behind by earlier attempts before
+	// starting a new one, so a full-sync retry that fails late does not
+	// leave its staged igdb_game_index rows in PostgreSQL forever. This
+	// must run before FailAbandonedIGDBGenerations/BeginIGDBGeneration
+	// below, using the active generation as it stood before either of
+	// those write anything in this transaction, so it can never delete the
+	// very generation this call is about to fail-abandon or create.
+	activeGenerationID, err := queries.ActiveIGDBGenerationID(ctx)
+	if err != nil {
+		return "", fmt.Errorf("load active IGDB generation: %w", err)
+	}
+	if err := queries.DeleteInactiveIGDBGenerations(ctx, activeGenerationID); err != nil {
+		return "", fmt.Errorf("delete inactive IGDB generations: %w", err)
+	}
+
 	// A leftover 'syncing' row can only be abandoned: single-instance 1.0
 	// and IGDBSyncService.TryStart's in-process mutex mean this call is
 	// never racing a still-running sync, so any 'syncing' row found here is

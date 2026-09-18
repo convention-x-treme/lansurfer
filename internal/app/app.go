@@ -72,6 +72,9 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	gameStore := gamepostgres.NewStore(pool)
 	gameService := game.NewService(gameStore)
 	gameDiscovery := game.NewDiscoveryService(gameStore, gameStore, gameStore)
+	if cfg.IGDB == nil {
+		gameDiscovery.DisableProvider()
+	}
 	realtime := sse.NewBroker()
 	gameRequests := gamerequest.NewService(gamerequestpostgres.NewStore(pool), gameService, realtime)
 	gameRequestQueries := gamerequestquery.NewStore(pool)

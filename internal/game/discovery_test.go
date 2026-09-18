@@ -280,6 +280,39 @@ func TestDiscoveryFollowPropagatesSubscriptionError(t *testing.T) {
 	}
 }
 
+func TestDiscoveryBrowseWithProviderDisabledUsesLocalSearchOnlyEvenForNonEmptySearch(t *testing.T) {
+	repo := &fakeDiscoveryRepository{items: []DiscoveryItem{
+		{Reference: ProviderReference{Provider: "igdb", ExternalID: "1"}, Name: "Stale Provider Result", GameType: "Main Game"},
+	}}
+	subs := &fakeSubscriptions{browse: []SubscriptionGame{{ID: "local-1", Name: "Local Only", Slug: "local-only"}}}
+	service := NewDiscoveryService(repo, nil, subs)
+	service.DisableProvider()
+
+	got, err := service.Browse(t.Context(), "user-1", "game")
+	if err != nil {
+		t.Fatalf("Browse: %v", err)
+	}
+	if repo.calls != 0 {
+		t.Fatalf("repo.calls = %d, want 0: a disabled provider must never be queried", repo.calls)
+	}
+	if len(got) != 1 || got[0].LocalGameID != "local-1" || got[0].Reference != (ProviderReference{}) {
+		t.Fatalf("got = %#v", got)
+	}
+}
+
+func TestDiscoveryResolveWithProviderDisabledReportsNoProviderRecordWithoutMaterializing(t *testing.T) {
+	materializer := &fakeMaterializer{result: Game{ID: "local-1", Name: "Game", Slug: "game"}}
+	service := NewDiscoveryService(&fakeDiscoveryRepository{}, materializer, &fakeSubscriptions{})
+	service.DisableProvider()
+
+	if _, err := service.Resolve(t.Context(), ProviderReference{Provider: "igdb", ExternalID: "100"}); !errors.Is(err, ErrProviderRecordNotFound) {
+		t.Fatalf("err = %v, want %v", err, ErrProviderRecordNotFound)
+	}
+	if materializer.calls != 0 {
+		t.Fatalf("materializer.calls = %d, want 0: disabled provider must never materialize stale generations", materializer.calls)
+	}
+}
+
 func TestDiscoveryUnfollowDelegatesToSubscriptions(t *testing.T) {
 	subs := &fakeSubscriptions{}
 	service := NewDiscoveryService(&fakeDiscoveryRepository{}, nil, subs)

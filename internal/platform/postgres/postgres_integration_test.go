@@ -566,6 +566,58 @@ func TestIGDBActivationArchivesAndRestoresExternalIdentity(t *testing.T) {
 	}
 }
 
+// TestIGDBSearchDoesNotResurrectProviderResultForDeactivatedMaterializedGame
+// covers materialize -> deactivate -> search-again: an admin deactivating
+// the local Game a provider record already materialized into must not make
+// SearchDiscoveryGames treat that provider record as unmaterialized again.
+// Before the fix, materialized_provider_rows required local_game.active,
+// so deactivating the Game made its mapping "invisible" to that CTE while
+// still existing (non-archived) -- the same provider row then reappeared
+// through unmaterialized_provider_rows as if brand new, even though Follow
+// and Game Request creation would deterministically fail against it (the
+// materializer finds the existing mapping and returns the inactive Game).
+func TestIGDBSearchDoesNotResurrectProviderResultForDeactivatedMaterializedGame(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+
+	users := user.NewService(userpostgres.NewStore(pool))
+	viewer, err := users.Register(t.Context(), "Deactivated Materialized Viewer")
+	if err != nil {
+		t.Fatalf("register viewer: %v", err)
+	}
+
+	gameStore := gamepostgres.NewStore(pool)
+	games := game.NewService(gameStore)
+	discovery := game.NewDiscoveryService(gameStore, gameStore, gameStore)
+
+	activateIGDBGeneration(t, gameStore, []game.ProviderGame{
+		{Reference: game.ProviderReference{Provider: "igdb", ExternalID: "9801"}, Name: "Deactivated Quest", Slug: "deactivated-quest", GameType: "Main Game"},
+	})
+	materialized, err := discovery.Resolve(t.Context(), game.ProviderReference{Provider: "igdb", ExternalID: "9801"})
+	if err != nil {
+		t.Fatalf("materialize provider record: %v", err)
+	}
+
+	if err := games.SetActive(t.Context(), materialized.ID, false); err != nil {
+		t.Fatalf("deactivate local game: %v", err)
+	}
+
+	got, err := discovery.Browse(t.Context(), viewer.ID, "deactivated quest")
+	if err != nil {
+		t.Fatalf("Browse: %v", err)
+	}
+	for _, item := range got {
+		if item.Reference.ExternalID == "9801" && !item.Materialized {
+			t.Fatalf("provider record for a deactivated materialized Game resurfaced as unmaterialized: %#v", item)
+		}
+	}
+	if len(got) != 0 {
+		t.Fatalf("Browse = %#v, want no results: a deactivated Game must stay player-invisible", got)
+	}
+}
+
 // TestIGDBDisappearanceArchivesIdentityWithoutDeletingLocalGameThenReappearanceRestoresIt
 // exercises the plan's Step 1 lifecycle scenario against a materialized (not
 // merely mapped) local Game: materialize provider record 100 through
@@ -691,6 +743,122 @@ func TestIGDBBeginGenerationFailsAbandonedSyncingGeneration(t *testing.T) {
 	}
 	if activeID != newID {
 		t.Fatalf("active generation = %q, want the new generation %q", activeID, newID)
+	}
+}
+
+// TestIGDBFailedGenerationsDoNotAccumulateAcrossRetries covers repeated
+// late-failing full syncs (e.g. the provider connection drops partway
+// through a large batch): each failing attempt stages rows into
+// igdb_game_index before failing, and nothing previously deleted that data
+// except a later successful activation. A generation's igdb_sync_generations
+// row is only useful for operator diagnosis until the next sync attempt
+// begins -- igdb_provider_state.last_error/last_attempt_succeeded already
+// hold the current failure state independently, and BeginIGDBGeneration
+// resets both the moment a new attempt starts -- so BeginGeneration must
+// clean up every non-active terminal generation before that point.
+func TestIGDBFailedGenerationsDoNotAccumulateAcrossRetries(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+	store := gamepostgres.NewStore(pool)
+
+	activeID, err := store.BeginGeneration(t.Context())
+	if err != nil {
+		t.Fatalf("begin active generation: %v", err)
+	}
+	if err := store.StoreProviderGames(t.Context(), activeID, []game.ProviderGame{testProviderGame("9700")}); err != nil {
+		t.Fatalf("store active generation: %v", err)
+	}
+	if err := store.ActivateGeneration(t.Context(), activeID, 1); err != nil {
+		t.Fatalf("activate active generation: %v", err)
+	}
+
+	firstFailedID, err := store.BeginGeneration(t.Context())
+	if err != nil {
+		t.Fatalf("begin first failing generation: %v", err)
+	}
+	if err := store.StoreProviderGames(t.Context(), firstFailedID, []game.ProviderGame{testProviderGame("9701"), testProviderGame("9702")}); err != nil {
+		t.Fatalf("store first failing generation: %v", err)
+	}
+	if err := store.FailGeneration(t.Context(), firstFailedID, "late failure one"); err != nil {
+		t.Fatalf("fail first generation: %v", err)
+	}
+
+	secondFailedID, err := store.BeginGeneration(t.Context())
+	if err != nil {
+		t.Fatalf("begin second failing generation: %v", err)
+	}
+	if err := store.StoreProviderGames(t.Context(), secondFailedID, []game.ProviderGame{testProviderGame("9703")}); err != nil {
+		t.Fatalf("store second failing generation: %v", err)
+	}
+	if err := store.FailGeneration(t.Context(), secondFailedID, "late failure two"); err != nil {
+		t.Fatalf("fail second generation: %v", err)
+	}
+
+	status, err := store.Status(t.Context(), time.Now().UTC())
+	if err != nil {
+		t.Fatalf("Status after second failure: %v", err)
+	}
+	if status.State != game.ProviderFailed || status.RecordCount != 1 || status.LastError != "late failure two" {
+		t.Fatalf("status after second failure = %#v", status)
+	}
+
+	// The next sync attempt (manual retry or the daily scheduler) triggers
+	// cleanup of generations that are no longer active. A generation that
+	// igdb_provider_state.latest_attempt_generation_id still points to when
+	// its own retry begins cannot be deleted yet -- that column has a FK to
+	// this table, and it is the exact row this very call may itself be
+	// about to fail-abandon or supersede -- so cleanup lags one attempt
+	// behind: firstFailedID (two attempts stale) is cleaned up once
+	// secondFailedID begins, but secondFailedID (still the latest attempt
+	// at that point) is only cleaned up once a generation after IT begins.
+	if _, err := store.BeginGeneration(t.Context()); err != nil {
+		t.Fatalf("begin third generation: %v", err)
+	}
+	if _, err := store.BeginGeneration(t.Context()); err != nil {
+		t.Fatalf("begin fourth generation: %v", err)
+	}
+
+	for _, failedID := range []string{firstFailedID, secondFailedID} {
+		var exists bool
+		if err := pool.QueryRow(t.Context(), `SELECT EXISTS(SELECT 1 FROM igdb_sync_generations WHERE id=$1)`, failedID).Scan(&exists); err != nil {
+			t.Fatalf("check failed generation %s existence: %v", failedID, err)
+		}
+		if exists {
+			t.Fatalf("failed generation %s was not cleaned up by the next sync attempt", failedID)
+		}
+		var indexRows int
+		if err := pool.QueryRow(t.Context(), `SELECT count(*) FROM igdb_game_index WHERE generation_id=$1`, failedID).Scan(&indexRows); err != nil {
+			t.Fatalf("count failed generation %s index rows: %v", failedID, err)
+		}
+		if indexRows != 0 {
+			t.Fatalf("failed generation %s index rows = %d, want 0 (cascaded delete)", failedID, indexRows)
+		}
+	}
+
+	// The active generation, its data, and the operator status it drives
+	// must be completely unaffected by the cleanup.
+	var activeStatus string
+	var activeIndexRows int
+	if err := pool.QueryRow(t.Context(), `SELECT status FROM igdb_sync_generations WHERE id=$1`, activeID).Scan(&activeStatus); err != nil {
+		t.Fatalf("load active generation status: %v", err)
+	}
+	if activeStatus != "complete" {
+		t.Fatalf("active generation status = %q, want complete", activeStatus)
+	}
+	if err := pool.QueryRow(t.Context(), `SELECT count(*) FROM igdb_game_index WHERE generation_id=$1`, activeID).Scan(&activeIndexRows); err != nil {
+		t.Fatalf("count active generation index rows: %v", err)
+	}
+	if activeIndexRows != 1 {
+		t.Fatalf("active generation index rows = %d, want 1", activeIndexRows)
+	}
+	var activeGenerationID string
+	if err := pool.QueryRow(t.Context(), `SELECT active_generation_id::text FROM igdb_provider_state`).Scan(&activeGenerationID); err != nil {
+		t.Fatalf("load provider state active generation: %v", err)
+	}
+	if activeGenerationID != activeID {
+		t.Fatalf("provider state active generation = %q, want %q", activeGenerationID, activeID)
 	}
 }
 
@@ -982,6 +1150,67 @@ func TestDiscoverySearchPostgreSQL(t *testing.T) {
 			t.Fatalf("Browse (underscore) = %#v, want only the literal 'Sonic_Adventure' match", underscoreSearch)
 		}
 	})
+}
+
+// TestDiscoveryProviderDisabledAfterSuccessfulSyncOnlyReturnsLocalGames
+// covers the scenario an operator hits by removing IGDB credentials after a
+// generation already synchronized successfully: the active generation is
+// still sitting in PostgreSQL, so gating must happen in the application
+// (DiscoveryService.DisableProvider), not merely by the sync service being
+// idle. Uses its own DiscoveryService/pool so disabling it cannot leak into
+// TestDiscoverySearchPostgreSQL's shared instance.
+func TestDiscoveryProviderDisabledAfterSuccessfulSyncOnlyReturnsLocalGames(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+
+	users := user.NewService(userpostgres.NewStore(pool))
+	viewer, err := users.Register(t.Context(), "Disabled Provider Viewer")
+	if err != nil {
+		t.Fatalf("register viewer: %v", err)
+	}
+
+	gameStore := gamepostgres.NewStore(pool)
+	catalog := game.NewService(gameStore)
+	discovery := game.NewDiscoveryService(gameStore, gameStore, gameStore)
+
+	local, err := catalog.Create(t.Context(), "Quest Runner Local", "quest-runner-local")
+	if err != nil {
+		t.Fatalf("create local game: %v", err)
+	}
+	activateIGDBGeneration(t, gameStore, []game.ProviderGame{
+		{Reference: game.ProviderReference{Provider: "igdb", ExternalID: "9601"}, Name: "Quest Runner Provider", Slug: "quest-runner-provider", GameType: "Main Game"},
+	})
+
+	// While IGDB is still enabled, the search finds both the local game and
+	// the unmaterialized provider result.
+	before, err := discovery.Browse(t.Context(), viewer.ID, "quest runner")
+	if err != nil {
+		t.Fatalf("Browse before disabling: %v", err)
+	}
+	if len(before) != 2 {
+		t.Fatalf("Browse before disabling = %#v, want the local game and the provider result", before)
+	}
+
+	// An operator removes IGDB credentials and restarts; the composition
+	// root now wires a disabled DiscoveryService, but the previously
+	// synchronized generation is still sitting in PostgreSQL untouched.
+	discovery.DisableProvider()
+
+	after, err := discovery.Browse(t.Context(), viewer.ID, "quest runner")
+	if err != nil {
+		t.Fatalf("Browse after disabling: %v", err)
+	}
+	if len(after) != 1 || after[0].LocalGameID != local.ID || (after[0].Reference != game.ProviderReference{}) {
+		t.Fatalf("Browse after disabling = %#v, want only the local game with no provider reference", after)
+	}
+
+	// Resolving/following the still-persisted provider record must also
+	// fail now instead of materializing stale IGDB data.
+	if _, err := discovery.Resolve(t.Context(), game.ProviderReference{Provider: "igdb", ExternalID: "9601"}); !errors.Is(err, game.ErrProviderRecordNotFound) {
+		t.Fatalf("Resolve after disabling: err = %v, want %v", err, game.ErrProviderRecordNotFound)
+	}
 }
 
 func TestIGDBMaterializationPostgreSQL(t *testing.T) {

@@ -14,16 +14,33 @@ const discoveryProviderRowLimit = 50
 // It never calls IGDB directly: all provider data comes from PostgreSQL,
 // synchronized in the background by the IGDB sync service.
 type DiscoveryService struct {
-	discovery     DiscoveryRepository
-	materializer  MaterializationRepository
-	subscriptions SubscriptionRepository
+	discovery       DiscoveryRepository
+	materializer    MaterializationRepository
+	subscriptions   SubscriptionRepository
+	providerEnabled bool
 }
 
 // NewDiscoveryService wires the discovery read model. The composition root
 // always wires a real materializer; Browse, MyGames, FollowLocal, and
-// Unfollow never use it regardless.
+// Unfollow never use it regardless. IGDB-backed search and materialization
+// start enabled; the composition root calls DisableProvider when IGDB
+// credentials are not configured.
 func NewDiscoveryService(discovery DiscoveryRepository, materializer MaterializationRepository, subscriptions SubscriptionRepository) *DiscoveryService {
-	return &DiscoveryService{discovery: discovery, materializer: materializer, subscriptions: subscriptions}
+	return &DiscoveryService{discovery: discovery, materializer: materializer, subscriptions: subscriptions, providerEnabled: true}
+}
+
+// DisableProvider turns off IGDB-backed search and materialization for the
+// rest of this service's lifetime. A non-empty Browse then falls back to the
+// local-catalog-only search that Browse already uses for an empty query, and
+// Resolve (and therefore Follow) reports ErrProviderRecordNotFound instead
+// of materializing a Game from provider data. This matters even after IGDB
+// was previously enabled and successfully synchronized: the active
+// generation persisted in PostgreSQL by that earlier synchronization must
+// stop being player-visible/materializable the moment the provider is
+// disabled, not just stop refreshing (spec: "disabled IGDB preserves
+// current local search behavior").
+func (s *DiscoveryService) DisableProvider() {
+	s.providerEnabled = false
 }
 
 // Browse returns local catalog entries for an empty search, preserving the
@@ -40,8 +57,8 @@ func (s *DiscoveryService) Browse(ctx context.Context, userID, search string) ([
 	if err != nil {
 		return nil, err
 	}
-	if search == "" {
-		local, err := s.subscriptions.Browse(ctx, userID, "")
+	if search == "" || !s.providerEnabled {
+		local, err := s.subscriptions.Browse(ctx, userID, search)
 		if err != nil {
 			return nil, err
 		}
@@ -77,7 +94,7 @@ func (s *DiscoveryService) Resolve(ctx context.Context, ref ProviderReference) (
 	if err != nil {
 		return Game{}, err
 	}
-	if s.materializer == nil {
+	if !s.providerEnabled || s.materializer == nil {
 		return Game{}, ErrProviderRecordNotFound
 	}
 	return s.materializer.Materialize(ctx, normalized)
