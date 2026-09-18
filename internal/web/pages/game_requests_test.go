@@ -481,3 +481,47 @@ func TestGameRequestSelectionSwapExcludesRequestDetails(t *testing.T) {
 		t.Errorf("selection swap unexpectedly touches request details: %s", body)
 	}
 }
+
+// The recovery state after a provider disappears has no selected game but
+// does retain the request fields. Plain GET search and Select links must carry
+// those fields so a no-JavaScript player can choose a replacement without
+// retyping them.
+func TestComposerRecoveryDiscoveryPreservesDetailsInNoJSActions(t *testing.T) {
+	page := game.DiscoveryPage{Items: []game.DiscoveryItem{{
+		LocalGameID: "local-2", GamePresentation: game.GamePresentation{Name: "Age of Empires"}, Materialized: true,
+	}}}
+	form := GameRequestForm{
+		MaxPlayers: "4", StartPreset: "custom", StartDate: "2027-05-01", StartTime: "18:00", TimezoneOffset: "-120", Description: "LAN night",
+	}
+
+	var rendered bytes.Buffer
+	if err := NewGameRequest(branding.Default(), components.NavigationState{}, page, nil, true, "age", form, "Choose another game.").Render(context.Background(), &rendered); err != nil {
+		t.Fatalf("render recovery composer: %v", err)
+	}
+	body := rendered.String()
+	for _, want := range []string{
+		`name="max_players" value="4"`,
+		`name="start_preset" value="custom"`,
+		`name="start_date" value="2027-05-01"`,
+		`name="start_time" value="18:00"`,
+		`name="timezone_offset" value="-120"`,
+		`name="description" value="LAN night"`,
+		`href="/game-requests/new?description=LAN+night&amp;game_id=local-2&amp;max_players=4&amp;start_date=2027-05-01&amp;start_preset=custom&amp;start_time=18%3A00&amp;timezone_offset=-120"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("recovery discovery missing %q: %s", want, body)
+		}
+	}
+}
+
+func TestGameRequestDiscoveryUsesAdminForCatalogAvailability(t *testing.T) {
+	page := game.DiscoveryPage{ProviderStatus: game.ProviderStatus{State: game.ProviderDisabled}}
+	viewer := &components.Viewer{Role: "admin"}
+	var rendered bytes.Buffer
+	if err := GameRequestDiscovery(page, "", false, viewer, GameRequestForm{}).Render(context.Background(), &rendered); err != nil {
+		t.Fatalf("render discovery: %v", err)
+	}
+	if body := rendered.String(); !strings.Contains(body, `href="/admin/igdb"`) {
+		t.Errorf("admin composer discovery lacks IGDB administration link: %s", body)
+	}
+}

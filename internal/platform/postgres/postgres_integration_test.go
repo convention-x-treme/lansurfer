@@ -1548,10 +1548,15 @@ func TestDiscoverySearchPostgreSQL(t *testing.T) {
 			// If '_' were left unescaped, it would be a single-character
 			// wildcard that also matches this unrelated title.
 			{Reference: game.ProviderReference{Provider: "igdb", ExternalID: "9504"}, Name: "SonicXAdventure", Slug: "sonic-x-adventure", GameType: "Main Game"},
+			// Both titles contain a literal percent. Only 9505 starts with the
+			// literal query "foo%"; without escaping in the prefix-ranking
+			// LIKE, 9506 is incorrectly classified as a prefix and wins by name.
+			{Reference: game.ProviderReference{Provider: "igdb", ExternalID: "9505"}, Name: "Foo% Zebra", Slug: "foo-zebra", GameType: "Main Game"},
+			{Reference: game.ProviderReference{Provider: "igdb", ExternalID: "9506"}, Name: "FooA foo% Alpha", Slug: "fooa-alpha", GameType: "Main Game"},
 		}); err != nil {
 			t.Fatalf("store generation games: %v", err)
 		}
-		if err := gameStore.ActivateGeneration(t.Context(), generationID, 4); err != nil {
+		if err := gameStore.ActivateGeneration(t.Context(), generationID, 6); err != nil {
 			t.Fatalf("activate generation: %v", err)
 		}
 
@@ -1586,6 +1591,14 @@ func TestDiscoverySearchPostgreSQL(t *testing.T) {
 		underscoreSearch := underscorePage.Items
 		if len(underscoreSearch) != 1 || underscoreSearch[0].Reference.ExternalID != "9503" {
 			t.Fatalf("Browse (underscore) = %#v, want only the literal 'Sonic_Adventure' match", underscoreSearch)
+		}
+
+		prefixPage, err := discovery.Browse(t.Context(), viewer.ID, "foo%")
+		if err != nil {
+			t.Fatalf("Browse (literal prefix): %v", err)
+		}
+		if len(prefixPage.Items) < 2 || prefixPage.Items[0].Reference.ExternalID != "9505" {
+			t.Fatalf("Browse (literal prefix) = %#v, want literal prefix before contains", prefixPage.Items)
 		}
 	})
 

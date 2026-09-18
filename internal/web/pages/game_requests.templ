@@ -252,8 +252,8 @@ templ NewGameRequest(brand branding.Brand, navigation components.NavigationState
 						<h2 class="text-[1.0625rem] font-semibold">Find your game</h2>
 						<p class="text-sm text-base-content/70">Search the game catalog to start a Game Request.</p>
 					</div>
-					@GameRequestDiscoverySearchForm(search, false)
-					@GameRequestDiscovery(page, search, false)
+					@GameRequestDiscoverySearchForm(search, false, form)
+					@GameRequestDiscovery(page, search, false, navigation.Viewer, form)
 				}
 			</div>
 		</div>
@@ -275,7 +275,7 @@ templ GameRequestSelectedGame(item game.DiscoveryItem) {
 		<details class="mt-3" data-change-game>
 			<summary class="btn btn-quiet btn-sm">Change game</summary>
 			<div class="mt-4 grid gap-4">
-				@GameRequestDiscoverySearchForm("", true)
+				@GameRequestDiscoverySearchForm("", true, GameRequestForm{})
 				@GameRequestChangeGameDiscovery()
 			</div>
 		</details>
@@ -357,7 +357,7 @@ templ GameRequestDetailsFields(form GameRequestForm) {
 // enhanced by JS actually uses. It also does not replace the address bar
 // with the fragment's own URL, which would leave reload/back/share pointing
 // at that same layout-less fragment.
-templ GameRequestDiscoverySearchForm(search string, ajax bool) {
+templ GameRequestDiscoverySearchForm(search string, ajax bool, form GameRequestForm) {
 	if ajax {
 		<form
 			class="request-toolbar"
@@ -377,6 +377,7 @@ templ GameRequestDiscoverySearchForm(search string, ajax bool) {
 		<form class="request-toolbar" method="get" action="/game-requests/new">
 			<label class="sr-only" for="game-request-search">Search by game name or alias</label>
 			<input id="game-request-search" class="input input-sm request-search" type="search" name="q" value={ search } maxlength="120" placeholder="Search by name or alias, e.g. wc3" autocomplete="off"/>
+			@GameRequestDetailsTransportFields(form)
 			<button class="btn btn-quiet btn-sm" type="submit">Search</button>
 		</form>
 	}
@@ -391,46 +392,18 @@ templ GameRequestDiscoverySearchForm(search string, ajax bool) {
 // /game-requests/new/discovery fragment) additionally wires an htmx
 // selection swap, so re-picking a game there never reloads the page and
 // never disturbs #game-request-details.
-templ GameRequestDiscovery(page game.DiscoveryPage, search string, changeGame bool) {
+templ GameRequestDiscovery(page game.DiscoveryPage, search string, changeGame bool, viewer *components.Viewer, form GameRequestForm) {
 	<div id="game-request-discovery" aria-live="polite">
-		if page.SearchTooShort {
-			<p class="text-sm text-base-content/70 mb-4">Type at least 2 characters to search.</p>
-		}
-		if search == "" || page.SearchTooShort {
-			@GameRequestDiscoveryList(page, changeGame)
-		} else {
-			@GameRequestSearchResults(page, search, changeGame)
-		}
+		@GameDiscoveryState(page, search, viewer, GameRequestDiscoveryCards(page.Items, changeGame, form))
 	</div>
 }
 
-templ GameRequestDiscoveryList(page game.DiscoveryPage, changeGame bool) {
-	if len(page.Items) > 0 {
-		<div class="game-grid">
-			for _, item := range page.Items {
-				@GameRequestDiscoveryCard(item, changeGame)
-			}
-		</div>
-	} else {
-		@GameCatalogAvailability(page.ProviderStatus, nil)
-	}
-}
-
-templ GameRequestSearchResults(page game.DiscoveryPage, search string, changeGame bool) {
-	if page.HasMore {
-		<p class="text-sm text-base-content/70 mb-4">Too many matches — refine your search.</p>
-	}
-	if len(page.Items) == 0 {
-		<section class="detail-card">
-			<h2 class="text-[1.0625rem] font-semibold">{ fmt.Sprintf("No games found for %q", search) }</h2>
-		</section>
-	} else {
-		<div class="game-grid">
-			for _, item := range page.Items {
-				@GameRequestDiscoveryCard(item, changeGame)
-			}
-		</div>
-	}
+templ GameRequestDiscoveryCards(items []game.DiscoveryItem, changeGame bool, form GameRequestForm) {
+	<div class="game-grid">
+		for _, item := range items {
+			@GameRequestDiscoveryCard(item, changeGame, form)
+		}
+	</div>
 }
 
 // GameRequestDiscoveryCard branches on item.LocalGameID rather than
@@ -438,14 +411,14 @@ templ GameRequestSearchResults(page game.DiscoveryPage, search string, changeGam
 // not always reliably populated by the underlying query (Task 3's known
 // nondeterminism), while LocalGameID is -- exactly like Games'
 // gameRequestAction (Task 4).
-templ GameRequestDiscoveryCard(item game.DiscoveryItem, changeGame bool) {
+templ GameRequestDiscoveryCard(item game.DiscoveryItem, changeGame bool, form GameRequestForm) {
 	<article class="game-card">
 		@GameIdentity(item.GamePresentation, false)
 		<div class="mt-auto flex justify-end">
 			if changeGame {
-				<a class="btn btn-primary btn-sm" href={ gameRequestComposerURL(item) } hx-get={ gameRequestSelectionURL(item) } hx-target="#game-request-selected-game" hx-swap="outerHTML" hx-sync="this:replace">Select</a>
+				<a class="btn btn-primary btn-sm" href={ gameRequestComposerURL(item, form) } hx-get={ gameRequestSelectionURL(item) } hx-target="#game-request-selected-game" hx-swap="outerHTML" hx-sync="this:replace">Select</a>
 			} else {
-				<a class="btn btn-primary btn-sm" href={ gameRequestComposerURL(item) }>Select</a>
+				<a class="btn btn-primary btn-sm" href={ gameRequestComposerURL(item, form) }>Select</a>
 			}
 		</div>
 	</article>
@@ -459,6 +432,30 @@ templ GameRequestDiscoveryCard(item game.DiscoveryItem, changeGame bool) {
 templ GameRequestSelectionSwap(item game.DiscoveryItem) {
 	@GameRequestSelectedGame(item)
 	@GameRequestGameFields(item, true)
+}
+
+templ GameRequestDetailsTransportFields(form GameRequestForm) {
+	if form.MaxPlayers != "" {
+		<input type="hidden" name="max_players" value={ form.MaxPlayers }/>
+	}
+	if form.StartPreset != "" {
+		<input type="hidden" name="start_preset" value={ form.StartPreset }/>
+	}
+	if form.StartDate != "" {
+		<input type="hidden" name="start_date" value={ form.StartDate }/>
+	}
+	if form.StartTime != "" {
+		<input type="hidden" name="start_time" value={ form.StartTime }/>
+	}
+	if form.StartsAt != "" {
+		<input type="hidden" name="starts_at" value={ form.StartsAt }/>
+	}
+	if form.TimezoneOffset != "" {
+		<input type="hidden" name="timezone_offset" value={ form.TimezoneOffset }/>
+	}
+	if form.Description != "" {
+		<input type="hidden" name="description" value={ form.Description }/>
+	}
 }
 
 templ StartChoice(value, label, selected string) {
@@ -626,27 +623,6 @@ templ GameRequestError(brand branding.Brand, navigation components.NavigationSta
 	}
 }
 
-// gameRequestComposerURL builds the full-page composer selection URL for one
-// discovery item -- the composer's own first-pick "Select" action, and the
-// no-scripting fallback href alongside changeGame's htmx action.
-func gameRequestComposerURL(item game.DiscoveryItem) string {
-	if item.LocalGameID != "" {
-		return "/game-requests/new?game_id=" + url.QueryEscape(item.LocalGameID)
-	}
-	return "/game-requests/new?provider=" + url.QueryEscape(item.Reference.Provider) +
-		"&external_id=" + url.QueryEscape(item.Reference.ExternalID)
-}
-
-// gameRequestSelectionURL builds the read-only Selection fragment URL (Task
-// 7 Step 7) for one discovery item, used only by the "Change game" panel's
-// htmx selection swap.
-func gameRequestSelectionURL(item game.DiscoveryItem) string {
-	if item.LocalGameID != "" {
-		return "/game-requests/new/selection?game_id=" + url.QueryEscape(item.LocalGameID)
-	}
-	return "/game-requests/new/selection?provider=" + url.QueryEscape(item.Reference.Provider) +
-		"&external_id=" + url.QueryEscape(item.Reference.ExternalID)
-}
 
 templ GameRequestActionError(message string) {
 	<div role="alert" class="alert alert-error" data-live-toast><span>{ message }</span><button type="button" class="btn btn-ghost btn-sm" data-dismiss-live-toast aria-label="Dismiss error">Dismiss</button></div>

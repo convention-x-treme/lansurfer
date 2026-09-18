@@ -158,7 +158,7 @@ func discoveryFilter(r *http.Request) requestquery.Filter {
 func (h *GameRequests) New(w http.ResponseWriter, r *http.Request) {
 	account, _ := webmiddleware.CurrentUser(r.Context())
 	search := strings.TrimSpace(r.URL.Query().Get("q"))
-	form := pages.GameRequestForm{StartPreset: "now"}
+	form := composerFormFromValues(r.URL.Query())
 
 	selection, hasSelection := gameSelectionFromValues(
 		r.URL.Query().Get("game_id"), r.URL.Query().Get("provider"), r.URL.Query().Get("external_id"),
@@ -210,7 +210,7 @@ func (h *GameRequests) Discovery(w http.ResponseWriter, r *http.Request) {
 		h.renderError(w, r)
 		return
 	}
-	render(w, r, http.StatusOK, pages.GameRequestDiscovery(page, search, true))
+	render(w, r, http.StatusOK, pages.GameRequestDiscovery(page, search, true, requestNavigation(r).Viewer, pages.GameRequestForm{}))
 }
 
 // Selection is the composer's read-only reselection endpoint (Task 7 Step
@@ -361,6 +361,24 @@ func gameSelectionQuery(item game.DiscoveryItem) string {
 		return "game_id=" + url.QueryEscape(item.LocalGameID)
 	}
 	return "provider=" + url.QueryEscape(item.Reference.Provider) + "&external_id=" + url.QueryEscape(item.Reference.ExternalID)
+}
+
+// composerFormFromValues restores request-detail transport state from a
+// normal composer GET. Selection is parsed separately and remains opaque.
+func composerFormFromValues(values url.Values) pages.GameRequestForm {
+	form := pages.GameRequestForm{
+		MaxPlayers:     strings.TrimSpace(values.Get("max_players")),
+		StartPreset:    strings.TrimSpace(values.Get("start_preset")),
+		StartDate:      strings.TrimSpace(values.Get("start_date")),
+		StartTime:      strings.TrimSpace(values.Get("start_time")),
+		StartsAt:       strings.TrimSpace(values.Get("starts_at")),
+		TimezoneOffset: strings.TrimSpace(values.Get("timezone_offset")),
+		Description:    values.Get("description"),
+	}
+	if form.StartPreset == "" {
+		form.StartPreset = "now"
+	}
+	return form
 }
 
 // isCatalogSelectionError reports whether cause means "this selection does

@@ -231,6 +231,27 @@ func TestNewGameRequestUsesDiscoveryWithoutMaterializing(t *testing.T) {
 	}
 }
 
+// A normal GET search/selection is the no-JavaScript composer path. Its
+// request-detail fields are transport state, not trusted game metadata, and
+// must survive both searching and selecting without calling Resolve.
+func TestNewGameRequestNoJSSelectionPreservesRequestDetails(t *testing.T) {
+	discovery := &fakeGameRequestDiscovery{selectItem: game.DiscoveryItem{
+		LocalGameID: "local-2", GamePresentation: game.GamePresentation{Name: "Age of Empires"}, Materialized: true,
+	}}
+	handler := NewGameRequests(&fakeGameRequestCommands{}, fakeGameRequestQueries{}, &fakeGameResolver{}, discovery, branding.Default())
+
+	request := httptest.NewRequest(http.MethodGet, "/game-requests/new?game_id=local-2&max_players=4&start_preset=custom&start_date=2027-05-01&start_time=18%3A00&timezone_offset=-120&description=LAN+night", nil)
+	response := httptest.NewRecorder()
+	handler.New(response, request)
+
+	if response.Code != http.StatusOK || discovery.selectCalls != 1 {
+		t.Fatalf("status/selectCalls = %d/%d; body = %s", response.Code, discovery.selectCalls, response.Body.String())
+	}
+	if body := response.Body.String(); !strings.Contains(body, `value="4"`) || !strings.Contains(body, `value="2027-05-01"`) || !strings.Contains(body, `value="18:00"`) || !strings.Contains(body, `value="-120"`) || !strings.Contains(body, "LAN night") {
+		t.Fatalf("selected no-JS composer lost request details: %s", body)
+	}
+}
+
 // TestGameRequestDiscoveryFragmentUsesSameSearchModel proves the "Change
 // game" live-search fragment route passes its exact query straight through
 // to discovery.Browse and renders the shared discovery fragment.
@@ -353,6 +374,9 @@ func TestCreateGameRequestProviderMissingPreservesFormAndAsksForAnotherGame(t *t
 		if !strings.Contains(body, want) {
 			t.Errorf("body does not contain %q: %s", want, body)
 		}
+	}
+	if !strings.Contains(body, `href="/game-requests/new?game_id=`) && !strings.Contains(body, `name="max_players"`) {
+		t.Fatalf("recovery composer does not offer a detail-preserving reselection: %s", body)
 	}
 }
 

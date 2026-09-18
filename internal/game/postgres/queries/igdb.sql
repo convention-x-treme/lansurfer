@@ -485,10 +485,14 @@ WITH active_generation AS (
                   SELECT 1 FROM unnest(provider_game.alternative_names) AS alt(name)
                   WHERE lower(alt.name) = lower(sqlc.arg(search)::text)
               ) THEN 1
-            WHEN lower(provider_game.name) LIKE lower(sqlc.arg(search)::text) || '%'
+            WHEN lower(provider_game.name) LIKE replace(replace(replace(
+                lower(sqlc.arg(search)::text), '\', '\\'), '%', '\%'), '_', '\_'
+            ) || '%' ESCAPE '\'
               OR EXISTS (
                   SELECT 1 FROM unnest(provider_game.alternative_names) AS alt(name)
-                  WHERE lower(alt.name) LIKE lower(sqlc.arg(search)::text) || '%'
+                  WHERE lower(alt.name) LIKE replace(replace(replace(
+                      lower(sqlc.arg(search)::text), '\', '\\'), '%', '\%'), '_', '\_'
+                  ) || '%' ESCAPE '\'
               ) THEN 2
             ELSE 3
         END AS match_rank
@@ -572,11 +576,15 @@ WITH active_generation AS (
                   WHERE a.game_id = g.id
                     AND lower(a.alias) = lower(sqlc.arg(search)::text)
               ) THEN 1
-            WHEN lower(g.name) LIKE lower(sqlc.arg(search)::text) || '%'
+            WHEN lower(g.name) LIKE replace(replace(replace(
+                lower(sqlc.arg(search)::text), '\', '\\'), '%', '\%'), '_', '\_'
+            ) || '%' ESCAPE '\'
               OR EXISTS (
                   SELECT 1 FROM game_aliases a
                   WHERE a.game_id = g.id
-                    AND lower(a.alias) LIKE lower(sqlc.arg(search)::text) || '%'
+                    AND lower(a.alias) LIKE replace(replace(replace(
+                        lower(sqlc.arg(search)::text), '\', '\\'), '%', '\%'), '_', '\_'
+                    ) || '%' ESCAPE '\'
               ) THEN 2
             ELSE 3
         END AS match_rank,

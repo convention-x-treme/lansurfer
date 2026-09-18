@@ -2,7 +2,6 @@ package pages
 
 import (
 	"fmt"
-	"net/url"
 
 	"github.com/convention-x-treme/lansurfer/internal/game"
 	"github.com/convention-x-treme/lansurfer/internal/web/branding"
@@ -62,20 +61,13 @@ templ GameCatalogResults(page game.DiscoveryPage, search, message string, viewer
 		if message != "" {
 			<div role="alert" class="alert alert-error mb-4"><span>{ message }</span></div>
 		}
-		if page.SearchTooShort {
-			<p class="text-sm text-base-content/70 mb-4">Type at least 2 characters to search.</p>
-		}
 		if search == "" {
 			<div class="mb-6">
 				<h2 class="text-[1.0625rem] font-semibold">Find your game</h2>
 				<p class="text-sm text-base-content/70">Search the game catalog to follow something you play or start a Game Request.</p>
 			</div>
 		}
-		if search == "" || page.SearchTooShort {
-			@GameDiscoveryList(page, viewer)
-		} else {
-			@GameSearchResults(page, search)
-		}
+		@GameDiscoveryState(page, search, viewer, GameCatalogCards(page.Items, search == "" || page.SearchTooShort))
 	</div>
 }
 
@@ -84,18 +76,22 @@ templ GameCatalogResults(page game.DiscoveryPage, search, message string, viewer
 // list alongside SearchTooShort=true), so the "Games on this LAN" heading
 // above the list -- distinct from a search-result heading -- is what keeps
 // that state unambiguous rather than looking like a filtered result.
-templ GameDiscoveryList(page game.DiscoveryPage, viewer *components.Viewer) {
-	if len(page.Items) > 0 {
+templ GameCatalogCards(items []game.DiscoveryItem, showLANHeading bool) {
+	if showLANHeading {
 		<section>
 			<p class="section-label mb-2">Games on this LAN</p>
 			<div class="game-grid">
-				for _, item := range page.Items {
+				for _, item := range items {
 					@GameCard(item)
 				}
 			</div>
 		</section>
 	} else {
-		@GameCatalogAvailability(page.ProviderStatus, viewer)
+		<div class="game-grid">
+			for _, item := range items {
+				@GameCard(item)
+			}
+		</div>
 	}
 }
 
@@ -126,23 +122,6 @@ templ GameCatalogAvailability(status game.ProviderStatus, viewer *components.Vie
 // hint when the repository signaled more rows exist than the bounded page
 // shows (spec: "3.5 Result limit"), the matching unified cards, or a
 // no-results state naming the query.
-templ GameSearchResults(page game.DiscoveryPage, search string) {
-	if page.HasMore {
-		<p class="text-sm text-base-content/70 mb-4">Too many matches — refine your search.</p>
-	}
-	if len(page.Items) == 0 {
-		<section class="detail-card">
-			<h2 class="text-[1.0625rem] font-semibold">{ fmt.Sprintf("No games found for %q", search) }</h2>
-		</section>
-	} else {
-		<div class="game-grid">
-			for _, item := range page.Items {
-				@GameCard(item)
-			}
-		</div>
-	}
-}
-
 // GameCard is the one player-facing card shared by materialized and
 // unmaterialized discovery results (spec: "4.1 One player-facing Game
 // card"). It never renders materialization origin, provider-record
@@ -290,9 +269,5 @@ func providerFollowAction(ref game.ProviderReference) string {
 // create-request handler resolves/materializes the authoritative local Game
 // itself.
 func gameRequestAction(item game.DiscoveryItem) string {
-	if item.LocalGameID != "" {
-		return "/game-requests/new?game_id=" + url.QueryEscape(item.LocalGameID)
-	}
-	return "/game-requests/new?provider=" + url.QueryEscape(item.Reference.Provider) +
-		"&external_id=" + url.QueryEscape(item.Reference.ExternalID)
+	return "/game-requests/new?" + gameRequestSelectionQuery(item)
 }
