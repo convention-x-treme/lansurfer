@@ -198,6 +198,14 @@ Core local fields include name, slug, active state, aliases, external identities
 
 Aliases improve search, for example allowing `WC3` to find Warcraft III. External IDs use a generic provider/external-ID relation and are stable identity links; they do not make the provider authoritative.
 
+### Discovery-first search
+
+Games is a discovery-first surface. Players search one catalog without needing to know whether a result is already a local Game or comes from the synchronized IGDB index. Materialization is not a player-facing status.
+
+Materialized IGDB-backed Games keep last-known-good presentation enrichment (cover, Game Type, platforms, and release date) while local name, slug, active state, and aliases remain authoritative.
+
+Follow and Find Players are independent actions. Creating a Game Request does not automatically follow the Game.
+
 ### Local-only operation
 
 IGDB is optional for a general LANsurfer deployment.
@@ -248,6 +256,8 @@ IGDB attribution and operator setup/terms must be visible in the appropriate UI 
 ## 10. Game Following
 
 A GameSubscription means a player follows a Game. It drives My Games/followed lists, in-browser relevance, and the default Web Push audience.
+
+My Games remains explicitly followed Games only. Creating or joining a Game Request never implicitly adds a Game to My Games; a player follows a Game only through an explicit Follow action.
 
 When IGDB is enabled, following a provider-only search result first materializes the corresponding authoritative local Game atomically and then records the subscription.
 
