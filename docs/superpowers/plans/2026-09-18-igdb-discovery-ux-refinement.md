@@ -294,18 +294,20 @@ func TestDiscoveryBrowseEmptySearchKeepsLocalEnrichment(t *testing.T) {
             FirstReleaseDate: &release,
         },
     }}}
-    service := newDiscoveryServiceForTest(&fakeDiscoveryRepository{}, nil, subs)
+    service := NewDiscoveryService(&fakeDiscoveryRepository{}, nil, subs)
 
-    page, err := service.Browse(t.Context(), "user-1", "")
+    got, err := service.Browse(t.Context(), "user-1", "")
     if err != nil { t.Fatal(err) }
-    got := page.Items[0]
-    if got.CoverImageID != "co1abc" || got.GameType != "Main Game" {
-        t.Fatalf("item = %#v", got)
+    if len(got) != 1 {
+        t.Fatalf("items = %#v", got)
+    }
+    if got[0].CoverImageID != "co1abc" || got[0].GameType != "Main Game" {
+        t.Fatalf("item = %#v", got[0])
     }
 }
 ```
 
-At this task stage, keep `Browse`'s existing return shape if Task 3 has not yet changed it; adapt the assertion to the current signature. The important failing assertion is preservation of all enrichment fields from `SubscriptionGame` into `DiscoveryItem`.
+Task 2 intentionally keeps the existing `Browse(...) ([]DiscoveryItem, error)` contract. Task 3 is the commit that changes it to `DiscoveryPage`.
 
 - [ ] **Step 2: Add failing integration coverage for Browse/My Games enrichment**
 
@@ -370,6 +372,13 @@ For non-empty local-only Browse, keep the existing textual match for now; Task 3
 Add one focused mapper in `store.go`, for example:
 
 ```go
+func textValue(value pgtype.Text) string {
+    if !value.Valid {
+        return ""
+    }
+    return value.String
+}
+
 func presentation(name, slug string, gameType, cover pgtype.Text, platforms []string, release pgtype.Timestamptz) game.GamePresentation {
     return game.GamePresentation{
         Name: name,
@@ -472,6 +481,23 @@ type ProviderStatus struct {
 ```
 
 - [ ] **Step 1: Write failing service tests**
+
+Add this status fake beside the existing discovery fakes:
+
+```go
+type fakeProviderStatus struct {
+    status ProviderStatus
+    err    error
+    calls  int
+}
+
+func (f *fakeProviderStatus) Status(context.Context) (ProviderStatus, error) {
+    f.calls++
+    return f.status, f.err
+}
+```
+
+Extend `fakeDiscoveryRepository` with `lastIncludeProvider bool` and update its Search method to the Task 3 signature.
 
 Replace the old empty/local and bounded-search tests with explicit page-state tests:
 
@@ -832,6 +858,9 @@ Render the page in this order:
    - discovery-first heading/copy;
    - `Games on this LAN` only when local items exist;
    - provider readiness/no-catalog state only when no local items exist;
+     - `not synced` or initial `syncing` without a usable baseline: `Game discovery is getting ready.`;
+     - `disabled` or initial `failed` without a usable baseline: `No games are available yet.`;
+     - any state with `CatalogAvailable=true`: do not show a provider failure/readiness warning to ordinary players;
 5. if search is non-empty and at least 2 characters:
    - `HasMore` refinement hint;
    - matching unified cards;
