@@ -9,23 +9,44 @@ import (
 )
 
 type fakeDiscoveryRepository struct {
-	items     []DiscoveryItem
-	err       error
-	calls     int
-	lastUser  string
-	lastQuery string
-	lastLimit int
+	result              DiscoverySearchResult
+	items               []DiscoveryItem
+	err                 error
+	calls               int
+	lastUser            string
+	lastQuery           string
+	lastLimit           int
+	lastIncludeProvider bool
 }
 
-func (f *fakeDiscoveryRepository) Search(_ context.Context, userID, search string, limit int) ([]DiscoveryItem, error) {
+func (f *fakeDiscoveryRepository) Search(_ context.Context, userID, search string, limit int, includeProvider bool) (DiscoverySearchResult, error) {
 	f.calls++
 	f.lastUser = userID
 	f.lastQuery = search
 	f.lastLimit = limit
+	f.lastIncludeProvider = includeProvider
 	if f.err != nil {
-		return nil, f.err
+		return DiscoverySearchResult{}, f.err
 	}
-	return f.items, nil
+	if f.items != nil {
+		return DiscoverySearchResult{Items: f.items, HasMore: f.result.HasMore}, nil
+	}
+	return f.result, nil
+}
+
+type fakeProviderStatus struct {
+	status ProviderStatus
+	err    error
+	calls  int
+}
+
+func (f *fakeProviderStatus) Status(context.Context) (ProviderStatus, error) {
+	f.calls++
+	return f.status, f.err
+}
+
+func enabledProviderStatus() *fakeProviderStatus {
+	return &fakeProviderStatus{status: ProviderStatus{State: ProviderCurrent, CatalogAvailable: true}}
 }
 
 type fakeSubscriptions struct {
@@ -82,7 +103,7 @@ func (f *fakeMaterializer) Materialize(_ context.Context, reference ProviderRefe
 
 func TestDiscoveryResolveNormalizesReferenceBeforeMaterializing(t *testing.T) {
 	materializer := &fakeMaterializer{result: Game{ID: "local-1", Name: "Local", Slug: "local"}}
-	service := NewDiscoveryService(&fakeDiscoveryRepository{}, materializer, &fakeSubscriptions{})
+	service := NewDiscoveryService(&fakeDiscoveryRepository{}, materializer, &fakeSubscriptions{}, enabledProviderStatus())
 	got, err := service.Resolve(t.Context(), ProviderReference{Provider: " IGDB ", ExternalID: " 100 "})
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
@@ -98,7 +119,7 @@ func TestDiscoveryResolveNormalizesReferenceBeforeMaterializing(t *testing.T) {
 
 func TestDiscoveryResolveRejectsInvalidReference(t *testing.T) {
 	materializer := &fakeMaterializer{}
-	service := NewDiscoveryService(&fakeDiscoveryRepository{}, materializer, &fakeSubscriptions{})
+	service := NewDiscoveryService(&fakeDiscoveryRepository{}, materializer, &fakeSubscriptions{}, enabledProviderStatus())
 	if _, err := service.Resolve(t.Context(), ProviderReference{Provider: "steam", ExternalID: "100"}); !errors.Is(err, ErrInvalidProviderReference) {
 		t.Fatalf("err = %v, want %v", err, ErrInvalidProviderReference)
 	}
@@ -108,7 +129,7 @@ func TestDiscoveryResolveRejectsInvalidReference(t *testing.T) {
 }
 
 func TestDiscoveryResolveWithoutMaterializerReportsNoProviderRecord(t *testing.T) {
-	service := NewDiscoveryService(&fakeDiscoveryRepository{}, nil, &fakeSubscriptions{})
+	service := NewDiscoveryService(&fakeDiscoveryRepository{}, nil, &fakeSubscriptions{}, enabledProviderStatus())
 	if _, err := service.Resolve(t.Context(), ProviderReference{Provider: "igdb", ExternalID: "100"}); !errors.Is(err, ErrProviderRecordNotFound) {
 		t.Fatalf("err = %v, want %v", err, ErrProviderRecordNotFound)
 	}
@@ -116,82 +137,127 @@ func TestDiscoveryResolveWithoutMaterializerReportsNoProviderRecord(t *testing.T
 
 func TestDiscoveryResolvePropagatesMaterializationError(t *testing.T) {
 	materializer := &fakeMaterializer{err: ErrProviderRecordNotFound}
-	service := NewDiscoveryService(&fakeDiscoveryRepository{}, materializer, &fakeSubscriptions{})
+	service := NewDiscoveryService(&fakeDiscoveryRepository{}, materializer, &fakeSubscriptions{}, enabledProviderStatus())
 	if _, err := service.Resolve(t.Context(), ProviderReference{Provider: "igdb", ExternalID: "100"}); !errors.Is(err, ErrProviderRecordNotFound) {
 		t.Fatalf("err = %v, want %v", err, ErrProviderRecordNotFound)
 	}
 }
 
-func TestDiscoveryBrowseFiltersHiddenTypes(t *testing.T) {
+func TestDiscoveryResolveRejectsWhenProviderDisabled(t *testing.T) {
+	materializer := &fakeMaterializer{result: Game{ID: "local-1"}}
+	service := NewDiscoveryService(&fakeDiscoveryRepository{}, materializer, &fakeSubscriptions{}, &fakeProviderStatus{
+		status: ProviderStatus{State: ProviderDisabled},
+	})
+
+	if _, err := service.Resolve(t.Context(), ProviderReference{Provider: "igdb", ExternalID: "100"}); !errors.Is(err, ErrProviderRecordNotFound) {
+		t.Fatalf("err = %v, want %v", err, ErrProviderRecordNotFound)
+	}
+	if materializer.calls != 0 {
+		t.Fatalf("materializer.calls = %d, want 0", materializer.calls)
+	}
+}
+
+func TestDiscoveryBrowseEmptySearchReturnsLANListWithoutProviderSearch(t *testing.T) {
+	repo := &fakeDiscoveryRepository{}
+	status := &fakeProviderStatus{status: ProviderStatus{State: ProviderCurrent, CatalogAvailable: true}}
+	subs := &fakeSubscriptions{browse: []SubscriptionGame{{ID: "local-1", GamePresentation: GamePresentation{Name: "Local"}}}}
+	service := NewDiscoveryService(repo, nil, subs, status)
+
+	page, err := service.Browse(t.Context(), "user-1", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if repo.calls != 0 || len(page.Items) != 1 || page.SearchTooShort {
+		t.Fatalf("page=%#v repo.calls=%d", page, repo.calls)
+	}
+}
+
+func TestDiscoveryBrowseOneCharacterDoesNotSearchProvider(t *testing.T) {
+	repo := &fakeDiscoveryRepository{}
+	service := NewDiscoveryService(repo, nil, &fakeSubscriptions{}, &fakeProviderStatus{
+		status: ProviderStatus{State: ProviderCurrent, CatalogAvailable: true},
+	})
+
+	page, err := service.Browse(t.Context(), "user-1", " c ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if repo.calls != 0 || !page.SearchTooShort {
+		t.Fatalf("page=%#v calls=%d", page, repo.calls)
+	}
+}
+
+func TestDiscoveryBrowsePassesProviderEnabledAndFiftyResultLimit(t *testing.T) {
+	repo := &fakeDiscoveryRepository{}
+	service := NewDiscoveryService(repo, nil, &fakeSubscriptions{}, &fakeProviderStatus{
+		status: ProviderStatus{State: ProviderCurrent, CatalogAvailable: true},
+	})
+
+	_, err := service.Browse(t.Context(), "user-1", "wc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if repo.lastLimit != 50 || !repo.lastIncludeProvider {
+		t.Fatalf("limit=%d includeProvider=%v", repo.lastLimit, repo.lastIncludeProvider)
+	}
+}
+
+func TestDiscoveryBrowseDisabledProviderStillUsesUnifiedLocalSearch(t *testing.T) {
 	repo := &fakeDiscoveryRepository{items: []DiscoveryItem{
-		{Reference: ProviderReference{Provider: "igdb", ExternalID: "1"}, Name: "Visible", GameType: "Main Game"},
-		{Reference: ProviderReference{Provider: "igdb", ExternalID: "2"}, Name: "Hidden", GameType: "DLC Addon"},
+		{LocalGameID: "local-1", GamePresentation: GamePresentation{Name: "Local"}, Materialized: true},
 	}}
-	service := NewDiscoveryService(repo, nil, &fakeSubscriptions{})
-	got, err := service.Browse(t.Context(), "user-1", "game")
+	service := NewDiscoveryService(repo, nil, &fakeSubscriptions{}, &fakeProviderStatus{
+		status: ProviderStatus{State: ProviderDisabled},
+	})
+
+	page, err := service.Browse(t.Context(), "user-1", "wc")
 	if err != nil {
-		t.Fatalf("Browse: %v", err)
+		t.Fatal(err)
 	}
-	if len(got) != 1 || got[0].Name != "Visible" {
-		t.Fatalf("got=%#v", got)
+	if repo.calls != 1 || repo.lastIncludeProvider {
+		t.Fatalf("calls=%d includeProvider=%v, want 1/false: a disabled provider still searches through the unified query, gated to local-sourced rows only, never through provider rows", repo.calls, repo.lastIncludeProvider)
+	}
+	if len(page.Items) != 1 || !page.Items[0].Materialized {
+		t.Fatalf("page=%#v, want only the local-sourced item the fake returned", page)
 	}
 }
 
-func TestDiscoveryBrowseEmptySearchUsesLocalCatalogOnly(t *testing.T) {
-	repo := &fakeDiscoveryRepository{}
-	subs := &fakeSubscriptions{browse: []SubscriptionGame{{ID: "local-1", Name: "Local", Slug: "local"}}}
-	service := NewDiscoveryService(repo, nil, subs)
-	got, err := service.Browse(t.Context(), "user-1", "")
-	if err != nil {
-		t.Fatalf("Browse: %v", err)
-	}
-	if repo.calls != 0 || len(got) != 1 || got[0].LocalGameID != "local-1" {
-		t.Fatalf("repo.calls=%d got=%#v", repo.calls, got)
-	}
-}
+// TestDiscoveryBrowseReturnsProviderStatusUnchanged proves DiscoveryPage
+// carries whatever ProviderStatusSource reports, verbatim, on both the
+// short-circuited local-only path and the repository-backed path, so a
+// player-facing "why is this all I see" affordance (Task 4) can render it
+// without DiscoveryService reinterpreting or dropping fields.
+func TestDiscoveryBrowseReturnsProviderStatusUnchanged(t *testing.T) {
+	status := ProviderStatus{State: ProviderStale, RecordCount: 42, CatalogAvailable: true}
+	statusSource := &fakeProviderStatus{status: status}
 
-func TestDiscoveryBrowseTrimsSearchBeforeDecidingLocalOnly(t *testing.T) {
-	repo := &fakeDiscoveryRepository{}
-	subs := &fakeSubscriptions{browse: []SubscriptionGame{{ID: "local-1", Name: "Local", Slug: "local"}}}
-	service := NewDiscoveryService(repo, nil, subs)
-	got, err := service.Browse(t.Context(), "user-1", "   ")
-	if err != nil {
-		t.Fatalf("Browse: %v", err)
-	}
-	if repo.calls != 0 || len(got) != 1 {
-		t.Fatalf("repo.calls=%d got=%#v", repo.calls, got)
-	}
-}
+	t.Run("empty search", func(t *testing.T) {
+		service := NewDiscoveryService(&fakeDiscoveryRepository{}, nil, &fakeSubscriptions{}, statusSource)
+		page, err := service.Browse(t.Context(), "user-1", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if page.ProviderStatus != status {
+			t.Fatalf("ProviderStatus = %#v, want %#v", page.ProviderStatus, status)
+		}
+	})
 
-func TestDiscoveryBrowseKeepsMaterializedRegardlessOfType(t *testing.T) {
-	repo := &fakeDiscoveryRepository{items: []DiscoveryItem{
-		{LocalGameID: "local-1", Reference: ProviderReference{Provider: "igdb", ExternalID: "9"}, Name: "Already local", GameType: "DLC Addon", Materialized: true},
-	}}
-	service := NewDiscoveryService(repo, nil, &fakeSubscriptions{})
-	got, err := service.Browse(t.Context(), "user-1", "game")
-	if err != nil {
-		t.Fatalf("Browse: %v", err)
-	}
-	if len(got) != 1 || got[0].LocalGameID != "local-1" {
-		t.Fatalf("got=%#v", got)
-	}
-}
-
-func TestDiscoveryBrowsePassesBoundedLimit(t *testing.T) {
-	repo := &fakeDiscoveryRepository{}
-	service := NewDiscoveryService(repo, nil, &fakeSubscriptions{})
-	if _, err := service.Browse(t.Context(), "user-1", "wc3"); err != nil {
-		t.Fatalf("Browse: %v", err)
-	}
-	if repo.calls != 1 || repo.lastUser != "user-1" || repo.lastQuery != "wc3" || repo.lastLimit != 50 {
-		t.Fatalf("calls=%d user=%q query=%q limit=%d", repo.calls, repo.lastUser, repo.lastQuery, repo.lastLimit)
-	}
+	t.Run("non-empty search", func(t *testing.T) {
+		service := NewDiscoveryService(&fakeDiscoveryRepository{}, nil, &fakeSubscriptions{}, statusSource)
+		page, err := service.Browse(t.Context(), "user-1", "wc3")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if page.ProviderStatus != status {
+			t.Fatalf("ProviderStatus = %#v, want %#v", page.ProviderStatus, status)
+		}
+	})
 }
 
 func TestDiscoveryBrowseRejectsOverLongSearch(t *testing.T) {
 	repo := &fakeDiscoveryRepository{}
 	subs := &fakeSubscriptions{}
-	service := NewDiscoveryService(repo, nil, subs)
+	service := NewDiscoveryService(repo, nil, subs, enabledProviderStatus())
 	overLong := strings.Repeat("a", maxSearchLength+1)
 	_, err := service.Browse(t.Context(), "user-1", overLong)
 	if !errors.Is(err, ErrInvalidSearch) {
@@ -205,15 +271,15 @@ func TestDiscoveryBrowseRejectsOverLongSearch(t *testing.T) {
 func TestDiscoveryBrowsePropagatesRepositoryError(t *testing.T) {
 	failure := errors.New("search failed")
 	repo := &fakeDiscoveryRepository{err: failure}
-	service := NewDiscoveryService(repo, nil, &fakeSubscriptions{})
+	service := NewDiscoveryService(repo, nil, &fakeSubscriptions{}, enabledProviderStatus())
 	if _, err := service.Browse(t.Context(), "user-1", "wc3"); !errors.Is(err, failure) {
 		t.Fatalf("err = %v, want %v", err, failure)
 	}
 }
 
 func TestDiscoveryMyGamesDelegatesToSubscriptions(t *testing.T) {
-	subs := &fakeSubscriptions{myGames: []SubscriptionGame{{ID: "local-1", Name: "Local"}}}
-	service := NewDiscoveryService(&fakeDiscoveryRepository{}, nil, subs)
+	subs := &fakeSubscriptions{myGames: []SubscriptionGame{{ID: "local-1", GamePresentation: GamePresentation{Name: "Local"}}}}
+	service := NewDiscoveryService(&fakeDiscoveryRepository{}, nil, subs, enabledProviderStatus())
 	got, err := service.MyGames(t.Context(), "user-1")
 	if err != nil {
 		t.Fatalf("MyGames: %v", err)
@@ -225,7 +291,7 @@ func TestDiscoveryMyGamesDelegatesToSubscriptions(t *testing.T) {
 
 func TestDiscoveryFollowLocalDelegatesToSubscriptions(t *testing.T) {
 	subs := &fakeSubscriptions{}
-	service := NewDiscoveryService(&fakeDiscoveryRepository{}, nil, subs)
+	service := NewDiscoveryService(&fakeDiscoveryRepository{}, nil, subs, enabledProviderStatus())
 	if err := service.FollowLocal(t.Context(), "user-1", "local-1"); err != nil {
 		t.Fatalf("FollowLocal: %v", err)
 	}
@@ -237,7 +303,7 @@ func TestDiscoveryFollowLocalDelegatesToSubscriptions(t *testing.T) {
 func TestDiscoveryFollowMaterializesThenSubscribes(t *testing.T) {
 	materializer := &fakeMaterializer{result: Game{ID: "local-1", Name: "Game", Slug: "game"}}
 	subscriptions := &fakeSubscriptions{}
-	service := NewDiscoveryService(&fakeDiscoveryRepository{}, materializer, subscriptions)
+	service := NewDiscoveryService(&fakeDiscoveryRepository{}, materializer, subscriptions, enabledProviderStatus())
 	got, err := service.Follow(t.Context(), "user-1", ProviderReference{Provider: "igdb", ExternalID: "100"})
 	if err != nil {
 		t.Fatalf("Follow: %v", err)
@@ -250,7 +316,7 @@ func TestDiscoveryFollowMaterializesThenSubscribes(t *testing.T) {
 func TestDiscoveryFollowPropagatesResolveErrorWithoutSubscribing(t *testing.T) {
 	materializer := &fakeMaterializer{err: ErrProviderRecordNotFound}
 	subscriptions := &fakeSubscriptions{}
-	service := NewDiscoveryService(&fakeDiscoveryRepository{}, materializer, subscriptions)
+	service := NewDiscoveryService(&fakeDiscoveryRepository{}, materializer, subscriptions, enabledProviderStatus())
 	if _, err := service.Follow(t.Context(), "user-1", ProviderReference{Provider: "igdb", ExternalID: "100"}); !errors.Is(err, ErrProviderRecordNotFound) {
 		t.Fatalf("err = %v, want %v", err, ErrProviderRecordNotFound)
 	}
@@ -262,7 +328,7 @@ func TestDiscoveryFollowPropagatesResolveErrorWithoutSubscribing(t *testing.T) {
 func TestDiscoveryFollowRejectsInvalidReferenceWithoutMaterializing(t *testing.T) {
 	materializer := &fakeMaterializer{result: Game{ID: "local-1"}}
 	subscriptions := &fakeSubscriptions{}
-	service := NewDiscoveryService(&fakeDiscoveryRepository{}, materializer, subscriptions)
+	service := NewDiscoveryService(&fakeDiscoveryRepository{}, materializer, subscriptions, enabledProviderStatus())
 	if _, err := service.Follow(t.Context(), "user-1", ProviderReference{Provider: "steam", ExternalID: "100"}); !errors.Is(err, ErrInvalidProviderReference) {
 		t.Fatalf("err = %v, want %v", err, ErrInvalidProviderReference)
 	}
@@ -275,42 +341,9 @@ func TestDiscoveryFollowPropagatesSubscriptionError(t *testing.T) {
 	materializer := &fakeMaterializer{result: Game{ID: "local-1"}}
 	failure := errors.New("follow failed")
 	subscriptions := &fakeSubscriptions{followErr: failure}
-	service := NewDiscoveryService(&fakeDiscoveryRepository{}, materializer, subscriptions)
+	service := NewDiscoveryService(&fakeDiscoveryRepository{}, materializer, subscriptions, enabledProviderStatus())
 	if _, err := service.Follow(t.Context(), "user-1", ProviderReference{Provider: "igdb", ExternalID: "100"}); !errors.Is(err, failure) {
 		t.Fatalf("err = %v, want %v", err, failure)
-	}
-}
-
-func TestDiscoveryBrowseWithProviderDisabledUsesLocalSearchOnlyEvenForNonEmptySearch(t *testing.T) {
-	repo := &fakeDiscoveryRepository{items: []DiscoveryItem{
-		{Reference: ProviderReference{Provider: "igdb", ExternalID: "1"}, Name: "Stale Provider Result", GameType: "Main Game"},
-	}}
-	subs := &fakeSubscriptions{browse: []SubscriptionGame{{ID: "local-1", Name: "Local Only", Slug: "local-only"}}}
-	service := NewDiscoveryService(repo, nil, subs)
-	service.DisableProvider()
-
-	got, err := service.Browse(t.Context(), "user-1", "game")
-	if err != nil {
-		t.Fatalf("Browse: %v", err)
-	}
-	if repo.calls != 0 {
-		t.Fatalf("repo.calls = %d, want 0: a disabled provider must never be queried", repo.calls)
-	}
-	if len(got) != 1 || got[0].LocalGameID != "local-1" || got[0].Reference != (ProviderReference{}) {
-		t.Fatalf("got = %#v", got)
-	}
-}
-
-func TestDiscoveryResolveWithProviderDisabledReportsNoProviderRecordWithoutMaterializing(t *testing.T) {
-	materializer := &fakeMaterializer{result: Game{ID: "local-1", Name: "Game", Slug: "game"}}
-	service := NewDiscoveryService(&fakeDiscoveryRepository{}, materializer, &fakeSubscriptions{})
-	service.DisableProvider()
-
-	if _, err := service.Resolve(t.Context(), ProviderReference{Provider: "igdb", ExternalID: "100"}); !errors.Is(err, ErrProviderRecordNotFound) {
-		t.Fatalf("err = %v, want %v", err, ErrProviderRecordNotFound)
-	}
-	if materializer.calls != 0 {
-		t.Fatalf("materializer.calls = %d, want 0: disabled provider must never materialize stale generations", materializer.calls)
 	}
 }
 
@@ -325,23 +358,23 @@ func TestDiscoveryBrowseEmptySearchKeepsLocalEnrichment(t *testing.T) {
 			FirstReleaseDate: &release,
 		},
 	}}}
-	service := NewDiscoveryService(&fakeDiscoveryRepository{}, nil, subs)
+	service := NewDiscoveryService(&fakeDiscoveryRepository{}, nil, subs, enabledProviderStatus())
 
-	got, err := service.Browse(t.Context(), "user-1", "")
+	page, err := service.Browse(t.Context(), "user-1", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 1 {
-		t.Fatalf("items = %#v", got)
+	if len(page.Items) != 1 {
+		t.Fatalf("items = %#v", page.Items)
 	}
-	if got[0].CoverImageID != "co1abc" || got[0].GameType != "Main Game" {
-		t.Fatalf("item = %#v", got[0])
+	if page.Items[0].CoverImageID != "co1abc" || page.Items[0].GameType != "Main Game" {
+		t.Fatalf("item = %#v", page.Items[0])
 	}
 }
 
 func TestDiscoveryUnfollowDelegatesToSubscriptions(t *testing.T) {
 	subs := &fakeSubscriptions{}
-	service := NewDiscoveryService(&fakeDiscoveryRepository{}, nil, subs)
+	service := NewDiscoveryService(&fakeDiscoveryRepository{}, nil, subs, enabledProviderStatus())
 	if err := service.Unfollow(t.Context(), "user-1", "local-1"); err != nil {
 		t.Fatalf("Unfollow: %v", err)
 	}

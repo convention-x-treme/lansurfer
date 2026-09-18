@@ -936,9 +936,9 @@ func (r *routerGameRequestQueries) CountOpen(context.Context) (int64, error) {
 	return int64(len(r.items)), nil
 }
 
-func (r *routerDiscovery) Browse(_ context.Context, _, search string) ([]game.DiscoveryItem, error) {
+func (r *routerDiscovery) Browse(_ context.Context, _, search string) (game.DiscoveryPage, error) {
 	r.search = search
-	return r.items, nil
+	return game.DiscoveryPage{Items: r.items}, nil
 }
 func (r *routerDiscovery) MyGames(context.Context, string) ([]game.SubscriptionGame, error) {
 	return r.mine, nil

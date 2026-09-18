@@ -450,36 +450,53 @@ WITH active_generation AS (
     FROM igdb_provider_state
     WHERE singleton AND active_generation_id IS NOT NULL
 ), provider_matches AS (
-    SELECT provider_game.igdb_id,
-           provider_game.name,
-           provider_game.slug,
-           provider_game.game_type,
-           provider_game.platform_names,
-           provider_game.first_release_date,
-           provider_game.cover_image_id
+    SELECT
+        provider_game.igdb_id,
+        provider_game.name,
+        provider_game.slug,
+        provider_game.game_type,
+        provider_game.platform_names,
+        provider_game.first_release_date,
+        provider_game.cover_image_id,
+        CASE
+            WHEN lower(provider_game.name) = lower($2::text)
+              OR EXISTS (
+                  SELECT 1 FROM unnest(provider_game.alternative_names) AS alt(name)
+                  WHERE lower(alt.name) = lower($2::text)
+              ) THEN 1
+            WHEN lower(provider_game.name) LIKE lower($2::text) || '%'
+              OR EXISTS (
+                  SELECT 1 FROM unnest(provider_game.alternative_names) AS alt(name)
+                  WHERE lower(alt.name) LIKE lower($2::text) || '%'
+              ) THEN 2
+            ELSE 3
+        END AS match_rank
     FROM igdb_game_index provider_game
     JOIN active_generation ON active_generation.id = provider_game.generation_id
-    -- LIKE (not strpos) so the gin_trgm_ops index on search_text
-    -- (igdb_game_index_search_trgm_idx) actually accelerates this: trigram
-    -- indexes speed up LIKE/ILIKE/~ pattern matches, never strpos(). The
-    -- search term is escaped for the three LIKE special characters (\, %, _)
-    -- before '%' wildcards are added around it, so a literal '%' or '_' in a
-    -- player's search term matches only that literal character.
-    WHERE provider_game.search_text LIKE '%' || replace(replace(replace(
-        lower($1::text), '\', '\\'), '%', '\%'), '_', '\_'
-    ) || '%' ESCAPE '\'
+    WHERE $3::boolean
+      -- LIKE (not strpos) so the gin_trgm_ops index on search_text
+      -- (igdb_game_index_search_trgm_idx) actually accelerates this: trigram
+      -- indexes speed up LIKE/ILIKE/~ pattern matches, never strpos(). The
+      -- search term is escaped for the three LIKE special characters (\, %, _)
+      -- before '%' wildcards are added around it, so a literal '%' or '_' in a
+      -- player's search term matches only that literal character.
+      AND provider_game.search_text LIKE '%' || replace(replace(replace(
+          lower($2::text), '\', '\\'), '%', '\%'), '_', '\_'
+      ) || '%' ESCAPE '\'
 ), materialized_provider_rows AS (
     SELECT
         provider_matches.igdb_id::text AS external_id,
         local_game.id::text AS local_game_id,
         local_game.name::text AS name,
         local_game.slug::text AS slug,
-        provider_matches.game_type,
-        provider_matches.platform_names,
-        provider_matches.first_release_date,
-        provider_matches.cover_image_id,
+        enrichment.game_type,
+        enrichment.platform_names,
+        enrichment.first_release_date,
+        enrichment.cover_image_id,
         true::boolean AS materialized,
-        (subscription.game_id IS NOT NULL)::boolean AS subscribed
+        (subscription.game_id IS NOT NULL)::boolean AS subscribed,
+        provider_matches.match_rank,
+        ('local:' || local_game.id::text) AS identity_key
     FROM provider_matches
     JOIN game_external_ids mapping
         ON lower(btrim(mapping.provider)) = 'igdb'
@@ -488,9 +505,10 @@ WITH active_generation AS (
     JOIN games local_game
         ON local_game.id = mapping.game_id
        AND local_game.active
+    LEFT JOIN game_igdb_enrichment enrichment ON enrichment.game_id = local_game.id
     LEFT JOIN game_subscriptions subscription
         ON subscription.game_id = local_game.id
-       AND subscription.user_id = $2::uuid
+       AND subscription.user_id = $4::uuid
 ), unmaterialized_provider_rows AS (
     SELECT
         provider_matches.igdb_id::text AS external_id,
@@ -502,15 +520,11 @@ WITH active_generation AS (
         provider_matches.first_release_date,
         provider_matches.cover_image_id,
         false::boolean AS materialized,
-        false::boolean AS subscribed
+        false::boolean AS subscribed,
+        provider_matches.match_rank,
+        ('provider:igdb:' || provider_matches.igdb_id::text) AS identity_key
     FROM provider_matches
-    WHERE lower(provider_matches.game_type) = ANY($3::text[])
-      -- A non-archived mapping means this provider record is already
-      -- materialized, independent of the mapped local Game's active state:
-      -- an admin deactivating that Game must not make the same provider
-      -- record reappear here as if it were new (it stays invisible instead,
-      -- exactly like a deactivated local Game in local_rows below, because
-      -- materialized_provider_rows also requires local_game.active).
+    WHERE lower(provider_matches.game_type) = ANY($5::text[])
       AND NOT EXISTS (
           SELECT 1
           FROM game_external_ids mapping
@@ -518,54 +532,80 @@ WITH active_generation AS (
             AND mapping.external_id = provider_matches.igdb_id::text
             AND mapping.archived_at IS NULL
       )
-    ORDER BY lower(provider_matches.name), provider_matches.igdb_id
-    LIMIT $4::int
-), provider_rows AS (
-    SELECT external_id, local_game_id, name, slug, game_type, platform_names, first_release_date, cover_image_id, materialized, subscribed FROM materialized_provider_rows
-    UNION ALL
-    SELECT external_id, local_game_id, name, slug, game_type, platform_names, first_release_date, cover_image_id, materialized, subscribed FROM unmaterialized_provider_rows
-), local_rows AS (
+), local_matches AS (
     SELECT
         ''::text AS external_id,
         g.id::text AS local_game_id,
         g.name::text AS name,
         g.slug::text AS slug,
-        NULL::text AS game_type,
-        ARRAY[]::text[] AS platform_names,
-        NULL::timestamptz AS first_release_date,
-        NULL::text AS cover_image_id,
+        enrichment.game_type,
+        enrichment.platform_names,
+        enrichment.first_release_date,
+        enrichment.cover_image_id,
         true::boolean AS materialized,
-        EXISTS (
-            SELECT 1 FROM game_subscriptions gs
-            WHERE gs.game_id = g.id AND gs.user_id = $2::uuid
-        )::boolean AS subscribed
+        (gs.game_id IS NOT NULL)::boolean AS subscribed,
+        CASE
+            WHEN lower(g.name) = lower($2::text)
+              OR EXISTS (
+                  SELECT 1 FROM game_aliases a
+                  WHERE a.game_id = g.id
+                    AND lower(a.alias) = lower($2::text)
+              ) THEN 1
+            WHEN lower(g.name) LIKE lower($2::text) || '%'
+              OR EXISTS (
+                  SELECT 1 FROM game_aliases a
+                  WHERE a.game_id = g.id
+                    AND lower(a.alias) LIKE lower($2::text) || '%'
+              ) THEN 2
+            ELSE 3
+        END AS match_rank,
+        ('local:' || g.id::text) AS identity_key
     FROM games g
+    LEFT JOIN game_igdb_enrichment enrichment ON enrichment.game_id = g.id
+    LEFT JOIN game_subscriptions gs
+        ON gs.game_id = g.id
+       AND gs.user_id = $4::uuid
     WHERE g.active
       AND (
-          strpos(lower(g.name), lower($1::text)) > 0
+          strpos(lower(g.name), lower($2::text)) > 0
           OR EXISTS (
               SELECT 1 FROM game_aliases ga
               WHERE ga.game_id = g.id
-                AND strpos(lower(ga.alias), lower($1::text)) > 0
+                AND strpos(lower(ga.alias), lower($2::text)) > 0
           )
       )
-      AND NOT EXISTS (
-          SELECT 1 FROM provider_rows pr WHERE pr.local_game_id = g.id::text
-      )
-)
-SELECT combined.external_id, combined.local_game_id, combined.name, combined.slug, combined.game_type, combined.platform_names, combined.first_release_date, combined.cover_image_id, combined.materialized, combined.subscribed FROM (
-    SELECT external_id, local_game_id, name, slug, game_type, platform_names, first_release_date, cover_image_id, materialized, subscribed FROM local_rows
+), candidates AS (
+    SELECT external_id, local_game_id, name, slug, game_type, platform_names, first_release_date, cover_image_id, materialized, subscribed, match_rank, identity_key FROM local_matches
     UNION ALL
-    SELECT external_id, local_game_id, name, slug, game_type, platform_names, first_release_date, cover_image_id, materialized, subscribed FROM provider_rows
-) combined
-ORDER BY lower(combined.name), combined.external_id
+    SELECT external_id, local_game_id, name, slug, game_type, platform_names, first_release_date, cover_image_id, materialized, subscribed, match_rank, identity_key FROM materialized_provider_rows
+    UNION ALL
+    SELECT external_id, local_game_id, name, slug, game_type, platform_names, first_release_date, cover_image_id, materialized, subscribed, match_rank, identity_key FROM unmaterialized_provider_rows
+), best AS (
+    SELECT DISTINCT ON (identity_key)
+        external_id, local_game_id, name, slug, game_type, platform_names,
+        first_release_date, cover_image_id, materialized, subscribed,
+        match_rank, identity_key
+    FROM candidates
+    ORDER BY identity_key, match_rank
+)
+SELECT external_id, local_game_id, name, slug, game_type, platform_names,
+       first_release_date, cover_image_id, materialized, subscribed
+FROM best
+ORDER BY
+    match_rank,
+    subscribed DESC,
+    materialized DESC,
+    lower(name),
+    identity_key
+LIMIT $1::int
 `
 
 type SearchDiscoveryGamesParams struct {
+	FetchLimit       int32
 	Search           string
+	IncludeProvider  bool
 	UserID           pgtype.UUID
 	VisibleGameTypes []string
-	RowLimit         int32
 }
 
 type SearchDiscoveryGamesRow struct {
@@ -581,26 +621,42 @@ type SearchDiscoveryGamesRow struct {
 	Subscribed       bool
 }
 
-// Combines authoritative local Games (matched by name/alias, exactly like
-// the pre-IGDB local browse) with the active IGDB generation (matched by
-// normalized search_text), so local search keeps working unchanged when
-// IGDB is disabled or has no active generation yet. Never calls the
-// provider live. A provider row already materialized into an active local
-// Game (materialized_provider_rows) is always returned regardless of its
-// current Game Type or the row cap -- spec: "later provider refreshes do
-// not automatically rename the authoritative Game" and must not make it
-// disappear from search either. Only genuinely unmaterialized provider rows
-// (unmaterialized_provider_rows) are filtered to player-visible Game Types
-// and capped, so hidden-type/overflow matches cannot crowd out visible new
-// results. A materialized provider row is returned exactly once: sourced
-// from the provider side when its own search_text matched, or from the
-// local side when only its current local name/alias matched; never both.
+// Unified, ranked, bounded discovery search over the authoritative local
+// Game catalog (local_matches) and the active IGDB generation
+// (provider_matches, gated by include_provider), never calling the provider
+// live. Within each candidate CTE, match_rank orders an exact name/alias
+// match ahead of a prefix match, ahead of a plain contains match. Candidates
+// are deduplicated by logical identity -- 'local:'||local_game_id for
+// anything already an authoritative local Game (whether matched by its own
+// current name/alias or by the active provider record's stale name/
+// alternative names), 'provider:igdb:'||external_id for a genuinely
+// unmaterialized provider record -- keeping whichever side matched with the
+// better rank; both sides already render identical content for the same
+// local Game, so which literal row wins only affects match_rank. The final
+// ORDER BY then ranks by match_rank, followed status, materialized status,
+// name, and finally the stable identity_key. Callers fetch fetch_limit =
+// limit + 1 rows and trim the last one to detect HasMore rather than
+// issuing a separate count query.
+//
+// A materialized provider candidate always renders the local Game's own
+// name/slug plus its last-known-good game_igdb_enrichment snapshot, never
+// live provider fields (spec: "later provider refreshes do not
+// automatically rename the authoritative Game"), and requires the linked
+// local Game to still be active. An unmaterialized provider candidate is
+// filtered to player-visible Game Types and excluded whenever a
+// non-archived game_external_ids mapping already exists for it, independent
+// of the mapped local Game's active state (Track C fix, commit c2cea97): an
+// admin deactivating that Game must not make its provider record reappear
+// here as if it were new. Combined with the materialized-candidate active
+// requirement above, a provider record mapped to a deactivated local Game
+// renders as neither candidate, disappearing from search entirely.
 func (q *Queries) SearchDiscoveryGames(ctx context.Context, arg SearchDiscoveryGamesParams) ([]SearchDiscoveryGamesRow, error) {
 	rows, err := q.db.Query(ctx, searchDiscoveryGames,
+		arg.FetchLimit,
 		arg.Search,
+		arg.IncludeProvider,
 		arg.UserID,
 		arg.VisibleGameTypes,
-		arg.RowLimit,
 	)
 	if err != nil {
 		return nil, err

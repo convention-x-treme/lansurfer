@@ -193,6 +193,9 @@ func TestIGDBGenerationPersistence(t *testing.T) {
 	if before.State != game.ProviderNotSynced {
 		t.Fatalf("before = %#v", before)
 	}
+	if before.CatalogAvailable {
+		t.Fatal("CatalogAvailable = true before any generation ever activated, want false")
+	}
 	if err := store.ActivateGeneration(t.Context(), generationID, 1); err != nil {
 		t.Fatalf("ActivateGeneration: %v", err)
 	}
@@ -202,6 +205,9 @@ func TestIGDBGenerationPersistence(t *testing.T) {
 	}
 	if after.State != game.ProviderCurrent || after.RecordCount != 1 {
 		t.Fatalf("after = %#v", after)
+	}
+	if !after.CatalogAvailable {
+		t.Fatal("active generation must mark catalog available")
 	}
 }
 
@@ -590,7 +596,7 @@ func TestIGDBSearchDoesNotResurrectProviderResultForDeactivatedMaterializedGame(
 
 	gameStore := gamepostgres.NewStore(pool)
 	games := game.NewService(gameStore)
-	discovery := game.NewDiscoveryService(gameStore, gameStore, gameStore)
+	discovery := game.NewDiscoveryService(gameStore, gameStore, gameStore, storeProviderStatus{store: gameStore})
 
 	activateIGDBGeneration(t, gameStore, []game.ProviderGame{
 		{Reference: game.ProviderReference{Provider: "igdb", ExternalID: "9801"}, Name: "Deactivated Quest", Slug: "deactivated-quest", GameType: "Main Game"},
@@ -604,10 +610,11 @@ func TestIGDBSearchDoesNotResurrectProviderResultForDeactivatedMaterializedGame(
 		t.Fatalf("deactivate local game: %v", err)
 	}
 
-	got, err := discovery.Browse(t.Context(), viewer.ID, "deactivated quest")
+	page, err := discovery.Browse(t.Context(), viewer.ID, "deactivated quest")
 	if err != nil {
 		t.Fatalf("Browse: %v", err)
 	}
+	got := page.Items
 	for _, item := range got {
 		if item.Reference.ExternalID == "9801" && !item.Materialized {
 			t.Fatalf("provider record for a deactivated materialized Game resurfaced as unmaterialized: %#v", item)
@@ -632,7 +639,7 @@ func TestIGDBDisappearanceArchivesIdentityWithoutDeletingLocalGameThenReappearan
 		t.Fatalf("Migrate() error = %v", err)
 	}
 	gameStore := gamepostgres.NewStore(pool)
-	discovery := game.NewDiscoveryService(gameStore, gameStore, gameStore)
+	discovery := game.NewDiscoveryService(gameStore, gameStore, gameStore, storeProviderStatus{store: gameStore})
 
 	activateIGDBGeneration(t, gameStore, []game.ProviderGame{testProviderGame("100")})
 	materialized, err := discovery.Resolve(t.Context(), game.ProviderReference{Provider: "igdb", ExternalID: "100"})
@@ -692,7 +699,7 @@ func TestIGDBMaterializationPersistsEnrichment(t *testing.T) {
 		t.Fatalf("Migrate() error = %v", err)
 	}
 	gameStore := gamepostgres.NewStore(pool)
-	discovery := game.NewDiscoveryService(gameStore, gameStore, gameStore)
+	discovery := game.NewDiscoveryService(gameStore, gameStore, gameStore, storeProviderStatus{store: gameStore})
 
 	releaseDate := time.Date(2020, time.March, 1, 0, 0, 0, 0, time.UTC)
 	providerUpdatedAt := time.Date(2024, time.June, 1, 12, 0, 0, 0, time.UTC)
@@ -758,7 +765,7 @@ func TestIGDBRefreshUpdatesOnlyNonEmptyEnrichment(t *testing.T) {
 		t.Fatalf("Migrate() error = %v", err)
 	}
 	gameStore := gamepostgres.NewStore(pool)
-	discovery := game.NewDiscoveryService(gameStore, gameStore, gameStore)
+	discovery := game.NewDiscoveryService(gameStore, gameStore, gameStore, storeProviderStatus{store: gameStore})
 
 	oldRelease := time.Date(2019, time.January, 1, 0, 0, 0, 0, time.UTC)
 	oldUpdatedAt := time.Date(2023, time.January, 1, 0, 0, 0, 0, time.UTC)
@@ -835,7 +842,7 @@ func TestIGDBDisappearanceKeepsEnrichmentAndReappearanceRefreshesIt(t *testing.T
 		t.Fatalf("Migrate() error = %v", err)
 	}
 	gameStore := gamepostgres.NewStore(pool)
-	discovery := game.NewDiscoveryService(gameStore, gameStore, gameStore)
+	discovery := game.NewDiscoveryService(gameStore, gameStore, gameStore, storeProviderStatus{store: gameStore})
 
 	activateIGDBGeneration(t, gameStore, []game.ProviderGame{
 		{
@@ -920,7 +927,7 @@ func TestGamePresentationEnrichmentPersistsThroughLocalBrowseAndMyGames(t *testi
 	}
 
 	gameStore := gamepostgres.NewStore(pool)
-	discovery := game.NewDiscoveryService(gameStore, gameStore, gameStore)
+	discovery := game.NewDiscoveryService(gameStore, gameStore, gameStore, storeProviderStatus{store: gameStore})
 	subscriptions := game.NewSubscriptionService(gameStore)
 
 	releaseDate := time.Date(2002, time.July, 3, 0, 0, 0, 0, time.UTC)
@@ -1188,17 +1195,18 @@ func TestDiscoverySearchPostgreSQL(t *testing.T) {
 
 	gameStore := gamepostgres.NewStore(pool)
 	catalog := game.NewService(gameStore)
-	discovery := game.NewDiscoveryService(gameStore, nil, gameStore)
+	discovery := game.NewDiscoveryService(gameStore, nil, gameStore, storeProviderStatus{store: gameStore})
 
 	t.Run("empty search never touches the discovery repository", func(t *testing.T) {
 		local, err := catalog.Create(t.Context(), "Local Only Game", "local-only-game")
 		if err != nil {
 			t.Fatalf("create local game: %v", err)
 		}
-		got, err := discovery.Browse(t.Context(), viewer.ID, "")
+		page, err := discovery.Browse(t.Context(), viewer.ID, "")
 		if err != nil {
 			t.Fatalf("Browse: %v", err)
 		}
+		got := page.Items
 		found := false
 		for _, item := range got {
 			if item.LocalGameID == local.ID {
@@ -1218,10 +1226,11 @@ func TestDiscoverySearchPostgreSQL(t *testing.T) {
 		if err != nil {
 			t.Fatalf("create local game: %v", err)
 		}
-		got, err := discovery.Browse(t.Context(), viewer.ID, "never synced")
+		page, err := discovery.Browse(t.Context(), viewer.ID, "never synced")
 		if err != nil {
 			t.Fatalf("Browse: %v", err)
 		}
+		got := page.Items
 		if len(got) != 1 || got[0].LocalGameID != local.ID || !got[0].Materialized {
 			t.Fatalf("Browse = %#v", got)
 		}
@@ -1253,10 +1262,11 @@ func TestDiscoverySearchPostgreSQL(t *testing.T) {
 			t.Fatalf("store syncing generation games: %v", err)
 		}
 
-		got, err := discovery.Browse(t.Context(), viewer.ID, "quest runner")
+		page, err := discovery.Browse(t.Context(), viewer.ID, "quest runner")
 		if err != nil {
 			t.Fatalf("Browse: %v", err)
 		}
+		got := page.Items
 		if len(got) != 1 || got[0].Name != "Quest Runner" || got[0].Materialized {
 			t.Fatalf("Browse = %#v", got)
 		}
@@ -1287,32 +1297,34 @@ func TestDiscoverySearchPostgreSQL(t *testing.T) {
 			t.Fatalf("follow local game: %v", err)
 		}
 
-		viewerResult, err := discovery.Browse(t.Context(), viewer.ID, "authoritative")
+		viewerPage, err := discovery.Browse(t.Context(), viewer.ID, "authoritative")
 		if err != nil {
 			t.Fatalf("Browse (viewer): %v", err)
 		}
+		viewerResult := viewerPage.Items
 		if len(viewerResult) != 1 || !viewerResult[0].Materialized || viewerResult[0].LocalGameID != localGame.ID ||
 			viewerResult[0].Name != "Authoritative Local Name" || !viewerResult[0].Subscribed {
 			t.Fatalf("Browse (viewer) = %#v", viewerResult)
 		}
 
-		otherResult, err := discovery.Browse(t.Context(), other.ID, "authoritative")
+		otherPage, err := discovery.Browse(t.Context(), other.ID, "authoritative")
 		if err != nil {
 			t.Fatalf("Browse (other): %v", err)
 		}
+		otherResult := otherPage.Items
 		if len(otherResult) != 1 || otherResult[0].Subscribed {
 			t.Fatalf("Browse (other) = %#v", otherResult)
 		}
 
 		// Search by the provider's own (stale) search_text, not the local
 		// name/alias, so the provider_matches CTE actually matches this row
-		// and the local_rows NOT EXISTS dedup against provider_rows is the
-		// thing keeping the result count at one, not the absence of a
-		// provider-side match.
-		providerTextResult, err := discovery.Browse(t.Context(), viewer.ID, "provider name")
+		// and dedup by identity_key is the thing keeping the result count at
+		// one, not the absence of a provider-side match.
+		providerTextPage, err := discovery.Browse(t.Context(), viewer.ID, "provider name")
 		if err != nil {
 			t.Fatalf("Browse (provider search text): %v", err)
 		}
+		providerTextResult := providerTextPage.Items
 		if len(providerTextResult) != 1 || !providerTextResult[0].Materialized ||
 			providerTextResult[0].LocalGameID != localGame.ID || providerTextResult[0].Name != "Authoritative Local Name" {
 			t.Fatalf("Browse (provider search text) = %#v", providerTextResult)
@@ -1359,23 +1371,27 @@ func TestDiscoverySearchPostgreSQL(t *testing.T) {
 		// Search only matches the provider's stale search_text, never the
 		// current local name/alias, so the materialized-row exemption from
 		// type filtering is what has to surface it.
-		got, err := discovery.Browse(t.Context(), viewer.ID, "vintage bundle master")
+		page, err := discovery.Browse(t.Context(), viewer.ID, "vintage bundle master")
 		if err != nil {
 			t.Fatalf("Browse: %v", err)
 		}
+		got := page.Items
 		if len(got) != 1 || !got[0].Materialized || got[0].LocalGameID != localGame.ID ||
 			got[0].Name != "Renamed Local Edition" || got[0].GameType != "Bundle" {
 			t.Fatalf("Browse = %#v", got)
 		}
 	})
 
-	t.Run("provider rows are capped at 50", func(t *testing.T) {
+	// TestDiscoverySearchPostgreSQL Step 3 item 8: the repository fetches at
+	// most limit+1=51 rows, returns the first 50, and sets HasMore=true only
+	// when a 51st row actually exists.
+	t.Run("61 matching provider rows are capped at 50 with HasMore set", func(t *testing.T) {
 		generationID, err := gameStore.BeginGeneration(t.Context())
 		if err != nil {
 			t.Fatalf("begin generation: %v", err)
 		}
-		batch := make([]game.ProviderGame, 0, 60)
-		for i := range 60 {
+		batch := make([]game.ProviderGame, 0, 61)
+		for i := range 61 {
 			externalID := strconv.Itoa(9200 + i)
 			batch = append(batch, game.ProviderGame{
 				Reference: game.ProviderReference{Provider: "igdb", ExternalID: externalID},
@@ -1391,12 +1407,49 @@ func TestDiscoverySearchPostgreSQL(t *testing.T) {
 			t.Fatalf("activate generation: %v", err)
 		}
 
-		got, err := discovery.Browse(t.Context(), viewer.ID, "capped result")
+		page, err := discovery.Browse(t.Context(), viewer.ID, "capped result")
 		if err != nil {
 			t.Fatalf("Browse: %v", err)
 		}
-		if len(got) != 50 {
-			t.Fatalf("len(got) = %d, want 50", len(got))
+		if len(page.Items) != 50 {
+			t.Fatalf("len(page.Items) = %d, want 50", len(page.Items))
+		}
+		if !page.HasMore {
+			t.Fatal("HasMore = false, want true: a 51st matching row exists")
+		}
+	})
+
+	t.Run("exactly 50 matching provider rows report HasMore=false", func(t *testing.T) {
+		generationID, err := gameStore.BeginGeneration(t.Context())
+		if err != nil {
+			t.Fatalf("begin generation: %v", err)
+		}
+		batch := make([]game.ProviderGame, 0, 50)
+		for i := range 50 {
+			externalID := strconv.Itoa(9300 + i)
+			batch = append(batch, game.ProviderGame{
+				Reference: game.ProviderReference{Provider: "igdb", ExternalID: externalID},
+				Name:      "Exact Fifty Result " + externalID,
+				Slug:      "exact-fifty-result-" + externalID,
+				GameType:  "Main Game",
+			})
+		}
+		if err := gameStore.StoreProviderGames(t.Context(), generationID, batch); err != nil {
+			t.Fatalf("store generation games: %v", err)
+		}
+		if err := gameStore.ActivateGeneration(t.Context(), generationID, int64(len(batch))); err != nil {
+			t.Fatalf("activate generation: %v", err)
+		}
+
+		page, err := discovery.Browse(t.Context(), viewer.ID, "exact fifty result")
+		if err != nil {
+			t.Fatalf("Browse: %v", err)
+		}
+		if len(page.Items) != 50 {
+			t.Fatalf("len(page.Items) = %d, want 50", len(page.Items))
+		}
+		if page.HasMore {
+			t.Fatal("HasMore = true, want false: exactly 50 matching rows exist, no 51st")
 		}
 	})
 
@@ -1430,32 +1483,216 @@ func TestDiscoverySearchPostgreSQL(t *testing.T) {
 
 		// (a) a normal substring search, with no special characters, still
 		// matches correctly.
-		normal, err := discovery.Browse(t.Context(), viewer.ID, "orange juice")
+		normalPage, err := discovery.Browse(t.Context(), viewer.ID, "orange juice")
 		if err != nil {
 			t.Fatalf("Browse (normal substring): %v", err)
 		}
+		normal := normalPage.Items
 		if len(normal) != 2 {
 			t.Fatalf("Browse (normal substring) = %#v, want both Orange Juice titles", normal)
 		}
 
 		// (b) a literal '%' in the search term matches only the literal
 		// character, not "anything".
-		percentSearch, err := discovery.Browse(t.Context(), viewer.ID, "100% orange")
+		percentPage, err := discovery.Browse(t.Context(), viewer.ID, "100% orange")
 		if err != nil {
 			t.Fatalf("Browse (percent): %v", err)
 		}
+		percentSearch := percentPage.Items
 		if len(percentSearch) != 1 || percentSearch[0].Reference.ExternalID != "9501" {
 			t.Fatalf("Browse (percent) = %#v, want only the literal '100%% Orange Juice' match", percentSearch)
 		}
 
 		// (b) a literal '_' in the search term matches only the literal
 		// character, not "any single character".
-		underscoreSearch, err := discovery.Browse(t.Context(), viewer.ID, "sonic_adventure")
+		underscorePage, err := discovery.Browse(t.Context(), viewer.ID, "sonic_adventure")
 		if err != nil {
 			t.Fatalf("Browse (underscore): %v", err)
 		}
+		underscoreSearch := underscorePage.Items
 		if len(underscoreSearch) != 1 || underscoreSearch[0].Reference.ExternalID != "9503" {
 			t.Fatalf("Browse (underscore) = %#v, want only the literal 'Sonic_Adventure' match", underscoreSearch)
+		}
+	})
+
+	// TestDiscoverySearchPostgreSQL Step 3 items 1-2: an exact name/alias
+	// match outranks a prefix match, which outranks a plain contains match,
+	// across local Games sharing no other distinguishing rank/subscribed/
+	// materialized signal.
+	t.Run("exact match outranks prefix match outranks contains match", func(t *testing.T) {
+		if _, err := catalog.Create(t.Context(), "Rank Contains The Word Portalcraft", "rank-contains-the-word-portalcraft"); err != nil {
+			t.Fatalf("create contains-rank game: %v", err)
+		}
+		if _, err := catalog.Create(t.Context(), "Portal Quest", "rank-portal-quest"); err != nil {
+			t.Fatalf("create prefix-rank game: %v", err)
+		}
+		if _, err := catalog.Create(t.Context(), "Portal", "rank-portal-exact"); err != nil {
+			t.Fatalf("create exact-rank game: %v", err)
+		}
+
+		page, err := discovery.Browse(t.Context(), viewer.ID, "portal")
+		if err != nil {
+			t.Fatalf("Browse: %v", err)
+		}
+		got := page.Items
+		if len(got) != 3 {
+			t.Fatalf("Browse = %#v, want the three rank-fixture games", got)
+		}
+		if got[0].Name != "Portal" || got[1].Name != "Portal Quest" || got[2].Name != "Rank Contains The Word Portalcraft" {
+			t.Fatalf("Browse order = [%s, %s, %s], want exact, then prefix, then contains",
+				got[0].Name, got[1].Name, got[2].Name)
+		}
+	})
+
+	// TestDiscoverySearchPostgreSQL Step 3 item 3: within one match_rank, a
+	// followed local Game outranks an unfollowed one.
+	t.Run("within one rank, followed outranks unfollowed", func(t *testing.T) {
+		// Alphabetically "Alpha" sorts before "Zulu", so the followed game
+		// (Zulu) only comes first if subscribed DESC really is applied ahead
+		// of the lower(name) tie-break, not because of name order alone.
+		unfollowed, err := catalog.Create(t.Context(), "Subscribe Rank Alpha", "subscribe-rank-alpha")
+		if err != nil {
+			t.Fatalf("create unfollowed game: %v", err)
+		}
+		followed, err := catalog.Create(t.Context(), "Subscribe Rank Zulu", "subscribe-rank-zulu")
+		if err != nil {
+			t.Fatalf("create followed game: %v", err)
+		}
+		subscriptions := game.NewSubscriptionService(gameStore)
+		if err := subscriptions.Follow(t.Context(), viewer.ID, followed.ID); err != nil {
+			t.Fatalf("follow game: %v", err)
+		}
+
+		page, err := discovery.Browse(t.Context(), viewer.ID, "subscribe rank")
+		if err != nil {
+			t.Fatalf("Browse: %v", err)
+		}
+		got := page.Items
+		if len(got) != 2 || got[0].LocalGameID != followed.ID || got[1].LocalGameID != unfollowed.ID {
+			t.Fatalf("Browse = %#v, want followed game first", got)
+		}
+	})
+
+	// TestDiscoverySearchPostgreSQL Step 3 item 4: within one match_rank (and
+	// equal subscribed status), a materialized result outranks an
+	// unmaterialized provider-only result.
+	t.Run("within one rank, materialized outranks unmaterialized", func(t *testing.T) {
+		// Alphabetically "Alpha" sorts before "Zulu", so the materialized
+		// game (Zulu) only comes first if materialized DESC really is
+		// applied ahead of the lower(name) tie-break, not because of name
+		// order alone.
+		materializedLocal, err := catalog.Create(t.Context(), "Sortorder Zulu Pick", "sortorder-zulu-pick")
+		if err != nil {
+			t.Fatalf("create materialized game: %v", err)
+		}
+
+		generationID, err := gameStore.BeginGeneration(t.Context())
+		if err != nil {
+			t.Fatalf("begin generation: %v", err)
+		}
+		if err := gameStore.StoreProviderGames(t.Context(), generationID, []game.ProviderGame{
+			{Reference: game.ProviderReference{Provider: "igdb", ExternalID: "9601"}, Name: "Sortorder Alpha Pick", Slug: "sortorder-alpha-pick", GameType: "Main Game"},
+		}); err != nil {
+			t.Fatalf("store generation games: %v", err)
+		}
+		if err := gameStore.ActivateGeneration(t.Context(), generationID, 1); err != nil {
+			t.Fatalf("activate generation: %v", err)
+		}
+
+		page, err := discovery.Browse(t.Context(), viewer.ID, "sortorder")
+		if err != nil {
+			t.Fatalf("Browse: %v", err)
+		}
+		got := page.Items
+		if len(got) != 2 || got[0].LocalGameID != materializedLocal.ID || got[1].Materialized {
+			t.Fatalf("Browse = %#v, want the materialized local Game first", got)
+		}
+	})
+
+	// TestDiscoverySearchPostgreSQL Step 3 item 5: once match_rank,
+	// subscribed, and materialized all tie, ordering falls back to
+	// lower(name) and then the stable identity_key.
+	t.Run("final tie breaks on name then stable identity", func(t *testing.T) {
+		generationID, err := gameStore.BeginGeneration(t.Context())
+		if err != nil {
+			t.Fatalf("begin generation: %v", err)
+		}
+		if err := gameStore.StoreProviderGames(t.Context(), generationID, []game.ProviderGame{
+			{Reference: game.ProviderReference{Provider: "igdb", ExternalID: "9702"}, Name: "Tiebreak Twin", Slug: "tiebreak-twin-9702", GameType: "Main Game"},
+			{Reference: game.ProviderReference{Provider: "igdb", ExternalID: "9701"}, Name: "Tiebreak Twin", Slug: "tiebreak-twin-9701", GameType: "Main Game"},
+			{Reference: game.ProviderReference{Provider: "igdb", ExternalID: "9703"}, Name: "Tiebreak Alpha", Slug: "tiebreak-alpha", GameType: "Main Game"},
+		}); err != nil {
+			t.Fatalf("store generation games: %v", err)
+		}
+		if err := gameStore.ActivateGeneration(t.Context(), generationID, 3); err != nil {
+			t.Fatalf("activate generation: %v", err)
+		}
+
+		page, err := discovery.Browse(t.Context(), viewer.ID, "tiebreak")
+		if err != nil {
+			t.Fatalf("Browse: %v", err)
+		}
+		got := page.Items
+		if len(got) != 3 {
+			t.Fatalf("Browse = %#v, want the three tiebreak fixtures", got)
+		}
+		if got[0].Name != "Tiebreak Alpha" {
+			t.Fatalf("Browse[0] = %#v, want the alphabetically first name", got[0])
+		}
+		if got[1].Reference.ExternalID != "9701" || got[2].Reference.ExternalID != "9702" {
+			t.Fatalf("Browse[1:] = [%s, %s], want the identical-name pair ordered by stable identity",
+				got[1].Reference.ExternalID, got[2].Reference.ExternalID)
+		}
+	})
+
+	// TestDiscoverySearchPostgreSQL Step 3 item 6: a materialized result's
+	// presentation (cover, type, platforms, release date) always comes from
+	// the last-known-good game_igdb_enrichment snapshot, never directly from
+	// whatever the currently active generation's raw provider row holds.
+	t.Run("materialized presentation comes from enrichment, not the live provider row", func(t *testing.T) {
+		firstGenerationID, err := gameStore.BeginGeneration(t.Context())
+		if err != nil {
+			t.Fatalf("begin first generation: %v", err)
+		}
+		if err := gameStore.StoreProviderGames(t.Context(), firstGenerationID, []game.ProviderGame{
+			{Reference: game.ProviderReference{Provider: "igdb", ExternalID: "9801"}, Name: "Enrichment Source Of Truth", Slug: "enrichment-source-of-truth", GameType: "Main Game", CoverImageID: "co-original"},
+		}); err != nil {
+			t.Fatalf("store first generation games: %v", err)
+		}
+		if err := gameStore.ActivateGeneration(t.Context(), firstGenerationID, 1); err != nil {
+			t.Fatalf("activate first generation: %v", err)
+		}
+		// The shared discovery instance in this test function has no
+		// materializer (see its construction above); materialize directly
+		// through the store, which is itself a MaterializationRepository.
+		if _, err := gameStore.Materialize(t.Context(), game.ProviderReference{Provider: "igdb", ExternalID: "9801"}); err != nil {
+			t.Fatalf("materialize provider record: %v", err)
+		}
+
+		// A later refresh reports no cover at all for the same external ID.
+		// RefreshIGDBEnrichmentFromGeneration's last-known-good merge keeps
+		// the original non-empty cover in game_igdb_enrichment even though
+		// the active generation's own raw row now has none.
+		secondGenerationID, err := gameStore.BeginGeneration(t.Context())
+		if err != nil {
+			t.Fatalf("begin second generation: %v", err)
+		}
+		if err := gameStore.StoreProviderGames(t.Context(), secondGenerationID, []game.ProviderGame{
+			{Reference: game.ProviderReference{Provider: "igdb", ExternalID: "9801"}, Name: "Enrichment Source Of Truth", Slug: "enrichment-source-of-truth", GameType: "Main Game"},
+		}); err != nil {
+			t.Fatalf("store second generation games: %v", err)
+		}
+		if err := gameStore.ActivateGeneration(t.Context(), secondGenerationID, 1); err != nil {
+			t.Fatalf("activate second generation: %v", err)
+		}
+
+		page, err := discovery.Browse(t.Context(), viewer.ID, "enrichment source of truth")
+		if err != nil {
+			t.Fatalf("Browse: %v", err)
+		}
+		got := page.Items
+		if len(got) != 1 || !got[0].Materialized || got[0].CoverImageID != "co-original" {
+			t.Fatalf("Browse = %#v, want the last-known-good cover from game_igdb_enrichment", got)
 		}
 	})
 }
@@ -1463,10 +1700,15 @@ func TestDiscoverySearchPostgreSQL(t *testing.T) {
 // TestDiscoveryProviderDisabledAfterSuccessfulSyncOnlyReturnsLocalGames
 // covers the scenario an operator hits by removing IGDB credentials after a
 // generation already synchronized successfully: the active generation is
-// still sitting in PostgreSQL, so gating must happen in the application
-// (DiscoveryService.DisableProvider), not merely by the sync service being
-// idle. Uses its own DiscoveryService/pool so disabling it cannot leak into
-// TestDiscoverySearchPostgreSQL's shared instance.
+// still sitting in PostgreSQL, so gating must happen from the
+// ProviderStatusSource the composition root wires (disabledIGDBSync when no
+// IGDB credentials are configured), not merely by the sync service being
+// idle. It builds a second DiscoveryService over the same store, wired to a
+// disabledProviderStatus fake, mirroring exactly what a restart with IGDB
+// credentials removed would wire -- rather than mutating the enabled
+// instance -- and doubles as Step 3 item 7's PostgreSQL coverage that
+// include_provider=false returns no unmaterialized provider rows even
+// though an active generation still exists.
 func TestDiscoveryProviderDisabledAfterSuccessfulSyncOnlyReturnsLocalGames(t *testing.T) {
 	pool := newTestPool(t)
 	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
@@ -1481,7 +1723,7 @@ func TestDiscoveryProviderDisabledAfterSuccessfulSyncOnlyReturnsLocalGames(t *te
 
 	gameStore := gamepostgres.NewStore(pool)
 	catalog := game.NewService(gameStore)
-	discovery := game.NewDiscoveryService(gameStore, gameStore, gameStore)
+	enabled := game.NewDiscoveryService(gameStore, gameStore, gameStore, storeProviderStatus{store: gameStore})
 
 	local, err := catalog.Create(t.Context(), "Quest Runner Local", "quest-runner-local")
 	if err != nil {
@@ -1493,30 +1735,33 @@ func TestDiscoveryProviderDisabledAfterSuccessfulSyncOnlyReturnsLocalGames(t *te
 
 	// While IGDB is still enabled, the search finds both the local game and
 	// the unmaterialized provider result.
-	before, err := discovery.Browse(t.Context(), viewer.ID, "quest runner")
+	beforePage, err := enabled.Browse(t.Context(), viewer.ID, "quest runner")
 	if err != nil {
 		t.Fatalf("Browse before disabling: %v", err)
 	}
+	before := beforePage.Items
 	if len(before) != 2 {
 		t.Fatalf("Browse before disabling = %#v, want the local game and the provider result", before)
 	}
 
 	// An operator removes IGDB credentials and restarts; the composition
-	// root now wires a disabled DiscoveryService, but the previously
-	// synchronized generation is still sitting in PostgreSQL untouched.
-	discovery.DisableProvider()
+	// root now wires a DiscoveryService over a disabled ProviderStatusSource,
+	// but the previously synchronized generation is still sitting in
+	// PostgreSQL untouched.
+	disabled := game.NewDiscoveryService(gameStore, gameStore, gameStore, disabledProviderStatus{})
 
-	after, err := discovery.Browse(t.Context(), viewer.ID, "quest runner")
+	afterPage, err := disabled.Browse(t.Context(), viewer.ID, "quest runner")
 	if err != nil {
 		t.Fatalf("Browse after disabling: %v", err)
 	}
+	after := afterPage.Items
 	if len(after) != 1 || after[0].LocalGameID != local.ID || (after[0].Reference != game.ProviderReference{}) {
 		t.Fatalf("Browse after disabling = %#v, want only the local game with no provider reference", after)
 	}
 
 	// Resolving/following the still-persisted provider record must also
 	// fail now instead of materializing stale IGDB data.
-	if _, err := discovery.Resolve(t.Context(), game.ProviderReference{Provider: "igdb", ExternalID: "9601"}); !errors.Is(err, game.ErrProviderRecordNotFound) {
+	if _, err := disabled.Resolve(t.Context(), game.ProviderReference{Provider: "igdb", ExternalID: "9601"}); !errors.Is(err, game.ErrProviderRecordNotFound) {
 		t.Fatalf("Resolve after disabling: err = %v, want %v", err, game.ErrProviderRecordNotFound)
 	}
 }
@@ -1529,7 +1774,7 @@ func TestIGDBMaterializationPostgreSQL(t *testing.T) {
 
 	gameStore := gamepostgres.NewStore(pool)
 	catalog := game.NewService(gameStore)
-	discovery := game.NewDiscoveryService(gameStore, gameStore, gameStore)
+	discovery := game.NewDiscoveryService(gameStore, gameStore, gameStore, storeProviderStatus{store: gameStore})
 
 	// Two distinct provider records deliberately share one display name AND
 	// one provider slug: materialization must never merge by name, and the
@@ -1724,7 +1969,7 @@ func TestIGDBMaterializationConvergesOnSlugConflict(t *testing.T) {
 	}
 
 	gameStore := gamepostgres.NewStore(pool)
-	discovery := game.NewDiscoveryService(gameStore, gameStore, gameStore)
+	discovery := game.NewDiscoveryService(gameStore, gameStore, gameStore, storeProviderStatus{store: gameStore})
 	activateIGDBGeneration(t, gameStore, []game.ProviderGame{
 		{
 			Reference:        game.ProviderReference{Provider: "igdb", ExternalID: "100"},
@@ -1786,7 +2031,7 @@ func TestIGDBMaterializationConvergesOnExternalIDConflict(t *testing.T) {
 	}
 
 	gameStore := gamepostgres.NewStore(pool)
-	discovery := game.NewDiscoveryService(gameStore, gameStore, gameStore)
+	discovery := game.NewDiscoveryService(gameStore, gameStore, gameStore, storeProviderStatus{store: gameStore})
 	activateIGDBGeneration(t, gameStore, []game.ProviderGame{
 		{
 			Reference: game.ProviderReference{Provider: "igdb", ExternalID: "100"},
@@ -1864,7 +2109,7 @@ func TestIGDBMaterializationUnsynchronizedRacers(t *testing.T) {
 	}
 
 	gameStore := gamepostgres.NewStore(pool)
-	discovery := game.NewDiscoveryService(gameStore, gameStore, gameStore)
+	discovery := game.NewDiscoveryService(gameStore, gameStore, gameStore, storeProviderStatus{store: gameStore})
 	activateIGDBGeneration(t, gameStore, []game.ProviderGame{
 		{
 			Reference:        game.ProviderReference{Provider: "igdb", ExternalID: "100"},
@@ -1940,6 +2185,27 @@ func beginRawIGDBGeneration(t *testing.T, pool *pgxpool.Pool) string {
 		t.Fatalf("begin raw IGDB generation: %v", err)
 	}
 	return id
+}
+
+// storeProviderStatus adapts *gamepostgres.Store's ProviderIndexRepository.
+// Status (which takes an explicit "now") to the game.ProviderStatusSource
+// contract DiscoveryService consumes, exactly the shape the composition
+// root's real IGDBSyncService wraps the same store with.
+type storeProviderStatus struct {
+	store *gamepostgres.Store
+}
+
+func (s storeProviderStatus) Status(ctx context.Context) (game.ProviderStatus, error) {
+	return s.store.Status(ctx, time.Now())
+}
+
+// disabledProviderStatus always reports the provider as disabled, mirroring
+// the composition root's disabledIGDBSync when no IGDB credentials are
+// configured.
+type disabledProviderStatus struct{}
+
+func (disabledProviderStatus) Status(context.Context) (game.ProviderStatus, error) {
+	return game.ProviderStatus{State: game.ProviderDisabled}, nil
 }
 
 func activateIGDBGeneration(t *testing.T, store *gamepostgres.Store, providerGames []game.ProviderGame) {

@@ -43,11 +43,22 @@ const (
 )
 
 type ProviderStatus struct {
-	State       ProviderState
-	LastAttempt *time.Time
-	LastSuccess *time.Time
-	RecordCount int64
-	LastError   string
+	State            ProviderState
+	LastAttempt      *time.Time
+	LastSuccess      *time.Time
+	RecordCount      int64
+	LastError        string
+	CatalogAvailable bool
+}
+
+// ProviderStatusSource reports the current IGDB provider status.
+// DiscoveryService queries it on every Browse/Resolve call rather than
+// caching an enabled/disabled flag, so it stays correct across a provider
+// being disabled or re-enabled, or a background sync completing, without
+// restarting the service. *IGDBSyncService satisfies this (via its Status
+// method) so the composition root wires the real sync service directly.
+type ProviderStatusSource interface {
+	Status(context.Context) (ProviderStatus, error)
 }
 
 type ProviderCatalog interface {
@@ -70,8 +81,23 @@ type DiscoveryItem struct {
 	Materialized bool
 }
 
+// DiscoverySearchResult is one bounded page of a unified, ranked local+
+// provider search. HasMore is true only when a row past the requested limit
+// actually exists; the repository fetches one extra row to detect it rather
+// than issuing a separate count query.
+type DiscoverySearchResult struct {
+	Items   []DiscoveryItem
+	HasMore bool
+}
+
+// DiscoveryRepository.Search's final bool parameter gates whether
+// unmaterialized provider rows may be considered at all: false restricts the
+// unified query to local-sourced rows (an already-materialized local Game
+// still matches by its current local name/alias), exactly like the provider
+// being disabled did before this contract existed, but through the same
+// ranked query rather than a separate local-only code path.
 type DiscoveryRepository interface {
-	Search(context.Context, string, string, int) ([]DiscoveryItem, error)
+	Search(context.Context, string, string, int, bool) (DiscoverySearchResult, error)
 }
 
 type MaterializationRepository interface {

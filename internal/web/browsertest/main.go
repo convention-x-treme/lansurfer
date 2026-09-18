@@ -330,8 +330,8 @@ func (f *fixture) Trending(context.Context) ([]requestquery.TrendingGame, error)
 // unmaterialized), so Browse only ever returns already-materialized local
 // Games and Follow(ProviderReference) is unreachable from these tests.
 
-func (*fixture) Browse(context.Context, string, string) ([]game.DiscoveryItem, error) {
-	return []game.DiscoveryItem{{LocalGameID: "game-1", Name: "Warcraft III", Slug: "warcraft-3", Materialized: true}}, nil
+func (*fixture) Browse(context.Context, string, string) (game.DiscoveryPage, error) {
+	return game.DiscoveryPage{Items: []game.DiscoveryItem{{LocalGameID: "game-1", Name: "Warcraft III", Slug: "warcraft-3", Materialized: true}}}, nil
 }
 
 func (*fixture) MyGames(context.Context, string) ([]game.SubscriptionGame, error) {

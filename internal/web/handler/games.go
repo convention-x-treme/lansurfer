@@ -19,7 +19,7 @@ import (
 // reference) and follows the resulting authoritative local Game; FollowLocal
 // follows an already-local Game by ID.
 type GameDiscovery interface {
-	Browse(context.Context, string, string) ([]game.DiscoveryItem, error)
+	Browse(context.Context, string, string) (game.DiscoveryPage, error)
 	MyGames(context.Context, string) ([]game.SubscriptionGame, error)
 	FollowLocal(context.Context, string, string) error
 	Follow(context.Context, string, game.ProviderReference) (game.Game, error)
@@ -38,7 +38,7 @@ func NewGames(discovery GameDiscovery, brand branding.Brand) *Games {
 func (h *Games) Browse(w http.ResponseWriter, r *http.Request) {
 	account, _ := webmiddleware.CurrentUser(r.Context())
 	search := r.URL.Query().Get("q")
-	items, err := h.discovery.Browse(r.Context(), account.ID, search)
+	page, err := h.discovery.Browse(r.Context(), account.ID, search)
 	if err != nil {
 		if errors.Is(err, game.ErrInvalidSearch) {
 			h.renderBrowse(w, r, http.StatusUnprocessableEntity, nil, search, "Search must be 120 characters or fewer.")
@@ -48,7 +48,7 @@ func (h *Games) Browse(w http.ResponseWriter, r *http.Request) {
 		h.renderError(w, r)
 		return
 	}
-	h.renderBrowse(w, r, http.StatusOK, items, search, "")
+	h.renderBrowse(w, r, http.StatusOK, page.Items, search, "")
 }
 
 func (h *Games) MyGames(w http.ResponseWriter, r *http.Request) {

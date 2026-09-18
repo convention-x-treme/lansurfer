@@ -30,8 +30,8 @@ var _ ProviderIndexRepository = finalProviderIndexRepositoryContract{}
 
 type finalDiscoveryRepositoryContract struct{}
 
-func (finalDiscoveryRepositoryContract) Search(context.Context, string, string, int) ([]DiscoveryItem, error) {
-	return nil, nil
+func (finalDiscoveryRepositoryContract) Search(context.Context, string, string, int, bool) (DiscoverySearchResult, error) {
+	return DiscoverySearchResult{}, nil
 }
 
 type finalMaterializationRepositoryContract struct{}

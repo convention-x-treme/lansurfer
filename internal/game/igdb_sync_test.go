@@ -71,6 +71,36 @@ func TestIGDBSyncStatusOverlaysSyncingWhileRunning(t *testing.T) {
 	repo.wait(t)
 }
 
+// TestIGDBSyncStatusOverlayPreservesCatalogAvailableWhileSyncing covers the
+// refresh-after-a-successful-baseline case Step 5 calls out: Status overlays
+// ProviderSyncing onto whatever the repository reports while a sync is in
+// flight, but must never clobber CatalogAvailable along the way, so a
+// refresh running after an earlier successful sync keeps serving that
+// earlier baseline as available rather than looking like an initial sync.
+func TestIGDBSyncStatusOverlayPreservesCatalogAvailableWhileSyncing(t *testing.T) {
+	repo := newFakeProviderIndexRepository()
+	repo.status = ProviderStatus{State: ProviderCurrent, CatalogAvailable: true}
+	block := make(chan struct{})
+	service := NewIGDBSyncService(blockingCatalog{release: block}, repo, time.Now, nil)
+	if !service.TryStart(t.Context()) {
+		t.Fatal("TryStart=false")
+	}
+
+	status, err := service.Status(t.Context())
+	if err != nil {
+		t.Fatalf("Status() error = %v", err)
+	}
+	if status.State != ProviderSyncing {
+		t.Fatalf("status.State = %v, want %v", status.State, ProviderSyncing)
+	}
+	if !status.CatalogAvailable {
+		t.Fatal("active generation must mark catalog available")
+	}
+
+	close(block)
+	repo.wait(t)
+}
+
 type fakeProviderIndexRepository struct {
 	mu                sync.Mutex
 	activateCount     int
@@ -79,6 +109,7 @@ type fakeProviderIndexRepository struct {
 	lastFailureReason string
 	nextGenerationID  int
 	done              chan struct{}
+	status            ProviderStatus
 }
 
 func newFakeProviderIndexRepository() *fakeProviderIndexRepository {
@@ -115,7 +146,7 @@ func (r *fakeProviderIndexRepository) FailGeneration(_ context.Context, _ string
 }
 
 func (r *fakeProviderIndexRepository) Status(context.Context, time.Time) (ProviderStatus, error) {
-	return ProviderStatus{}, nil
+	return r.status, nil
 }
 
 func (r *fakeProviderIndexRepository) wait(t *testing.T) {

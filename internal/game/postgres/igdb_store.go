@@ -173,10 +173,11 @@ func (s *Store) Status(ctx context.Context, now time.Time) (game.ProviderStatus,
 		return game.ProviderStatus{}, fmt.Errorf("load IGDB provider status: %w", err)
 	}
 	status := game.ProviderStatus{
-		State:       game.ProviderNotSynced,
-		LastAttempt: timestamptzPointer(row.LastAttemptAt),
-		LastSuccess: timestamptzPointer(row.LastSuccessAt),
-		RecordCount: row.RecordCount,
+		State:            game.ProviderNotSynced,
+		LastAttempt:      timestamptzPointer(row.LastAttemptAt),
+		LastSuccess:      timestamptzPointer(row.LastSuccessAt),
+		RecordCount:      row.RecordCount,
+		CatalogAvailable: row.ActiveGenerationID.Valid,
 	}
 	if row.LastError.Valid {
 		status.LastError = row.LastError.String
@@ -192,48 +193,53 @@ func (s *Store) Status(ctx context.Context, now time.Time) (game.ProviderStatus,
 	return status, nil
 }
 
-// Search combines authoritative local Games (matched by name/alias, exactly
-// as before this feature) with the active IGDB generation from PostgreSQL;
-// it never calls the IGDB provider. Empty search is handled entirely by the
-// caller (DiscoveryService) using the local catalog, so this method is only
-// invoked for a non-empty search.
-func (s *Store) Search(ctx context.Context, userID, search string, limit int) ([]game.DiscoveryItem, error) {
+// Search combines authoritative local Games (matched by name/alias) with the
+// active IGDB generation from PostgreSQL into one ranked, bounded page; it
+// never calls the IGDB provider. Empty/single-character search is handled
+// entirely by the caller (DiscoveryService) using the local catalog, so this
+// method is only invoked for a two-or-more-character search. It fetches one
+// row beyond limit to detect DiscoverySearchResult.HasMore without a
+// separate count query, and trims that extra row before returning.
+// includeProvider=false restricts the ranked query to local-sourced rows
+// only, exactly what a disabled provider needs, through the same query
+// rather than a separate local-only code path.
+func (s *Store) Search(ctx context.Context, userID, search string, limit int, includeProvider bool) (game.DiscoverySearchResult, error) {
 	databaseUserID, err := parseUUID(userID)
 	if err != nil {
-		return nil, fmt.Errorf("parse user ID: %w", err)
+		return game.DiscoverySearchResult{}, fmt.Errorf("parse user ID: %w", err)
 	}
 	rows, err := s.queries.SearchDiscoveryGames(ctx, sqlcgen.SearchDiscoveryGamesParams{
 		UserID:           databaseUserID,
-		VisibleGameTypes: game.VisibleProviderGameTypes(),
 		Search:           search,
-		RowLimit:         int32(limit),
+		IncludeProvider:  includeProvider,
+		VisibleGameTypes: game.VisibleProviderGameTypes(),
+		FetchLimit:       int32(limit + 1),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("search discovery games: %w", err)
+		return game.DiscoverySearchResult{}, fmt.Errorf("search discovery games: %w", err)
 	}
-	result := make([]game.DiscoveryItem, 0, len(rows))
+	hasMore := len(rows) > limit
+	if hasMore {
+		rows = rows[:limit]
+	}
+	items := make([]game.DiscoveryItem, 0, len(rows))
 	for _, row := range rows {
 		var reference game.ProviderReference
 		if row.ExternalID != "" {
 			reference, err = game.NewProviderReference("igdb", row.ExternalID)
 			if err != nil {
-				return nil, fmt.Errorf("parse IGDB external ID %s: %w", row.ExternalID, err)
+				return game.DiscoverySearchResult{}, fmt.Errorf("parse IGDB external ID %s: %w", row.ExternalID, err)
 			}
 		}
-		result = append(result, game.DiscoveryItem{
+		items = append(items, game.DiscoveryItem{
 			LocalGameID:      row.LocalGameID,
 			Reference:        reference,
-			Name:             row.Name,
-			Slug:             row.Slug,
-			GameType:         row.GameType.String,
-			PlatformNames:    row.PlatformNames,
-			FirstReleaseDate: timestamptzPointer(row.FirstReleaseDate),
-			CoverImageID:     row.CoverImageID.String,
+			GamePresentation: presentation(row.Name, row.Slug, row.GameType, row.CoverImageID, row.PlatformNames, row.FirstReleaseDate),
 			Subscribed:       row.Subscribed,
 			Materialized:     row.Materialized,
 		})
 	}
-	return result, nil
+	return game.DiscoverySearchResult{Items: items, HasMore: hasMore}, nil
 }
 
 func storeIGDBProviderGameParams(generationID pgtype.UUID, providerGame game.ProviderGame) (sqlcgen.StoreIGDBProviderGameParams, error) {
