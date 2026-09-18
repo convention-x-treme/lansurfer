@@ -1,19 +1,22 @@
 -- name: CreateGameRequest :one
-INSERT INTO game_requests (event_id, game_id, creator_id, max_players, starts_at, description)
+INSERT INTO game_requests (game_id, creator_id, max_players, starts_at, description)
 VALUES (
-    sqlc.arg(event_id)::uuid,
     sqlc.arg(game_id)::uuid,
     sqlc.arg(creator_id)::uuid,
     sqlc.narg(max_players)::integer,
     sqlc.arg(starts_at),
     sqlc.arg(description)
 )
-RETURNING id::text, event_id::text, game_id::text, creator_id::text, max_players,
+RETURNING id::text, game_id::text, creator_id::text, max_players,
           starts_at, description, status, created_at, updated_at;
 
 -- name: AddCreatorMembership :exec
 INSERT INTO game_request_members (game_request_id, user_id)
 VALUES (sqlc.arg(game_request_id)::uuid, sqlc.arg(user_id)::uuid);
+
+-- name: RecordGameRequestActivity :exec
+INSERT INTO game_request_activity (game_request_id, actor_id, kind)
+VALUES (sqlc.arg(game_request_id)::uuid, sqlc.arg(actor_id)::uuid, sqlc.arg(kind));
 
 -- name: LockGameRequest :one
 SELECT creator_id::text, max_players, status

@@ -1,8 +1,101 @@
 @source "../../internal/web/**/*.templ";
 
+/* Tailwind's automatic source detection walks the whole repository, so files
+   that hold no class names still feed the scanner and ordinary prose turns
+   into shipped CSS: the word "invisible" in a Go test comment emits
+   .invisible, and a task name such as [frontend:build] emits a utility
+   invented from it. Test code and build configuration are excluded for that
+   reason. Production class names come from the templates and from app.ts,
+   which builds a few of them at runtime.
+
+   Only this change's own files are excluded. The same leak from Go test
+   comments and documentation prose exists repository-wide and predates it;
+   narrowing that is Track G's call, tracked separately. */
+@source not "../../web/tests/**";
+@source not "../../playwright.config.ts";
+@source not "../../Taskfile.yml";
+
+/* One token set for both presentations, switched by the document's colour
+   scheme. DaisyUI sets color-scheme on every theme selector it emits —
+   including the no-cookie :root:not([data-theme]) case under
+   prefers-color-scheme — so light-dark() resolves correctly whether the theme
+   came from the cookie or from the operating system. A per-component
+   [data-theme="lansurfer-light"] override cannot see that last case, which is
+   why the light corrections used to leak dark values onto a light desktop.
+
+   Each level of the action hierarchy in docs/BRANDING.md owns one surface, so a
+   filled Surf Blue button keeps meaning exactly one thing: this moves you
+   forward. Ratios in the comments are measured against the surface each token
+   actually lands on. */
+:root {
+  /* Supporting actions need a body of their own: Harbour alone sat at 1.36:1
+     against an Ocean Depth card, which is not a visible affordance. */
+  --surface-quiet: light-dark(
+    color-mix(in srgb, var(--brand-tide-line) 92%, var(--brand-deep-ocean)),
+    color-mix(in srgb, var(--brand-harbour) 85%, var(--brand-sea-foam))
+  );
+  --ink-quiet: light-dark(color-mix(in srgb, var(--brand-deep-blue) 66%, black), var(--brand-sea-foam));
+  --surface-danger: light-dark(
+    color-mix(in srgb, var(--brand-coral) 14%, var(--brand-white-sand)),
+    color-mix(in srgb, var(--brand-coral) 32%, var(--brand-ocean-depth))
+  );
+  --surface-danger-strong: light-dark(
+    color-mix(in srgb, var(--brand-coral) 26%, var(--brand-white-sand)),
+    color-mix(in srgb, var(--brand-coral) 46%, var(--brand-ocean-depth))
+  );
+  /* 5.0:1 on the resting danger surface. */
+  --ink-danger: light-dark(
+    color-mix(in srgb, var(--brand-coral) 58%, black),
+    color-mix(in srgb, var(--brand-coral) 52%, var(--brand-white-sand))
+  );
+  /* The hover surface carries more Coral, so its ink lightens to keep 5.2:1. */
+  --ink-danger-strong: light-dark(
+    color-mix(in srgb, var(--brand-coral) 58%, black),
+    color-mix(in srgb, var(--brand-coral) 32%, var(--brand-white-sand))
+  );
+  /* Golden Hour reads as a ring against the dark page; on Sea Mist it does not. */
+  --focus-ring: light-dark(var(--brand-deep-blue), var(--brand-golden-hour));
+  /* Harbour on Ocean Depth was 1.36:1 — legible on a good panel and nothing on
+     a projector. A touch of Sea Foam lifts the same hue to 2.2:1. */
+  --border-raised: light-dark(var(--brand-tide-line), color-mix(in srgb, var(--brand-harbour) 80%, var(--brand-sea-foam)));
+  /* Light surfaces carry a hairline; dark surfaces separate by value alone, so
+     the dark shadow is the same geometry in a fully transparent colour. */
+  --shadow-raised: 0 1px 2px light-dark(color-mix(in srgb, var(--brand-deep-ocean) 10%, transparent), transparent);
+  /* Overlays are the one place dark mode needs a second elevation: a drawer or
+     a toast has to read as being above the page, not beside it. */
+  --shadow-overlay: 0 1rem 2.5rem light-dark(
+    color-mix(in srgb, var(--brand-deep-ocean) 22%, transparent),
+    color-mix(in srgb, var(--brand-deep-ocean) 65%, transparent)
+  );
+
+  /* State inks. Same job in both themes, different value, one declaration. */
+  --ink-open: light-dark(var(--brand-deep-blue), var(--brand-aqua-wave));
+  --ink-hot: light-dark(color-mix(in srgb, var(--brand-golden-hour) 45%, black), var(--brand-golden-hour));
+  --ink-last: light-dark(color-mix(in srgb, var(--brand-sunset) 64%, black), var(--brand-sunset));
+  /* Sunset on its own 18% chip tint is 4.2:1 in dark mode; whitening it to 88%
+     reaches 4.65:1 without leaving the colour's one job. */
+  --ink-chip-last: light-dark(
+    color-mix(in srgb, var(--brand-sunset) 64%, black),
+    color-mix(in srgb, var(--brand-sunset) 88%, var(--brand-white-sand))
+  );
+  --ink-selected: light-dark(color-mix(in srgb, var(--brand-deep-blue) 82%, black), var(--brand-sea-foam));
+  --ink-nav-active: light-dark(color-mix(in srgb, var(--brand-deep-blue) 85%, black), var(--brand-surf-blue));
+  --ink-abbreviation: light-dark(color-mix(in srgb, var(--brand-deep-blue) 66%, black), var(--brand-aqua-wave));
+  --surface-avatar-member: light-dark(var(--brand-tide-line), var(--brand-harbour));
+  /* DaisyUI draws form-field borders at 20% of the text colour: 1.8:1 in dark
+     mode, so nothing marks the control. These clear 3:1 against both the field
+     fill and the card the field sits in. SC 1.4.11. */
+  --input-border: light-dark(
+    color-mix(in srgb, var(--brand-deep-ocean) 55%, transparent),
+    color-mix(in srgb, var(--brand-white-sand) 46%, transparent)
+  );
+}
+
 @theme {
-  --font-sans: "Montserrat", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Schibsted Grotesk", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --text-xs: 0.8125rem;
+  --text-xs--line-height: calc(18 / 13);
 }
 
 @layer base {
@@ -12,21 +105,27 @@
   }
 
   body {
-    min-height: 100vh;
+    min-height: 100dvh;
     font-family: var(--font-sans);
-    font-weight: 500;
+    font-weight: 400;
   }
 
   :focus-visible {
-    outline: 3px solid var(--color-warning);
+    outline: 3px solid var(--focus-ring);
     outline-offset: 3px;
   }
 }
 
 @layer components {
+  /* The only italic in the system. "LAN" is Black, "surfer" Semibold. */
   .brand-wordmark {
-    font-weight: 800;
-    letter-spacing: -0.035em;
+    font-style: italic;
+    font-weight: 900;
+    letter-spacing: -0.03em;
+  }
+
+  .brand-wordmark > span + span {
+    font-weight: 600;
   }
 
   .data-text {
@@ -34,15 +133,698 @@
     font-variant-numeric: tabular-nums;
   }
 
+  /* A panel heading, not an eyebrow: same family as the text it introduces. */
+  .section-label {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: color-mix(in srgb, var(--color-base-content) 80%, transparent);
+  }
+
   .page-shell {
     width: min(100% - 2rem, 72rem);
     margin-inline: auto;
   }
 
+  .app-shell {
+    min-height: 100dvh;
+  }
+
+  .app-sidebar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    height: 100dvh;
+    flex-direction: column;
+    gap: 1.75rem;
+    border-right: 1px solid var(--border-raised);
+    background: var(--color-base-200);
+    padding: 1.5rem 1rem;
+    box-shadow: var(--shadow-raised);
+  }
+
+  .app-navigation {
+    display: grid;
+    gap: 0.375rem;
+  }
+
+  .app-navigation-link {
+    display: flex;
+    min-height: 2.75rem;
+    align-items: center;
+    border-radius: var(--radius-field);
+    padding-inline: 0.75rem;
+    color: color-mix(in srgb, var(--color-base-content) 72%, transparent);
+    transition: color 180ms ease-out, background-color 180ms ease-out;
+  }
+
+  .app-navigation-link:hover {
+    color: var(--color-base-content);
+    background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+  }
+
+  /* The tint stops at 12% so the label keeps 5.0:1 against its own pill; the
+     weight and the ink, not the fill, are what mark the current page. */
+  .app-navigation-link-active {
+    color: var(--ink-nav-active);
+    background: color-mix(in srgb, var(--color-primary) 12%, var(--color-base-200));
+    font-weight: 700;
+  }
+
+  .viewer-panel {
+    display: grid;
+    grid-template-columns: 2.5rem minmax(0, 1fr);
+    align-items: center;
+    gap: 0.75rem;
+    border: 1px solid var(--border-raised);
+    border-radius: var(--radius-field);
+    background: var(--color-base-100);
+    padding: 0.625rem;
+  }
+
+  .avatar-placeholder {
+    display: inline-grid;
+    width: 2.5rem;
+    height: 2.5rem;
+    flex: 0 0 auto;
+    place-items: center;
+    border-radius: var(--radius-selector);
+    background: var(--color-primary);
+    color: var(--color-primary-content);
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    font-weight: 700;
+  }
+
+  .avatar-placeholder-outline {
+    border: 1px solid var(--brand-sunset);
+    background: transparent;
+    color: var(--brand-sunset);
+  }
+
+  .mobile-header {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    min-height: 3.75rem;
+    border-bottom: 1px solid var(--border-raised);
+    /* Opaque: at 94% the rows scrolled visibly through the wordmark. */
+    background: var(--color-base-100);
+    padding: 0.625rem 1rem;
+  }
+
+  .mobile-drawer > summary {
+    list-style: none;
+  }
+
+  .mobile-drawer > summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .mobile-drawer-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    display: none;
+    background: color-mix(in srgb, var(--brand-deep-ocean) 75%, transparent);
+  }
+
+  .mobile-drawer-panel {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 50;
+    display: flex;
+    width: min(19.5rem, calc(100vw - 2.5rem));
+    flex-direction: column;
+    gap: 1.75rem;
+    border-right: 1px solid var(--border-raised);
+    background: var(--color-base-200);
+    padding: 1.25rem 1rem;
+    box-shadow: var(--shadow-overlay);
+    transform: translateX(-100%);
+    transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .mobile-drawer[open] .mobile-drawer-backdrop {
+    display: block;
+  }
+
+  .mobile-drawer[open] .mobile-drawer-panel {
+    transform: translateX(0);
+  }
+
+  .app-page {
+    width: min(100%, 82rem);
+    margin-inline: auto;
+    padding: 1.5rem 1rem 3rem;
+  }
+
+  /* Screen title, per the type scale in docs/BRANDING.md. The top bar used to
+     carry two lines of 13 px mono and no title at all. */
+  .app-title {
+    font-size: 1.5rem;
+    font-weight: 900;
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+    text-wrap: balance;
+  }
+
+  .app-topbar {
+    display: flex;
+    min-height: 4.5rem;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    border-bottom: 1px solid var(--border-raised);
+    padding: 0.75rem 1rem;
+  }
+
+  .content-page {
+    padding: 1.125rem 1rem 1.5rem;
+  }
+
+  .detail-shell {
+    display: grid;
+    gap: 1.125rem;
+    align-items: start;
+  }
+
+  .detail-main,
+  .detail-rail {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 1.125rem;
+  }
+
+  .detail-card,
+  .detail-hero {
+    display: flex;
+    flex-direction: column;
+    gap: 0.875rem;
+    border: 1px solid var(--border-raised);
+    border-radius: var(--radius-box);
+    background: var(--color-base-200);
+    padding: 1.375rem;
+    box-shadow: var(--shadow-raised);
+  }
+
+  .detail-hero {
+    gap: 0;
+  }
+
+  .detail-card-accent {
+    border-color: color-mix(in srgb, var(--color-warning) 40%, var(--border-raised));
+  }
+
+  .game-card {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 0.875rem;
+    border: 1px solid var(--border-raised);
+    border-radius: var(--radius-box);
+    background: var(--color-base-200);
+    padding: 1.125rem 1.25rem;
+    box-shadow: var(--shadow-raised);
+    transition: border-color 180ms ease-out;
+  }
+
+  .game-card:hover,
+  .game-card:focus-within {
+    border-color: color-mix(in srgb, var(--color-primary) 58%, var(--border-raised));
+  }
+
+  .game-grid {
+    display: grid;
+    gap: 0.75rem;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 19rem), 1fr));
+  }
+
+  .member-time {
+    width: 6.5rem;
+    flex: none;
+    text-align: right;
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    white-space: nowrap;
+    color: color-mix(in srgb, var(--color-base-content) 70%, transparent);
+  }
+
+  .avatar-placeholder-member {
+    background: var(--surface-avatar-member);
+    color: var(--ink-quiet);
+  }
+
+  .detail-rail .btn {
+    justify-content: center;
+  }
+
+  .request-shell {
+    display: grid;
+    min-height: calc(100dvh - 4.5rem);
+  }
+
+  .request-main {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    padding: 1.125rem 1rem 1.5rem;
+  }
+
+  .request-rail {
+    display: none;
+    flex-direction: column;
+    align-content: start;
+    gap: 1.375rem;
+    border-left: 1px solid var(--border-raised);
+    padding: 1.125rem 1.25rem 1.5rem;
+  }
+
+  .rail-section {
+    display: grid;
+    gap: 0.75rem;
+    align-content: start;
+  }
+
+  .request-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    padding-bottom: 0.875rem;
+  }
+
+  /* A filter toggle is a control, so it carries the same minimum target size
+     as the buttons beside it and shows focus on the whole label. */
+  .filter-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4375rem;
+    min-height: 2.75rem;
+    border-radius: var(--radius-field);
+    padding-inline: 0.5rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: color-mix(in srgb, var(--color-base-content) 78%, transparent);
+    cursor: pointer;
+  }
+
+  .filter-toggle:has(:focus-visible) {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+
+  .filter-toggle:has(:checked) {
+    background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+    color: var(--color-base-content);
+  }
+
+  .request-search {
+    width: min(100%, 13.75rem);
+    border-radius: var(--radius-field);
+    background: var(--color-base-200);
+    font-size: 0.8125rem;
+  }
+
+  .status-chip {
+    flex: none;
+    white-space: nowrap;
+    border-radius: var(--radius-selector);
+    padding: 0.3125rem 0.625rem;
+    background: color-mix(in srgb, var(--color-base-content) 12%, transparent);
+    color: color-mix(in srgb, var(--color-base-content) 70%, transparent);
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    line-height: calc(18 / 13);
+  }
+
+  .status-chip-open,
+  .status-chip-cancelled,
+  .status-chip-joined,
+  .status-chip-host,
+  .status-chip-last {
+    font-weight: 700;
+  }
+
+  .status-chip-last {
+    background: color-mix(in srgb, var(--brand-sunset) 18%, transparent);
+    color: var(--ink-chip-last);
+  }
+
+  .status-chip-open {
+    background: color-mix(in srgb, var(--color-primary) 18%, transparent);
+    color: var(--ink-selected);
+  }
+
+  .status-chip-cancelled {
+    background: color-mix(in srgb, var(--color-error) 16%, transparent);
+    color: var(--ink-danger);
+  }
+
+  .status-chip-joined {
+    background: color-mix(in srgb, var(--color-secondary) 20%, transparent);
+    color: var(--ink-selected);
+  }
+
+  .status-chip-host {
+    background: color-mix(in srgb, var(--color-warning) 16%, transparent);
+    color: var(--ink-hot);
+  }
+
+  #game-request-list,
+  .request-list-content {
+    display: flex;
+    min-height: 0;
+    flex: 1;
+    flex-direction: column;
+  }
+
+  .request-list {
+    display: grid;
+    gap: 0.375rem;
+  }
+
+  .request-row {
+    display: grid;
+    min-height: 3.5rem;
+    grid-template-columns: minmax(0, 1fr) 3.25rem 4.75rem auto;
+    align-items: center;
+    gap: 0.875rem;
+    border: 1px solid var(--border-raised);
+    border-radius: var(--radius-field);
+    background: var(--color-base-200);
+    padding: 0.6875rem 0.875rem;
+    box-shadow: var(--shadow-raised);
+    transition: border-color 180ms ease-out, background-color 180ms ease-out;
+  }
+
+  .request-row:hover,
+  .request-row:focus-within {
+    border-color: color-mix(in srgb, var(--color-primary) 58%, var(--border-raised));
+    background: color-mix(in srgb, var(--color-primary) 5%, var(--color-base-200));
+  }
+
+  .request-row-last {
+    border-color: color-mix(in srgb, var(--brand-sunset) 70%, var(--border-raised));
+  }
+
+  .request-row-joined {
+    border-color: color-mix(in srgb, var(--color-primary) 68%, var(--border-raised));
+  }
+
+  /* Closed and full requests stay readable but stop competing with joinable rows. */
+  .request-row-closed {
+    background: color-mix(in srgb, var(--color-base-200) 50%, transparent);
+    color: color-mix(in srgb, var(--color-base-content) 70%, transparent);
+  }
+
+  .request-row-closed .game-abbreviation {
+    color: inherit;
+  }
+
+  .request-row-main {
+    display: grid;
+    min-width: 0;
+    grid-template-columns: 2.125rem minmax(0, auto) auto;
+    align-items: center;
+    justify-content: start;
+    gap: 0.875rem;
+  }
+
+  /* Places and start time are columns: right-aligned so they scan vertically. */
+  .request-row > span[aria-label],
+  .request-row > time {
+    text-align: right;
+  }
+
+  .request-row > span[aria-label] {
+    justify-self: end;
+  }
+
+  .place-counter {
+    font-family: var(--font-mono);
+    font-size: 1rem;
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    line-height: 1;
+    white-space: nowrap;
+  }
+
+  .place-counter-lg {
+    font-size: 1.25rem;
+    line-height: 1.4;
+  }
+
+  .game-abbreviation {
+    display: inline-grid;
+    width: 2.125rem;
+    height: 2.125rem;
+    flex: 0 0 auto;
+    place-items: center;
+    border: 1px solid var(--border-raised);
+    border-radius: var(--radius-selector);
+    background: var(--color-base-100);
+    color: var(--ink-abbreviation);
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+  }
+
+  .game-abbreviation-lg {
+    width: 4rem;
+    height: 4rem;
+    border-radius: var(--radius-field);
+    font-size: 1.125rem;
+  }
+
+  .request-row-action {
+    display: flex;
+    justify-content: end;
+  }
+
+  .request-row-action .btn {
+    min-width: 4.25rem;
+  }
+
+  .action-static {
+    display: inline-flex;
+    min-height: 2rem;
+    min-width: 4.25rem;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid color-mix(in srgb, var(--color-base-content) 22%, transparent);
+    border-radius: var(--radius-field);
+    padding-inline: 0.875rem;
+    color: color-mix(in srgb, var(--color-base-content) 70%, transparent);
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+
+  .badge {
+    font-size: 0.8125rem;
+  }
+
+  .request-list-skeleton {
+    display: none;
+    gap: 0.375rem;
+  }
+
+  .request-skeleton-row {
+    min-height: 3.5rem;
+    display: grid;
+    grid-template-columns: 2.125rem minmax(8rem, 1fr) 4rem;
+    align-items: center;
+    gap: 0.75rem;
+    border-radius: var(--radius-field);
+    background: var(--color-base-200);
+    padding: 0.625rem 0.75rem;
+  }
+
+  .request-skeleton-row span {
+    height: 0.75rem;
+    border-radius: 0.125rem;
+    background: color-mix(in srgb, var(--color-base-content) 14%, transparent);
+  }
+
+  .request-skeleton-row span:first-child {
+    height: 2.125rem;
+    border-radius: var(--radius-selector);
+  }
+
+  #game-request-list.htmx-request .request-list-content {
+    display: none;
+  }
+
+  #game-request-list.htmx-request .request-list-skeleton {
+    display: grid;
+  }
+
+  .request-empty {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    border: 1px solid var(--border-raised);
+    border-radius: var(--radius-box);
+    background: var(--color-base-200);
+    padding: 1.5rem;
+    box-shadow: var(--shadow-raised);
+  }
+
+  .request-empty img {
+    width: 7.5rem;
+    height: 7.5rem;
+    flex: 0 0 auto;
+    object-fit: contain;
+  }
+
+  .composer-panel {
+    width: min(100%, 43rem);
+    margin-inline: auto;
+    border: 1px solid var(--border-raised);
+    border-radius: var(--radius-box);
+    background: var(--color-base-200);
+    padding: 1.25rem;
+    box-shadow: var(--shadow-raised);
+  }
+
+  .start-choice span {
+    display: inline-flex;
+    min-height: 2.5rem;
+    cursor: pointer;
+    align-items: center;
+    border: 1px solid var(--border-raised);
+    border-radius: var(--radius-field);
+    padding-inline: 0.875rem;
+    color: color-mix(in srgb, var(--color-base-content) 72%, transparent);
+  }
+
+  .start-choice input:checked + span {
+    border-color: var(--color-primary);
+    background: var(--color-primary);
+    color: var(--color-primary-content);
+    font-weight: 700;
+  }
+
+  .start-choice input:focus-visible + span {
+    outline: 3px solid var(--focus-ring);
+    outline-offset: 3px;
+  }
+
+  .custom-start-fields {
+    display: none;
+  }
+
+  [data-start-options]:has(input[value="custom"]:checked) .custom-start-fields {
+    display: grid;
+  }
+
+  .member-row,
+  .last-place-row {
+    display: flex;
+    min-height: 3.25rem;
+    align-items: center;
+    gap: 0.75rem;
+    border-bottom: 1px solid color-mix(in srgb, var(--border-raised) 60%, transparent);
+    padding: 0.625rem 0.25rem;
+  }
+
+  .member-row:last-child,
+  .last-place-row:last-child {
+    border-bottom: 0;
+  }
+
+  .auth-header {
+    position: absolute;
+    inset: 0 0 auto;
+    z-index: 10;
+    display: flex;
+    min-height: 4.5rem;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem clamp(1rem, 4vw, 4rem);
+    /* The stage behind the header is always the dark key visual, in both themes. */
+    color: var(--brand-white-sand);
+  }
+
+  .auth-header .btn {
+    color: inherit;
+  }
+
+  /* The stage stays dark in both themes, so its focus ring stays Golden Hour. */
+  .auth-header,
+  .auth-stage {
+    --focus-ring: var(--brand-golden-hour);
+  }
+
+  .auth-stage {
+    position: relative;
+    display: grid;
+    min-height: 100dvh;
+    align-items: center;
+    justify-items: start;
+    overflow: hidden;
+    padding: 6rem clamp(1rem, 8vw, 7.5rem) 3rem;
+    background: linear-gradient(
+      150deg,
+      var(--brand-deep-ocean) 0%,
+      color-mix(in srgb, var(--brand-deep-ocean) 80%, var(--brand-surf-blue)) 48%,
+      var(--brand-surf-blue) 100%
+    );
+  }
+
+  .auth-waves {
+    position: absolute;
+    inset: auto 0 0;
+    z-index: 0;
+    width: 100%;
+    height: clamp(14rem, 33vw, 30rem);
+  }
+
+  .auth-panel {
+    position: relative;
+    z-index: 2;
+    width: min(100%, 29.25rem);
+    border: 1px solid var(--border-raised);
+    border-radius: var(--radius-box);
+    background: var(--color-base-100);
+    padding: clamp(1.5rem, 4vw, 2.75rem);
+    box-shadow: 0 1rem 2.5rem color-mix(in srgb, var(--brand-deep-ocean) 45%, transparent);
+  }
+
+  .auth-mascot {
+    position: absolute;
+    right: -2.5rem;
+    bottom: -3.75rem;
+    z-index: 1;
+    width: clamp(18rem, 34vw, 32.5rem);
+    max-height: 80dvh;
+    object-fit: contain;
+  }
+
   .hero-waterline {
-    background:
-      radial-gradient(circle at 12% 20%, color-mix(in srgb, var(--color-secondary) 24%, transparent), transparent 32%),
-      radial-gradient(circle at 88% 78%, color-mix(in srgb, var(--color-primary) 20%, transparent), transparent 35%);
+    background: color-mix(in srgb, var(--color-primary) 5%, var(--color-base-100));
+  }
+
+  .count-open {
+    color: var(--ink-open);
+  }
+
+  .count-hot {
+    color: var(--ink-hot);
+  }
+
+  .count-last {
+    color: var(--ink-last);
+  }
+
+  .count-muted {
+    color: color-mix(in srgb, var(--color-base-content) 70%, transparent);
+  }
+
+  /* The toast stack is an overlay, so it carries the overlay elevation rather
+     than dissolving into whatever it happens to cover. */
+  #live-notices > * {
+    box-shadow: var(--shadow-overlay);
   }
 
   .htmx-indicator {
@@ -55,6 +837,250 @@
   }
 }
 
+/* DaisyUI compiles .btn into Tailwind's utilities layer, which outranks the
+   components layer whatever the specificity. The button type scale and the
+   action variants therefore stay unlayered, so their tokens reach the button
+   instead of losing silently to DaisyUI's defaults. */
+.btn {
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+/* Supporting actions. Harbour gives them a body, so they read as a real choice
+   instead of the outline that everything used to share. */
+.btn-quiet {
+  --btn-color: var(--surface-quiet);
+  --btn-fg: var(--ink-quiet);
+}
+
+/* Reversible exits — Leave, Unfollow, Close for new players. They stay quiet
+   until the pointer or the keyboard reaches them, then they admit what they do.
+   Coral at rest would cry wolf on an action the player can simply repeat. */
+.btn-step-back {
+  --btn-color: var(--surface-quiet);
+  --btn-fg: var(--ink-quiet);
+}
+
+.btn-step-back:hover,
+.btn-step-back:focus-visible {
+  --btn-color: var(--surface-danger-strong);
+  --btn-fg: var(--ink-danger-strong);
+}
+
+/* Irreversible actions wear Coral before the click, not after it. */
+.btn-danger {
+  --btn-color: var(--surface-danger);
+  --btn-fg: var(--ink-danger);
+}
+
+.btn-danger:hover,
+.btn-danger:focus-visible {
+  --btn-color: var(--surface-danger-strong);
+  --btn-fg: var(--ink-danger-strong);
+}
+
+/* DaisyUI fades a disabled button to roughly 1:1 against its own surface. The
+   placeholder controls here stay disabled for a while, so they keep a readable
+   label instead of becoming an invisible ghost. */
+.btn:is(:disabled, [disabled], [aria-disabled="true"]) {
+  background-color: color-mix(in srgb, var(--color-base-content) 10%, var(--color-base-200));
+  color: color-mix(in srgb, var(--color-base-content) 70%, var(--color-base-200));
+  border-color: transparent;
+}
+
+/* Light mode carries its meaning in tinted surfaces, so a full-saturation bar
+   would be the loudest thing on the page. Dark mode keeps the solid fills. The
+   default tint makes a plain .alert resolve to its own base surface. */
+.alert {
+  --alert-tint: var(--color-base-200);
+  --alert-color: light-dark(color-mix(in srgb, var(--alert-tint) 16%, var(--color-base-200)), var(--alert-tint));
+  --alert-border-color: light-dark(color-mix(in srgb, var(--alert-tint) 45%, var(--border-raised)), var(--alert-tint));
+}
+
+.alert-info {
+  --alert-tint: var(--color-info);
+  color: light-dark(var(--color-base-content), var(--color-info-content));
+}
+
+.alert-warning {
+  --alert-tint: var(--color-warning);
+  color: light-dark(var(--color-base-content), var(--color-warning-content));
+}
+
+.alert-error {
+  --alert-tint: var(--color-error);
+  color: light-dark(var(--ink-danger), var(--color-error-content));
+}
+
+/* Form fields: DaisyUI's 20%-of-ink border is 1.8:1 in dark mode, so nothing
+   marks the control (SC 1.4.11). The focus ring is the system's own, not the
+   2 px outline DaisyUI derives from the same border colour. */
+.input,
+.select,
+.textarea,
+.file-input {
+  --input-color: var(--input-border);
+}
+
+.input:focus,
+.input:focus-within,
+.select:focus,
+.textarea:focus,
+.file-input:focus {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 3px;
+}
+
+/* A placeholder is read as text, so it meets the same 4.5:1 as the value. */
+.input::placeholder,
+.textarea::placeholder,
+input::placeholder,
+textarea::placeholder {
+  color: color-mix(in srgb, var(--color-base-content) 70%, transparent);
+  opacity: 1;
+}
+
+/* The scarcity variant of the primary action: the last free place. */
+.btn-urgent {
+  --btn-color: var(--brand-sunset);
+  --btn-fg: var(--brand-deep-ocean);
+}
+
+@media (min-width: 64rem) {
+  .app-shell {
+    display: grid;
+    grid-template-columns: 15.5rem minmax(0, 1fr);
+  }
+
+  .app-topbar {
+    padding-inline: 1.5rem;
+  }
+}
+
+@media (min-width: 64rem) {
+  .request-main,
+  .content-page {
+    padding-inline: 1.5rem;
+  }
+}
+
+@media (min-width: 80rem) {
+  .detail-shell {
+    grid-template-columns: minmax(0, 1fr) 20rem;
+  }
+
+  .request-shell {
+    grid-template-columns: minmax(0, 1fr) 18.5rem;
+  }
+
+  .request-rail {
+    display: flex;
+  }
+}
+
+@media (max-width: 47.99rem) {
+  /* The screen title takes the whole line before the page action wraps under
+     it, so neither the heading nor the meta sentence breaks mid-phrase. */
+  .app-topbar {
+    flex-wrap: wrap;
+  }
+
+  .app-topbar > :is(.app-title, :has(> .app-title)) {
+    flex: 1 1 100%;
+  }
+
+  .app-topbar > :is(.app-title, :has(> .app-title)) ~ * {
+    margin-left: auto;
+  }
+
+  .request-row > span[aria-label] {
+    grid-column: 1;
+    grid-row: 2;
+    justify-self: start;
+    padding-left: 3rem;
+  }
+
+  .request-row > time {
+    grid-column: 1;
+    grid-row: 2;
+    padding-left: 7rem;
+  }
+
+  .request-row-action {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+  }
+
+  .request-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.5rem 0.75rem;
+    padding-block: 0.625rem;
+  }
+
+  /* The chip wraps under the game name instead of disappearing: below 48 rem
+     Host, Joined, and Last place used to be readable only as a border tint. */
+  .request-row-main {
+    grid-template-columns: 2.25rem minmax(0, 1fr);
+    row-gap: 0.25rem;
+  }
+
+  .request-row-main > span:first-child {
+    grid-row: 1 / span 2;
+  }
+
+  .request-row-main .status-chip {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .request-row > span[aria-label],
+  .request-row > time {
+    text-align: left;
+  }
+
+  .request-search {
+    width: 100%;
+  }
+
+  .request-empty {
+    align-items: flex-start;
+  }
+
+  .request-empty img {
+    width: 5rem;
+    height: 5rem;
+  }
+
+  .member-row,
+  .last-place-row {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 61.99rem) {
+  .auth-mascot {
+    display: none;
+  }
+}
+
+/* The only signal that a row arrived live, so it has to survive a glance
+   across a lit room: 2.3:1 against the resting row, with the border carrying
+   the same beat. */
+@keyframes request-arrival {
+  0%, 55% {
+    background: color-mix(in srgb, var(--color-primary) 45%, var(--color-base-200));
+    border-color: var(--color-primary);
+  }
+  100% {
+    background: var(--color-base-200);
+    border-color: var(--border-raised);
+  }
+}
+
+.request-row-incoming {
+  animation: request-arrival 2.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -63,5 +1089,45 @@
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
+  }
+}
+
+/* Touch targets. btn-sm is 32 px, which clears SC 2.5.8 but not the 44 px a
+   standing player hits reliably. Pointer-coarse only, so desktop keeps its
+   density. */
+@media (pointer: coarse) {
+  .btn-sm,
+  .action-static {
+    min-height: 2.75rem;
+  }
+
+  .btn-sm.btn-square {
+    width: 2.75rem;
+  }
+}
+
+/* Borders and boundaries carry the increase; the semantic inks already meet
+   4.5:1 and changing their hue would change their meaning. */
+@media (prefers-contrast: more) {
+  :root {
+    --border-raised: light-dark(color-mix(in srgb, var(--brand-deep-ocean) 45%, var(--brand-tide-line)), var(--brand-sea-foam));
+    --input-border: light-dark(var(--brand-deep-ocean), var(--brand-white-sand));
+  }
+
+  .app-navigation-link,
+  .count-muted,
+  .member-time,
+  .request-row-closed,
+  .section-label {
+    color: var(--color-base-content);
+  }
+
+  .status-chip {
+    background: transparent;
+    border: 1px solid currentColor;
+  }
+
+  .action-static {
+    border-color: currentColor;
   }
 }

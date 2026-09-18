@@ -8,6 +8,9 @@
 /coverage.out
 *.test
 /node_modules/
+/.playwright-cli/
+/.playwright-mcp/
+/output/playwright/
 __debug_bin*
 /.worktrees/
 
@@ -17,3 +20,7 @@ __debug_bin*
 .zed/
 .DS_Store
 Thumbs.db
+
+# Playwright browser test output
+/test-results/
+/playwright-report/

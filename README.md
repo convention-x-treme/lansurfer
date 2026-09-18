@@ -70,7 +70,7 @@ The [visual branding guide](docs/BRANDING.md) defines the palette, typography, m
 
 ## 🗺️ Project status
 
-The **web-only prototype milestones are complete**. The implemented application includes generic OIDC login, Event and Game administration, Game subscriptions, Game Requests, concurrency-safe joining, and live SSE updates on desktop and mobile browsers.
+The **web-only prototype milestones are complete**. The implemented application includes generic OIDC login, Game catalog administration, Game subscriptions, instance-wide Game Requests with search and filtering, request-activity Trending, concurrency-safe joining, durable request activity, and live SSE updates on desktop and mobile browsers.
 
 Planning is now focused on a simpler 1.0 self-hosting model: **one LANsurfer installation serves one LAN party or gaming event context**. The remaining 1.0 work is organized as parallel development tracks for the single-event core, player identity and authentication, IGDB catalog enrichment, instance identity/PWA, durable notifications, and production distribution/operations. Multi-Event participation, Open Play, and Clans are post-1.0 candidates rather than required 1.0 features.
 

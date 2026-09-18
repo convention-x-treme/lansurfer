@@ -177,7 +177,6 @@ Business modules through the prototype are:
 auth
 user
 game
-event
 gamerequest
 ```
 
@@ -187,7 +186,7 @@ The approved 1.0 target adds:
 notification
 ```
 
-The prototype `event` module may remain while Track A preserves/migrates legacy Event-linked data, but normal 1.0 Game Request behavior must not depend on Event selection, membership, lifecycle, or authorization. `clan` is post-1.0 and must not be introduced until that work is explicitly scheduled.
+The prototype `event` module has been removed: Track A's forward migration dropped the Game Request/Event association, so no 1.0 behavior depends on Event selection, membership, lifecycle, or authorization. `clan` is post-1.0 and must not be introduced until that work is explicitly scheduled.
 
 Supporting technical areas include:
 
@@ -210,7 +209,6 @@ internal/
 ├── auth/
 ├── user/
 ├── game/
-├── event/         # prototype/migration compatibility only
 ├── gamerequest/
 ├── notification/  # Track E
 ├── query/
@@ -285,9 +283,9 @@ Owns:
 
 The synchronized provider index is discovery infrastructure. It must not become a second authoritative domain model or permit provider synchronization code to write Game Request state.
 
-### `event` (prototype compatibility)
+### Legacy Event data
 
-Owns existing prototype Event data while it remains in the schema. Track A decides the concrete forward migration needed to preserve prototype Game Requests while removing Event requirements from normal 1.0 behavior. Do not expand Event into new 1.0 membership, invitation, seat, lifecycle, or access-control features.
+Migration `00006_single_event_core` drops `game_requests.event_id` and its index; every prototype Game Request keeps its id, creator, members, status, description, and timestamps. The legacy `events` table is deliberately left in place with its rows: no application code reads it, no row references it, and destroying operator data is not something a 1.0 upgrade promised. A later release may remove the table once operators have had a chance to export it. Do not reintroduce an `event` module, Event selection, or Event membership.
 
 ### `gamerequest`
 
@@ -298,7 +296,14 @@ Owns:
 - request lifecycle
 - capacity rules
 - durable request-local activity for successful create/join/leave/close/cancel changes
-- transactional notification outbox records describing Game Request changes
+- the transactional notification-intent record Track E consumes
+
+One table, `game_request_activity`, currently serves both of those responsibilities. Every successful change writes its entry inside the same transaction as the change itself, so a rolled-back mutation leaves neither the change nor a notification intent, and a committed one survives a restart before delivery. A second table would duplicate the same write for the same guarantee. This remains provisional until Track E consumes it; if delivery turns out to need state that does not belong to `gamerequest`, splitting the notification record out is the expected change rather than a reversal.
+
+Two rules govern how a consumer reads it:
+
+- **`sequence` identifies a row and orders one Game Request's history. It is not a global replay cursor.** The value is assigned when the row is inserted, not when its transaction commits, and creating a Game Request takes no shared lock, so two concurrent changes can commit in the opposite order to their sequence values. A consumer holding a single high-watermark would permanently skip the row that committed late. Ordering within one request is safe because join, leave, close, and cancel serialize on that request's row lock and `created` is always first — which is also the only ordering delivery needs, since stale-update protection is per request. A consumer therefore keeps durable per-row delivery state keyed by `sequence` as an opaque identifier, rather than advancing one cursor.
+- **`origin` separates recorded activity from reconstructed activity.** Rows written while the application is running are `live`. Rows the `00006` migration reconstructed from prototype membership and status are `backfill`: they describe activity that predates the record and must never be delivered. A consumer starting for the first time on an installation that already has `live` history is responsible for its own baseline, so an upgrade does not deliver the archive.
 
 Request-local activity is not event sourcing, generic audit logging, chat, or notification delivery history.
 
@@ -366,6 +371,8 @@ Joining a Game Request is concurrency-sensitive. If `MaxPlayers` is defined, con
 Case-insensitive Game Nick uniqueness must also hold under concurrent onboarding changes and be enforced at the persistence boundary.
 
 Provider-result materialization is concurrency-sensitive as well. Concurrent follow/request actions for the same provider/external ID must converge on one authoritative local Game through a unique provider identity constraint plus an atomic application transaction.
+
+Creating a Game Request is deliberately **not** idempotent server-side. Join, leave, close, and cancel each serialize on the request's row lock and resolve a duplicate to one winner and one deterministic domain error; creation has no comparable identity to key on. Every candidate rule — uniqueness over creator, Game, and start time being the obvious one — forbids the legitimate case of one player organizing two separate groups for the same Game at the same time, and picking one anyway would make an arbitrary product rule permanent in a migration. Duplicate submission is prevented by the submit guard in `web/src/app.ts` and, below it, by the browser's refusal to submit a form while one submission is in flight; both are covered by `web/tests/rapid-interaction.spec.ts`. This is sufficient because the web UI is the only client: LANsurfer exposes no JSON API, so there is no unguarded caller to defend against. Revisit only if a non-browser client is introduced, which is itself a scope change.
 
 1.0 does not add Event-seat, Open Play, Clan ownership, Clan membership, or other post-1.0 invariants.
 
@@ -580,6 +587,8 @@ Docker Compose
 The standalone binary must also support an externally managed PostgreSQL instance.
 
 Provide structured logging, `/healthz`, `/readyz`, `lansurfer version`, healthcheck, data-encryption-key generation, and VAPID key-generation commands.
+
+Request logging records an `outcome` of `completed`, `client-aborted`, or `timed-out`, derived from the request context's cancellation cause rather than from the status code, which stays `200` for a response the client never received. The cause is attached by the request-timeout middleware, so that middleware must wrap request logging. Realtime stream open and close are logged with the number of streams the instance currently holds and a close reason, because long-lived `EventSource` connections consuming the browser's per-origin connection pool were the root cause in issue #15 and were not visible in the logs at all. This is operator diagnosability through `log/slog`; LANsurfer does not add a metrics or observability stack.
 
 Track F may build release automation and operator tooling in parallel. Stable 1.0 publishes Linux amd64/arm64 binaries and a matching multi-architecture GHCR image using native Go tooling and pinned official Docker/GitHub Actions. Release outputs include checksums, SBOMs, and provenance attestations. Stable releases receive exact, major.minor, major, and `latest` tags; prereleases receive exact tags only.
 

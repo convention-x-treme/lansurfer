@@ -8,8 +8,18 @@ await mkdir(new URL("images/", output), { recursive: true });
 await mkdir(new URL("licenses/", output), { recursive: true });
 
 await cp(
-  new URL("../node_modules/@fontsource-variable/montserrat/files/montserrat-latin-wght-normal.woff2", import.meta.url),
-  new URL("fonts/montserrat-latin-wght-normal.woff2", output),
+  new URL(
+    "../node_modules/@fontsource-variable/schibsted-grotesk/files/schibsted-grotesk-latin-wght-normal.woff2",
+    import.meta.url,
+  ),
+  new URL("fonts/schibsted-grotesk-latin-wght-normal.woff2", output),
+);
+await cp(
+  new URL(
+    "../node_modules/@fontsource-variable/schibsted-grotesk/files/schibsted-grotesk-latin-wght-italic.woff2",
+    import.meta.url,
+  ),
+  new URL("fonts/schibsted-grotesk-latin-wght-italic.woff2", output),
 );
 await cp(
   new URL("../node_modules/@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2", import.meta.url),
@@ -17,8 +27,8 @@ await cp(
 );
 await cp(new URL("../docs/Otter02.png", import.meta.url), new URL("images/otter.png", output));
 await cp(
-  new URL("../node_modules/@fontsource-variable/montserrat/LICENSE", import.meta.url),
-  new URL("licenses/montserrat-OFL-1.1.txt", output),
+  new URL("../node_modules/@fontsource-variable/schibsted-grotesk/LICENSE", import.meta.url),
+  new URL("licenses/schibsted-grotesk-OFL-1.1.txt", output),
 );
 await cp(
   new URL("../node_modules/@fontsource-variable/jetbrains-mono/LICENSE", import.meta.url),

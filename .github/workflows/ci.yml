@@ -93,9 +93,57 @@ jobs:
           LANSURFER_TEST_DATABASE_URL: postgres://lansurfer_test:lansurfer_test@127.0.0.1:5432/lansurfer_test?sslmode=disable
         run: go test -race -count=1 -tags=integration ./internal/platform/postgres
 
+  browser:
+    name: Browser interaction tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build frontend assets
+        # The fixture embeds the generated CSS and JS at compile time, so the
+        # bundle must match the current sources or the tests assert against a
+        # stale app.ts.
+        run: |
+          go generate ./internal/web/branding
+          go run github.com/a-h/templ/cmd/templ@v0.3.1020 generate
+          npm run build
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run browser tests
+        run: npx playwright test
+
+      - name: Upload failure traces
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: playwright-traces
+          path: test-results/
+          retention-days: 7
+
   build:
     name: Build and Compose smoke test
-    needs: [quality, integration]
+    needs: [quality, integration, browser]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:

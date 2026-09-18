@@ -7,12 +7,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/convention-x-treme/lansurfer/internal/auth"
-	"github.com/convention-x-treme/lansurfer/internal/event"
 	"github.com/convention-x-treme/lansurfer/internal/game"
 	"github.com/convention-x-treme/lansurfer/internal/gamerequest"
 	requestquery "github.com/convention-x-treme/lansurfer/internal/query/gamerequest"
@@ -86,11 +86,15 @@ func TestHealthEndpointsRejectOtherMethods(t *testing.T) {
 	}
 }
 
-func TestHomeRendersFrontendFoundation(t *testing.T) {
+func TestRootRendersLoginLandingPage(t *testing.T) {
+	authentication := &routerAuthentication{}
 	request := httptest.NewRequest(http.MethodGet, "/", nil)
 	response := httptest.NewRecorder()
 
-	NewRouter(RouterDependencies{Ready: func(context.Context) error { return nil }}).ServeHTTP(response, request)
+	NewRouter(RouterDependencies{
+		Ready:          func(context.Context) error { return nil },
+		Authentication: authentication,
+	}).ServeHTTP(response, request)
 
 	result := response.Result()
 	defer result.Body.Close()
@@ -107,19 +111,26 @@ func TestHomeRendersFrontendFoundation(t *testing.T) {
 	for _, want := range []string{
 		"LANsurfer",
 		"Find your crew. Catch the next game.",
+		"Continue with your CXT account",
+		"CXT IdP",
+		"Continue with Discord",
+		`href="https://www.convention-x-treme.de"`,
 		`href="/assets/app.css"`,
 		`src="/assets/app.js"`,
-		`id="how-it-works"`,
 		`data-theme-toggle`,
 	} {
 		if !strings.Contains(string(body), want) {
 			t.Errorf("body does not contain %q", want)
 		}
 	}
-	if strings.Contains(string(body), "https://") {
-		t.Error("home page unexpectedly contains a runtime external dependency")
+	if remoteAssetPattern.Match(body) {
+		t.Error("login page unexpectedly loads a remote runtime asset")
 	}
 }
+
+// remoteAssetPattern matches elements that fetch remote content at runtime.
+// Outbound anchors to the operating community are not runtime dependencies.
+var remoteAssetPattern = regexp.MustCompile(`(?i)<(?:script|link|img|iframe|source|video|audio|embed)\b[^>]*\b(?:src|href)\s*=\s*["']https?://`)
 
 func TestHomeRendersAuthenticatedViewer(t *testing.T) {
 	authentication := &routerAuthentication{account: user.User{DisplayName: "Ada Player", Role: user.RoleAdmin}}
@@ -132,13 +143,8 @@ func TestHomeRendersAuthenticatedViewer(t *testing.T) {
 		Authentication: authentication,
 	}).ServeHTTP(response, request)
 
-	if response.Code != http.StatusOK {
+	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/game-requests" {
 		t.Fatalf("status = %d", response.Code)
-	}
-	for _, want := range []string{"Ada Player", "admin", `action="/auth/logout"`, `data-realtime-url="/events/game-requests"`} {
-		if !strings.Contains(response.Body.String(), want) {
-			t.Errorf("body does not contain %q", want)
-		}
 	}
 }
 
@@ -147,7 +153,7 @@ func TestPatternFragments(t *testing.T) {
 		path string
 		want string
 	}{
-		{path: "/ui/patterns/empty", want: "No Game Requests yet"},
+		{path: "/ui/patterns/empty", want: "Quiet out there. Start something?"},
 		{path: "/ui/patterns/error", want: "Something went wrong"},
 	}
 
@@ -178,11 +184,12 @@ func TestEmbeddedAssetsAreServed(t *testing.T) {
 	for _, path := range []string{
 		"/assets/app.css",
 		"/assets/app.js",
-		"/assets/fonts/montserrat-latin-wght-normal.woff2",
+		"/assets/fonts/schibsted-grotesk-latin-wght-normal.woff2",
+		"/assets/fonts/schibsted-grotesk-latin-wght-italic.woff2",
 		"/assets/fonts/jetbrains-mono-latin-wght-normal.woff2",
 		"/assets/images/otter.png",
 		"/assets/licenses/htmx-BSD-2-Clause.txt",
-		"/assets/licenses/montserrat-OFL-1.1.txt",
+		"/assets/licenses/schibsted-grotesk-OFL-1.1.txt",
 		"/assets/licenses/jetbrains-mono-OFL-1.1.txt",
 		"/assets/licenses/tailwindcss-MIT.txt",
 		"/assets/licenses/daisyui-MIT.txt",
@@ -207,7 +214,7 @@ func TestAdminRoutesRequireAdmin(t *testing.T) {
 	dependencies := RouterDependencies{
 		Ready:          func(context.Context) error { return nil },
 		Authentication: &routerAuthentication{account: user.User{DisplayName: "Player", Role: user.RoleUser}},
-		Events:         &routerEvents{}, Games: &routerGames{},
+		Games:          &routerGames{},
 	}
 	request := httptest.NewRequest(http.MethodGet, "/admin/games", nil)
 	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
@@ -220,35 +227,13 @@ func TestAdminRoutesRequireAdmin(t *testing.T) {
 	}
 }
 
-func TestAdminCanCreateEvent(t *testing.T) {
-	events := &routerEvents{}
-	router := adminTestRouter(events, &routerGames{})
-	form := url.Values{
-		"name": {"CXT 2027"}, "starts_at": {"2027-05-01T10:00"}, "ends_at": {"2027-05-03T10:00"},
-	}
-	request := httptest.NewRequest(http.MethodPost, "/admin/events", strings.NewReader(form.Encode()))
-	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
-	addCSRF(request)
-	response := httptest.NewRecorder()
-
-	router.ServeHTTP(response, request)
-
-	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/admin/events?notice=event-created" {
-		t.Fatalf("response = %d %q", response.Code, response.Header().Get("Location"))
-	}
-	if events.created.Name != "CXT 2027" || events.created.StartsAt.Location() != time.UTC {
-		t.Fatalf("created event = %#v", events.created)
-	}
-}
-
 func TestAdminGameSearchRendersAliasMatch(t *testing.T) {
 	games := &routerGames{items: []game.Game{{ID: "game-1", Name: "Warcraft III", Slug: "warcraft-3", Active: true, Aliases: []game.Alias{{ID: "alias-1", Value: "WC3"}}}}}
 	request := httptest.NewRequest(http.MethodGet, "/admin/games?q=wc3", nil)
 	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
 	response := httptest.NewRecorder()
 
-	adminTestRouter(&routerEvents{}, games).ServeHTTP(response, request)
+	adminTestRouter(games).ServeHTTP(response, request)
 
 	if response.Code != http.StatusOK || games.search != "wc3" {
 		t.Fatalf("response status = %d, search = %q", response.Code, games.search)
@@ -264,8 +249,8 @@ func TestAdminIGDBRoutesRequireAdmin(t *testing.T) {
 	dependencies := RouterDependencies{
 		Ready:          func(context.Context) error { return nil },
 		Authentication: &routerAuthentication{account: user.User{DisplayName: "Player", Role: user.RoleUser}},
-		Events:         &routerEvents{}, Games: &routerGames{},
-		ProviderSync: &routerProviderSync{},
+		Games:          &routerGames{},
+		ProviderSync:   &routerProviderSync{},
 	}
 	request := httptest.NewRequest(http.MethodGet, "/admin/igdb", nil)
 	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
@@ -548,7 +533,7 @@ func TestRealtimeRequiresAuthentication(t *testing.T) {
 
 func TestRealtimeRefreshHighlightsFollowedGame(t *testing.T) {
 	queries := &routerGameRequestQueries{items: []requestquery.Request{{
-		ID: "request-1", EventName: "CXT 2027", GameName: "Warcraft III",
+		ID: "request-1", GameName: "Warcraft III",
 		CreatorID: "creator-1", CreatorName: "Grace", StartsAt: time.Now(),
 		Status: gamerequest.StatusOpen, MemberCount: 1, ViewerSubscribed: true,
 	}}}
@@ -561,10 +546,121 @@ func TestRealtimeRefreshHighlightsFollowedGame(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d", response.Code)
 	}
-	for _, want := range []string{`id="game-request-list"`, "New · followed game", `hx-swap-oob="beforeend:#live-notices"`} {
+	// The refresh also carries the top bar counters out of band, so the stats
+	// above the list cannot drift away from the rows below it.
+	for _, want := range []string{`id="game-request-list"`, "request-row-incoming", "New Game Request for Warcraft III",
+		`hx-swap-oob="beforeend:#live-notices"`, `hx-swap-oob="true"`, `id="request-stats"`, "player in open requests"} {
 		if !strings.Contains(response.Body.String(), want) {
 			t.Errorf("body does not contain %q: %q", want, response.Body.String())
 		}
+	}
+}
+
+// Discovery filters are read from the query string and answered server-side:
+// an htmx submission gets the list alone, a plain GET gets the whole screen.
+func TestGameRequestDiscoveryFiltersAndTrending(t *testing.T) {
+	queries := &routerGameRequestQueries{
+		items: []requestquery.Request{{
+			ID: "request-1", GameName: "Warcraft III", CreatorID: "creator-1",
+			CreatorName: "Grace", StartsAt: time.Now(), Status: gamerequest.StatusOpen, MemberCount: 1,
+		}},
+		trending: []requestquery.TrendingGame{{GameID: "game-1", GameName: "Warcraft III", ActivityCount: 4, RequestCount: 2}},
+	}
+	router := gameRequestTestRouter(&routerGameRequests{}, queries)
+
+	page := httptest.NewRequest(http.MethodGet, "/game-requests?q=wc3&followed=1&open_places=1", nil)
+	page.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	pageResponse := httptest.NewRecorder()
+	router.ServeHTTP(pageResponse, page)
+
+	if pageResponse.Code != http.StatusOK {
+		t.Fatalf("status = %d", pageResponse.Code)
+	}
+	want := requestquery.Filter{Search: "wc3", FollowedOnly: true, OpenPlacesOnly: true}
+	if queries.filter != want {
+		t.Fatalf("filter = %#v, want %#v", queries.filter, want)
+	}
+	body := pageResponse.Body.String()
+	// The window has to be stated next to the ranking, and the ranking itself
+	// comes from recorded request activity.
+	for _, fragment := range []string{`id="trending-rail"`, "Trending", "last 6 hours", "My Games", "Free places", "1 matching open request"} {
+		if !strings.Contains(body, fragment) {
+			t.Errorf("page does not contain %q", fragment)
+		}
+	}
+
+	fragment := httptest.NewRequest(http.MethodGet, "/game-requests?q=wc3", nil)
+	fragment.Header.Set("HX-Request", "true")
+	fragment.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	fragmentResponse := httptest.NewRecorder()
+	router.ServeHTTP(fragmentResponse, fragment)
+
+	if fragmentResponse.Code != http.StatusOK {
+		t.Fatalf("fragment status = %d", fragmentResponse.Code)
+	}
+	fragmentBody := fragmentResponse.Body.String()
+	if strings.Contains(fragmentBody, "<!doctype html>") {
+		t.Error("filter submission returned a whole page instead of the list")
+	}
+	if !strings.Contains(fragmentBody, `id="game-request-list"`) {
+		t.Errorf("filter submission did not return the list: %s", fragmentBody)
+	}
+}
+
+// The navigation badge sits in the shell beside every section, so it states how
+// many Game Requests are open on the installation. Deriving it from the
+// filtered list made the same instance look busy or quiet depending on what the
+// viewer had typed, and made an htmx filter and a reload of the same URL
+// disagree.
+func TestNavigationBadgeIgnoresDiscoveryFilters(t *testing.T) {
+	queries := &routerGameRequestQueries{
+		items: []requestquery.Request{{
+			ID: "request-1", GameName: "Warcraft III", CreatorID: "creator-1",
+			CreatorName: "Grace", StartsAt: time.Now(), Status: gamerequest.StatusOpen, MemberCount: 1,
+		}},
+		openTotal: 10,
+	}
+	router := gameRequestTestRouter(&routerGameRequests{}, queries)
+
+	request := httptest.NewRequest(http.MethodGet, "/game-requests?q=warcraft", nil)
+	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d", response.Code)
+	}
+	body := response.Body.String()
+	if !strings.Contains(body, `class="data-text count-hot ml-auto text-xs">10<`) {
+		t.Errorf("badge does not show the installation's open total: %s", body)
+	}
+	if !strings.Contains(body, "1 matching open request") {
+		t.Errorf("filtered list count is missing: %s", body)
+	}
+}
+
+// A rejected search has to explain itself on the htmx path too. Swapping in an
+// empty list with no message reads as "nothing matches" rather than "that
+// search was refused".
+func TestRejectedSearchExplainsItselfInTheFragment(t *testing.T) {
+	queries := &routerGameRequestQueries{listErr: requestquery.ErrInvalidSearch}
+	router := gameRequestTestRouter(&routerGameRequests{}, queries)
+
+	request := httptest.NewRequest(http.MethodGet, "/game-requests?q="+strings.Repeat("x", 200), nil)
+	request.Header.Set("HX-Request", "true")
+	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusUnprocessableEntity)
+	}
+	body := response.Body.String()
+	if !strings.Contains(body, "Search must be 120 characters or fewer.") {
+		t.Errorf("fragment does not explain the rejected search: %s", body)
+	}
+	if !strings.Contains(body, `id="game-request-list"`) {
+		t.Errorf("fragment is not the list region: %s", body)
 	}
 }
 
@@ -572,14 +668,11 @@ func TestGameRequestBrowserWorkflow(t *testing.T) {
 	commands := &routerGameRequests{}
 	queries := &routerGameRequestQueries{
 		items: []requestquery.Request{{
-			ID: "request-1", EventName: "CXT 2027", GameName: "Warcraft III",
+			ID: "request-1", GameName: "Warcraft III",
 			CreatorID: "creator-1", CreatorName: "Grace", StartsAt: time.Now(),
 			Status: gamerequest.StatusOpen, MemberCount: 1,
 		}},
-		options: requestquery.CreationOptions{
-			EventID: "event-1", EventName: "CXT 2027",
-			Games: []requestquery.GameOption{{ID: "game-1", Name: "Warcraft III"}},
-		},
+		options: []requestquery.GameOption{{ID: "game-1", Name: "Warcraft III"}},
 	}
 	router := gameRequestTestRouter(commands, queries)
 
@@ -590,13 +683,15 @@ func TestGameRequestBrowserWorkflow(t *testing.T) {
 	if listResponse.Code != http.StatusOK {
 		t.Fatalf("list status = %d", listResponse.Code)
 	}
-	for _, want := range []string{"Active Game Requests", "Warcraft III", `action="/game-requests/request-1/join"`} {
+	for _, want := range []string{"Game Requests", "Warcraft III", `class="request-row"`, `hx-post="/game-requests/request-1/join"`} {
 		if !strings.Contains(listResponse.Body.String(), want) {
 			t.Errorf("list body does not contain %q", want)
 		}
 	}
-	if !strings.Contains(listResponse.Body.String(), "Current Event: <strong>CXT 2027</strong>") {
-		t.Errorf("list does not show current Event context: %q", listResponse.Body.String())
+	for _, unwanted := range []string{"Live <span>· CXT 2027</span>"} {
+		if strings.Contains(listResponse.Body.String(), unwanted) {
+			t.Errorf("list body unexpectedly contains %q", unwanted)
+		}
 	}
 
 	newRequest := httptest.NewRequest(http.MethodGet, "/game-requests/new?game_id=game-1", nil)
@@ -629,6 +724,18 @@ func TestGameRequestBrowserWorkflow(t *testing.T) {
 	if joinResponse.Code != http.StatusSeeOther || commands.joined != "request-1/user-1" {
 		t.Fatalf("join response = %d, command = %q", joinResponse.Code, commands.joined)
 	}
+
+	queries.items[0].ViewerJoined = true
+	htmxJoin := httptest.NewRequest(http.MethodPost, "/game-requests/request-1/join", strings.NewReader(url.Values{"return_to": {"list"}}.Encode()))
+	htmxJoin.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	htmxJoin.Header.Set("HX-Request", "true")
+	htmxJoin.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	addCSRF(htmxJoin)
+	htmxResponse := httptest.NewRecorder()
+	router.ServeHTTP(htmxResponse, htmxJoin)
+	if htmxResponse.Code != http.StatusOK || !strings.Contains(htmxResponse.Body.String(), ">Leave</button>") {
+		t.Fatalf("htmx join response = %d %q", htmxResponse.Code, htmxResponse.Body.String())
+	}
 }
 
 func assertResponse(t *testing.T, response *http.Response, wantStatus int, wantBody string) {
@@ -660,11 +767,10 @@ type routerAuthentication struct {
 	account user.User
 }
 
-func adminTestRouter(events *routerEvents, games *routerGames) http.Handler {
+func adminTestRouter(games *routerGames) http.Handler {
 	return NewRouter(RouterDependencies{
 		Ready:          func(context.Context) error { return nil },
 		Authentication: &routerAuthentication{account: user.User{DisplayName: "Ada Admin", Role: user.RoleAdmin}},
-		Events:         events,
 		Games:          games,
 	})
 }
@@ -673,8 +779,8 @@ func adminIGDBTestRouter(providerSync *routerProviderSync) http.Handler {
 	return NewRouter(RouterDependencies{
 		Ready:          func(context.Context) error { return nil },
 		Authentication: &routerAuthentication{account: user.User{DisplayName: "Ada Admin", Role: user.RoleAdmin}},
-		Events:         &routerEvents{}, Games: &routerGames{},
-		ProviderSync: providerSync,
+		Games:          &routerGames{},
+		ProviderSync:   providerSync,
 	})
 }
 
@@ -697,18 +803,6 @@ func gameRequestTestRouter(commands *routerGameRequests, queries *routerGameRequ
 		GameRequests: commands, RequestQueries: queries,
 	})
 }
-
-type routerEvents struct{ created event.Event }
-
-func (*routerEvents) List(context.Context) ([]event.Event, error) { return nil, nil }
-func (r *routerEvents) Create(_ context.Context, name string, startsAt, endsAt time.Time) (event.Event, error) {
-	r.created = event.Event{Name: name, StartsAt: startsAt, EndsAt: endsAt}
-	return r.created, nil
-}
-func (*routerEvents) Update(context.Context, string, string, time.Time, time.Time) (event.Event, error) {
-	return event.Event{}, nil
-}
-func (*routerEvents) SetCurrent(context.Context, string) error { return nil }
 
 type routerGames struct {
 	items  []game.Game
@@ -767,6 +861,7 @@ type routerGameRequests struct {
 	left      string
 	closed    string
 	cancelled string
+	joinError error
 }
 
 func (r *routerGameRequests) Create(_ context.Context, creatorID, gameID string, maximum *int32, startsAt time.Time, description string) (gamerequest.GameRequest, error) {
@@ -777,6 +872,9 @@ func (r *routerGameRequests) Create(_ context.Context, creatorID, gameID string,
 	return r.created, nil
 }
 func (r *routerGameRequests) Join(_ context.Context, requestID, userID string) error {
+	if r.joinError != nil {
+		return r.joinError
+	}
 	r.joined = requestID + "/" + userID
 	return nil
 }
@@ -794,8 +892,12 @@ func (r *routerGameRequests) Cancel(_ context.Context, requestID, userID string)
 }
 
 type routerGameRequestQueries struct {
-	items   []requestquery.Request
-	options requestquery.CreationOptions
+	items     []requestquery.Request
+	options   []requestquery.GameOption
+	trending  []requestquery.TrendingGame
+	filter    requestquery.Filter
+	openTotal int64
+	listErr   error
 }
 
 type routerRealtime struct{ events <-chan gamerequest.Event }
@@ -804,7 +906,13 @@ func (r *routerRealtime) Subscribe() (<-chan gamerequest.Event, func()) {
 	return r.events, func() {}
 }
 
-func (r *routerGameRequestQueries) ListActive(context.Context, string) ([]requestquery.Request, error) {
+func (r *routerRealtime) Subscribers() int { return 1 }
+
+func (r *routerGameRequestQueries) ListActive(_ context.Context, _ string, filter requestquery.Filter) ([]requestquery.Request, error) {
+	r.filter = filter
+	if r.listErr != nil {
+		return nil, r.listErr
+	}
 	return r.items, nil
 }
 func (r *routerGameRequestQueries) ByID(_ context.Context, id, _ string) (requestquery.Request, error) {
@@ -815,11 +923,17 @@ func (r *routerGameRequestQueries) ByID(_ context.Context, id, _ string) (reques
 	}
 	return requestquery.Request{}, gamerequest.ErrNotFound
 }
-func (r *routerGameRequestQueries) CreationOptions(context.Context) (requestquery.CreationOptions, error) {
+func (r *routerGameRequestQueries) CreationOptions(context.Context) ([]requestquery.GameOption, error) {
 	return r.options, nil
 }
-func (r *routerGameRequestQueries) CurrentEvent(context.Context) (requestquery.EventContext, error) {
-	return requestquery.EventContext{ID: r.options.EventID, Name: r.options.EventName}, nil
+func (r *routerGameRequestQueries) Trending(context.Context) ([]requestquery.TrendingGame, error) {
+	return r.trending, nil
+}
+func (r *routerGameRequestQueries) CountOpen(context.Context) (int64, error) {
+	if r.openTotal != 0 {
+		return r.openTotal, nil
+	}
+	return int64(len(r.items)), nil
 }
 
 func (r *routerDiscovery) Browse(_ context.Context, _, search string) ([]game.DiscoveryItem, error) {
@@ -857,4 +971,41 @@ func (*routerAuthentication) Logout(context.Context, string) error { return nil 
 
 func (a *routerAuthentication) Authenticate(context.Context, string) (user.User, error) {
 	return a.account, nil
+}
+
+// A second Join that lands after the first already succeeded must resolve into
+// a dismissible notice, leaving the row and the rest of the page usable.
+func TestDuplicateJoinReportsRecoverableConflict(t *testing.T) {
+	commands := &routerGameRequests{joinError: gamerequest.ErrAlreadyMember}
+	queries := &routerGameRequestQueries{items: []requestquery.Request{{
+		ID: "request-1", GameName: "Warcraft III", CreatorID: "user-2",
+		CreatorName: "Other", MemberCount: 2, ViewerJoined: true, Status: gamerequest.StatusOpen,
+		StartsAt: time.Now().Add(time.Hour),
+	}}}
+	router := gameRequestTestRouter(commands, queries)
+
+	duplicate := httptest.NewRequest(http.MethodPost, "/game-requests/request-1/join", strings.NewReader(url.Values{"return_to": {"list"}}.Encode()))
+	duplicate.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	duplicate.Header.Set("HX-Request", "true")
+	duplicate.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	addCSRF(duplicate)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, duplicate)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("duplicate join status = %d, want %d", response.Code, http.StatusOK)
+	}
+	if got := response.Header().Get("HX-Retarget"); got != "#live-notices" {
+		t.Errorf("HX-Retarget = %q, want %q", got, "#live-notices")
+	}
+	if got := response.Header().Get("HX-Reswap"); got != "beforeend" {
+		t.Errorf("HX-Reswap = %q, want %q", got, "beforeend")
+	}
+	body := response.Body.String()
+	if !strings.Contains(body, "You have already joined this Game Request.") {
+		t.Errorf("duplicate join body does not explain the conflict: %s", body)
+	}
+	if !strings.Contains(body, "data-dismiss-live-toast") {
+		t.Errorf("duplicate join notice cannot be dismissed: %s", body)
+	}
 }

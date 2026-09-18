@@ -11,8 +11,6 @@ import (
 
 	"github.com/convention-x-treme/lansurfer/internal/auth"
 	authpostgres "github.com/convention-x-treme/lansurfer/internal/auth/postgres"
-	"github.com/convention-x-treme/lansurfer/internal/event"
-	eventpostgres "github.com/convention-x-treme/lansurfer/internal/event/postgres"
 	"github.com/convention-x-treme/lansurfer/internal/game"
 	gamepostgres "github.com/convention-x-treme/lansurfer/internal/game/postgres"
 	"github.com/convention-x-treme/lansurfer/internal/gamerequest"
@@ -71,12 +69,11 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		authpostgres.NewSessionStore(pool),
 		userService,
 	)
-	eventService := event.NewService(eventpostgres.NewStore(pool))
 	gameStore := gamepostgres.NewStore(pool)
 	gameService := game.NewService(gameStore)
 	gameDiscovery := game.NewDiscoveryService(gameStore, gameStore, gameStore)
 	realtime := sse.NewBroker()
-	gameRequests := gamerequest.NewService(gamerequestpostgres.NewStore(pool), gameService, eventService, realtime)
+	gameRequests := gamerequest.NewService(gamerequestpostgres.NewStore(pool), gameService, realtime)
 	gameRequestQueries := gamerequestquery.NewStore(pool)
 	igdbSyncService := newIGDBSync(ctx, cfg.IGDB, gameStore, logger)
 
@@ -85,7 +82,6 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		Handler: web.NewRouter(web.RouterDependencies{
 			Ready:          postgres.ReadyCheck(pool),
 			Authentication: authService,
-			Events:         eventService,
 			Games:          gameService,
 			Discovery:      gameDiscovery,
 			GameResolver:   gameDiscovery,

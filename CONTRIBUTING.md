@@ -180,6 +180,7 @@ The normal local verification set is:
 task lint
 task test
 task test:integration
+task test:browser
 task build
 ```
 
@@ -188,13 +189,16 @@ What these commands cover:
 - `task lint`: Go formatting/module/vet checks plus npm install and TypeScript type checking
 - `task test`: race-enabled Go unit tests
 - `task test:integration`: an isolated PostgreSQL container plus race-enabled integration tests
+- `task test:browser`: Chromium regression tests for interaction hardening
 - `task build`: builds `bin/lansurfer`
 
 The race detector requires a working C toolchain on platforms where Go uses CGO for `-race`.
 
 The integration-test Compose stack uses host port `55432` and tears itself down after the task completes. If that port is already in use, free it before running `task test:integration`.
 
-Run `task generate` before final verification when your change affects generated files. Continuous integration also checks formatting, Go modules, `go vet`, generated sqlc code, unit tests, PostgreSQL integration tests, the Go build, and a Compose startup smoke test.
+`task test:browser` downloads Chromium on first run and serves `internal/web/browsertest` on host port `8123`. That fixture runs the real router, templates, assets, and SSE handler against in-memory stores, so it needs no database. Its scope is deliberately narrow: the rapid-click, realtime stream lifecycle, abort-recovery, and SSE-versus-swap behavior that lives in `web/src/app.ts` and that no Go test can reach. Product behavior belongs in the Go unit and PostgreSQL integration tests, which are faster and more precise — do not grow this into a general end-to-end suite.
+
+Run `task generate` before final verification when your change affects generated files. Continuous integration also checks formatting, Go modules, `go vet`, generated sqlc code, unit tests, PostgreSQL integration tests, browser interaction tests, the Go build, and a Compose startup smoke test.
 
 ## Useful development commands
 
@@ -210,6 +214,7 @@ Run `task generate` before final verification when your change affects generated
 | `task lint` | Run formatting/module/vet and TypeScript checks |
 | `task test` | Run race-enabled unit tests |
 | `task test:integration` | Run isolated PostgreSQL integration tests |
+| `task test:browser` | Run Chromium interaction-hardening regression tests |
 | `task build` | Build `bin/lansurfer` |
 | `task admin:users` | List users in the running Compose application |
 | `task admin:promote USER_ID=<UUID>` | Promote a local Compose user to administrator |

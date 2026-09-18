@@ -1,6 +1,7 @@
 package pages
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -11,46 +12,48 @@ import (
 
 templ GameCatalog(brand branding.Brand, navigation components.NavigationState, games []game.DiscoveryItem, search, message string) {
 	@components.Layout(brand, "Games", navigation) {
-		<section class="page-shell py-10">
-			<div class="flex flex-wrap items-end justify-between gap-4">
-				<div>
-					<p class="data-text text-sm font-semibold uppercase tracking-widest text-secondary">Game catalog</p>
-					<h1 class="mt-2 text-3xl font-bold">Find your games</h1>
-					<p class="mt-2 text-base-content/70">Follow games you are interested in so LANsurfer can personalize what you see.</p>
-				</div>
-				<a class="btn btn-outline" href="/games/mine">My Games</a>
-			</div>
-			<form method="get" action="/games" class="mt-8 flex flex-col gap-3 sm:flex-row" hx-get="/games" hx-target="#game-catalog-results" hx-swap="outerHTML" hx-push-url="true">
+		<header class="app-topbar">
+			<h1 class="app-title">Games</h1>
+			<a class="btn btn-quiet btn-sm" href="/games/mine">My Games</a>
+		</header>
+		<div class="content-page">
+			<form class="request-toolbar" method="get" action="/games" hx-get="/games" hx-target="#game-catalog-results" hx-swap="outerHTML" hx-push-url="true">
 				<label class="sr-only" for="game-search">Search by game name or alias</label>
-				<input id="game-search" class="input input-bordered min-w-0 flex-1" type="search" name="q" value={ search } maxlength="120" placeholder="Search by name or alias, e.g. wc3"/>
-				<div class="flex gap-2"><a class="btn btn-ghost" href="/games">Clear</a><button class="btn btn-primary" type="submit">Search</button></div>
+				<input id="game-search" class="input input-sm request-search" type="search" name="q" value={ search } maxlength="120" placeholder="Search by name or alias, e.g. wc3"/>
+				<button class="btn btn-quiet btn-sm" type="submit">Search</button>
+				if search != "" {
+					<a class="btn btn-ghost btn-sm" href="/games">Clear</a>
+				}
 			</form>
-			<div class="mt-8">
-				@GameCatalogResults(games, search, message)
-			</div>
-		</section>
+			@GameCatalogResults(games, search, message)
+		</div>
 	}
 }
 
 templ GameCatalogResults(games []game.DiscoveryItem, search, message string) {
 	<div id="game-catalog-results" aria-live="polite">
 		if message != "" {
-			<div role="alert" class="alert alert-error mb-5"><span>{ message }</span></div>
+			<div role="alert" class="alert alert-error mb-4"><span>{ message }</span></div>
 		}
-		if len(games) == 0 {
-			<div class="card border border-base-300 bg-base-200"><div class="card-body"><h2 class="card-title">No games found</h2>
-				if search == "" {
-					<p>There are no active games in the catalog yet.</p>
-				} else {
-					<p>Try a different game name or alias.</p>
-				}
-			</div></div>
-		}
-		<div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-			for _, item := range games {
-				@GameDiscoveryCard(item)
-			}
+		<div class="mb-2 flex items-center justify-between gap-4">
+			<p class="section-label">{ gameCountLabel(len(games)) }</p>
 		</div>
+		if len(games) == 0 {
+			<section class="detail-card">
+				<h2 class="text-[1.0625rem] font-semibold">No games found</h2>
+				if search == "" {
+					<p class="text-sm text-base-content/70">There are no active games in the catalog yet.</p>
+				} else {
+					<p class="text-sm text-base-content/70">Try a different game name or alias.</p>
+				}
+			</section>
+		} else {
+			<div class="game-grid">
+				for _, item := range games {
+					@GameDiscoveryCard(item)
+				}
+			</div>
+		}
 	</div>
 }
 
@@ -71,79 +74,93 @@ templ GameDiscoveryCard(item game.DiscoveryItem) {
 }
 
 templ ProviderDiscoveryCard(item game.DiscoveryItem) {
-	<article class="card border border-base-300 bg-base-200 shadow-sm">
-		<div class="card-body">
-			<div class="flex gap-4">
-				if item.CoverImageID != "" {
-					<img class="h-24 w-16 flex-none rounded object-cover bg-base-300" src={ providerCoverURL(item.CoverImageID) } alt="" referrerpolicy="no-referrer" loading="lazy"/>
-				}
-				<div class="min-w-0">
-					<h2 class="card-title text-2xl">{ item.Name }</h2>
-					<p class="data-text mt-1 text-sm text-base-content/60">{ providerDisambiguation(item) }</p>
-					<div class="mt-2 flex items-center gap-2">
-						<span class="badge badge-ghost">Not yet in LANsurfer catalog</span>
-						<form method="post" action={ providerFollowAction(item.Reference) } hx-post={ providerFollowAction(item.Reference) } hx-target="closest div" hx-swap="outerHTML">
-							@components.CSRFInput()
-							<button class="btn btn-primary btn-sm" type="submit">Follow Game</button>
-						</form>
-						<a class="btn btn-outline btn-sm" href={ providerGameRequestAction(item.Reference) }>Find Players</a>
-					</div>
-				</div>
-			</div>
+	<article class="game-card">
+		<div class="flex items-center gap-3">
+			if item.CoverImageID != "" {
+				<img class="h-12 w-9 flex-none rounded object-cover bg-base-300" src={ providerCoverURL(item.CoverImageID) } alt="" referrerpolicy="no-referrer" loading="lazy"/>
+			} else {
+				<span class="game-abbreviation" aria-hidden="true">{ gameAbbreviation(item.Name) }</span>
+			}
+			<span class="min-w-0">
+				<strong class="block truncate text-base font-semibold">{ item.Name }</strong>
+				<span class="data-text block truncate text-xs text-base-content/65">{ providerDisambiguation(item) }</span>
+			</span>
+		</div>
+		<div class="mt-auto flex flex-wrap items-center justify-end gap-2">
+			<span class="status-chip">Not yet in LANsurfer catalog</span>
+			<a class="btn btn-quiet btn-sm" href={ providerGameRequestAction(item.Reference) }>Find Players</a>
+			<form method="post" action={ providerFollowAction(item.Reference) } hx-post={ providerFollowAction(item.Reference) } hx-target="this" hx-swap="outerHTML" hx-sync="this:drop" hx-disabled-elt="find button">
+				@components.CSRFInput()
+				<button class="btn btn-primary btn-sm" type="submit">Follow Game</button>
+			</form>
 		</div>
 	</article>
 }
 
 templ MyGames(brand branding.Brand, navigation components.NavigationState, games []game.SubscriptionGame) {
 	@components.Layout(brand, "My Games", navigation) {
-		<section class="page-shell py-10">
-			<div class="flex flex-wrap items-end justify-between gap-4">
-				<div><p class="data-text text-sm font-semibold uppercase tracking-widest text-secondary">Personalized games</p><h1 class="mt-2 text-3xl font-bold">My Games</h1><p class="mt-2 text-base-content/70">Games you follow appear here.</p></div>
-				<a class="btn btn-primary" href="/games">Browse games</a>
+		<header class="app-topbar">
+			<h1 class="app-title">My Games</h1>
+			<a class="btn btn-primary btn-sm" href="/games">Browse games</a>
+		</header>
+		<div class="content-page">
+			<div class="mb-2 flex items-center justify-between gap-4">
+				<p class="section-label">{ followedCountLabel(len(games)) }</p>
 			</div>
-			<div class="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-3" aria-live="polite">
+			<div class="game-grid" aria-live="polite">
 				if len(games) == 0 {
-					<div class="card border border-base-300 bg-base-200 sm:col-span-2"><div class="card-body"><h2 class="card-title">You are not following any games yet</h2><p>Browse the catalog and follow the games you would like to play.</p><div class="card-actions"><a class="btn btn-primary btn-sm" href="/games">Browse games</a></div></div></div>
+					<section class="detail-card">
+						<h2 class="text-[1.0625rem] font-semibold">You are not following any games yet</h2>
+						<p class="text-sm text-base-content/70">Browse the catalog and follow the games you would like to play.</p>
+						<a class="btn btn-primary btn-sm self-start" href="/games">Browse games</a>
+					</section>
 				}
 				for _, item := range games {
 					@GameSubscriptionCard(item, true)
 				}
 			</div>
-		</section>
+		</div>
 	}
 }
 
 templ GameSubscriptionCard(item game.SubscriptionGame, myGames bool) {
-	<article class="card border border-base-300 bg-base-200 shadow-sm">
-		<div class="card-body"><div><h2 class="card-title text-2xl">{ item.Name }</h2><p class="data-text mt-1 text-sm text-base-content/60">{ item.Slug }</p></div><div class="card-actions mt-3 justify-end">
+	<article class="game-card">
+		<div class="flex items-center gap-3">
+			<span class="game-abbreviation" aria-hidden="true">{ gameAbbreviation(item.Name) }</span>
+			<span class="min-w-0">
+				<strong class="block truncate text-base font-semibold">{ item.Name }</strong>
+				<span class="data-text block truncate text-xs text-base-content/65">{ item.Slug }</span>
+			</span>
+		</div>
+		<div class="mt-auto flex flex-wrap items-center justify-end gap-2">
 			if item.Subscribed {
-				<a class="btn btn-primary btn-sm" href={ "/game-requests/new?game_id=" + item.ID }>Find Players</a>
+				<a class="btn btn-quiet btn-sm" href={ "/game-requests/new?game_id=" + item.ID }>Find Players</a>
 			}
 			@GameFollowControl(item.ID, item.Subscribed, myGames)
-		</div></div>
+		</div>
 	</article>
 }
 
 templ GameFollowControl(gameID string, subscribed, myGames bool) {
 	if subscribed && myGames {
 		<div class="flex items-center gap-2">
-			<span class="badge badge-primary">Following</span>
-			<form method="post" action={ "/games/" + gameID + "/unfollow" } hx-post={ "/games/" + gameID + "/unfollow" } hx-target="closest article" hx-swap="outerHTML">
+			<span class="status-chip status-chip-joined">Following</span>
+			<form method="post" action={ "/games/" + gameID + "/unfollow" } hx-post={ "/games/" + gameID + "/unfollow" } hx-target="closest article" hx-swap="outerHTML" hx-sync="this:drop" hx-disabled-elt="find button">
 				@components.CSRFInput()
 				<input type="hidden" name="view" value="mine"/>
-				<button class="btn btn-outline btn-sm" type="submit">Unfollow</button>
+				<button class="btn btn-step-back btn-sm" type="submit">Unfollow</button>
 			</form>
 		</div>
 	} else if subscribed {
 		<div class="flex items-center gap-2">
-			<span class="badge badge-primary">Following</span>
-			<form method="post" action={ "/games/" + gameID + "/unfollow" } hx-post={ "/games/" + gameID + "/unfollow" } hx-target="closest div" hx-swap="outerHTML">
+			<span class="status-chip status-chip-joined">Following</span>
+			<form method="post" action={ "/games/" + gameID + "/unfollow" } hx-post={ "/games/" + gameID + "/unfollow" } hx-target="closest div" hx-swap="outerHTML" hx-sync="this:drop" hx-disabled-elt="find button">
 				@components.CSRFInput()
-				<button class="btn btn-outline btn-sm" type="submit">Unfollow</button>
+				<button class="btn btn-step-back btn-sm" type="submit">Unfollow</button>
 			</form>
 		</div>
 	} else {
-		<form method="post" action={ "/games/" + gameID + "/follow" } hx-post={ "/games/" + gameID + "/follow" } hx-target="this" hx-swap="outerHTML">
+		<form method="post" action={ "/games/" + gameID + "/follow" } hx-post={ "/games/" + gameID + "/follow" } hx-target="this" hx-swap="outerHTML" hx-sync="this:drop" hx-disabled-elt="find button">
 			@components.CSRFInput()
 			<button class="btn btn-primary btn-sm" type="submit">Follow Game</button>
 		</form>
@@ -152,8 +169,28 @@ templ GameFollowControl(gameID string, subscribed, myGames bool) {
 
 templ GameCatalogError(brand branding.Brand, navigation components.NavigationState) {
 	@components.Layout(brand, "Games unavailable", navigation) {
-		<section class="page-shell py-16"><div role="alert" class="alert alert-error"><div><h1 class="font-bold">Games could not be loaded</h1><p>Try the request again.</p></div></div></section>
+		<header class="app-topbar">
+			<h1 class="app-title">Games</h1>
+			<a class="btn btn-primary btn-sm" href="/games">Retry</a>
+		</header>
+		<div class="content-page">
+			<div role="alert" class="alert alert-error"><div><p class="font-bold">Games could not be loaded</p><p>Try the request again.</p></div></div>
+		</div>
 	}
+}
+
+func followedCountLabel(count int) string {
+	if count == 1 {
+		return "1 game followed"
+	}
+	return fmt.Sprintf("%d games followed", count)
+}
+
+func gameCountLabel(count int) string {
+	if count == 1 {
+		return "1 game"
+	}
+	return fmt.Sprintf("%d games", count)
 }
 
 // providerCoverURL constructs the approved images.igdb.com cover URL from

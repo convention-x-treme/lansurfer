@@ -15,7 +15,21 @@ import (
 	webmiddleware "github.com/convention-x-treme/lansurfer/internal/web/middleware"
 )
 
-func TestLoginSetsProtectedFlowCookiesAndRedirects(t *testing.T) {
+func TestLoginRendersProviderChoice(t *testing.T) {
+	handler := NewAuthentication(&stubAuthentication{available: true}, branding.Default(), true)
+	response := httptest.NewRecorder()
+
+	handler.Login(response, httptest.NewRequest(http.MethodGet, "/auth/login", nil))
+
+	body := response.Body.String()
+	for _, want := range []string{`href="/auth/oidc"`, "Continue with your CXT account", "CXT IdP", "Continue with Discord", "disabled"} {
+		if response.Code != http.StatusOK || !strings.Contains(body, want) {
+			t.Fatalf("response = %d %q", response.Code, body)
+		}
+	}
+}
+
+func TestBeginLoginSetsProtectedFlowCookiesAndRedirects(t *testing.T) {
 	authentication := &stubAuthentication{available: true, flow: auth.LoginFlow{
 		AuthorizationURL: "https://identity.example/authorize",
 		State:            "state",
@@ -25,7 +39,7 @@ func TestLoginSetsProtectedFlowCookiesAndRedirects(t *testing.T) {
 	handler := NewAuthentication(authentication, branding.Default(), true)
 	response := httptest.NewRecorder()
 
-	handler.Login(response, httptest.NewRequest(http.MethodGet, "/auth/login", nil))
+	handler.BeginLogin(response, httptest.NewRequest(http.MethodGet, "/auth/oidc", nil))
 
 	result := response.Result()
 	defer result.Body.Close()
@@ -57,7 +71,7 @@ func TestCallbackValidatesStateAndCreatesSession(t *testing.T) {
 
 	result := response.Result()
 	defer result.Body.Close()
-	if result.StatusCode != http.StatusSeeOther || result.Header.Get("Location") != "/" {
+	if result.StatusCode != http.StatusSeeOther || result.Header.Get("Location") != "/game-requests" {
 		t.Fatalf("status/location = %d, %q", result.StatusCode, result.Header.Get("Location"))
 	}
 	if authentication.completedCode != "code" || authentication.completedVerifier != "verifier" || authentication.completedNonce != "nonce" {

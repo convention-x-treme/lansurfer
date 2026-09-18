@@ -11,21 +11,25 @@ Use Taskfile workflows, not Makefiles; run `task --list` for the authoritative t
 - `task build`: build `bin/lansurfer`.
 - `task test`: run race-enabled unit tests.
 - `task test:integration`: run PostgreSQL integration tests in an isolated container.
+- `task test:browser`: run Chromium interaction-hardening regression tests against the `internal/web/browsertest` fixture.
 - `task generate`: regenerate sqlc code.
 - `task lint`: check formatting, modules, and Go source.
 
 ## Architecture and coding rules
 
-- Keep a modular monolith organized by business capability (`auth`, `user`, `game`, `gamerequest`, and the 1.0 `notification` module). The prototype `event` module may remain only where needed for migration compatibility while the single-event 1.0 model is implemented. Do not add `clan` or other post-1.0 modules until their roadmap work is explicitly scheduled. Keep infrastructure, queries, and web delivery separate from domain modules.
+- Keep a modular monolith organized by business capability (`auth`, `user`, `game`, `gamerequest`, and the 1.0 `notification` module). The prototype `event` module has been removed by Track A's single-event migration; do not reintroduce it, and do not add `clan` or other post-1.0 modules until their roadmap work is explicitly scheduled. Keep infrastructure, queries, and web delivery separate from domain modules.
 - Business modules own their behavior and writes. Never access another module's persistence implementation or write its tables directly. Call the owning service through a small explicit interface or publish an application/domain event.
 - Define narrow interfaces in the consuming package. Keep concrete infrastructure behind them. Wire dependencies explicitly in the composition root; do not use a dependency-injection framework or service locator.
 - Use dedicated query/read models for cross-module UI reads and joins. Query packages must not perform domain writes. The 1.0 Trending view is a focused read model over Game Request activity, not authorization for a general analytics/event store.
+- `game_request_activity` is both the durable request-local activity record and Track A's transactional notification-intent handoff to Track E. Write its entry in the same transaction as the change it describes. Treat the single-table design as provisional until Track E consumes it: prefer it over a parallel outbox table, and split only if delivery needs state that does not belong to `gamerequest`.
+- `sequence` identifies an activity row and orders one Game Request's history. It is not a global replay cursor, because sequence values are assigned at insert time rather than commit time. Never build a single high-watermark cursor on it. `origin` marks migration-reconstructed rows as `backfill`; those are history only and must never be delivered.
 - Keep generated sqlc types inside persistence/read infrastructure. Map them to domain or explicit read models at boundaries.
 - Avoid generic `shared`, `common`, `utils`, repository, DTO/mapping, CQRS, or other framework-style abstractions. Prefer a little duplication to a premature abstraction.
 - Keep HTTP handlers limited to transport concerns, authentication context, service/query calls, domain-error translation, and templ rendering. Keep business rules out of handlers. Do not create an internal JSON API solely for the web UI.
 - Use explicit domain errors and translate them to HTTP behavior only in the web layer. Domain packages must not encode HTTP semantics.
 - Protect important invariants in PostgreSQL with constraints, indexes, transactions, locks, and foreign keys where appropriate. Treat joining a `GameRequest`, enforcing capacity, claiming a case-insensitive Game Nick, and materializing the same provider Game concurrently as concurrency-sensitive behavior.
 - Test meaningful domain behavior, PostgreSQL behavior, concurrent joins/capacity, provider materialization races, and important HTTP behavior. Avoid excessive mocking.
+- Browser tests cover only interaction hardening that no Go test can reach: rapid-click guards, realtime stream lifecycle, abort/failure recovery, and SSE-versus-swap behavior. Keep product behavior in Go tests; do not grow `web/tests` into a general end-to-end suite.
 - Use templ/HTMX SSR and SSE; keep TypeScript limited to progressive enhancement. Prefer native browser primitives. Embed production assets. The only approved remote-content exception is the IGDB cover host and safeguards documented in `docs/PRODUCT.md`; it does not permit other runtime CDNs or a general external-asset system.
 - Run migrations before HTTP startup; migration failure must prevent startup. Never run DOWN migrations automatically.
 - Keep generic OIDC provider-neutral; Discord OAuth2 login is an independent provider. Use local user IDs, explicit identity linking, revocable PostgreSQL sessions, and opaque cookies. No local passwords, JWT browser sessions, or identity merging based only on email.
@@ -72,7 +76,7 @@ Before the Pilot Gate is green, repository evidence must cover the capabilities 
 - at least one exercised upgrade path with existing data
 - representative load/recovery rehearsal; record hardware, network, tested load envelope, response/update observations, and failures in the validation artifact rather than inventing permanent SLOs
 
-Issue #15 remains open until its accepted hardening scope is complete. PR #17 documents the confirmed SSE/HTTP/1.1 connection-exhaustion root cause and production HTTP/2 mitigation; PR #18 covers additional rapid-interaction hardening. Keep regression coverage for the original hang and supported production HTTP behavior, and do not treat HTTP/2 alone as the root cause.
+Issue #15 is closed. PR #17 documented the confirmed SSE/HTTP/1.1 connection-exhaustion root cause and production HTTP/2 mitigation; PR #18 covered additional rapid-interaction hardening. Its remainder was split into #31 (committed browser regression tests), #32 (request-outcome and stream-lifecycle diagnostics), and #33 (creation idempotency). Keep regression coverage for the original hang and supported production HTTP behavior — the stream-lifecycle fix lives in `web/src/app.ts` and no Go test reaches it — and do not treat HTTP/2 alone as the root cause.
 
 ## Constraints requiring approval
 

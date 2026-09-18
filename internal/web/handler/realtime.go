@@ -6,12 +6,14 @@ import (
 	"time"
 
 	"github.com/convention-x-treme/lansurfer/internal/gamerequest"
+	webmiddleware "github.com/convention-x-treme/lansurfer/internal/web/middleware"
 )
 
 const realtimeKeepAlive = 20 * time.Second
 
 type GameRequestEvents interface {
 	Subscribe() (<-chan gamerequest.Event, func())
+	Subscribers() int
 }
 
 type Realtime struct {
@@ -39,6 +41,21 @@ func (h *Realtime) GameRequests(w http.ResponseWriter, r *http.Request) {
 	}
 	flusher.Flush()
 
+	// A stream lives as long as its page, so open and close are rare enough to
+	// log at Info even on a busy instance. The count is the diagnostic that
+	// matters: it is what the browser's per-origin connection pool sees.
+	logger := webmiddleware.RequestLogger(r)
+	logger.Info("realtime stream opened", "streams", h.events.Subscribers())
+	reason := "client-closed"
+	defer func() {
+		// Releasing here rather than relying on the deferred unsubscribe above
+		// means the logged count excludes this stream. Unsubscribe is
+		// idempotent, so the earlier defer still covers the paths that return
+		// before this one is registered.
+		unsubscribe()
+		logger.Info("realtime stream closed", "reason", reason, "streams", h.events.Subscribers())
+	}()
+
 	keepAlive := time.NewTicker(realtimeKeepAlive)
 	defer keepAlive.Stop()
 	for {
@@ -47,6 +64,7 @@ func (h *Realtime) GameRequests(w http.ResponseWriter, r *http.Request) {
 			return
 		case event, open := <-events:
 			if !open {
+				reason = "server-shutdown"
 				return
 			}
 			payload, err := json.Marshal(event)
@@ -54,11 +72,13 @@ func (h *Realtime) GameRequests(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			if _, err := w.Write(append([]byte("event: game-request\ndata: "), append(payload, '\n', '\n')...)); err != nil {
+				reason = "write-failed"
 				return
 			}
 			flusher.Flush()
 		case <-keepAlive.C:
 			if _, err := w.Write([]byte(": keepalive\n\n")); err != nil {
+				reason = "write-failed"
 				return
 			}
 			flusher.Flush()
