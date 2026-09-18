@@ -136,10 +136,9 @@ func (s *DiscoveryService) Unfollow(ctx context.Context, userID, gameID string) 
 
 func discoveryItemFromLocal(local SubscriptionGame) DiscoveryItem {
 	return DiscoveryItem{
-		LocalGameID:  local.ID,
-		Name:         local.Name,
-		Slug:         local.Slug,
-		Subscribed:   local.Subscribed,
-		Materialized: true,
+		LocalGameID:      local.ID,
+		GamePresentation: local.GamePresentation,
+		Subscribed:       local.Subscribed,
+		Materialized:     true,
 	}
 }

@@ -63,16 +63,11 @@ type ProviderIndexRepository interface {
 }
 
 type DiscoveryItem struct {
-	LocalGameID      string
-	Reference        ProviderReference
-	Name             string
-	Slug             string
-	GameType         string
-	PlatformNames    []string
-	FirstReleaseDate *time.Time
-	CoverImageID     string
-	Subscribed       bool
-	Materialized     bool
+	LocalGameID string
+	Reference   ProviderReference
+	GamePresentation
+	Subscribed   bool
+	Materialized bool
 }
 
 type DiscoveryRepository interface {

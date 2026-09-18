@@ -26,6 +26,10 @@ func (q *Queries) ActiveGameExists(ctx context.Context, gameID pgtype.UUID) (boo
 
 const browseSubscriptionGames = `-- name: BrowseSubscriptionGames :many
 SELECT g.id::text, g.name, g.slug,
+       enrichment.cover_image_id,
+       enrichment.game_type,
+       enrichment.platform_names,
+       enrichment.first_release_date,
        EXISTS (
            SELECT 1
            FROM game_subscriptions gs
@@ -33,6 +37,7 @@ SELECT g.id::text, g.name, g.slug,
              AND gs.user_id = $1::uuid
        ) AS subscribed
 FROM games g
+LEFT JOIN game_igdb_enrichment enrichment ON enrichment.game_id = g.id
 WHERE g.active
   AND (
       $2::text = ''
@@ -44,7 +49,15 @@ WHERE g.active
             AND strpos(lower(ga.alias), lower($2::text)) > 0
       )
   )
-ORDER BY lower(g.name), g.id
+ORDER BY (
+    $2::text = ''
+    AND EXISTS (
+        SELECT 1
+        FROM game_subscriptions gs
+        WHERE gs.game_id = g.id
+          AND gs.user_id = $1::uuid
+    )
+) DESC, lower(g.name), g.id
 `
 
 type BrowseSubscriptionGamesParams struct {
@@ -53,12 +66,24 @@ type BrowseSubscriptionGamesParams struct {
 }
 
 type BrowseSubscriptionGamesRow struct {
-	GID        string
-	Name       string
-	Slug       string
-	Subscribed bool
+	GID              string
+	Name             string
+	Slug             string
+	CoverImageID     pgtype.Text
+	GameType         pgtype.Text
+	PlatformNames    []string
+	FirstReleaseDate pgtype.Timestamptz
+	Subscribed       bool
 }
 
+// Empty search (the "browse the catalog" case) prioritizes followed Games
+// first. A non-empty search (the local-only fallback for a disabled
+// provider) keeps the pre-existing plain name order: the empty-search guard
+// makes every row's ORDER BY sort key false there, so followed status never
+// reorders results. PostgreSQL's SELECT-list output-alias shorthand for
+// ORDER BY only applies to a bare name, not a name nested in an expression,
+// so the followed-game EXISTS check is repeated in the ORDER BY clause
+// rather than referenced through the subscribed alias.
 func (q *Queries) BrowseSubscriptionGames(ctx context.Context, arg BrowseSubscriptionGamesParams) ([]BrowseSubscriptionGamesRow, error) {
 	rows, err := q.db.Query(ctx, browseSubscriptionGames, arg.UserID, arg.Search)
 	if err != nil {
@@ -72,6 +97,10 @@ func (q *Queries) BrowseSubscriptionGames(ctx context.Context, arg BrowseSubscri
 			&i.GID,
 			&i.Name,
 			&i.Slug,
+			&i.CoverImageID,
+			&i.GameType,
+			&i.PlatformNames,
+			&i.FirstReleaseDate,
 			&i.Subscribed,
 		); err != nil {
 			return nil, err
@@ -264,19 +293,29 @@ func (q *Queries) ListGames(ctx context.Context, search string) ([]ListGamesRow,
 }
 
 const listSubscribedGames = `-- name: ListSubscribedGames :many
-SELECT g.id::text, g.name, g.slug, true AS subscribed
+SELECT g.id::text, g.name, g.slug,
+       enrichment.cover_image_id,
+       enrichment.game_type,
+       enrichment.platform_names,
+       enrichment.first_release_date,
+       true AS subscribed
 FROM game_subscriptions gs
 JOIN games g ON g.id = gs.game_id
+LEFT JOIN game_igdb_enrichment enrichment ON enrichment.game_id = g.id
 WHERE gs.user_id = $1::uuid
   AND g.active
 ORDER BY lower(g.name), g.id
 `
 
 type ListSubscribedGamesRow struct {
-	GID        string
-	Name       string
-	Slug       string
-	Subscribed bool
+	GID              string
+	Name             string
+	Slug             string
+	CoverImageID     pgtype.Text
+	GameType         pgtype.Text
+	PlatformNames    []string
+	FirstReleaseDate pgtype.Timestamptz
+	Subscribed       bool
 }
 
 func (q *Queries) ListSubscribedGames(ctx context.Context, userID pgtype.UUID) ([]ListSubscribedGamesRow, error) {
@@ -292,6 +331,10 @@ func (q *Queries) ListSubscribedGames(ctx context.Context, userID pgtype.UUID) (
 			&i.GID,
 			&i.Name,
 			&i.Slug,
+			&i.CoverImageID,
+			&i.GameType,
+			&i.PlatformNames,
+			&i.FirstReleaseDate,
 			&i.Subscribed,
 		); err != nil {
 			return nil, err

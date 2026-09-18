@@ -902,6 +902,94 @@ func TestIGDBDisappearanceKeepsEnrichmentAndReappearanceRefreshesIt(t *testing.T
 	}
 }
 
+// TestGamePresentationEnrichmentPersistsThroughLocalBrowseAndMyGames covers
+// Task 2: the local Browse and My Games paths must read the last-known-good
+// game_igdb_enrichment snapshot for a materialized-via-IGDB Game, not just
+// the provider-search path. The test never deactivates or otherwise touches
+// provider data after materialization, so the assertions can only be
+// satisfied by the local read itself being snapshot-backed.
+func TestGamePresentationEnrichmentPersistsThroughLocalBrowseAndMyGames(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+	users := user.NewService(userpostgres.NewStore(pool))
+	viewer, err := users.Register(t.Context(), "Presentation Viewer")
+	if err != nil {
+		t.Fatalf("register viewer: %v", err)
+	}
+
+	gameStore := gamepostgres.NewStore(pool)
+	discovery := game.NewDiscoveryService(gameStore, gameStore, gameStore)
+	subscriptions := game.NewSubscriptionService(gameStore)
+
+	releaseDate := time.Date(2002, time.July, 3, 0, 0, 0, 0, time.UTC)
+	provider := game.ProviderGame{
+		Reference:        game.ProviderReference{Provider: "igdb", ExternalID: "9500"},
+		Name:             "Presentation Quest",
+		Slug:             "presentation-quest",
+		GameType:         "Main Game",
+		FirstReleaseDate: &releaseDate,
+		PlatformNames:    []string{"PC (Microsoft Windows)"},
+		CoverImageID:     "co1abc",
+	}
+	activateIGDBGeneration(t, gameStore, []game.ProviderGame{provider})
+
+	materialized, err := discovery.Resolve(t.Context(), provider.Reference)
+	if err != nil {
+		t.Fatalf("materialize provider record: %v", err)
+	}
+	if err := subscriptions.Follow(t.Context(), viewer.ID, materialized.ID); err != nil {
+		t.Fatalf("follow materialized game: %v", err)
+	}
+
+	assertPresentation := func(t *testing.T, label string, presentation game.GamePresentation) {
+		t.Helper()
+		if presentation.CoverImageID != provider.CoverImageID {
+			t.Fatalf("%s CoverImageID = %q, want %q", label, presentation.CoverImageID, provider.CoverImageID)
+		}
+		if presentation.GameType != provider.GameType {
+			t.Fatalf("%s GameType = %q, want %q", label, presentation.GameType, provider.GameType)
+		}
+		if !slices.Equal(presentation.PlatformNames, provider.PlatformNames) {
+			t.Fatalf("%s PlatformNames = %#v, want %#v", label, presentation.PlatformNames, provider.PlatformNames)
+		}
+		if presentation.FirstReleaseDate == nil || !presentation.FirstReleaseDate.Equal(*provider.FirstReleaseDate) {
+			t.Fatalf("%s FirstReleaseDate = %v, want %v", label, presentation.FirstReleaseDate, *provider.FirstReleaseDate)
+		}
+	}
+
+	browsed, err := gameStore.Browse(t.Context(), viewer.ID, "")
+	if err != nil {
+		t.Fatalf("Browse: %v", err)
+	}
+	var browsedGame *game.SubscriptionGame
+	for i := range browsed {
+		if browsed[i].ID == materialized.ID {
+			browsedGame = &browsed[i]
+		}
+	}
+	if browsedGame == nil {
+		t.Fatalf("Browse = %#v, want materialized game present", browsed)
+	}
+	assertPresentation(t, "Browse", browsedGame.GamePresentation)
+
+	myGames, err := gameStore.MyGames(t.Context(), viewer.ID)
+	if err != nil {
+		t.Fatalf("MyGames: %v", err)
+	}
+	var myGame *game.SubscriptionGame
+	for i := range myGames {
+		if myGames[i].ID == materialized.ID {
+			myGame = &myGames[i]
+		}
+	}
+	if myGame == nil {
+		t.Fatalf("MyGames = %#v, want materialized game present", myGames)
+	}
+	assertPresentation(t, "MyGames", myGame.GamePresentation)
+}
+
 // TestIGDBBeginGenerationFailsAbandonedSyncingGeneration exercises the
 // plan's Step 2 lifecycle scenario: a generation left 'syncing' by a process
 // that exited before completing or failing it (simulated by inserting the

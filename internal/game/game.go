@@ -47,9 +47,8 @@ type Game struct {
 // SubscriptionGame is the user-facing catalog projection with the current
 // user's subscription state.
 type SubscriptionGame struct {
-	ID         string
-	Name       string
-	Slug       string
+	ID string
+	GamePresentation
 	Subscribed bool
 }
 

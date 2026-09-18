@@ -159,7 +159,9 @@ func (s *Store) Browse(ctx context.Context, userID, search string) ([]game.Subsc
 	result := make([]game.SubscriptionGame, 0, len(rows))
 	for _, row := range rows {
 		result = append(result, game.SubscriptionGame{
-			ID: row.GID, Name: row.Name, Slug: row.Slug, Subscribed: row.Subscribed,
+			ID:               row.GID,
+			GamePresentation: presentation(row.Name, row.Slug, row.GameType, row.CoverImageID, row.PlatformNames, row.FirstReleaseDate),
+			Subscribed:       row.Subscribed,
 		})
 	}
 	return result, nil
@@ -177,10 +179,39 @@ func (s *Store) MyGames(ctx context.Context, userID string) ([]game.Subscription
 	result := make([]game.SubscriptionGame, 0, len(rows))
 	for _, row := range rows {
 		result = append(result, game.SubscriptionGame{
-			ID: row.GID, Name: row.Name, Slug: row.Slug, Subscribed: row.Subscribed,
+			ID:               row.GID,
+			GamePresentation: presentation(row.Name, row.Slug, row.GameType, row.CoverImageID, row.PlatformNames, row.FirstReleaseDate),
+			Subscribed:       row.Subscribed,
 		})
 	}
 	return result, nil
+}
+
+// textValue reads a possibly-NULL text column into a plain string, empty
+// when NULL. game_igdb_enrichment columns are NULL until a local Game has
+// materialized via IGDB (LEFT JOIN with no matching row), so this is the
+// normal shape for a local-only Game, not an error case.
+func textValue(value pgtype.Text) string {
+	if !value.Valid {
+		return ""
+	}
+	return value.String
+}
+
+// presentation maps one Browse/My Games row into GamePresentation, shared by
+// both queries so the two player-facing projections cannot drift. name and
+// slug always come from the authoritative local Game; the remaining fields
+// come from the LEFT JOINed game_igdb_enrichment snapshot and are zero for a
+// Game never materialized via IGDB.
+func presentation(name, slug string, gameType, cover pgtype.Text, platforms []string, release pgtype.Timestamptz) game.GamePresentation {
+	return game.GamePresentation{
+		Name:             name,
+		Slug:             slug,
+		GameType:         textValue(gameType),
+		PlatformNames:    nonNilStrings(platforms),
+		FirstReleaseDate: timestamptzPointer(release),
+		CoverImageID:     textValue(cover),
+	}
 }
 
 func (s *Store) Follow(ctx context.Context, userID, gameID string) error {

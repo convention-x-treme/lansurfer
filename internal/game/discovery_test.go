@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 )
 
 type fakeDiscoveryRepository struct {
@@ -310,6 +311,31 @@ func TestDiscoveryResolveWithProviderDisabledReportsNoProviderRecordWithoutMater
 	}
 	if materializer.calls != 0 {
 		t.Fatalf("materializer.calls = %d, want 0: disabled provider must never materialize stale generations", materializer.calls)
+	}
+}
+
+func TestDiscoveryBrowseEmptySearchKeepsLocalEnrichment(t *testing.T) {
+	release := time.Date(2002, 7, 3, 0, 0, 0, 0, time.UTC)
+	subs := &fakeSubscriptions{browse: []SubscriptionGame{{
+		ID: "local-1",
+		GamePresentation: GamePresentation{
+			Name: "Warcraft III", Slug: "warcraft-iii",
+			CoverImageID: "co1abc", GameType: "Main Game",
+			PlatformNames:    []string{"PC (Microsoft Windows)"},
+			FirstReleaseDate: &release,
+		},
+	}}}
+	service := NewDiscoveryService(&fakeDiscoveryRepository{}, nil, subs)
+
+	got, err := service.Browse(t.Context(), "user-1", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("items = %#v", got)
+	}
+	if got[0].CoverImageID != "co1abc" || got[0].GameType != "Main Game" {
+		t.Fatalf("item = %#v", got[0])
 	}
 }
 
