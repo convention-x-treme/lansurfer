@@ -2,99 +2,191 @@ package pages
 
 import (
 	"fmt"
-	"strconv"
-	"strings"
+	"net/url"
 
 	"github.com/convention-x-treme/lansurfer/internal/game"
 	"github.com/convention-x-treme/lansurfer/internal/web/branding"
 	"github.com/convention-x-treme/lansurfer/internal/web/components"
 )
 
-templ GameCatalog(brand branding.Brand, navigation components.NavigationState, games []game.DiscoveryItem, search, message string) {
+// GameCatalog is the discovery-first Games page (spec: "2.1 Games is
+// discovery-first"). It never asks a player to first understand whether a
+// Game is already an authoritative local Game or still exists only in the
+// synchronized IGDB index.
+templ GameCatalog(brand branding.Brand, navigation components.NavigationState, page game.DiscoveryPage, search, message string) {
 	@components.Layout(brand, "Games", navigation) {
 		<header class="app-topbar">
 			<h1 class="app-title">Games</h1>
 			<a class="btn btn-quiet btn-sm" href="/games/mine">My Games</a>
 		</header>
 		<div class="content-page">
-			<form class="request-toolbar" method="get" action="/games" hx-get="/games" hx-target="#game-catalog-results" hx-swap="outerHTML" hx-push-url="true">
-				<label class="sr-only" for="game-search">Search by game name or alias</label>
-				<input id="game-search" class="input input-sm request-search" type="search" name="q" value={ search } maxlength="120" placeholder="Search by name or alias, e.g. wc3"/>
-				<button class="btn btn-quiet btn-sm" type="submit">Search</button>
-				if search != "" {
-					<a class="btn btn-ghost btn-sm" href="/games">Clear</a>
-				}
-			</form>
-			@GameCatalogResults(games, search, message)
+			@GameSearchForm(search)
+			@GameCatalogResults(page, search, message, navigation.Viewer)
 		</div>
 	}
 }
 
-templ GameCatalogResults(games []game.DiscoveryItem, search, message string) {
+// GameSearchForm live-searches as the player types (spec: "3.2 Live
+// search"): it debounces briefly, drops a stale in-flight search so it
+// cannot land after a newer one, and replaces the URL rather than pushing a
+// history entry for every pause. The plain GET submit button is the
+// no-JavaScript fallback.
+templ GameSearchForm(search string) {
+	<form
+		class="request-toolbar"
+		method="get"
+		action="/games"
+		hx-get="/games"
+		hx-target="#game-catalog-results"
+		hx-swap="outerHTML"
+		hx-sync="this:replace"
+		hx-replace-url="true"
+		hx-trigger="submit, input changed delay:300ms from:(#game-search), search from:(#game-search)"
+	>
+		<label class="sr-only" for="game-search">Search by game name or alias</label>
+		<input id="game-search" class="input input-sm request-search" type="search" name="q" value={ search } maxlength="120" placeholder="Search by name or alias, e.g. wc3" autocomplete="off"/>
+		<button class="btn btn-quiet btn-sm" type="submit">Search</button>
+		if search != "" {
+			<a class="btn btn-ghost btn-sm" href="/games">Clear</a>
+		}
+	</form>
+}
+
+// GameCatalogResults renders every player-visible state of one Browse page:
+// the too-short-search hint, the no-search discovery state (the local
+// catalog plus provider availability), and the >=2-character search-result
+// state. It is the htmx live-search swap target, so it alone must carry
+// enough of the page to stay correct after a fragment swap.
+templ GameCatalogResults(page game.DiscoveryPage, search, message string, viewer *components.Viewer) {
 	<div id="game-catalog-results" aria-live="polite">
 		if message != "" {
 			<div role="alert" class="alert alert-error mb-4"><span>{ message }</span></div>
 		}
-		<div class="mb-2 flex items-center justify-between gap-4">
-			<p class="section-label">{ gameCountLabel(len(games)) }</p>
-		</div>
-		if len(games) == 0 {
-			<section class="detail-card">
-				<h2 class="text-[1.0625rem] font-semibold">No games found</h2>
-				if search == "" {
-					<p class="text-sm text-base-content/70">There are no active games in the catalog yet.</p>
-				} else {
-					<p class="text-sm text-base-content/70">Try a different game name or alias.</p>
-				}
-			</section>
-		} else {
-			<div class="game-grid">
-				for _, item := range games {
-					@GameDiscoveryCard(item)
-				}
+		if page.SearchTooShort {
+			<p class="text-sm text-base-content/70 mb-4">Type at least 2 characters to search.</p>
+		}
+		if search == "" {
+			<div class="mb-6">
+				<h2 class="text-[1.0625rem] font-semibold">Find your game</h2>
+				<p class="text-sm text-base-content/70">Search the game catalog to follow something you play or start a Game Request.</p>
 			</div>
+		}
+		if search == "" || page.SearchTooShort {
+			@GameDiscoveryList(page, viewer)
+		} else {
+			@GameSearchResults(page, search)
 		}
 	</div>
 }
 
-// GameDiscoveryCard renders one Browse result. A materialized item is
-// already an authoritative local Game, so it renders with the usual
-// follow/unfollow controls. An unmaterialized provider item shows read-only
-// display metadata (name plus type/platform/release disambiguation and a
-// remote cover derived only from CoverImageID) plus a follow action. No
-// provider name, slug, or other metadata is ever posted back to the server
-// from this card; only the opaque provider reference (provider + external
-// ID) travels, in the follow form's URL path.
-templ GameDiscoveryCard(item game.DiscoveryItem) {
-	if item.Materialized {
-		@GameSubscriptionCard(game.SubscriptionGame{ID: item.LocalGameID, Name: item.Name, Slug: item.Slug, Subscribed: item.Subscribed}, false)
+// GameDiscoveryList renders the no-search discovery state. A one-character
+// search takes this same path (Browse returns the full unfiltered local
+// list alongside SearchTooShort=true), so the "Games on this LAN" heading
+// above the list -- distinct from a search-result heading -- is what keeps
+// that state unambiguous rather than looking like a filtered result.
+templ GameDiscoveryList(page game.DiscoveryPage, viewer *components.Viewer) {
+	if len(page.Items) > 0 {
+		<section>
+			<p class="section-label mb-2">Games on this LAN</p>
+			<div class="game-grid">
+				for _, item := range page.Items {
+					@GameCard(item)
+				}
+			</div>
+		</section>
 	} else {
-		@ProviderDiscoveryCard(item)
+		@GameCatalogAvailability(page.ProviderStatus, viewer)
 	}
 }
 
-templ ProviderDiscoveryCard(item game.DiscoveryItem) {
-	<article class="game-card">
-		<div class="flex items-center gap-3">
-			if item.CoverImageID != "" {
-				<img class="h-12 w-9 flex-none rounded object-cover bg-base-300" src={ providerCoverURL(item.CoverImageID) } alt="" referrerpolicy="no-referrer" loading="lazy"/>
-			} else {
-				<span class="game-abbreviation" aria-hidden="true">{ gameAbbreviation(item.Name) }</span>
+// GameCatalogAvailability is the provider readiness/no-catalog state (spec:
+// "8. Provider availability states"). It only ever appears when there are
+// no local Games to show instead, and a catalog that has ever completed a
+// baseline (CatalogAvailable) never shows a failure/readiness warning to an
+// ordinary player -- only an administrator gets a route into the relevant
+// administration surface.
+templ GameCatalogAvailability(status game.ProviderStatus, viewer *components.Viewer) {
+	if !status.CatalogAvailable {
+		if status.State == game.ProviderNotSynced || status.State == game.ProviderSyncing {
+			<section class="detail-card">
+				<h2 class="text-[1.0625rem] font-semibold">Game discovery is getting ready.</h2>
+			</section>
+		} else {
+			<section class="detail-card">
+				<h2 class="text-[1.0625rem] font-semibold">No games are available yet.</h2>
+				if viewer != nil && viewer.Role == "admin" {
+					<a class="btn btn-quiet btn-sm self-start" href="/admin/igdb">Open IGDB synchronization</a>
+				}
+			</section>
+		}
+	}
+}
+
+// GameSearchResults renders a >=2-character search: an explicit truncation
+// hint when the repository signaled more rows exist than the bounded page
+// shows (spec: "3.5 Result limit"), the matching unified cards, or a
+// no-results state naming the query.
+templ GameSearchResults(page game.DiscoveryPage, search string) {
+	if page.HasMore {
+		<p class="text-sm text-base-content/70 mb-4">Too many matches — refine your search.</p>
+	}
+	if len(page.Items) == 0 {
+		<section class="detail-card">
+			<h2 class="text-[1.0625rem] font-semibold">{ fmt.Sprintf("No games found for %q", search) }</h2>
+		</section>
+	} else {
+		<div class="game-grid">
+			for _, item := range page.Items {
+				@GameCard(item)
 			}
-			<span class="min-w-0">
-				<strong class="block truncate text-base font-semibold">{ item.Name }</strong>
-				<span class="data-text block truncate text-xs text-base-content/65">{ providerDisambiguation(item) }</span>
-			</span>
 		</div>
+	}
+}
+
+// GameCard is the one player-facing card shared by materialized and
+// unmaterialized discovery results (spec: "4.1 One player-facing Game
+// card"). It never renders materialization origin, provider-record
+// terminology, or a Local/IGDB badge.
+templ GameCard(item game.DiscoveryItem) {
+	<article class="game-card">
+		@GameIdentity(item.GamePresentation, false)
 		<div class="mt-auto flex flex-wrap items-center justify-end gap-2">
-			<span class="status-chip">Not yet in LANsurfer catalog</span>
-			<a class="btn btn-quiet btn-sm" href={ providerGameRequestAction(item.Reference) }>Find Players</a>
-			<form method="post" action={ providerFollowAction(item.Reference) } hx-post={ providerFollowAction(item.Reference) } hx-target="this" hx-swap="outerHTML" hx-sync="this:drop" hx-disabled-elt="find button">
-				@components.CSRFInput()
-				<button class="btn btn-primary btn-sm" type="submit">Follow Game</button>
-			</form>
+			<a class="btn btn-quiet btn-sm" href={ gameRequestAction(item) }>Find Players</a>
+			@GameCardFollowControl(item)
 		</div>
 	</article>
+}
+
+// GameCardFollowControl branches on item.LocalGameID, never on item.Reference:
+// a materialized row's Reference is not reliably populated by the
+// underlying query, but LocalGameID is. An unmaterialized item (LocalGameID
+// empty) always has a reliable Reference, since only materialized rows are
+// affected. The provider follow form's htmx target stays "this" (the form
+// itself) rather than the whole card, so a successful follow swaps in only
+// the small GameFollowControl fragment and the richer cover/metadata card
+// around it is never replaced by a poorer local re-render.
+templ GameCardFollowControl(item game.DiscoveryItem) {
+	if item.Subscribed {
+		<div class="flex items-center gap-2">
+			<span class="status-chip status-chip-joined">Following</span>
+			if item.LocalGameID != "" {
+				<form method="post" action={ "/games/" + item.LocalGameID + "/unfollow" } hx-post={ "/games/" + item.LocalGameID + "/unfollow" } hx-target="closest div" hx-swap="outerHTML" hx-sync="this:drop" hx-disabled-elt="find button">
+					@components.CSRFInput()
+					<button class="btn btn-step-back btn-sm" type="submit">Unfollow</button>
+				</form>
+			}
+		</div>
+	} else if item.LocalGameID != "" {
+		<form method="post" action={ "/games/" + item.LocalGameID + "/follow" } hx-post={ "/games/" + item.LocalGameID + "/follow" } hx-target="this" hx-swap="outerHTML" hx-sync="this:drop" hx-disabled-elt="find button">
+			@components.CSRFInput()
+			<button class="btn btn-primary btn-sm" type="submit">Follow Game</button>
+		</form>
+	} else {
+		<form method="post" action={ providerFollowAction(item.Reference) } hx-post={ providerFollowAction(item.Reference) } hx-target="this" hx-swap="outerHTML" hx-sync="this:drop" hx-disabled-elt="find button">
+			@components.CSRFInput()
+			<button class="btn btn-primary btn-sm" type="submit">Follow Game</button>
+		</form>
+	}
 }
 
 templ MyGames(brand branding.Brand, navigation components.NavigationState, games []game.SubscriptionGame) {
@@ -125,13 +217,7 @@ templ MyGames(brand branding.Brand, navigation components.NavigationState, games
 
 templ GameSubscriptionCard(item game.SubscriptionGame, myGames bool) {
 	<article class="game-card">
-		<div class="flex items-center gap-3">
-			<span class="game-abbreviation" aria-hidden="true">{ gameAbbreviation(item.Name) }</span>
-			<span class="min-w-0">
-				<strong class="block truncate text-base font-semibold">{ item.Name }</strong>
-				<span class="data-text block truncate text-xs text-base-content/65">{ item.Slug }</span>
-			</span>
-		</div>
+		@GameIdentity(item.GamePresentation, false)
 		<div class="mt-auto flex flex-wrap items-center justify-end gap-2">
 			if item.Subscribed {
 				<a class="btn btn-quiet btn-sm" href={ "/game-requests/new?game_id=" + item.ID }>Find Players</a>
@@ -186,21 +272,6 @@ func followedCountLabel(count int) string {
 	return fmt.Sprintf("%d games followed", count)
 }
 
-func gameCountLabel(count int) string {
-	if count == 1 {
-		return "1 game"
-	}
-	return fmt.Sprintf("%d games", count)
-}
-
-// providerCoverURL constructs the approved images.igdb.com cover URL from
-// only the persisted cover_image_id (spec: "Covers"). It never accepts or
-// echoes any other provider-supplied metadata; the CSP img-src allowlist and
-// Referrer-Policy: no-referrer safeguards live in internal/web/middleware.
-func providerCoverURL(coverImageID string) string {
-	return "https://images.igdb.com/igdb/image/upload/t_cover_small/" + coverImageID + ".jpg"
-}
-
 // providerFollowAction builds the provider-follow route from only the
 // opaque provider reference already carried on the DiscoveryItem (never
 // browser input): provider is always "igdb" in this codebase, and external
@@ -210,27 +281,18 @@ func providerFollowAction(ref game.ProviderReference) string {
 	return "/games/providers/" + ref.Provider + "/" + ref.ExternalID + "/follow"
 }
 
-// providerGameRequestAction builds the "Find Players" link for an
-// unmaterialized provider discovery result, carrying only the opaque
-// provider reference (never a name/slug) so the create-request handler
-// resolves/materializes the authoritative local Game itself.
-func providerGameRequestAction(ref game.ProviderReference) string {
-	return "/game-requests/new?provider=" + ref.Provider + "&external_id=" + ref.ExternalID
-}
-
-// providerDisambiguation renders type/platform/release context so provider
-// search results without a unique display name can still be told apart
-// (spec: "Local Game name uniqueness must change").
-func providerDisambiguation(item game.DiscoveryItem) string {
-	parts := make([]string, 0, 3)
-	if item.GameType != "" {
-		parts = append(parts, item.GameType)
+// gameRequestAction builds the "Find Players" link for one discovery item.
+// It branches on LocalGameID rather than Materialized/Reference: an
+// already-materialized row reliably carries LocalGameID, while its
+// Reference is not always reliably populated by the underlying query. An
+// unmaterialized item (LocalGameID empty) always has a reliable Reference,
+// carrying only the opaque provider reference (never a name/slug) so the
+// create-request handler resolves/materializes the authoritative local Game
+// itself.
+func gameRequestAction(item game.DiscoveryItem) string {
+	if item.LocalGameID != "" {
+		return "/game-requests/new?game_id=" + url.QueryEscape(item.LocalGameID)
 	}
-	if len(item.PlatformNames) > 0 {
-		parts = append(parts, strings.Join(item.PlatformNames, ", "))
-	}
-	if item.FirstReleaseDate != nil {
-		parts = append(parts, strconv.Itoa(item.FirstReleaseDate.Year()))
-	}
-	return strings.Join(parts, " · ")
+	return "/game-requests/new?provider=" + url.QueryEscape(item.Reference.Provider) +
+		"&external_id=" + url.QueryEscape(item.Reference.ExternalID)
 }

@@ -41,14 +41,14 @@ func (h *Games) Browse(w http.ResponseWriter, r *http.Request) {
 	page, err := h.discovery.Browse(r.Context(), account.ID, search)
 	if err != nil {
 		if errors.Is(err, game.ErrInvalidSearch) {
-			h.renderBrowse(w, r, http.StatusUnprocessableEntity, nil, search, "Search must be 120 characters or fewer.")
+			h.renderBrowse(w, r, http.StatusUnprocessableEntity, game.DiscoveryPage{}, search, "Search must be 120 characters or fewer.")
 			return
 		}
 		webmiddleware.LogError(r, "browse game catalog", err)
 		h.renderError(w, r)
 		return
 	}
-	h.renderBrowse(w, r, http.StatusOK, page.Items, search, "")
+	h.renderBrowse(w, r, http.StatusOK, page, search, "")
 }
 
 func (h *Games) MyGames(w http.ResponseWriter, r *http.Request) {
@@ -102,12 +102,13 @@ func (h *Games) Unfollow(w http.ResponseWriter, r *http.Request) {
 	h.mutationSuccess(w, r, false)
 }
 
-func (h *Games) renderBrowse(w http.ResponseWriter, r *http.Request, status int, items []game.DiscoveryItem, search, message string) {
+func (h *Games) renderBrowse(w http.ResponseWriter, r *http.Request, status int, page game.DiscoveryPage, search, message string) {
+	navigation := gameNavigation(r, "games")
 	if r.Header.Get("HX-Request") == "true" {
-		render(w, r, status, pages.GameCatalogResults(items, search, message))
+		render(w, r, status, pages.GameCatalogResults(page, search, message, navigation.Viewer))
 		return
 	}
-	render(w, r, status, pages.GameCatalog(h.brand, gameNavigation(r, "games"), items, search, message))
+	render(w, r, status, pages.GameCatalog(h.brand, navigation, page, search, message))
 }
 
 func (h *Games) mutationSuccess(w http.ResponseWriter, r *http.Request, subscribed bool) {

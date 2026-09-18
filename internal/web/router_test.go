@@ -434,13 +434,17 @@ func TestGameCatalogRendersUnmaterializedProviderResultWithFollowAction(t *testi
 		"PC (Microsoft Windows)",
 		"2002",
 		"https://images.igdb.com/igdb/image/upload/t_cover_small/co1abc.jpg",
-		"Not yet in LANsurfer catalog",
 		"Follow Game",
 		`hx-post="/games/providers/igdb/42/follow"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("body does not contain %q", want)
 		}
+	}
+	// The unified card never exposes materialization origin (spec: "4.1 One
+	// player-facing Game card").
+	if strings.Contains(body, "Not yet in LANsurfer catalog") {
+		t.Errorf("body unexpectedly exposes materialization origin: %q", body)
 	}
 	// The card never posts the provider name/slug/metadata; only the opaque
 	// provider reference travels, in the URL path.
