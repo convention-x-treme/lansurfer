@@ -102,7 +102,7 @@ func (f *fixture) seed(gameName string, maxPlayers int32, members int64) {
 	f.next++
 	id := fmt.Sprintf("00000000-0000-0000-0000-00000000000%d", f.next)
 	request := requestquery.Request{
-		ID: id, GameName: gameName, CreatorID: "creator-" + id, CreatorName: "Host",
+		ID: id, Game: game.GamePresentation{Name: gameName}, CreatorID: "creator-" + id, CreatorName: "Host",
 		StartsAt: time.Now().Add(time.Hour), Status: gamerequest.StatusOpen,
 		MemberCount: members, CreatedAt: time.Now().Add(-time.Hour),
 		Members:  []requestquery.Member{{ID: "creator-" + id, DisplayName: "Host", JoinedAt: time.Now().Add(-time.Hour)}},
@@ -158,7 +158,7 @@ func (f *fixture) Create(_ context.Context, _, gameID string, maxPlayers *int32,
 	id := fmt.Sprintf("00000000-0000-0000-0000-00000000000%d", f.next)
 	f.requests[id] = &fixtureRequest{
 		request: requestquery.Request{
-			ID: id, GameName: gameName(gameID), CreatorID: viewerID, CreatorName: "Ada Player",
+			ID: id, Game: game.GamePresentation{Name: gameName(gameID)}, CreatorID: viewerID, CreatorName: "Ada Player",
 			MaxPlayers: maxPlayers, StartsAt: startsAt, Description: description,
 			Status: gamerequest.StatusOpen, MemberCount: 1, CreatedAt: time.Now(),
 			Members:  []requestquery.Member{{ID: viewerID, DisplayName: "Ada Player", JoinedAt: time.Now()}},
@@ -275,7 +275,7 @@ func (f *fixture) ListActive(_ context.Context, _ string, filter requestquery.Fi
 		if entry.request.Status != gamerequest.StatusOpen {
 			continue
 		}
-		if filter.Search != "" && !strings.Contains(strings.ToLower(entry.request.GameName), strings.ToLower(filter.Search)) {
+		if filter.Search != "" && !strings.Contains(strings.ToLower(entry.request.Game.Name), strings.ToLower(filter.Search)) {
 			continue
 		}
 		if filter.FollowedOnly && !entry.followed {

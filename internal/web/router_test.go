@@ -537,7 +537,7 @@ func TestRealtimeRequiresAuthentication(t *testing.T) {
 
 func TestRealtimeRefreshHighlightsFollowedGame(t *testing.T) {
 	queries := &routerGameRequestQueries{items: []requestquery.Request{{
-		ID: "request-1", GameName: "Warcraft III",
+		ID: "request-1", Game: game.GamePresentation{Name: "Warcraft III"},
 		CreatorID: "creator-1", CreatorName: "Grace", StartsAt: time.Now(),
 		Status: gamerequest.StatusOpen, MemberCount: 1, ViewerSubscribed: true,
 	}}}
@@ -565,7 +565,7 @@ func TestRealtimeRefreshHighlightsFollowedGame(t *testing.T) {
 func TestGameRequestDiscoveryFiltersAndTrending(t *testing.T) {
 	queries := &routerGameRequestQueries{
 		items: []requestquery.Request{{
-			ID: "request-1", GameName: "Warcraft III", CreatorID: "creator-1",
+			ID: "request-1", Game: game.GamePresentation{Name: "Warcraft III"}, CreatorID: "creator-1",
 			CreatorName: "Grace", StartsAt: time.Now(), Status: gamerequest.StatusOpen, MemberCount: 1,
 		}},
 		trending: []requestquery.TrendingGame{{GameID: "game-1", GameName: "Warcraft III", ActivityCount: 4, RequestCount: 2}},
@@ -619,7 +619,7 @@ func TestGameRequestDiscoveryFiltersAndTrending(t *testing.T) {
 func TestNavigationBadgeIgnoresDiscoveryFilters(t *testing.T) {
 	queries := &routerGameRequestQueries{
 		items: []requestquery.Request{{
-			ID: "request-1", GameName: "Warcraft III", CreatorID: "creator-1",
+			ID: "request-1", Game: game.GamePresentation{Name: "Warcraft III"}, CreatorID: "creator-1",
 			CreatorName: "Grace", StartsAt: time.Now(), Status: gamerequest.StatusOpen, MemberCount: 1,
 		}},
 		openTotal: 10,
@@ -672,7 +672,7 @@ func TestGameRequestBrowserWorkflow(t *testing.T) {
 	commands := &routerGameRequests{}
 	queries := &routerGameRequestQueries{
 		items: []requestquery.Request{{
-			ID: "request-1", GameName: "Warcraft III",
+			ID: "request-1", Game: game.GamePresentation{Name: "Warcraft III"},
 			CreatorID: "creator-1", CreatorName: "Grace", StartsAt: time.Now(),
 			Status: gamerequest.StatusOpen, MemberCount: 1,
 		}},
@@ -982,7 +982,7 @@ func (a *routerAuthentication) Authenticate(context.Context, string) (user.User,
 func TestDuplicateJoinReportsRecoverableConflict(t *testing.T) {
 	commands := &routerGameRequests{joinError: gamerequest.ErrAlreadyMember}
 	queries := &routerGameRequestQueries{items: []requestquery.Request{{
-		ID: "request-1", GameName: "Warcraft III", CreatorID: "user-2",
+		ID: "request-1", Game: game.GamePresentation{Name: "Warcraft III"}, CreatorID: "user-2",
 		CreatorName: "Other", MemberCount: 2, ViewerJoined: true, Status: gamerequest.StatusOpen,
 		StartsAt: time.Now().Add(time.Hour),
 	}}}

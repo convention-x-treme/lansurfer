@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/convention-x-treme/lansurfer/internal/game"
 	"github.com/convention-x-treme/lansurfer/internal/gamerequest"
 	requestquery "github.com/convention-x-treme/lansurfer/internal/query/gamerequest"
 	"github.com/convention-x-treme/lansurfer/internal/web/branding"
@@ -31,7 +32,7 @@ func TestGameRequestRowLetsJoinedViewerLeaveFullRequest(t *testing.T) {
 	maxPlayers := int32(4)
 	request := requestquery.Request{
 		ID:           "request-1",
-		GameName:     "Warcraft III",
+		Game:         game.GamePresentation{Name: "Warcraft III"},
 		MaxPlayers:   &maxPlayers,
 		MemberCount:  4,
 		ViewerJoined: true,
@@ -49,7 +50,7 @@ func TestGameRequestRowLetsJoinedViewerLeaveFullRequest(t *testing.T) {
 func TestGameRequestRowUsesPositiveJoinAction(t *testing.T) {
 	request := requestquery.Request{
 		ID:          "request-1",
-		GameName:    "Warcraft III",
+		Game:        game.GamePresentation{Name: "Warcraft III"},
 		MemberCount: 1,
 		Status:      gamerequest.StatusOpen,
 	}
@@ -67,10 +68,10 @@ func TestGameRequestRowUsesPositiveJoinAction(t *testing.T) {
 func TestGameRequestRowGuardsAgainstDoubleSubmission(t *testing.T) {
 	tests := map[string]requestquery.Request{
 		"join": {
-			ID: "request-1", GameName: "Warcraft III", MemberCount: 1, Status: gamerequest.StatusOpen,
+			ID: "request-1", Game: game.GamePresentation{Name: "Warcraft III"}, MemberCount: 1, Status: gamerequest.StatusOpen,
 		},
 		"leave": {
-			ID: "request-1", GameName: "Warcraft III", MemberCount: 2, ViewerJoined: true, Status: gamerequest.StatusOpen,
+			ID: "request-1", Game: game.GamePresentation{Name: "Warcraft III"}, MemberCount: 2, ViewerJoined: true, Status: gamerequest.StatusOpen,
 		},
 	}
 	for action, request := range tests {
@@ -95,7 +96,7 @@ func TestGameRequestRowGuardsAgainstDoubleSubmission(t *testing.T) {
 func TestGameRequestDetailRefreshCarriesStampAndNewestActivityFirst(t *testing.T) {
 	now := time.Now()
 	request := requestquery.Request{
-		ID: "request-1", GameName: "Warcraft III", CreatorID: "host-1",
+		ID: "request-1", Game: game.GamePresentation{Name: "Warcraft III"}, CreatorID: "host-1",
 		Status: gamerequest.StatusOpen, MemberCount: 2, CreatedAt: now.Add(-10 * time.Minute),
 		Members: []requestquery.Member{
 			{ID: "host-1", DisplayName: "Otter", JoinedAt: now.Add(-10 * time.Minute)},
@@ -139,7 +140,7 @@ func TestGameRequestDetailRefreshCarriesStampAndNewestActivityFirst(t *testing.T
 func TestDetailActivityKeepsHistoryAfterLeave(t *testing.T) {
 	now := time.Now()
 	request := requestquery.Request{
-		ID: "request-1", GameName: "Warcraft III", CreatorID: "host-1",
+		ID: "request-1", Game: game.GamePresentation{Name: "Warcraft III"}, CreatorID: "host-1",
 		Status: gamerequest.StatusOpen, MemberCount: 1, CreatedAt: now.Add(-30 * time.Minute),
 		Members: []requestquery.Member{{ID: "host-1", DisplayName: "Otter", JoinedAt: now.Add(-30 * time.Minute)}},
 		Activity: []requestquery.Activity{
@@ -211,5 +212,92 @@ func TestRequestFiltersApplyWhileTyping(t *testing.T) {
 	}
 	if strings.Contains(markup, `hx-push-url`) {
 		t.Error("live filtering must replace the URL, not push a history entry per keystroke")
+	}
+}
+
+// The list row shares GameIdentity's cover-or-abbreviation rendering with
+// /games (Task 6), so a Game materialized via IGDB shows its cover in the
+// row exactly as it does everywhere else, not the abbreviation tile.
+func TestGameRequestRowUsesCoverWhenAvailable(t *testing.T) {
+	request := requestquery.Request{
+		ID:     "request-1",
+		Game:   game.GamePresentation{Name: "Warcraft III", CoverImageID: "co1abc"},
+		Status: gamerequest.StatusOpen,
+	}
+	var rendered bytes.Buffer
+	if err := GameRequestRow(request, "viewer-1", "").Render(context.Background(), &rendered); err != nil {
+		t.Fatalf("render GameRequestRow: %v", err)
+	}
+	body := rendered.String()
+	if !strings.Contains(body, "https://images.igdb.com/igdb/image/upload/t_cover_small/co1abc.jpg") {
+		t.Fatalf("row does not render the cover: %s", body)
+	}
+	if strings.Contains(body, `class="game-abbreviation"`) {
+		t.Errorf("row rendered the abbreviation tile even though a cover was available: %s", body)
+	}
+}
+
+// A Game never materialized via IGDB has no cover, so the row must keep
+// falling back to the abbreviation tile exactly as before Task 6.
+func TestGameRequestRowFallsBackToAbbreviationWithoutCover(t *testing.T) {
+	request := requestquery.Request{
+		ID:     "request-1",
+		Game:   game.GamePresentation{Name: "Warcraft III"},
+		Status: gamerequest.StatusOpen,
+	}
+	var rendered bytes.Buffer
+	if err := GameRequestRow(request, "viewer-1", "").Render(context.Background(), &rendered); err != nil {
+		t.Fatalf("render GameRequestRow: %v", err)
+	}
+	body := rendered.String()
+	if !strings.Contains(body, `class="game-abbreviation"`) || !strings.Contains(body, ">W3<") {
+		t.Fatalf("row does not fall back to the abbreviation tile: %s", body)
+	}
+	if strings.Contains(body, "images.igdb.com") {
+		t.Errorf("row rendered a cover without a CoverImageID: %s", body)
+	}
+}
+
+// Trending is a focused text-only read model over Game Request activity, not
+// a card grid; it must never grow a cover image, even though the Request
+// rows on the same page can now show one.
+func TestTrendingRemainsTextOnly(t *testing.T) {
+	trending := []requestquery.TrendingGame{{GameID: "game-1", GameName: "Warcraft III", ActivityCount: 4, RequestCount: 2}}
+	var rendered bytes.Buffer
+	if err := TrendingSection(trending, false).Render(context.Background(), &rendered); err != nil {
+		t.Fatalf("render TrendingSection: %v", err)
+	}
+	if body := rendered.String(); strings.Contains(body, "<img") {
+		t.Errorf("Trending must stay text-only: %s", body)
+	}
+}
+
+// The detail hero renders the same shared GameIdentity presentation as
+// /games and the list rows, so a materialized Game's cover and
+// type/platform/release metadata show up at the top of its detail page too.
+func TestGameRequestDetailContentRendersGameIdentityWithCoverAndMetadata(t *testing.T) {
+	release := time.Date(2002, time.July, 3, 0, 0, 0, 0, time.UTC)
+	request := requestquery.Request{
+		ID: "request-1",
+		Game: game.GamePresentation{
+			Name: "Warcraft III", CoverImageID: "co1abc", GameType: "Main Game",
+			PlatformNames: []string{"PC (Microsoft Windows)"}, FirstReleaseDate: &release,
+		},
+		CreatorID: "host-1", Status: gamerequest.StatusOpen, MemberCount: 1,
+	}
+	var rendered bytes.Buffer
+	if err := GameRequestDetailContent(request, "host-1", false).Render(context.Background(), &rendered); err != nil {
+		t.Fatalf("render detail: %v", err)
+	}
+	body := rendered.String()
+	for _, want := range []string{
+		"https://images.igdb.com/igdb/image/upload/t_cover_small/co1abc.jpg",
+		"Main Game",
+		"PC (Microsoft Windows)",
+		"2002",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("detail does not contain %q: %s", want, body)
+		}
 	}
 }

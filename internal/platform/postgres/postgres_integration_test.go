@@ -997,6 +997,80 @@ func TestGamePresentationEnrichmentPersistsThroughLocalBrowseAndMyGames(t *testi
 	assertPresentation(t, "MyGames", myGame.GamePresentation)
 }
 
+// TestGameRequestPresentationIncludesLocalEnrichment covers Task 6: the
+// Game Request read model's Game field must carry the same last-known-good
+// game_igdb_enrichment snapshot /games already shows (Task 2's
+// game.GamePresentation), for both ListActive and ByID. Enrichment is
+// touched only through materialization, never written by the gamerequest
+// module itself, proving the join reads the game module's own snapshot
+// rather than gamerequest owning a copy of it.
+func TestGameRequestPresentationIncludesLocalEnrichment(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+
+	users := user.NewService(userpostgres.NewStore(pool))
+	host, err := users.Register(t.Context(), "Enrichment Request Host")
+	if err != nil {
+		t.Fatalf("register host: %v", err)
+	}
+
+	gameStore := gamepostgres.NewStore(pool)
+	catalog := game.NewService(gameStore)
+	discovery := game.NewDiscoveryService(gameStore, gameStore, gameStore, storeProviderStatus{store: gameStore})
+
+	provider := game.ProviderGame{
+		Reference:    game.ProviderReference{Provider: "igdb", ExternalID: "9600"},
+		Name:         "Warcraft III",
+		Slug:         "warcraft-iii",
+		GameType:     "Main Game",
+		CoverImageID: "co1abc",
+	}
+	activateIGDBGeneration(t, gameStore, []game.ProviderGame{provider})
+
+	materialized, err := discovery.Resolve(t.Context(), provider.Reference)
+	if err != nil {
+		t.Fatalf("materialize provider record: %v", err)
+	}
+
+	requests := gamerequest.NewService(gamerequestpostgres.NewStore(pool), catalog, nil)
+	startsAt := time.Now().UTC().Add(time.Hour).Truncate(time.Microsecond)
+	created, err := requests.Create(t.Context(), host.ID, materialized.ID, nil, startsAt, "Enrichment round")
+	if err != nil {
+		t.Fatalf("create request: %v", err)
+	}
+
+	assertRequestGame := func(t *testing.T, label string, request gamerequestquery.Request) {
+		t.Helper()
+		if request.Game.CoverImageID != "co1abc" ||
+			request.Game.Name != "Warcraft III" ||
+			request.Game.GameType != "Main Game" {
+			t.Fatalf("%s game = %#v", label, request.Game)
+		}
+		if request.GameID != materialized.ID {
+			t.Fatalf("%s game ID = %q, want %q", label, request.GameID, materialized.ID)
+		}
+	}
+
+	readStore := gamerequestquery.NewStore(pool)
+	active, err := readStore.ListActive(t.Context(), host.ID, gamerequestquery.Filter{})
+	if err != nil {
+		t.Fatalf("list active: %v", err)
+	}
+	index := slices.IndexFunc(active, func(request gamerequestquery.Request) bool { return request.ID == created.ID })
+	if index < 0 {
+		t.Fatalf("created request missing from ListActive: %#v", active)
+	}
+	assertRequestGame(t, "ListActive", active[index])
+
+	detail, err := readStore.ByID(t.Context(), created.ID, host.ID)
+	if err != nil {
+		t.Fatalf("get by id: %v", err)
+	}
+	assertRequestGame(t, "ByID", detail)
+}
+
 // TestIGDBBeginGenerationFailsAbandonedSyncingGeneration exercises the
 // plan's Step 2 lifecycle scenario: a generation left 'syncing' by a process
 // that exited before completing or failing it (simulated by inserting the

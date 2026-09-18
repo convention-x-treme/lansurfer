@@ -1,6 +1,12 @@
 -- name: ListActiveGameRequests :many
 SELECT gr.id::text AS request_id,
+       g.id::text AS game_id,
        g.name AS game_name,
+       g.slug AS game_slug,
+       enrichment.cover_image_id,
+       enrichment.game_type,
+       enrichment.platform_names,
+       enrichment.first_release_date,
        gr.creator_id::text AS creator_id, u.display_name AS creator_name,
        gr.max_players, gr.starts_at, gr.description, gr.status,
        gr.created_at, gr.updated_at,
@@ -13,6 +19,7 @@ JOIN users u ON u.id = gr.creator_id
 JOIN game_request_members m ON m.game_request_id = gr.id
 LEFT JOIN game_subscriptions gs ON gs.game_id = gr.game_id
   AND gs.user_id = sqlc.arg(viewer_id)::uuid
+LEFT JOIN game_igdb_enrichment enrichment ON enrichment.game_id = g.id
 WHERE gr.status = 'open'
   AND (
       sqlc.arg(search)::text = ''
@@ -25,7 +32,7 @@ WHERE gr.status = 'open'
       )
   )
   AND (NOT sqlc.arg(followed_only)::boolean OR gs.user_id IS NOT NULL)
-GROUP BY gr.id, g.name, u.display_name
+GROUP BY gr.id, g.id, g.name, g.slug, enrichment.game_id, u.display_name
 HAVING NOT sqlc.arg(open_places_only)::boolean
     OR gr.max_players IS NULL
     OR count(m.user_id) < gr.max_players
@@ -33,7 +40,13 @@ ORDER BY gr.starts_at, gr.created_at, gr.id;
 
 -- name: GetGameRequest :one
 SELECT gr.id::text AS request_id,
+       g.id::text AS game_id,
        g.name AS game_name,
+       g.slug AS game_slug,
+       enrichment.cover_image_id,
+       enrichment.game_type,
+       enrichment.platform_names,
+       enrichment.first_release_date,
        gr.creator_id::text AS creator_id, u.display_name AS creator_name,
        gr.max_players, gr.starts_at, gr.description, gr.status,
        gr.created_at, gr.updated_at,
@@ -46,8 +59,9 @@ JOIN users u ON u.id = gr.creator_id
 JOIN game_request_members m ON m.game_request_id = gr.id
 LEFT JOIN game_subscriptions gs ON gs.game_id = gr.game_id
   AND gs.user_id = sqlc.arg(viewer_id)::uuid
+LEFT JOIN game_igdb_enrichment enrichment ON enrichment.game_id = g.id
 WHERE gr.id = sqlc.arg(id)::uuid
-GROUP BY gr.id, g.name, u.display_name;
+GROUP BY gr.id, g.id, g.name, g.slug, enrichment.game_id, u.display_name;
 
 -- name: ListGameRequestMembers :many
 SELECT u.id::text AS user_id, u.display_name, m.joined_at

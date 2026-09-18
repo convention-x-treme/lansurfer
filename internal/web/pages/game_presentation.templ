@@ -13,12 +13,16 @@ import (
 // still exists only in the synchronized IGDB index (spec: "4.1 One
 // player-facing Game card") -- it never renders a materialization-origin
 // label. compact selects the tight single-line presentation used in list
-// rows (abbreviation tile plus name only); the full presentation adds a
-// cover/abbreviation tile at card size plus a metadata line underneath the
-// name.
+// rows (cover when known, else the abbreviation tile, plus name only); the
+// full presentation adds a cover/abbreviation tile at card size plus a
+// metadata line underneath the name.
 templ GameIdentity(p game.GamePresentation, compact bool) {
 	if compact {
-		<span class="game-abbreviation" aria-hidden="true">{ gameAbbreviation(p.Name) }</span>
+		if p.CoverImageID != "" {
+			<img class="h-[2.125rem] w-[2.125rem] flex-none rounded object-cover bg-base-300" src={ providerCoverURL(p.CoverImageID) } alt="" referrerpolicy="no-referrer" loading="lazy"/>
+		} else {
+			<span class="game-abbreviation" aria-hidden="true">{ gameAbbreviation(p.Name) }</span>
+		}
 		<span class="min-w-0 truncate font-semibold">{ p.Name }</span>
 	} else {
 		<div class="flex items-center gap-3">

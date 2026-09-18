@@ -9,6 +9,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/convention-x-treme/lansurfer/internal/game"
 	domain "github.com/convention-x-treme/lansurfer/internal/gamerequest"
 	"github.com/convention-x-treme/lansurfer/internal/query/gamerequest/sqlcgen"
 	"github.com/jackc/pgx/v5"
@@ -32,7 +33,8 @@ var ErrInvalidSearch = errors.New("invalid search term")
 
 type Request struct {
 	ID               string
-	GameName         string
+	GameID           string
+	Game             game.GamePresentation
 	CreatorID        string
 	CreatorName      string
 	MaxPlayers       *int32
@@ -118,8 +120,13 @@ func (s *Store) ListActive(ctx context.Context, viewerID string, filter Filter) 
 	}
 	result := make([]Request, 0, len(rows))
 	for _, row := range rows {
-		result = append(result, requestFromFields(row.RequestID, row.GameName, row.CreatorID, row.CreatorName,
-			row.MaxPlayers, row.StartsAt, row.Description, row.Status, row.CreatedAt, row.MemberCount, row.ViewerJoined, row.ViewerSubscribed))
+		result = append(result, requestFromFields(requestFields{
+			ID: row.RequestID, GameID: row.GameID,
+			Game:      gamePresentationFromRow(row.GameName, row.GameSlug, row.GameType, row.CoverImageID, row.PlatformNames, row.FirstReleaseDate),
+			CreatorID: row.CreatorID, CreatorName: row.CreatorName,
+			MaxPlayers: row.MaxPlayers, StartsAt: row.StartsAt, Description: row.Description, Status: row.Status,
+			CreatedAt: row.CreatedAt, MemberCount: row.MemberCount, ViewerJoined: row.ViewerJoined, ViewerSubscribed: row.ViewerSubscribed,
+		}))
 	}
 	return result, nil
 }
@@ -140,8 +147,13 @@ func (s *Store) ByID(ctx context.Context, id, viewerID string) (Request, error) 
 	if err != nil {
 		return Request{}, fmt.Errorf("get game request: %w", err)
 	}
-	request := requestFromFields(row.RequestID, row.GameName, row.CreatorID, row.CreatorName,
-		row.MaxPlayers, row.StartsAt, row.Description, row.Status, row.CreatedAt, row.MemberCount, row.ViewerJoined, row.ViewerSubscribed)
+	request := requestFromFields(requestFields{
+		ID: row.RequestID, GameID: row.GameID,
+		Game:      gamePresentationFromRow(row.GameName, row.GameSlug, row.GameType, row.CoverImageID, row.PlatformNames, row.FirstReleaseDate),
+		CreatorID: row.CreatorID, CreatorName: row.CreatorName,
+		MaxPlayers: row.MaxPlayers, StartsAt: row.StartsAt, Description: row.Description, Status: row.Status,
+		CreatedAt: row.CreatedAt, MemberCount: row.MemberCount, ViewerJoined: row.ViewerJoined, ViewerSubscribed: row.ViewerSubscribed,
+	})
 	members, err := s.queries.ListGameRequestMembers(ctx, databaseID)
 	if err != nil {
 		return Request{}, fmt.Errorf("list game request members: %w", err)
@@ -208,18 +220,74 @@ func (s *Store) CreationOptions(ctx context.Context) ([]GameOption, error) {
 	return options, nil
 }
 
-func requestFromFields(id, gameName, creatorID, creatorName string, maxPlayers pgtype.Int4,
-	startsAt pgtype.Timestamptz, description, status string, createdAt pgtype.Timestamptz,
-	memberCount int64, viewerJoined, viewerSubscribed bool,
-) Request {
+// requestFields is the input to requestFromFields, built once by each sqlc
+// row mapper (ListActive, ByID) so a new presentation field cannot silently
+// reorder past the existing positional fields the way an expanding
+// positional requestFromFields signature would invite.
+type requestFields struct {
+	ID               string
+	GameID           string
+	Game             game.GamePresentation
+	CreatorID        string
+	CreatorName      string
+	MaxPlayers       pgtype.Int4
+	StartsAt         pgtype.Timestamptz
+	Description      string
+	Status           string
+	CreatedAt        pgtype.Timestamptz
+	MemberCount      int64
+	ViewerJoined     bool
+	ViewerSubscribed bool
+}
+
+func requestFromFields(fields requestFields) Request {
 	return Request{
-		ID: id, GameName: gameName, CreatorID: creatorID, CreatorName: creatorName,
-		MaxPlayers: int4Pointer(maxPlayers), StartsAt: startsAt.Time, Description: description,
-		Status: domain.Status(status), CreatedAt: createdAt.Time, MemberCount: memberCount,
-		ViewerJoined: viewerJoined, ViewerSubscribed: viewerSubscribed,
+		ID: fields.ID, GameID: fields.GameID, Game: fields.Game,
+		CreatorID: fields.CreatorID, CreatorName: fields.CreatorName,
+		MaxPlayers: int4Pointer(fields.MaxPlayers), StartsAt: fields.StartsAt.Time, Description: fields.Description,
+		Status: domain.Status(fields.Status), CreatedAt: fields.CreatedAt.Time, MemberCount: fields.MemberCount,
+		ViewerJoined: fields.ViewerJoined, ViewerSubscribed: fields.ViewerSubscribed,
 		Members:  []Member{},
 		Activity: []Activity{},
 	}
+}
+
+// gamePresentationFromRow maps one row's local name/slug plus its LEFT
+// JOINed game_igdb_enrichment snapshot into game.GamePresentation, shared by
+// ListActive and ByID so the two projections cannot drift. The enrichment
+// columns are NULL for a Game never materialized via IGDB, which is the
+// normal shape for a local-only Game, not an error case.
+func gamePresentationFromRow(name, slug string, gameType, cover pgtype.Text, platforms []string, release pgtype.Timestamptz) game.GamePresentation {
+	return game.GamePresentation{
+		Name:             name,
+		Slug:             slug,
+		GameType:         textValue(gameType),
+		PlatformNames:    nonNilStrings(platforms),
+		FirstReleaseDate: timestamptzPointer(release),
+		CoverImageID:     textValue(cover),
+	}
+}
+
+func textValue(value pgtype.Text) string {
+	if !value.Valid {
+		return ""
+	}
+	return value.String
+}
+
+func nonNilStrings(values []string) []string {
+	if values == nil {
+		return []string{}
+	}
+	return values
+}
+
+func timestamptzPointer(value pgtype.Timestamptz) *time.Time {
+	if !value.Valid {
+		return nil
+	}
+	result := value.Time
+	return &result
 }
 
 func int4Pointer(value pgtype.Int4) *int32 {
