@@ -342,6 +342,23 @@ func TestAdminIGDBSyncTriggersManualSync(t *testing.T) {
 	}
 }
 
+func TestAdminIGDBSyncReportsAlreadyRunningWhenDeclined(t *testing.T) {
+	providerSync := &routerProviderSync{declineStart: true}
+	request := httptest.NewRequest(http.MethodPost, "/admin/igdb/sync", nil)
+	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	addCSRF(request)
+	response := httptest.NewRecorder()
+
+	adminIGDBTestRouter(providerSync).ServeHTTP(response, request)
+
+	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/admin/igdb?notice=igdb-sync-already-running" {
+		t.Fatalf("response = %d %q", response.Code, response.Header().Get("Location"))
+	}
+	if providerSync.started {
+		t.Error("manual sync should not have been marked started when declined")
+	}
+}
+
 func TestGameCatalogRequiresAuthentication(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/games", nil)
 	response := httptest.NewRecorder()
@@ -715,9 +732,10 @@ func (*routerGames) AddAlias(context.Context, string, string) (game.Alias, error
 func (*routerGames) RemoveAlias(context.Context, string, string) error { return nil }
 
 type routerProviderSync struct {
-	status    game.ProviderStatus
-	statusErr error
-	started   bool
+	status       game.ProviderStatus
+	statusErr    error
+	started      bool
+	declineStart bool
 }
 
 func (r *routerProviderSync) Status(context.Context) (game.ProviderStatus, error) {
@@ -725,6 +743,9 @@ func (r *routerProviderSync) Status(context.Context) (game.ProviderStatus, error
 }
 
 func (r *routerProviderSync) TryStart(context.Context) bool {
+	if r.declineStart {
+		return false
+	}
 	r.started = true
 	return true
 }

@@ -51,6 +51,10 @@ CREATE INDEX igdb_game_index_search_trgm_idx
 DROP TABLE igdb_game_index;
 DROP TABLE igdb_provider_state;
 DROP TABLE igdb_sync_generations;
+-- Dropping this column permanently destroys every archive/tombstone record
+-- (game_external_ids.archived_at) with no way to recover which provider
+-- mappings had been archived; there is no warning beyond this comment.
+-- Recreating the index below may also fail after duplicate names exist.
+-- DOWN is explicitly operator-invoked only and is never run automatically.
 ALTER TABLE game_external_ids DROP COLUMN archived_at;
--- May fail after duplicate names exist; DOWN is explicitly operator-invoked only.
 CREATE UNIQUE INDEX games_name_unique_idx ON games (lower(btrim(name)));

@@ -19,10 +19,9 @@ type DiscoveryService struct {
 	subscriptions SubscriptionRepository
 }
 
-// NewDiscoveryService wires the discovery read model. materializer may be
-// nil until an operation that requires it (materializing an unmaterialized
-// provider result) is implemented; Browse, MyGames, FollowLocal, and
-// Unfollow never use it.
+// NewDiscoveryService wires the discovery read model. The composition root
+// always wires a real materializer; Browse, MyGames, FollowLocal, and
+// Unfollow never use it regardless.
 func NewDiscoveryService(discovery DiscoveryRepository, materializer MaterializationRepository, subscriptions SubscriptionRepository) *DiscoveryService {
 	return &DiscoveryService{discovery: discovery, materializer: materializer, subscriptions: subscriptions}
 }
@@ -107,8 +106,8 @@ func (s *DiscoveryService) MyGames(ctx context.Context, userID string) ([]Subscr
 }
 
 // FollowLocal follows an already-authoritative local Game by ID. Following
-// an unmaterialized provider result is not implemented here; it requires
-// materialization first, which lands in a later task.
+// an unmaterialized provider result goes through Follow instead, which
+// materializes the Game first.
 func (s *DiscoveryService) FollowLocal(ctx context.Context, userID, gameID string) error {
 	return s.subscriptions.Follow(ctx, userID, gameID)
 }

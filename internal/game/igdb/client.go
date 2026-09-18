@@ -91,7 +91,13 @@ func WithPageSize(pageSize int) Option {
 	}
 }
 
-func WithRequestInterval(interval time.Duration) Option {
+// withRequestInterval overrides the pacing between IGDB request starts.
+// Unexported: production code must always keep at least minRequestInterval
+// between request starts, and an exported option would let a caller bypass
+// that pacing constraint entirely (including down to 0). Only this
+// package's own tests, which need a faster interval to stay fast, may use
+// it.
+func withRequestInterval(interval time.Duration) Option {
 	return func(client *Client) {
 		if interval >= 0 {
 			client.requestInterval = interval

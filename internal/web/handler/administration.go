@@ -189,8 +189,11 @@ func (h *Administration) IGDB(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Administration) SyncIGDB(w http.ResponseWriter, r *http.Request) {
-	h.providerSync.TryStart(r.Context())
-	h.redirect(w, r, "/admin/igdb?notice=igdb-sync-started")
+	if h.providerSync.TryStart(r.Context()) {
+		h.redirect(w, r, "/admin/igdb?notice=igdb-sync-started")
+		return
+	}
+	h.redirect(w, r, "/admin/igdb?notice=igdb-sync-already-running")
 }
 
 func eventForm(r *http.Request) (string, time.Time, time.Time, error) {
@@ -319,6 +322,8 @@ func notice(r *http.Request) string {
 		return "Game Request created."
 	case "igdb-sync-started":
 		return "IGDB synchronization requested."
+	case "igdb-sync-already-running":
+		return "IGDB synchronization is already in progress."
 	default:
 		return ""
 	}

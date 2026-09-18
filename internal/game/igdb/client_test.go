@@ -73,7 +73,7 @@ func TestGamesGetsOneTokenAndPagesByLastID(t *testing.T) {
 		WithTokenURL(server.URL+"/token"),
 		WithGamesURL(server.URL+"/games"),
 		WithPageSize(2),
-		WithRequestInterval(0),
+		withRequestInterval(0),
 	)
 	var got []game.ProviderGame
 	err := client.Games(context.Background(), func(batch []game.ProviderGame) error {
@@ -181,7 +181,7 @@ func TestGamesRefreshesTokenOnceAfter401(t *testing.T) {
 	client := NewClient("client-id", "client-secret",
 		WithTokenURL(server.URL+"/token"),
 		WithGamesURL(server.URL+"/games"),
-		WithRequestInterval(0),
+		withRequestInterval(0),
 	)
 	if err := client.Games(context.Background(), func([]game.ProviderGame) error { return nil }); err != nil {
 		t.Fatalf("Games() error = %v", err)
@@ -225,7 +225,7 @@ func TestGamesRejectsOversizedOrMalformedResponse(t *testing.T) {
 			client := NewClient("client-id", "client-secret",
 				WithTokenURL(server.URL+"/token"),
 				WithGamesURL(server.URL+"/games"),
-				WithRequestInterval(0),
+				withRequestInterval(0),
 				WithMaxResponseBytes(32),
 			)
 			err := client.Games(context.Background(), func([]game.ProviderGame) error { return nil })
@@ -282,7 +282,7 @@ func TestGamesPacesRequestStarts(t *testing.T) {
 	client := NewClient("client-id", "client-secret",
 		WithTokenURL(server.URL+"/token"),
 		WithGamesURL(server.URL+"/games"),
-		WithRequestInterval(10*time.Millisecond),
+		withRequestInterval(10*time.Millisecond),
 		withNow(clock.Now),
 		withSleep(clock.Sleep),
 	)
