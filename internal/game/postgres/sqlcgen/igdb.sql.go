@@ -180,6 +180,29 @@ func (q *Queries) DeleteInactiveIGDBGenerations(ctx context.Context, activeGener
 	return err
 }
 
+const failAbandonedIGDBGenerations = `-- name: FailAbandonedIGDBGenerations :exec
+UPDATE igdb_sync_generations
+SET completed_at = now(),
+    status = 'failed',
+    error = 'previous synchronization did not complete'
+WHERE status = 'syncing'
+`
+
+// Before staging a new generation, retire any leftover 'syncing' row left
+// behind by a process that exited before calling CompleteIGDBGeneration or
+// FailIGDBGeneration. LANsurfer 1.0 is single-instance only and
+// IGDBSyncService.TryStart already keeps at most one sync running per
+// process (spec: "Automatic/manual sync cannot overlap in one process"), so
+// a still-'syncing' row observed here can only be a leftover from a
+// previous process incarnation, never a generation this very call is
+// racing with. ActivateIGDBGeneration always flips status away from
+// 'syncing' before setting active_generation_id, so a 'syncing' row is by
+// construction never the active generation and this can never modify it.
+func (q *Queries) FailAbandonedIGDBGenerations(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, failAbandonedIGDBGenerations)
+	return err
+}
+
 const failIGDBGeneration = `-- name: FailIGDBGeneration :one
 UPDATE igdb_sync_generations
 SET completed_at = now(),

@@ -18,9 +18,27 @@ import (
 const providerStaleAfter = 36 * time.Hour
 
 func (s *Store) BeginGeneration(ctx context.Context) (string, error) {
-	id, err := s.queries.BeginIGDBGeneration(ctx)
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return "", fmt.Errorf("begin IGDB generation transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	queries := s.queries.WithTx(tx)
+	// A leftover 'syncing' row can only be abandoned: single-instance 1.0
+	// and IGDBSyncService.TryStart's in-process mutex mean this call is
+	// never racing a still-running sync, so any 'syncing' row found here is
+	// a previous process incarnation that exited before completing or
+	// failing its generation.
+	if err := queries.FailAbandonedIGDBGenerations(ctx); err != nil {
+		return "", fmt.Errorf("fail abandoned IGDB generations: %w", err)
+	}
+	id, err := queries.BeginIGDBGeneration(ctx)
 	if err != nil {
 		return "", fmt.Errorf("begin IGDB generation: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return "", fmt.Errorf("commit IGDB generation: %w", err)
 	}
 	return id, nil
 }
