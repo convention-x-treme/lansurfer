@@ -542,8 +542,21 @@ func TestDiscoveryBrowsePassesProviderEnabledAndFiftyResultLimit(t *testing.T) {
 }
 
 func TestDiscoveryBrowseDisabledProviderStillUsesUnifiedLocalSearch(t *testing.T) {
-    // Status=disabled. Search "wc" must call Search with includeProvider=false,
-    // never expose rows sourced only from the active IGDB generation.
+    repo := &fakeDiscoveryRepository{items: []DiscoveryItem{
+        {LocalGameID: "local-1", GamePresentation: GamePresentation{Name: "Local"}, Materialized: true},
+    }}
+    service := NewDiscoveryService(repo, nil, &fakeSubscriptions{}, &fakeProviderStatus{
+        status: ProviderStatus{State: ProviderDisabled},
+    })
+
+    page, err := service.Browse(t.Context(), "user-1", "wc")
+    if err != nil { t.Fatal(err) }
+    if repo.calls != 1 || repo.lastIncludeProvider {
+        t.Fatalf("calls=%d includeProvider=%v, want 1/false: a disabled provider still searches through the unified query, gated to local-sourced rows only, never through provider rows", repo.calls, repo.lastIncludeProvider)
+    }
+    if len(page.Items) != 1 || !page.Items[0].Materialized {
+        t.Fatalf("page=%#v, want only the local-sourced item the fake returned", page)
+    }
 }
 ```
 
@@ -572,7 +585,8 @@ Expand `TestDiscoverySearchPostgreSQL` or add focused tests with records that pr
 5. final tie is lower(name), then stable local/provider identity;
 6. materialized result presentation comes from `game_igdb_enrichment`, not directly from the active provider row;
 7. `include_provider=false` returns no unmaterialized provider rows even if an active generation exists;
-8. repository fetches at most 51 rows, returns the first 50, and sets `HasMore=true` only when row 51 exists.
+8. repository fetches at most 51 rows, returns the first 50, and sets `HasMore=true` only when row 51 exists;
+9. a deactivated materialized local Game's provider record does not reappear as an unmaterialized candidate (Track C regression from before commit c2cea97; mirrors Task 5 Step 2 item 5's `FindProviderDiscoveryGame` rule) — materialize a provider record, deactivate the linked local Game, search by the provider's own name/alias text, and assert the result set contains neither a materialized row (the Game is inactive) nor an unmaterialized row for that external ID.
 
 - [ ] **Step 4: Run tests and confirm failure**
 
@@ -672,9 +686,10 @@ Materialized provider candidates must render:
 
 - local `games.name` / `games.slug`;
 - local `game_igdb_enrichment` presentation fields;
-- local subscription state.
+- local subscription state;
+- and require the linked local Game to be `active` (an inactive linked Game renders no materialized candidate for that identity).
 
-Unmaterialized candidates render active-generation provider fields.
+Unmaterialized candidates render active-generation provider fields, but a provider record with an existing non-archived `game_external_ids` mapping must be excluded from the unmaterialized candidates **independent of the mapped local Game's `active` state** — not only when it is active. Gate this exclusion on mapping existence (`archived_at IS NULL`) alone, mirroring `FindProviderDiscoveryGame`'s rule (Task 5, Step 4) and the Track C fix in commit c2cea97. Combined with the materialized-candidate requirement above, a provider record mapped to a *deactivated* local Game then renders as neither candidate: it disappears from search entirely, exactly like a deactivated local Game with no provider mapping. Do not require `games.active` in that exclusion check — that was the exact regression this fix already closed once, and rewriting the query from scratch here can reintroduce it.
 
 Deduplicate by logical identity:
 
