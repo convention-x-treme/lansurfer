@@ -61,6 +61,7 @@ templ Navigation(brand branding.Brand, state NavigationState) {
 					}
 					if state.Viewer != nil && state.Viewer.Role == "admin" {
 						<li><a href="/admin/games">Admin</a></li>
+						<li><a href="/admin/igdb">IGDB Sync</a></li>
 					}
 				</ul>
 			</div>
@@ -99,6 +100,7 @@ templ Navigation(brand branding.Brand, state NavigationState) {
 						if state.Viewer != nil && state.Viewer.Role == "admin" {
 							<li><a href="/admin/games">Admin games</a></li>
 							<li><a href="/admin/events">Admin events</a></li>
+							<li><a href="/admin/igdb">IGDB Sync</a></li>
 						}
 					</ul>
 				</details>

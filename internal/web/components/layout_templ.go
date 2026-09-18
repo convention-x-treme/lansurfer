@@ -219,7 +219,7 @@ func Navigation(brand branding.Brand, state NavigationState) templ.Component {
 			}
 		}
 		if state.Viewer != nil && state.Viewer.Role == "admin" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "<li><a href=\"/admin/games\">Admin</a></li>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "<li><a href=\"/admin/games\">Admin</a></li><li><a href=\"/admin/igdb\">IGDB Sync</a></li>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -236,7 +236,7 @@ func Navigation(brand branding.Brand, state NavigationState) templ.Component {
 			var templ_7745c5c3_Var10 string
 			templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(state.Viewer.DisplayName)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/layout.templ`, Line: 71, Col: 98}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/layout.templ`, Line: 72, Col: 98}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 			if templ_7745c5c3_Err != nil {
@@ -249,7 +249,7 @@ func Navigation(brand branding.Brand, state NavigationState) templ.Component {
 			var templ_7745c5c3_Var11 string
 			templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(state.Viewer.DisplayName)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/layout.templ`, Line: 73, Col: 67}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/layout.templ`, Line: 74, Col: 67}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 			if templ_7745c5c3_Err != nil {
@@ -262,7 +262,7 @@ func Navigation(brand branding.Brand, state NavigationState) templ.Component {
 			var templ_7745c5c3_Var12 string
 			templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(state.Viewer.Role)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/layout.templ`, Line: 74, Col: 91}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/layout.templ`, Line: 75, Col: 91}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 			if templ_7745c5c3_Err != nil {
@@ -313,7 +313,7 @@ func Navigation(brand branding.Brand, state NavigationState) templ.Component {
 			}
 		}
 		if state.Viewer != nil && state.Viewer.Role == "admin" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "<li><a href=\"/admin/games\">Admin games</a></li><li><a href=\"/admin/events\">Admin events</a></li>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "<li><a href=\"/admin/games\">Admin games</a></li><li><a href=\"/admin/events\">Admin events</a></li><li><a href=\"/admin/igdb\">IGDB Sync</a></li>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -354,7 +354,7 @@ func CSRFInput() templ.Component {
 		var templ_7745c5c3_Var14 string
 		templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.ResolveAttributeValue(webmiddleware.CSRFToken(ctx))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/layout.templ`, Line: 111, Col: 76}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/layout.templ`, Line: 113, Col: 76}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var14)
 		if templ_7745c5c3_Err != nil {
@@ -396,7 +396,7 @@ func Footer(brand branding.Brand) templ.Component {
 		var templ_7745c5c3_Var16 string
 		templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(brand.Name)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/layout.templ`, Line: 117, Col: 65}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/layout.templ`, Line: 119, Col: 65}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
 		if templ_7745c5c3_Err != nil {
@@ -409,7 +409,7 @@ func Footer(brand branding.Brand) templ.Component {
 		var templ_7745c5c3_Var17 string
 		templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(brand.Tagline)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/layout.templ`, Line: 118, Col: 21}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/layout.templ`, Line: 120, Col: 21}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
 		if templ_7745c5c3_Err != nil {
