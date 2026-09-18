@@ -389,7 +389,15 @@ WITH active_generation AS (
            provider_game.cover_image_id
     FROM igdb_game_index provider_game
     JOIN active_generation ON active_generation.id = provider_game.generation_id
-    WHERE strpos(provider_game.search_text, lower($1::text)) > 0
+    -- LIKE (not strpos) so the gin_trgm_ops index on search_text
+    -- (igdb_game_index_search_trgm_idx) actually accelerates this: trigram
+    -- indexes speed up LIKE/ILIKE/~ pattern matches, never strpos(). The
+    -- search term is escaped for the three LIKE special characters (\, %, _)
+    -- before '%' wildcards are added around it, so a literal '%' or '_' in a
+    -- player's search term matches only that literal character.
+    WHERE provider_game.search_text LIKE '%' || replace(replace(replace(
+        lower($1::text), '\', '\\'), '%', '\%'), '_', '\_'
+    ) || '%' ESCAPE '\'
 ), materialized_provider_rows AS (
     SELECT
         provider_matches.igdb_id::text AS external_id,

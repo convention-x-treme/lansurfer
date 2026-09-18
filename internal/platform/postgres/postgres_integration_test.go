@@ -949,6 +949,65 @@ func TestDiscoverySearchPostgreSQL(t *testing.T) {
 			t.Fatalf("len(got) = %d, want 50", len(got))
 		}
 	})
+
+	t.Run("percent and underscore in the search term are matched literally, not as LIKE wildcards", func(t *testing.T) {
+		// The provider search predicate uses LIKE '%<escaped term>%' (backed
+		// by the search_text gin_trgm index) instead of strpos(), so the
+		// search term's own LIKE special characters (%, _, \) must be
+		// escaped before the wildcards are added around it. Otherwise a
+		// literal '%' or '_' typed by a player would behave like a
+		// multi/single-character wildcard instead of matching only itself.
+		generationID, err := gameStore.BeginGeneration(t.Context())
+		if err != nil {
+			t.Fatalf("begin generation: %v", err)
+		}
+		if err := gameStore.StoreProviderGames(t.Context(), generationID, []game.ProviderGame{
+			{Reference: game.ProviderReference{Provider: "igdb", ExternalID: "9501"}, Name: "100% Orange Juice", Slug: "100-orange-juice", GameType: "Main Game"},
+			// If '%' were left unescaped, the pattern built from "100% orange"
+			// would become '%100% orange%', whose middle '%' is a wildcard
+			// that also matches this unrelated title.
+			{Reference: game.ProviderReference{Provider: "igdb", ExternalID: "9502"}, Name: "1000 Orange Juice Deluxe", Slug: "1000-orange-juice-deluxe", GameType: "Main Game"},
+			{Reference: game.ProviderReference{Provider: "igdb", ExternalID: "9503"}, Name: "Sonic_Adventure", Slug: "sonic-underscore-adventure", GameType: "Main Game"},
+			// If '_' were left unescaped, it would be a single-character
+			// wildcard that also matches this unrelated title.
+			{Reference: game.ProviderReference{Provider: "igdb", ExternalID: "9504"}, Name: "SonicXAdventure", Slug: "sonic-x-adventure", GameType: "Main Game"},
+		}); err != nil {
+			t.Fatalf("store generation games: %v", err)
+		}
+		if err := gameStore.ActivateGeneration(t.Context(), generationID, 4); err != nil {
+			t.Fatalf("activate generation: %v", err)
+		}
+
+		// (a) a normal substring search, with no special characters, still
+		// matches correctly.
+		normal, err := discovery.Browse(t.Context(), viewer.ID, "orange juice")
+		if err != nil {
+			t.Fatalf("Browse (normal substring): %v", err)
+		}
+		if len(normal) != 2 {
+			t.Fatalf("Browse (normal substring) = %#v, want both Orange Juice titles", normal)
+		}
+
+		// (b) a literal '%' in the search term matches only the literal
+		// character, not "anything".
+		percentSearch, err := discovery.Browse(t.Context(), viewer.ID, "100% orange")
+		if err != nil {
+			t.Fatalf("Browse (percent): %v", err)
+		}
+		if len(percentSearch) != 1 || percentSearch[0].Reference.ExternalID != "9501" {
+			t.Fatalf("Browse (percent) = %#v, want only the literal '100%% Orange Juice' match", percentSearch)
+		}
+
+		// (b) a literal '_' in the search term matches only the literal
+		// character, not "any single character".
+		underscoreSearch, err := discovery.Browse(t.Context(), viewer.ID, "sonic_adventure")
+		if err != nil {
+			t.Fatalf("Browse (underscore): %v", err)
+		}
+		if len(underscoreSearch) != 1 || underscoreSearch[0].Reference.ExternalID != "9503" {
+			t.Fatalf("Browse (underscore) = %#v, want only the literal 'Sonic_Adventure' match", underscoreSearch)
+		}
+	})
 }
 
 func TestIGDBMaterializationPostgreSQL(t *testing.T) {
