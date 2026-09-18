@@ -11,6 +11,7 @@ import (
 	"github.com/convention-x-treme/lansurfer/internal/gamerequest"
 	requestquery "github.com/convention-x-treme/lansurfer/internal/query/gamerequest"
 	"github.com/convention-x-treme/lansurfer/internal/web/branding"
+	"github.com/convention-x-treme/lansurfer/internal/web/components"
 )
 
 func TestGameAbbreviation(t *testing.T) {
@@ -299,5 +300,139 @@ func TestGameRequestDetailContentRendersGameIdentityWithCoverAndMetadata(t *test
 		if !strings.Contains(body, want) {
 			t.Errorf("detail does not contain %q: %s", want, body)
 		}
+	}
+}
+
+// The composer's initial unselected state is discovery-first, exactly like
+// /games (Task 4): it shows the shared "Find your game" heading and
+// discovery list/LAN list rather than a dropdown of pre-existing Games.
+func TestNewGameRequestShowsDiscoveryBeforeSelection(t *testing.T) {
+	page := game.DiscoveryPage{Items: []game.DiscoveryItem{{
+		LocalGameID: "game-1", GamePresentation: game.GamePresentation{Name: "Warcraft III"}, Materialized: true,
+	}}}
+	form := GameRequestForm{StartPreset: "now"}
+
+	var rendered bytes.Buffer
+	if err := NewGameRequest(branding.Default(), components.NavigationState{}, page, nil, false, "", form, "").Render(context.Background(), &rendered); err != nil {
+		t.Fatalf("render NewGameRequest: %v", err)
+	}
+	body := rendered.String()
+	for _, want := range []string{"Find your game", "Warcraft III", `id="game-request-discovery"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("unselected composer missing %q: %s", want, body)
+		}
+	}
+}
+
+// Once a Game is selected, the composer renders it through the shared
+// GameIdentity presentation (real name and cover), a "Change game" action,
+// and hidden identity fields -- never the old static "Selected from IGDB
+// search results." placeholder (spec: "4.1 One player-facing Game card").
+func TestNewGameRequestSelectedStateRendersIdentityAndHiddenFields(t *testing.T) {
+	release := time.Date(2002, time.July, 3, 0, 0, 0, 0, time.UTC)
+	selected := game.DiscoveryItem{
+		Reference: game.ProviderReference{Provider: "igdb", ExternalID: "42"},
+		GamePresentation: game.GamePresentation{
+			Name: "Warcraft III: Reign of Chaos", CoverImageID: "co1abc", GameType: "Main Game", FirstReleaseDate: &release,
+		},
+	}
+	form := GameRequestForm{StartPreset: "now", Provider: "igdb", ExternalID: "42"}
+
+	var rendered bytes.Buffer
+	if err := NewGameRequest(branding.Default(), components.NavigationState{}, game.DiscoveryPage{}, &selected, true, "", form, "").Render(context.Background(), &rendered); err != nil {
+		t.Fatalf("render NewGameRequest: %v", err)
+	}
+	body := rendered.String()
+	for _, want := range []string{
+		"Warcraft III: Reign of Chaos",
+		"https://images.igdb.com/igdb/image/upload/t_cover_small/co1abc.jpg",
+		"Change game",
+		`id="game-request-game-fields"`,
+		`name="provider" value="igdb"`,
+		`name="external_id" value="42"`,
+		`id="game-request-details"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("selected composer missing %q: %s", want, body)
+		}
+	}
+	if strings.Contains(body, "Selected from IGDB search results.") {
+		t.Errorf("selected composer still renders the stale placeholder copy: %s", body)
+	}
+}
+
+// Request-local fields (max players/start/description) do not exist at all
+// before a Game is selected, and appear once one is (Task 7 Step 8).
+func TestNewGameRequestDetailFieldsAppearOnlyAfterSelection(t *testing.T) {
+	form := GameRequestForm{StartPreset: "now"}
+
+	var unselected bytes.Buffer
+	if err := NewGameRequest(branding.Default(), components.NavigationState{}, game.DiscoveryPage{}, nil, false, "", form, "").Render(context.Background(), &unselected); err != nil {
+		t.Fatalf("render unselected composer: %v", err)
+	}
+	if strings.Contains(unselected.String(), `name="max_players"`) {
+		t.Errorf("unselected composer unexpectedly renders request detail fields: %s", unselected.String())
+	}
+
+	selected := game.DiscoveryItem{LocalGameID: "game-1", GamePresentation: game.GamePresentation{Name: "Warcraft III"}, Materialized: true}
+	var afterSelection bytes.Buffer
+	if err := NewGameRequest(branding.Default(), components.NavigationState{}, game.DiscoveryPage{}, &selected, true, "", form, "").Render(context.Background(), &afterSelection); err != nil {
+		t.Fatalf("render selected composer: %v", err)
+	}
+	if !strings.Contains(afterSelection.String(), `name="max_players"`) {
+		t.Errorf("selected composer does not render request detail fields: %s", afterSelection.String())
+	}
+}
+
+// The "Change game" panel's own search uses the identical 300ms debounce/
+// replace-URL live-search interaction model as Games' GameSearchForm (Task
+// 4), reused rather than reinvented.
+func TestGameRequestChangeGameSearchUsesLiveSearchInteractionModel(t *testing.T) {
+	selected := game.DiscoveryItem{LocalGameID: "game-1", GamePresentation: game.GamePresentation{Name: "Warcraft III"}, Materialized: true}
+
+	var rendered bytes.Buffer
+	if err := GameRequestSelectedGame(selected).Render(context.Background(), &rendered); err != nil {
+		t.Fatalf("render GameRequestSelectedGame: %v", err)
+	}
+	body := rendered.String()
+	for _, want := range []string{
+		`hx-get="/game-requests/new/discovery"`,
+		`hx-target="#game-request-discovery"`,
+		"input changed delay:300ms",
+		`hx-replace-url="true"`,
+		`hx-sync="this:replace"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("change-game search missing %q: %s", want, body)
+		}
+	}
+}
+
+// Selecting a new game via the "Change game" panel must swap only the
+// selected-game display and the hidden identity fields, never
+// #game-request-details -- that is what leaves the start/max-player/
+// description values the player already typed exactly as they are in the
+// browser (Task 7 Step 7).
+func TestGameRequestSelectionSwapExcludesRequestDetails(t *testing.T) {
+	item := game.DiscoveryItem{LocalGameID: "game-2", GamePresentation: game.GamePresentation{Name: "Age of Empires"}, Materialized: true}
+
+	var rendered bytes.Buffer
+	if err := GameRequestSelectionSwap(item).Render(context.Background(), &rendered); err != nil {
+		t.Fatalf("render GameRequestSelectionSwap: %v", err)
+	}
+	body := rendered.String()
+	for _, want := range []string{
+		`id="game-request-selected-game"`,
+		`id="game-request-game-fields"`,
+		`hx-swap-oob="true"`,
+		"Age of Empires",
+		`name="game_id" value="game-2"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("selection swap missing %q: %s", want, body)
+		}
+	}
+	if strings.Contains(body, `id="game-request-details"`) {
+		t.Errorf("selection swap unexpectedly touches request details: %s", body)
 	}
 }

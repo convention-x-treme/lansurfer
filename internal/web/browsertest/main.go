@@ -299,13 +299,6 @@ func (f *fixture) ByID(_ context.Context, id, _ string) (requestquery.Request, e
 	return entry.request, nil
 }
 
-func (*fixture) CreationOptions(context.Context) ([]requestquery.GameOption, error) {
-	return []requestquery.GameOption{
-		{ID: "game-1", Name: "Warcraft III"},
-		{ID: "game-2", Name: "Quake III Arena"},
-	}, nil
-}
-
 // CountOpen is the whole installation's open total, never the filtered subset,
 // which is what the navigation badge states.
 func (f *fixture) CountOpen(context.Context) (int64, error) {
@@ -332,6 +325,20 @@ func (f *fixture) Trending(context.Context) ([]requestquery.TrendingGame, error)
 
 func (*fixture) Browse(context.Context, string, string) (game.DiscoveryPage, error) {
 	return game.DiscoveryPage{Items: []game.DiscoveryItem{{LocalGameID: "game-1", Name: "Warcraft III", Slug: "warcraft-3", Materialized: true}}}, nil
+}
+
+// Select is the Game Request composer's read-only lookup (Task 7). Browser
+// tests only ever select an already-local Game by ID; the provider path is
+// unreachable here for the same reason Follow's provider path is.
+func (*fixture) Select(_ context.Context, _ string, selection game.GameSelection) (game.DiscoveryItem, error) {
+	if selection.LocalGameID == "" {
+		return game.DiscoveryItem{}, game.ErrProviderRecordNotFound
+	}
+	return game.DiscoveryItem{
+		LocalGameID:      selection.LocalGameID,
+		GamePresentation: game.GamePresentation{Name: gameName(selection.LocalGameID)},
+		Materialized:     true,
+	}, nil
 }
 
 func (*fixture) MyGames(context.Context, string) ([]game.SubscriptionGame, error) {

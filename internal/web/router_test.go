@@ -545,7 +545,7 @@ func TestRealtimeRefreshHighlightsFollowedGame(t *testing.T) {
 	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
 	response := httptest.NewRecorder()
 
-	gameRequestTestRouter(&routerGameRequests{}, queries).ServeHTTP(response, request)
+	gameRequestTestRouter(&routerGameRequests{}, queries, &routerDiscovery{}).ServeHTTP(response, request)
 
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d", response.Code)
@@ -570,7 +570,7 @@ func TestGameRequestDiscoveryFiltersAndTrending(t *testing.T) {
 		}},
 		trending: []requestquery.TrendingGame{{GameID: "game-1", GameName: "Warcraft III", ActivityCount: 4, RequestCount: 2}},
 	}
-	router := gameRequestTestRouter(&routerGameRequests{}, queries)
+	router := gameRequestTestRouter(&routerGameRequests{}, queries, &routerDiscovery{})
 
 	page := httptest.NewRequest(http.MethodGet, "/game-requests?q=wc3&followed=1&open_places=1", nil)
 	page.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
@@ -624,7 +624,7 @@ func TestNavigationBadgeIgnoresDiscoveryFilters(t *testing.T) {
 		}},
 		openTotal: 10,
 	}
-	router := gameRequestTestRouter(&routerGameRequests{}, queries)
+	router := gameRequestTestRouter(&routerGameRequests{}, queries, &routerDiscovery{})
 
 	request := httptest.NewRequest(http.MethodGet, "/game-requests?q=warcraft", nil)
 	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
@@ -648,7 +648,7 @@ func TestNavigationBadgeIgnoresDiscoveryFilters(t *testing.T) {
 // search was refused".
 func TestRejectedSearchExplainsItselfInTheFragment(t *testing.T) {
 	queries := &routerGameRequestQueries{listErr: requestquery.ErrInvalidSearch}
-	router := gameRequestTestRouter(&routerGameRequests{}, queries)
+	router := gameRequestTestRouter(&routerGameRequests{}, queries, &routerDiscovery{})
 
 	request := httptest.NewRequest(http.MethodGet, "/game-requests?q="+strings.Repeat("x", 200), nil)
 	request.Header.Set("HX-Request", "true")
@@ -676,9 +676,9 @@ func TestGameRequestBrowserWorkflow(t *testing.T) {
 			CreatorID: "creator-1", CreatorName: "Grace", StartsAt: time.Now(),
 			Status: gamerequest.StatusOpen, MemberCount: 1,
 		}},
-		options: []requestquery.GameOption{{ID: "game-1", Name: "Warcraft III"}},
 	}
-	router := gameRequestTestRouter(commands, queries)
+	discovery := &routerDiscovery{selectItem: game.DiscoveryItem{LocalGameID: "game-1", Name: "Warcraft III", Slug: "warcraft-3", Materialized: true}}
+	router := gameRequestTestRouter(commands, queries, discovery)
 
 	list := httptest.NewRequest(http.MethodGet, "/game-requests", nil)
 	list.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
@@ -702,8 +702,11 @@ func TestGameRequestBrowserWorkflow(t *testing.T) {
 	newRequest.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
 	newResponse := httptest.NewRecorder()
 	router.ServeHTTP(newResponse, newRequest)
-	if newResponse.Code != http.StatusOK || !strings.Contains(newResponse.Body.String(), `value="game-1" selected`) {
+	if newResponse.Code != http.StatusOK || !strings.Contains(newResponse.Body.String(), `name="game_id" value="game-1"`) {
 		t.Errorf("preselected creation form = %d %q", newResponse.Code, newResponse.Body.String())
+	}
+	if discovery.selectSelection != (game.GameSelection{LocalGameID: "game-1"}) {
+		t.Errorf("preselected creation form did not read-only select game-1: %#v", discovery.selectSelection)
 	}
 
 	form := url.Values{"game_id": {"game-1"}, "max_players": {"4"}, "description": {"Casual players"}}
@@ -798,13 +801,16 @@ func gameTestRouter(discovery *routerDiscovery) http.Handler {
 	})
 }
 
-func gameRequestTestRouter(commands *routerGameRequests, queries *routerGameRequestQueries) http.Handler {
+func gameRequestTestRouter(commands *routerGameRequests, queries *routerGameRequestQueries, discovery *routerDiscovery) http.Handler {
+	if discovery == nil {
+		discovery = &routerDiscovery{}
+	}
 	return NewRouter(RouterDependencies{
 		Ready: func(context.Context) error { return nil },
 		Authentication: &routerAuthentication{account: user.User{
 			ID: "user-1", DisplayName: "Ada Player", Role: user.RoleUser,
 		}},
-		GameRequests: commands, RequestQueries: queries,
+		GameRequests: commands, RequestQueries: queries, Discovery: discovery,
 	})
 }
 
@@ -857,6 +863,11 @@ type routerDiscovery struct {
 	followProvided string
 	followResult   game.Game
 	followErr      error
+
+	selectUserID    string
+	selectSelection game.GameSelection
+	selectItem      game.DiscoveryItem
+	selectErr       error
 }
 
 type routerGameRequests struct {
@@ -897,7 +908,6 @@ func (r *routerGameRequests) Cancel(_ context.Context, requestID, userID string)
 
 type routerGameRequestQueries struct {
 	items     []requestquery.Request
-	options   []requestquery.GameOption
 	trending  []requestquery.TrendingGame
 	filter    requestquery.Filter
 	openTotal int64
@@ -926,9 +936,6 @@ func (r *routerGameRequestQueries) ByID(_ context.Context, id, _ string) (reques
 		}
 	}
 	return requestquery.Request{}, gamerequest.ErrNotFound
-}
-func (r *routerGameRequestQueries) CreationOptions(context.Context) ([]requestquery.GameOption, error) {
-	return r.options, nil
 }
 func (r *routerGameRequestQueries) Trending(context.Context) ([]requestquery.TrendingGame, error) {
 	return r.trending, nil
@@ -962,6 +969,14 @@ func (r *routerDiscovery) Unfollow(_ context.Context, userID, gameID string) err
 	r.unfollowed = userID + "/" + gameID
 	return nil
 }
+func (r *routerDiscovery) Select(_ context.Context, userID string, selection game.GameSelection) (game.DiscoveryItem, error) {
+	r.selectUserID = userID
+	r.selectSelection = selection
+	if r.selectErr != nil {
+		return game.DiscoveryItem{}, r.selectErr
+	}
+	return r.selectItem, nil
+}
 
 func (*routerAuthentication) Available() bool { return true }
 
@@ -986,7 +1001,7 @@ func TestDuplicateJoinReportsRecoverableConflict(t *testing.T) {
 		CreatorName: "Other", MemberCount: 2, ViewerJoined: true, Status: gamerequest.StatusOpen,
 		StartsAt: time.Now().Add(time.Hour),
 	}}}
-	router := gameRequestTestRouter(commands, queries)
+	router := gameRequestTestRouter(commands, queries, nil)
 
 	duplicate := httptest.NewRequest(http.MethodPost, "/game-requests/request-1/join", strings.NewReader(url.Values{"return_to": {"list"}}.Encode()))
 	duplicate.Header.Set("Content-Type", "application/x-www-form-urlencoded")

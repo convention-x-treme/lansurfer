@@ -36,12 +36,22 @@ type Authentication interface {
 	webmiddleware.Authenticator
 }
 
+// Discovery combines Games' and the Game Request composer's separate narrow
+// consuming interfaces (handler.GameDiscovery, handler.GameRequestDiscovery):
+// one concrete *game.DiscoveryService backs both, and this composition root
+// is where it is fine to say so explicitly, rather than widening either
+// handler package's own narrower interface for a need only one of them has.
+type Discovery interface {
+	handler.GameDiscovery
+	handler.GameRequestDiscovery
+}
+
 type RouterDependencies struct {
 	Ready          ReadyCheck
 	Authentication Authentication
 	Games          handler.GameAdministration
 	ProviderSync   handler.ProviderSyncAdministration
-	Discovery      handler.GameDiscovery
+	Discovery      Discovery
 	GameResolver   handler.GameResolver
 	GameRequests   handler.GameRequestCommands
 	RequestQueries handler.GameRequestQueries
@@ -57,7 +67,7 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 	authenticationHandler := handler.NewAuthentication(dependencies.Authentication, brand, dependencies.SecureCookies)
 	administrationHandler := handler.NewAdministration(dependencies.Games, dependencies.ProviderSync, brand)
 	gamesHandler := handler.NewGames(dependencies.Discovery, brand)
-	gameRequestsHandler := handler.NewGameRequests(dependencies.GameRequests, dependencies.RequestQueries, dependencies.GameResolver, brand)
+	gameRequestsHandler := handler.NewGameRequests(dependencies.GameRequests, dependencies.RequestQueries, dependencies.GameResolver, dependencies.Discovery, brand)
 	realtimeHandler := handler.NewRealtime(dependencies.Realtime)
 	router := chi.NewRouter()
 	router.Use(middleware.RequestID)
@@ -90,6 +100,8 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 				requests.Use(handler.RequireAuthentication)
 				requests.Get("/", gameRequestsHandler.List)
 				requests.Get("/new", gameRequestsHandler.New)
+				requests.Get("/new/discovery", gameRequestsHandler.Discovery)
+				requests.Get("/new/selection", gameRequestsHandler.Selection)
 				requests.Get("/refresh", gameRequestsHandler.RefreshList)
 				requests.Post("/", gameRequestsHandler.Create)
 				requests.Get("/{requestID}", gameRequestsHandler.View)

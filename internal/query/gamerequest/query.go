@@ -63,11 +63,6 @@ type Activity struct {
 	OccurredAt time.Time
 }
 
-type GameOption struct {
-	ID   string
-	Name string
-}
-
 // Filter carries the stable 1.0 Game Request discovery filters.
 type Filter struct {
 	Search         string
@@ -204,20 +199,6 @@ func (s *Store) CountOpen(ctx context.Context) (int64, error) {
 		return 0, fmt.Errorf("count open game requests: %w", err)
 	}
 	return total, nil
-}
-
-// CreationOptions lists the games a player may request a round of. The
-// installation itself is the event context, so no Event selection is involved.
-func (s *Store) CreationOptions(ctx context.Context) ([]GameOption, error) {
-	games, err := s.queries.ActiveGamesForGameRequest(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("list active games: %w", err)
-	}
-	options := make([]GameOption, 0, len(games))
-	for _, game := range games {
-		options = append(options, GameOption{ID: game.ID, Name: game.Name})
-	}
-	return options, nil
 }
 
 // requestFields is the input to requestFromFields, built once by each sqlc

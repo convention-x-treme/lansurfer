@@ -98,6 +98,3 @@ LIMIT sqlc.arg(result_limit);
 -- affected by the viewer's discovery filters.
 -- name: CountOpenGameRequests :one
 SELECT count(*) FROM game_requests WHERE status = 'open';
-
--- name: ActiveGamesForGameRequest :many
-SELECT id::text, name FROM games WHERE active ORDER BY lower(name), id;

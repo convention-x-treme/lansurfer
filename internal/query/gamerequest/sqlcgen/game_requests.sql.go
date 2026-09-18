@@ -11,35 +11,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const activeGamesForGameRequest = `-- name: ActiveGamesForGameRequest :many
-SELECT id::text, name FROM games WHERE active ORDER BY lower(name), id
-`
-
-type ActiveGamesForGameRequestRow struct {
-	ID   string
-	Name string
-}
-
-func (q *Queries) ActiveGamesForGameRequest(ctx context.Context) ([]ActiveGamesForGameRequestRow, error) {
-	rows, err := q.db.Query(ctx, activeGamesForGameRequest)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []ActiveGamesForGameRequestRow
-	for rows.Next() {
-		var i ActiveGamesForGameRequestRow
-		if err := rows.Scan(&i.ID, &i.Name); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const countOpenGameRequests = `-- name: CountOpenGameRequests :one
 SELECT count(*) FROM game_requests WHERE status = 'open'
 `
