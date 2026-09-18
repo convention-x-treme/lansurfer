@@ -276,9 +276,25 @@ templ GameRequestSelectedGame(item game.DiscoveryItem) {
 			<summary class="btn btn-quiet btn-sm">Change game</summary>
 			<div class="mt-4 grid gap-4">
 				@GameRequestDiscoverySearchForm("", true)
-				@GameRequestDiscovery(game.DiscoveryPage{}, "", true)
+				@GameRequestChangeGameDiscovery()
 			</div>
 		</details>
+	</div>
+}
+
+// GameRequestChangeGameDiscovery is the "Change game" panel's own pre-search
+// state. It deliberately never renders GameRequestDiscovery with a
+// fabricated zero-value DiscoveryPage: that page's zero-value ProviderStatus
+// (State == "", CatalogAvailable == false) matches neither ProviderNotSynced
+// nor ProviderSyncing in GameCatalogAvailability, so it would fall through to
+// "No games are available yet." on every healthy instance, regardless of the
+// real catalog state. The live-search fragment
+// (GameRequestDiscoverySearchForm's ajax path, always backed by a real
+// discovery.Browse call) replaces this same #game-request-discovery id with
+// the real result once the player types.
+templ GameRequestChangeGameDiscovery() {
+	<div id="game-request-discovery" aria-live="polite">
+		<p class="text-sm text-base-content/70">Search the catalog to pick another game.</p>
 	</div>
 }
 
@@ -333,18 +349,24 @@ templ GameRequestDetailsFields(form GameRequestForm) {
 // reinventing it. ajax selects between the composer's own first-pick search
 // (a plain no-scripting GET back to the full New page) and the "Change game"
 // search (a live htmx search of the dedicated discovery fragment, Task 7
-// Step 6) -- the same 300ms debounce/replace-URL rules either way.
+// Step 6) -- the same 300ms debounce interaction either way.
+//
+// The ajax form's action is the real composer page, not the layout-less
+// discovery fragment: without JS a plain submit must land somewhere with
+// page chrome, and hx-get alone (not hx-replace-url) is what a submit
+// enhanced by JS actually uses. It also does not replace the address bar
+// with the fragment's own URL, which would leave reload/back/share pointing
+// at that same layout-less fragment.
 templ GameRequestDiscoverySearchForm(search string, ajax bool) {
 	if ajax {
 		<form
 			class="request-toolbar"
 			method="get"
-			action="/game-requests/new/discovery"
+			action="/game-requests/new"
 			hx-get="/game-requests/new/discovery"
 			hx-target="#game-request-discovery"
 			hx-swap="outerHTML"
 			hx-sync="this:replace"
-			hx-replace-url="true"
 			hx-trigger="submit, input changed delay:300ms from:(#game-request-change-search), search from:(#game-request-change-search)"
 		>
 			<label class="sr-only" for="game-request-change-search">Search by game name or alias</label>
@@ -495,11 +517,15 @@ templ GameRequestDetailContent(request requestquery.Request, viewerID string, re
 					</div>
 					<div class="flex w-full flex-wrap items-center gap-2.5 sm:w-auto">
 						if request.Status == gamerequest.StatusOpen && request.CreatorID != viewerID && request.ViewerJoined {
-							<form method="post" action={ "/game-requests/" + request.ID + "/leave" }>@components.CSRFInput()
-<button class="btn btn-step-back" type="submit">Leave</button></form>
+							<form method="post" action={ "/game-requests/" + request.ID + "/leave" }>
+								@components.CSRFInput()
+								<button class="btn btn-step-back" type="submit">Leave</button>
+							</form>
 						} else if request.Status == gamerequest.StatusOpen && request.CreatorID != viewerID && !requestFull(request) {
-							<form method="post" action={ "/game-requests/" + request.ID + "/join" }>@components.CSRFInput()
-<button class={ detailJoinButtonClass(request) } type="submit">Join</button></form>
+							<form method="post" action={ "/game-requests/" + request.ID + "/join" }>
+								@components.CSRFInput()
+								<button class={ detailJoinButtonClass(request) } type="submit">Join</button>
+							</form>
 						}
 						<button class="btn btn-quiet btn-square" type="button" data-copy-link aria-label="Copy link to this Game Request" title="Copy link">
 							<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="h-4 w-4" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.5 1.5"></path><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.5-1.5"></path></svg>
@@ -547,10 +573,14 @@ templ GameRequestDetailContent(request requestquery.Request, viewerID string, re
 			if request.Status == gamerequest.StatusOpen && request.CreatorID == viewerID {
 				<section class="detail-card detail-card-accent">
 					<p class="section-label">Host actions</p>
-					<form method="post" action={ "/game-requests/" + request.ID + "/close" } data-confirm="Close this Game Request? Players will no longer be able to join.">@components.CSRFInput()
-<button class="btn btn-step-back btn-sm w-full" type="submit">Close for new players</button></form>
-					<form method="post" action={ "/game-requests/" + request.ID + "/cancel" } data-confirm="Cancel this Game Request? This cannot be reopened.">@components.CSRFInput()
-<button class="btn btn-danger btn-sm w-full" type="submit">Cancel Game Request</button></form>
+					<form method="post" action={ "/game-requests/" + request.ID + "/close" } data-confirm="Close this Game Request? Players will no longer be able to join.">
+						@components.CSRFInput()
+						<button class="btn btn-step-back btn-sm w-full" type="submit">Close for new players</button>
+					</form>
+					<form method="post" action={ "/game-requests/" + request.ID + "/cancel" } data-confirm="Cancel this Game Request? This cannot be reopened.">
+						@components.CSRFInput()
+						<button class="btn btn-danger btn-sm w-full" type="submit">Cancel Game Request</button>
+					</form>
 					<p class="text-xs leading-relaxed text-base-content/65">Visible to the host only. Cancelling asks once and notifies every player.</p>
 				</section>
 			}

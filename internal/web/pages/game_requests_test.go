@@ -399,12 +399,57 @@ func TestGameRequestChangeGameSearchUsesLiveSearchInteractionModel(t *testing.T)
 		`hx-get="/game-requests/new/discovery"`,
 		`hx-target="#game-request-discovery"`,
 		"input changed delay:300ms",
-		`hx-replace-url="true"`,
 		`hx-sync="this:replace"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("change-game search missing %q: %s", want, body)
 		}
+	}
+}
+
+// Review finding: the change-game search form's no-scripting fallback must
+// land on the real composer page, never on the layout-less discovery
+// fragment endpoint -- that fragment has no page chrome, no selection, and
+// no create form. hx-replace-url must not be set either, since it would
+// otherwise point the address bar at that same broken fragment URL on every
+// live search.
+func TestGameRequestChangeGameSearchFallsBackToTheComposerPage(t *testing.T) {
+	selected := game.DiscoveryItem{LocalGameID: "game-1", GamePresentation: game.GamePresentation{Name: "Warcraft III"}, Materialized: true}
+
+	var rendered bytes.Buffer
+	if err := GameRequestSelectedGame(selected).Render(context.Background(), &rendered); err != nil {
+		t.Fatalf("render GameRequestSelectedGame: %v", err)
+	}
+	body := rendered.String()
+	if !strings.Contains(body, `action="/game-requests/new"`) {
+		t.Errorf("change-game search does not fall back to the composer page: %s", body)
+	}
+	if strings.Contains(body, `action="/game-requests/new/discovery"`) {
+		t.Errorf("change-game search still falls back to the layout-less fragment endpoint: %s", body)
+	}
+	if strings.Contains(body, "hx-replace-url") {
+		t.Errorf("change-game search unexpectedly sets hx-replace-url: %s", body)
+	}
+}
+
+// Review finding: the collapsed "Change game" panel must not render a false
+// "No games are available yet." message on a perfectly healthy instance --
+// that happened because it rendered GameRequestDiscovery with a fabricated
+// zero-value DiscoveryPage (zero-value ProviderStatus) instead of a real
+// Browse result or its own pre-search prompt.
+func TestGameRequestSelectedGameChangePanelDoesNotFakeUnavailability(t *testing.T) {
+	selected := game.DiscoveryItem{LocalGameID: "game-1", GamePresentation: game.GamePresentation{Name: "Warcraft III"}, Materialized: true}
+
+	var rendered bytes.Buffer
+	if err := GameRequestSelectedGame(selected).Render(context.Background(), &rendered); err != nil {
+		t.Fatalf("render GameRequestSelectedGame: %v", err)
+	}
+	body := rendered.String()
+	if strings.Contains(body, "No games are available yet.") {
+		t.Errorf("change-game panel falsely reports the catalog unavailable: %s", body)
+	}
+	if !strings.Contains(body, `id="game-request-discovery"`) {
+		t.Errorf("change-game panel is missing its live-search swap target: %s", body)
 	}
 }
 
