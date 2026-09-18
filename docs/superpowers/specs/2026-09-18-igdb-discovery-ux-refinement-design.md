@@ -141,11 +141,11 @@ The local/materialized preference is only a tie-breaker. It must not cause a wor
 
 ### 3.5 Result limit
 
-Keep discovery bounded to at most 50 results for one query.
+Keep discovery bounded to at most 50 rendered results for one query. The repository/read model must also return an explicit `has_more`/truncated signal, for example by querying at most 51 rows and rendering only the first 50. Do not infer truncation merely because exactly 50 rows were returned.
 
 Do not add pagination or infinite scrolling in this refinement.
 
-When the bounded result set indicates that the search is too broad, render guidance equivalent to:
+When that explicit signal indicates that the search is too broad, render guidance equivalent to:
 
 > Too many matches — refine your search.
 
