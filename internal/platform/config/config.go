@@ -16,7 +16,14 @@ const (
 )
 
 type OIDC struct {
-	Issuer       string
+	Issuer        string
+	ClientID      string
+	ClientSecret  string
+	DisplayName   string
+	GameNickClaim string
+}
+
+type Discord struct {
 	ClientID     string
 	ClientSecret string
 }
@@ -32,6 +39,7 @@ type Config struct {
 	ListenAddr     string
 	BaseURL        string
 	OIDC           *OIDC
+	Discord        *Discord
 	IGDB           *IGDB
 	TrustedProxies []netip.Prefix
 }
@@ -62,6 +70,10 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	discord, err := loadDiscord()
+	if err != nil {
+		return Config{}, err
+	}
 	igdb, err := loadIGDB()
 	if err != nil {
 		return Config{}, err
@@ -77,6 +89,7 @@ func Load() (Config, error) {
 		ListenAddr:     listenAddr,
 		BaseURL:        baseURL,
 		OIDC:           oidc,
+		Discord:        discord,
 		IGDB:           igdb,
 		TrustedProxies: trustedProxies,
 	}, nil
@@ -120,11 +133,31 @@ func loadOIDC() (*OIDC, error) {
 	issuer := strings.TrimSpace(os.Getenv("LANSURFER_OIDC_ISSUER"))
 	clientID := strings.TrimSpace(os.Getenv("LANSURFER_OIDC_CLIENT_ID"))
 	clientSecret := strings.TrimSpace(os.Getenv("LANSURFER_OIDC_CLIENT_SECRET"))
+	displayName := strings.TrimSpace(os.Getenv("LANSURFER_OIDC_DISPLAY_NAME"))
+	gameNickClaim := strings.TrimSpace(os.Getenv("LANSURFER_OIDC_GAME_NICK_CLAIM"))
 	if issuer == "" && clientID == "" && clientSecret == "" {
 		return nil, nil
 	}
 	if issuer == "" || clientID == "" {
 		return nil, errors.New("LANSURFER_OIDC_ISSUER and LANSURFER_OIDC_CLIENT_ID must be configured together")
 	}
-	return &OIDC{Issuer: issuer, ClientID: clientID, ClientSecret: clientSecret}, nil
+	if displayName == "" {
+		displayName = "OpenID Connect"
+	}
+	return &OIDC{
+		Issuer: issuer, ClientID: clientID, ClientSecret: clientSecret,
+		DisplayName: displayName, GameNickClaim: gameNickClaim,
+	}, nil
+}
+
+func loadDiscord() (*Discord, error) {
+	clientID := strings.TrimSpace(os.Getenv("LANSURFER_DISCORD_CLIENT_ID"))
+	clientSecret := strings.TrimSpace(os.Getenv("LANSURFER_DISCORD_CLIENT_SECRET"))
+	if clientID == "" && clientSecret == "" {
+		return nil, nil
+	}
+	if clientID == "" || clientSecret == "" {
+		return nil, errors.New("LANSURFER_DISCORD_CLIENT_ID and LANSURFER_DISCORD_CLIENT_SECRET must be configured together")
+	}
+	return &Discord{ClientID: clientID, ClientSecret: clientSecret}, nil
 }

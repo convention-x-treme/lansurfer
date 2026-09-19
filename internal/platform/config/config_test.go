@@ -44,6 +44,10 @@ func TestLoadReadsConfiguredValues(t *testing.T) {
 	t.Setenv("LANSURFER_OIDC_ISSUER", " https://id.example.test/realms/lan ")
 	t.Setenv("LANSURFER_OIDC_CLIENT_ID", " lansurfer ")
 	t.Setenv("LANSURFER_OIDC_CLIENT_SECRET", " secret ")
+	t.Setenv("LANSURFER_OIDC_DISPLAY_NAME", " CXT account ")
+	t.Setenv("LANSURFER_OIDC_GAME_NICK_CLAIM", " nickname ")
+	t.Setenv("LANSURFER_DISCORD_CLIENT_ID", " discord-client ")
+	t.Setenv("LANSURFER_DISCORD_CLIENT_SECRET", " discord-secret ")
 	t.Setenv("LANSURFER_TRUSTED_PROXIES", " 10.20.0.5, 10.21.0.0/16 ")
 
 	cfg, err := Load()
@@ -60,8 +64,12 @@ func TestLoadReadsConfiguredValues(t *testing.T) {
 		t.Errorf("BaseURL = %q", cfg.BaseURL)
 	}
 	if cfg.OIDC == nil || cfg.OIDC.Issuer != "https://id.example.test/realms/lan" ||
-		cfg.OIDC.ClientID != "lansurfer" || cfg.OIDC.ClientSecret != "secret" {
+		cfg.OIDC.ClientID != "lansurfer" || cfg.OIDC.ClientSecret != "secret" ||
+		cfg.OIDC.DisplayName != "CXT account" || cfg.OIDC.GameNickClaim != "nickname" {
 		t.Errorf("OIDC = %#v", cfg.OIDC)
+	}
+	if cfg.Discord == nil || cfg.Discord.ClientID != "discord-client" || cfg.Discord.ClientSecret != "discord-secret" {
+		t.Errorf("Discord = %#v", cfg.Discord)
 	}
 	if len(cfg.TrustedProxies) != 2 || cfg.TrustedProxies[0].String() != "10.20.0.5/32" || cfg.TrustedProxies[1].String() != "10.21.0.0/16" {
 		t.Errorf("TrustedProxies = %#v", cfg.TrustedProxies)
@@ -112,8 +120,32 @@ func TestLoadAllowsPublicOIDCClientWithoutSecret(t *testing.T) {
 		t.Fatalf("Load() error = %v", err)
 	}
 	if cfg.OIDC == nil || cfg.OIDC.Issuer != "https://auth.convention-x-treme.de/realms/local-dev" ||
-		cfg.OIDC.ClientID != "lansurver" || cfg.OIDC.ClientSecret != "" {
+		cfg.OIDC.ClientID != "lansurver" || cfg.OIDC.ClientSecret != "" || cfg.OIDC.DisplayName != "OpenID Connect" {
 		t.Fatalf("OIDC = %#v", cfg.OIDC)
+	}
+}
+
+func TestLoadRejectsPartialDiscordConfiguration(t *testing.T) {
+	clearOptionalEnvironment(t)
+	t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
+	t.Setenv("LANSURFER_DISCORD_CLIENT_ID", "client")
+
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "LANSURFER_DISCORD_CLIENT_ID") {
+		t.Fatalf("Load() error = %v, want partial Discord error", err)
+	}
+}
+
+func TestLoadLeavesDiscordUnsetWhenCredentialsAreEmpty(t *testing.T) {
+	clearOptionalEnvironment(t)
+	t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Discord != nil {
+		t.Fatalf("Discord = %#v, want nil", cfg.Discord)
 	}
 }
 
@@ -165,6 +197,10 @@ func clearOptionalEnvironment(t *testing.T) {
 		"LANSURFER_OIDC_ISSUER",
 		"LANSURFER_OIDC_CLIENT_ID",
 		"LANSURFER_OIDC_CLIENT_SECRET",
+		"LANSURFER_OIDC_DISPLAY_NAME",
+		"LANSURFER_OIDC_GAME_NICK_CLAIM",
+		"LANSURFER_DISCORD_CLIENT_ID",
+		"LANSURFER_DISCORD_CLIENT_SECRET",
 		"LANSURFER_TRUSTED_PROXIES",
 		"LANSURFER_IGDB_CLIENT_ID",
 		"LANSURFER_IGDB_CLIENT_SECRET",
