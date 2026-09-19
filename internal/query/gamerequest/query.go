@@ -145,7 +145,7 @@ func (s *Store) ListActive(ctx context.Context, viewerID string, filter Filter) 
 		result = append(result, requestFromFields(requestFields{
 			ID: row.RequestID, GameID: row.GameID,
 			Game:      gamePresentationFromRow(row.GameName, row.GameSlug, row.GameType, row.CoverImageID, row.PlatformNames, row.FirstReleaseDate),
-			CreatorID: row.CreatorID, CreatorName: row.CreatorName,
+			CreatorID: row.CreatorID, CreatorName: row.CreatorName.String,
 			MaxPlayers: row.MaxPlayers, StartsAt: row.StartsAt, Description: row.Description, Status: row.Status,
 			CreatedAt: row.CreatedAt, MemberCount: row.MemberCount, ViewerJoined: row.ViewerJoined, ViewerSubscribed: row.ViewerSubscribed,
 		}))
@@ -172,7 +172,7 @@ func (s *Store) ByID(ctx context.Context, id, viewerID string) (Request, error) 
 	request := requestFromFields(requestFields{
 		ID: row.RequestID, GameID: row.GameID,
 		Game:      gamePresentationFromRow(row.GameName, row.GameSlug, row.GameType, row.CoverImageID, row.PlatformNames, row.FirstReleaseDate),
-		CreatorID: row.CreatorID, CreatorName: row.CreatorName,
+		CreatorID: row.CreatorID, CreatorName: row.CreatorName.String,
 		MaxPlayers: row.MaxPlayers, StartsAt: row.StartsAt, Description: row.Description, Status: row.Status,
 		CreatedAt: row.CreatedAt, MemberCount: row.MemberCount, ViewerJoined: row.ViewerJoined, ViewerSubscribed: row.ViewerSubscribed,
 	})
@@ -182,7 +182,7 @@ func (s *Store) ByID(ctx context.Context, id, viewerID string) (Request, error) 
 	}
 	request.Members = make([]Member, 0, len(members))
 	for _, member := range members {
-		request.Members = append(request.Members, Member{ID: member.UserID, DisplayName: member.DisplayName, JoinedAt: member.JoinedAt.Time})
+		request.Members = append(request.Members, Member{ID: member.UserID, DisplayName: member.DisplayName.String, JoinedAt: member.JoinedAt.Time})
 	}
 	activity, err := s.queries.ListGameRequestActivity(ctx, databaseID)
 	if err != nil {
@@ -192,7 +192,7 @@ func (s *Store) ByID(ctx context.Context, id, viewerID string) (Request, error) 
 	for _, entry := range activity {
 		request.Activity = append(request.Activity, Activity{
 			Kind: domain.ActivityKind(entry.Kind), ActorID: entry.ActorID,
-			ActorName: entry.ActorName, OccurredAt: entry.OccurredAt.Time,
+			ActorName: entry.ActorName.String, OccurredAt: entry.OccurredAt.Time,
 		})
 	}
 	return request, nil

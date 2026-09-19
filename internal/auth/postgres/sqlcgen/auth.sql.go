@@ -12,39 +12,43 @@ import (
 )
 
 const createIdentity = `-- name: CreateIdentity :one
-INSERT INTO user_identities (user_id, provider, subject, display_name, email)
+INSERT INTO user_identities (user_id, provider_kind, provider_key, subject, display_name, email)
 VALUES (
     $1::uuid,
     $2,
     $3,
     $4,
-    $5
+    $5,
+    $6
 )
-RETURNING id::text, user_id::text, provider, subject, display_name, email, created_at
+RETURNING id::text, user_id::text, provider_kind, provider_key, subject, display_name, email, created_at
 `
 
 type CreateIdentityParams struct {
-	UserID      pgtype.UUID
-	Provider    string
-	Subject     string
-	DisplayName pgtype.Text
-	Email       pgtype.Text
+	UserID       pgtype.UUID
+	ProviderKind string
+	ProviderKey  string
+	Subject      string
+	DisplayName  pgtype.Text
+	Email        pgtype.Text
 }
 
 type CreateIdentityRow struct {
-	ID          string
-	UserID      string
-	Provider    string
-	Subject     string
-	DisplayName pgtype.Text
-	Email       pgtype.Text
-	CreatedAt   pgtype.Timestamptz
+	ID           string
+	UserID       string
+	ProviderKind string
+	ProviderKey  string
+	Subject      string
+	DisplayName  pgtype.Text
+	Email        pgtype.Text
+	CreatedAt    pgtype.Timestamptz
 }
 
 func (q *Queries) CreateIdentity(ctx context.Context, arg CreateIdentityParams) (CreateIdentityRow, error) {
 	row := q.db.QueryRow(ctx, createIdentity,
 		arg.UserID,
-		arg.Provider,
+		arg.ProviderKind,
+		arg.ProviderKey,
 		arg.Subject,
 		arg.DisplayName,
 		arg.Email,
@@ -53,7 +57,8 @@ func (q *Queries) CreateIdentity(ctx context.Context, arg CreateIdentityParams) 
 	err := row.Scan(
 		&i.ID,
 		&i.UserID,
-		&i.Provider,
+		&i.ProviderKind,
+		&i.ProviderKey,
 		&i.Subject,
 		&i.DisplayName,
 		&i.Email,
@@ -92,33 +97,35 @@ func (q *Queries) DeleteSession(ctx context.Context, idHash []byte) (int64, erro
 }
 
 const getIdentity = `-- name: GetIdentity :one
-SELECT id::text, user_id::text, provider, subject, display_name, email, created_at
+SELECT id::text, user_id::text, provider_kind, provider_key, subject, display_name, email, created_at
 FROM user_identities
-WHERE provider = $1 AND subject = $2
+WHERE provider_key = $1 AND subject = $2
 `
 
 type GetIdentityParams struct {
-	Provider string
-	Subject  string
+	ProviderKey string
+	Subject     string
 }
 
 type GetIdentityRow struct {
-	ID          string
-	UserID      string
-	Provider    string
-	Subject     string
-	DisplayName pgtype.Text
-	Email       pgtype.Text
-	CreatedAt   pgtype.Timestamptz
+	ID           string
+	UserID       string
+	ProviderKind string
+	ProviderKey  string
+	Subject      string
+	DisplayName  pgtype.Text
+	Email        pgtype.Text
+	CreatedAt    pgtype.Timestamptz
 }
 
 func (q *Queries) GetIdentity(ctx context.Context, arg GetIdentityParams) (GetIdentityRow, error) {
-	row := q.db.QueryRow(ctx, getIdentity, arg.Provider, arg.Subject)
+	row := q.db.QueryRow(ctx, getIdentity, arg.ProviderKey, arg.Subject)
 	var i GetIdentityRow
 	err := row.Scan(
 		&i.ID,
 		&i.UserID,
-		&i.Provider,
+		&i.ProviderKind,
+		&i.ProviderKey,
 		&i.Subject,
 		&i.DisplayName,
 		&i.Email,
@@ -156,13 +163,13 @@ func (q *Queries) ResolveSession(ctx context.Context, idHash []byte) (ResolveSes
 const updateIdentityMetadata = `-- name: UpdateIdentityMetadata :exec
 UPDATE user_identities
 SET display_name = $1, email = $2
-WHERE provider = $3 AND subject = $4
+WHERE provider_key = $3 AND subject = $4
 `
 
 type UpdateIdentityMetadataParams struct {
 	DisplayName pgtype.Text
 	Email       pgtype.Text
-	Provider    string
+	ProviderKey string
 	Subject     string
 }
 
@@ -170,7 +177,7 @@ func (q *Queries) UpdateIdentityMetadata(ctx context.Context, arg UpdateIdentity
 	_, err := q.db.Exec(ctx, updateIdentityMetadata,
 		arg.DisplayName,
 		arg.Email,
-		arg.Provider,
+		arg.ProviderKey,
 		arg.Subject,
 	)
 	return err

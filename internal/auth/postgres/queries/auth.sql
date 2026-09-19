@@ -1,23 +1,24 @@
 -- name: GetIdentity :one
-SELECT id::text, user_id::text, provider, subject, display_name, email, created_at
+SELECT id::text, user_id::text, provider_kind, provider_key, subject, display_name, email, created_at
 FROM user_identities
-WHERE provider = sqlc.arg(provider) AND subject = sqlc.arg(subject);
+WHERE provider_key = sqlc.arg(provider_key) AND subject = sqlc.arg(subject);
 
 -- name: CreateIdentity :one
-INSERT INTO user_identities (user_id, provider, subject, display_name, email)
+INSERT INTO user_identities (user_id, provider_kind, provider_key, subject, display_name, email)
 VALUES (
     sqlc.arg(user_id)::uuid,
-    sqlc.arg(provider),
+    sqlc.arg(provider_kind),
+    sqlc.arg(provider_key),
     sqlc.arg(subject),
     sqlc.narg(display_name),
     sqlc.narg(email)
 )
-RETURNING id::text, user_id::text, provider, subject, display_name, email, created_at;
+RETURNING id::text, user_id::text, provider_kind, provider_key, subject, display_name, email, created_at;
 
 -- name: UpdateIdentityMetadata :exec
 UPDATE user_identities
 SET display_name = sqlc.narg(display_name), email = sqlc.narg(email)
-WHERE provider = sqlc.arg(provider) AND subject = sqlc.arg(subject);
+WHERE provider_key = sqlc.arg(provider_key) AND subject = sqlc.arg(subject);
 
 -- name: CreateSession :exec
 INSERT INTO auth_sessions (id_hash, user_id, expires_at)

@@ -12,30 +12,30 @@ import (
 )
 
 const createUser = `-- name: CreateUser :one
-INSERT INTO users (display_name, role)
+INSERT INTO users (game_nick, role)
 VALUES ($1, $2)
-RETURNING id::text, display_name, role, created_at, updated_at
+RETURNING id::text, game_nick, role, created_at, updated_at
 `
 
 type CreateUserParams struct {
-	DisplayName string
-	Role        string
+	GameNick pgtype.Text
+	Role     string
 }
 
 type CreateUserRow struct {
-	ID          string
-	DisplayName string
-	Role        string
-	CreatedAt   pgtype.Timestamptz
-	UpdatedAt   pgtype.Timestamptz
+	ID        string
+	GameNick  pgtype.Text
+	Role      string
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
 }
 
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (CreateUserRow, error) {
-	row := q.db.QueryRow(ctx, createUser, arg.DisplayName, arg.Role)
+	row := q.db.QueryRow(ctx, createUser, arg.GameNick, arg.Role)
 	var i CreateUserRow
 	err := row.Scan(
 		&i.ID,
-		&i.DisplayName,
+		&i.GameNick,
 		&i.Role,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -57,17 +57,17 @@ func (q *Queries) DeleteUser(ctx context.Context, id pgtype.UUID) (int64, error)
 }
 
 const getUser = `-- name: GetUser :one
-SELECT id::text, display_name, role, created_at, updated_at
+SELECT id::text, game_nick, role, created_at, updated_at
 FROM users
 WHERE id = $1::uuid
 `
 
 type GetUserRow struct {
-	ID          string
-	DisplayName string
-	Role        string
-	CreatedAt   pgtype.Timestamptz
-	UpdatedAt   pgtype.Timestamptz
+	ID        string
+	GameNick  pgtype.Text
+	Role      string
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
 }
 
 func (q *Queries) GetUser(ctx context.Context, id pgtype.UUID) (GetUserRow, error) {
@@ -75,7 +75,7 @@ func (q *Queries) GetUser(ctx context.Context, id pgtype.UUID) (GetUserRow, erro
 	var i GetUserRow
 	err := row.Scan(
 		&i.ID,
-		&i.DisplayName,
+		&i.GameNick,
 		&i.Role,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -84,17 +84,17 @@ func (q *Queries) GetUser(ctx context.Context, id pgtype.UUID) (GetUserRow, erro
 }
 
 const listUsers = `-- name: ListUsers :many
-SELECT id::text, display_name, role, created_at, updated_at
+SELECT id::text, game_nick, role, created_at, updated_at
 FROM users
 ORDER BY created_at, id
 `
 
 type ListUsersRow struct {
-	ID          string
-	DisplayName string
-	Role        string
-	CreatedAt   pgtype.Timestamptz
-	UpdatedAt   pgtype.Timestamptz
+	ID        string
+	GameNick  pgtype.Text
+	Role      string
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
 }
 
 func (q *Queries) ListUsers(ctx context.Context) ([]ListUsersRow, error) {
@@ -108,7 +108,7 @@ func (q *Queries) ListUsers(ctx context.Context) ([]ListUsersRow, error) {
 		var i ListUsersRow
 		if err := rows.Scan(
 			&i.ID,
-			&i.DisplayName,
+			&i.GameNick,
 			&i.Role,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -123,11 +123,44 @@ func (q *Queries) ListUsers(ctx context.Context) ([]ListUsersRow, error) {
 	return items, nil
 }
 
+const setUserGameNick = `-- name: SetUserGameNick :one
+UPDATE users
+SET game_nick = $1, updated_at = now()
+WHERE id = $2::uuid
+RETURNING id::text, game_nick, role, created_at, updated_at
+`
+
+type SetUserGameNickParams struct {
+	GameNick pgtype.Text
+	ID       pgtype.UUID
+}
+
+type SetUserGameNickRow struct {
+	ID        string
+	GameNick  pgtype.Text
+	Role      string
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+}
+
+func (q *Queries) SetUserGameNick(ctx context.Context, arg SetUserGameNickParams) (SetUserGameNickRow, error) {
+	row := q.db.QueryRow(ctx, setUserGameNick, arg.GameNick, arg.ID)
+	var i SetUserGameNickRow
+	err := row.Scan(
+		&i.ID,
+		&i.GameNick,
+		&i.Role,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const setUserRole = `-- name: SetUserRole :one
 UPDATE users
 SET role = $1, updated_at = now()
 WHERE id = $2::uuid
-RETURNING id::text, display_name, role, created_at, updated_at
+RETURNING id::text, game_nick, role, created_at, updated_at
 `
 
 type SetUserRoleParams struct {
@@ -136,11 +169,11 @@ type SetUserRoleParams struct {
 }
 
 type SetUserRoleRow struct {
-	ID          string
-	DisplayName string
-	Role        string
-	CreatedAt   pgtype.Timestamptz
-	UpdatedAt   pgtype.Timestamptz
+	ID        string
+	GameNick  pgtype.Text
+	Role      string
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
 }
 
 func (q *Queries) SetUserRole(ctx context.Context, arg SetUserRoleParams) (SetUserRoleRow, error) {
@@ -148,7 +181,7 @@ func (q *Queries) SetUserRole(ctx context.Context, arg SetUserRoleParams) (SetUs
 	var i SetUserRoleRow
 	err := row.Scan(
 		&i.ID,
-		&i.DisplayName,
+		&i.GameNick,
 		&i.Role,
 		&i.CreatedAt,
 		&i.UpdatedAt,

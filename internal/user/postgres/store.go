@@ -9,6 +9,7 @@ import (
 	"github.com/convention-x-treme/lansurfer/internal/user"
 	"github.com/convention-x-treme/lansurfer/internal/user/postgres/sqlcgen"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -21,17 +22,18 @@ func NewStore(pool *pgxpool.Pool) *Store {
 	return &Store{queries: sqlcgen.New(pool)}
 }
 
-func (s *Store) Create(ctx context.Context, displayName string, role user.Role) (user.User, error) {
+func (s *Store) Create(ctx context.Context, gameNick string, role user.Role) (user.User, error) {
 	row, err := s.queries.CreateUser(ctx, sqlcgen.CreateUserParams{
-		DisplayName: displayName,
-		Role:        string(role),
+		GameNick: pgtype.Text{String: gameNick, Valid: true},
+		Role:     string(role),
 	})
 	if err != nil {
-		return user.User{}, fmt.Errorf("create user: %w", err)
+		return user.User{}, gameNickError(err, "create user")
 	}
 	return user.User{
 		ID:          row.ID,
-		DisplayName: row.DisplayName,
+		GameNick:    row.GameNick.String,
+		DisplayName: row.GameNick.String,
 		Role:        user.Role(row.Role),
 		CreatedAt:   row.CreatedAt.Time,
 		UpdatedAt:   row.UpdatedAt.Time,
@@ -50,7 +52,7 @@ func (s *Store) ByID(ctx context.Context, id string) (user.User, error) {
 	if err != nil {
 		return user.User{}, fmt.Errorf("get user: %w", err)
 	}
-	return fromUser(row.ID, row.DisplayName, row.Role, row.CreatedAt, row.UpdatedAt), nil
+	return fromUser(row.ID, row.GameNick, row.Role, row.CreatedAt, row.UpdatedAt), nil
 }
 
 func (s *Store) List(ctx context.Context) ([]user.User, error) {
@@ -60,7 +62,7 @@ func (s *Store) List(ctx context.Context) ([]user.User, error) {
 	}
 	result := make([]user.User, 0, len(rows))
 	for _, row := range rows {
-		result = append(result, fromUser(row.ID, row.DisplayName, row.Role, row.CreatedAt, row.UpdatedAt))
+		result = append(result, fromUser(row.ID, row.GameNick, row.Role, row.CreatedAt, row.UpdatedAt))
 	}
 	return result, nil
 }
@@ -77,14 +79,37 @@ func (s *Store) SetRole(ctx context.Context, id string, role user.Role) (user.Us
 	if err != nil {
 		return user.User{}, fmt.Errorf("set user role: %w", err)
 	}
-	return fromUser(row.ID, row.DisplayName, row.Role, row.CreatedAt, row.UpdatedAt), nil
+	return fromUser(row.ID, row.GameNick, row.Role, row.CreatedAt, row.UpdatedAt), nil
 }
 
-func fromUser(id, displayName, role string, createdAt, updatedAt pgtype.Timestamptz) user.User {
+func (s *Store) SetGameNick(ctx context.Context, id, gameNick string) (user.User, error) {
+	databaseID, err := parseUUID(id)
+	if err != nil {
+		return user.User{}, user.ErrNotFound
+	}
+	row, err := s.queries.SetUserGameNick(ctx, sqlcgen.SetUserGameNickParams{ID: databaseID, GameNick: pgtype.Text{String: gameNick, Valid: true}})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return user.User{}, user.ErrNotFound
+	}
+	if err != nil {
+		return user.User{}, gameNickError(err, "set game nick")
+	}
+	return fromUser(row.ID, row.GameNick, row.Role, row.CreatedAt, row.UpdatedAt), nil
+}
+
+func fromUser(id string, gameNick pgtype.Text, role string, createdAt, updatedAt pgtype.Timestamptz) user.User {
 	return user.User{
-		ID: id, DisplayName: displayName, Role: user.Role(role),
+		ID: id, GameNick: gameNick.String, DisplayName: gameNick.String, Role: user.Role(role),
 		CreatedAt: createdAt.Time, UpdatedAt: updatedAt.Time,
 	}
+}
+
+func gameNickError(err error, operation string) error {
+	var databaseError *pgconn.PgError
+	if errors.As(err, &databaseError) && databaseError.Code == "23505" && databaseError.ConstraintName == "users_game_nick_unique_idx" {
+		return user.ErrGameNickTaken
+	}
+	return fmt.Errorf("%s: %w", operation, err)
 }
 
 func (s *Store) Delete(ctx context.Context, id string) error {

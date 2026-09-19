@@ -33,7 +33,7 @@ func NewSessionStore(pool *pgxpool.Pool) *SessionStore {
 }
 
 func (s *IdentityStore) ByProviderSubject(ctx context.Context, provider, subject string) (auth.Identity, error) {
-	row, err := s.queries.GetIdentity(ctx, sqlcgen.GetIdentityParams{Provider: provider, Subject: subject})
+	row, err := s.queries.GetIdentity(ctx, sqlcgen.GetIdentityParams{ProviderKey: provider, Subject: subject})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return auth.Identity{}, auth.ErrIdentityNotFound
 	}
@@ -49,11 +49,12 @@ func (s *IdentityStore) Create(ctx context.Context, identity auth.Identity) (aut
 		return auth.Identity{}, fmt.Errorf("parse identity user ID: %w", err)
 	}
 	row, err := s.queries.CreateIdentity(ctx, sqlcgen.CreateIdentityParams{
-		UserID:      userID,
-		Provider:    identity.Provider,
-		Subject:     identity.Subject,
-		DisplayName: nullableText(identity.DisplayName),
-		Email:       nullableText(identity.Email),
+		UserID:       userID,
+		ProviderKind: "oidc",
+		ProviderKey:  identity.Provider,
+		Subject:      identity.Subject,
+		DisplayName:  nullableText(identity.DisplayName),
+		Email:        nullableText(identity.Email),
 	})
 	if isUniqueViolation(err) {
 		return auth.Identity{}, auth.ErrIdentityExists
@@ -64,7 +65,7 @@ func (s *IdentityStore) Create(ctx context.Context, identity auth.Identity) (aut
 	return auth.Identity{
 		ID:          row.ID,
 		UserID:      row.UserID,
-		Provider:    row.Provider,
+		Provider:    row.ProviderKey,
 		Subject:     row.Subject,
 		DisplayName: row.DisplayName.String,
 		Email:       row.Email.String,
@@ -74,7 +75,7 @@ func (s *IdentityStore) Create(ctx context.Context, identity auth.Identity) (aut
 
 func (s *IdentityStore) UpdateMetadata(ctx context.Context, provider, subject, displayName, email string) error {
 	if err := s.queries.UpdateIdentityMetadata(ctx, sqlcgen.UpdateIdentityMetadataParams{
-		Provider:    provider,
+		ProviderKey: provider,
 		Subject:     subject,
 		DisplayName: nullableText(displayName),
 		Email:       nullableText(email),
@@ -130,7 +131,7 @@ func identityFromGetRow(row sqlcgen.GetIdentityRow) auth.Identity {
 	return auth.Identity{
 		ID:          row.ID,
 		UserID:      row.UserID,
-		Provider:    row.Provider,
+		Provider:    row.ProviderKey,
 		Subject:     row.Subject,
 		DisplayName: row.DisplayName.String,
 		Email:       row.Email.String,

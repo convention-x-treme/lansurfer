@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestRegisterValidatesAndNormalizesDisplayName(t *testing.T) {
+func TestRegisterClaimsTrimmedGameNick(t *testing.T) {
 	repository := &recordingRepository{}
 	service := NewService(repository)
 
@@ -14,24 +14,32 @@ func TestRegisterValidatesAndNormalizesDisplayName(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Register() error = %v", err)
 	}
-	if repository.displayName != "Ada Player" {
-		t.Errorf("display name = %q", repository.displayName)
+	if repository.gameNick != "Ada Player" {
+		t.Errorf("game nick = %q", repository.gameNick)
 	}
 	if repository.role != RoleUser {
 		t.Errorf("role = %q, want %q", repository.role, RoleUser)
 	}
-	if created.DisplayName != "Ada Player" {
-		t.Errorf("created display name = %q", created.DisplayName)
+	if created.GameNick != "Ada Player" {
+		t.Errorf("created game nick = %q", created.GameNick)
 	}
 }
 
-func TestRegisterRejectsInvalidDisplayName(t *testing.T) {
-	service := NewService(&recordingRepository{})
-	for _, displayName := range []string{"", "   ", string(make([]rune, maxDisplayNameLength+1))} {
-		_, err := service.Register(t.Context(), displayName)
-		if !errors.Is(err, ErrInvalidDisplayName) {
-			t.Errorf("Register(%q) error = %v, want ErrInvalidDisplayName", displayName, err)
+func TestValidateGameNickRejectsInvalidUnicode(t *testing.T) {
+	for _, gameNick := range []string{"", "   ", string(make([]rune, 33)), "not\x00printable", "invisible\u200bformat"} {
+		if _, err := ValidateGameNick(gameNick); !errors.Is(err, ErrInvalidGameNick) {
+			t.Errorf("ValidateGameNick(%q) error = %v, want ErrInvalidGameNick", gameNick, err)
 		}
+	}
+}
+
+func TestValidateGameNickPreservesInternalSpacingAndUnicode(t *testing.T) {
+	gameNick, err := ValidateGameNick("\u2003Night  Otter\u2003")
+	if err != nil {
+		t.Fatalf("ValidateGameNick() error = %v", err)
+	}
+	if gameNick != "Night  Otter" {
+		t.Fatalf("game nick = %q, want preserved internal spaces", gameNick)
 	}
 }
 
@@ -52,15 +60,15 @@ func TestPromoteToAdmin(t *testing.T) {
 }
 
 type recordingRepository struct {
-	displayName string
-	promotedID  string
-	role        Role
+	gameNick   string
+	promotedID string
+	role       Role
 }
 
-func (r *recordingRepository) Create(_ context.Context, displayName string, role Role) (User, error) {
-	r.displayName = displayName
+func (r *recordingRepository) Create(_ context.Context, gameNick string, role Role) (User, error) {
+	r.gameNick = gameNick
 	r.role = role
-	return User{ID: "user-id", DisplayName: displayName, Role: role}, nil
+	return User{ID: "user-id", GameNick: gameNick, DisplayName: gameNick, Role: role}, nil
 }
 
 func (*recordingRepository) ByID(context.Context, string) (User, error) {
@@ -68,6 +76,12 @@ func (*recordingRepository) ByID(context.Context, string) (User, error) {
 }
 
 func (*recordingRepository) List(context.Context) ([]User, error) { return nil, nil }
+
+func (r *recordingRepository) SetGameNick(_ context.Context, id, gameNick string) (User, error) {
+	r.promotedID = id
+	r.gameNick = gameNick
+	return User{ID: id, GameNick: gameNick, DisplayName: gameNick, Role: r.role}, nil
+}
 
 func (r *recordingRepository) SetRole(_ context.Context, id string, role Role) (User, error) {
 	r.promotedID = id
