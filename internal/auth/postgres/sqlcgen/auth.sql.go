@@ -11,6 +11,108 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const consumeOAuthFlow = `-- name: ConsumeOAuthFlow :one
+WITH matched AS (
+    SELECT source.id, source.nonce, source.pkce_verifier
+    FROM auth_flows source
+    WHERE source.state_hash = $1
+      AND source.phase = 'oauth'
+      AND source.consumed_at IS NULL
+      AND source.expires_at > $2
+      AND source.browser_binding_hash = $3
+      AND source.provider_kind = $4
+      AND source.provider_key = $5
+      AND source.operation = $6
+      AND source.initiating_user_id IS NOT DISTINCT FROM $7::uuid
+    FOR UPDATE
+), consumed AS (
+    UPDATE auth_flows flow
+    SET consumed_at = $2, nonce = NULL, pkce_verifier = NULL
+    FROM matched
+    WHERE flow.id = matched.id
+    RETURNING flow.id::text AS id, flow.operation, flow.provider_kind, flow.provider_key,
+              flow.initiating_user_id, flow.parent_flow_id, flow.state_hash,
+              flow.browser_binding_hash, matched.nonce, matched.pkce_verifier,
+              flow.expires_at
+)
+SELECT id, operation, provider_kind, provider_key, initiating_user_id, parent_flow_id, state_hash, browser_binding_hash, nonce, pkce_verifier, expires_at FROM consumed
+`
+
+type ConsumeOAuthFlowParams struct {
+	LookupStateHash    []byte
+	Now                pgtype.Timestamptz
+	BrowserBindingHash []byte
+	ProviderKind       string
+	ProviderKey        string
+	Operation          string
+	InitiatingUserID   pgtype.UUID
+}
+
+type ConsumeOAuthFlowRow struct {
+	ID                 string
+	Operation          string
+	ProviderKind       string
+	ProviderKey        string
+	InitiatingUserID   pgtype.UUID
+	ParentFlowID       pgtype.UUID
+	StateHash          []byte
+	BrowserBindingHash []byte
+	Nonce              pgtype.Text
+	PkceVerifier       pgtype.Text
+	ExpiresAt          pgtype.Timestamptz
+}
+
+func (q *Queries) ConsumeOAuthFlow(ctx context.Context, arg ConsumeOAuthFlowParams) (ConsumeOAuthFlowRow, error) {
+	row := q.db.QueryRow(ctx, consumeOAuthFlow,
+		arg.LookupStateHash,
+		arg.Now,
+		arg.BrowserBindingHash,
+		arg.ProviderKind,
+		arg.ProviderKey,
+		arg.Operation,
+		arg.InitiatingUserID,
+	)
+	var i ConsumeOAuthFlowRow
+	err := row.Scan(
+		&i.ID,
+		&i.Operation,
+		&i.ProviderKind,
+		&i.ProviderKey,
+		&i.InitiatingUserID,
+		&i.ParentFlowID,
+		&i.StateHash,
+		&i.BrowserBindingHash,
+		&i.Nonce,
+		&i.PkceVerifier,
+		&i.ExpiresAt,
+	)
+	return i, err
+}
+
+const consumePendingIdentity = `-- name: ConsumePendingIdentity :one
+UPDATE auth_flows
+SET consumed_at = $1
+WHERE id = $2::uuid
+  AND phase = 'pending'
+  AND consumed_at IS NULL
+  AND expires_at > $1
+  AND browser_binding_hash = $3
+RETURNING id::text
+`
+
+type ConsumePendingIdentityParams struct {
+	Now                pgtype.Timestamptz
+	ID                 pgtype.UUID
+	BrowserBindingHash []byte
+}
+
+func (q *Queries) ConsumePendingIdentity(ctx context.Context, arg ConsumePendingIdentityParams) (string, error) {
+	row := q.db.QueryRow(ctx, consumePendingIdentity, arg.Now, arg.ID, arg.BrowserBindingHash)
+	var id string
+	err := row.Scan(&id)
+	return id, err
+}
+
 const createIdentity = `-- name: CreateIdentity :one
 INSERT INTO user_identities (user_id, provider_kind, provider_key, subject, display_name, email)
 VALUES (
@@ -67,6 +169,156 @@ func (q *Queries) CreateIdentity(ctx context.Context, arg CreateIdentityParams) 
 	return i, err
 }
 
+const createOAuthFlow = `-- name: CreateOAuthFlow :one
+INSERT INTO auth_flows (
+    phase, operation, provider_kind, provider_key, initiating_user_id, parent_flow_id,
+    state_hash, browser_binding_hash, nonce, pkce_verifier, expires_at
+) VALUES (
+    'oauth', $1, $2, $3,
+    $4::uuid, $5::uuid,
+    $6, $7, $8,
+    $9, $10
+)
+RETURNING id::text, operation, provider_kind, provider_key,
+          initiating_user_id, parent_flow_id, state_hash,
+          browser_binding_hash, nonce, pkce_verifier, expires_at
+`
+
+type CreateOAuthFlowParams struct {
+	Operation          string
+	ProviderKind       string
+	ProviderKey        string
+	InitiatingUserID   pgtype.UUID
+	ParentFlowID       pgtype.UUID
+	StateHash          []byte
+	BrowserBindingHash []byte
+	Nonce              pgtype.Text
+	PkceVerifier       pgtype.Text
+	ExpiresAt          pgtype.Timestamptz
+}
+
+type CreateOAuthFlowRow struct {
+	ID                 string
+	Operation          string
+	ProviderKind       string
+	ProviderKey        string
+	InitiatingUserID   pgtype.UUID
+	ParentFlowID       pgtype.UUID
+	StateHash          []byte
+	BrowserBindingHash []byte
+	Nonce              pgtype.Text
+	PkceVerifier       pgtype.Text
+	ExpiresAt          pgtype.Timestamptz
+}
+
+func (q *Queries) CreateOAuthFlow(ctx context.Context, arg CreateOAuthFlowParams) (CreateOAuthFlowRow, error) {
+	row := q.db.QueryRow(ctx, createOAuthFlow,
+		arg.Operation,
+		arg.ProviderKind,
+		arg.ProviderKey,
+		arg.InitiatingUserID,
+		arg.ParentFlowID,
+		arg.StateHash,
+		arg.BrowserBindingHash,
+		arg.Nonce,
+		arg.PkceVerifier,
+		arg.ExpiresAt,
+	)
+	var i CreateOAuthFlowRow
+	err := row.Scan(
+		&i.ID,
+		&i.Operation,
+		&i.ProviderKind,
+		&i.ProviderKey,
+		&i.InitiatingUserID,
+		&i.ParentFlowID,
+		&i.StateHash,
+		&i.BrowserBindingHash,
+		&i.Nonce,
+		&i.PkceVerifier,
+		&i.ExpiresAt,
+	)
+	return i, err
+}
+
+const createPendingIdentity = `-- name: CreatePendingIdentity :one
+INSERT INTO auth_flows (
+    phase, operation, provider_kind, provider_key, subject, initiating_user_id,
+    parent_flow_id, browser_binding_hash, display_name, email,
+    game_nick_suggestion, expires_at
+) VALUES (
+    'pending', $1, $2, $3,
+    $4, $5::uuid,
+    $6::uuid, $7,
+    $8, $9, $10,
+    $11
+)
+RETURNING id::text, operation, provider_kind, provider_key, subject,
+          initiating_user_id, parent_flow_id, browser_binding_hash,
+          display_name, email, game_nick_suggestion, expires_at
+`
+
+type CreatePendingIdentityParams struct {
+	Operation          string
+	ProviderKind       string
+	ProviderKey        string
+	Subject            pgtype.Text
+	InitiatingUserID   pgtype.UUID
+	ParentFlowID       pgtype.UUID
+	BrowserBindingHash []byte
+	DisplayName        pgtype.Text
+	Email              pgtype.Text
+	GameNickSuggestion pgtype.Text
+	ExpiresAt          pgtype.Timestamptz
+}
+
+type CreatePendingIdentityRow struct {
+	ID                 string
+	Operation          string
+	ProviderKind       string
+	ProviderKey        string
+	Subject            pgtype.Text
+	InitiatingUserID   pgtype.UUID
+	ParentFlowID       pgtype.UUID
+	BrowserBindingHash []byte
+	DisplayName        pgtype.Text
+	Email              pgtype.Text
+	GameNickSuggestion pgtype.Text
+	ExpiresAt          pgtype.Timestamptz
+}
+
+func (q *Queries) CreatePendingIdentity(ctx context.Context, arg CreatePendingIdentityParams) (CreatePendingIdentityRow, error) {
+	row := q.db.QueryRow(ctx, createPendingIdentity,
+		arg.Operation,
+		arg.ProviderKind,
+		arg.ProviderKey,
+		arg.Subject,
+		arg.InitiatingUserID,
+		arg.ParentFlowID,
+		arg.BrowserBindingHash,
+		arg.DisplayName,
+		arg.Email,
+		arg.GameNickSuggestion,
+		arg.ExpiresAt,
+	)
+	var i CreatePendingIdentityRow
+	err := row.Scan(
+		&i.ID,
+		&i.Operation,
+		&i.ProviderKind,
+		&i.ProviderKey,
+		&i.Subject,
+		&i.InitiatingUserID,
+		&i.ParentFlowID,
+		&i.BrowserBindingHash,
+		&i.DisplayName,
+		&i.Email,
+		&i.GameNickSuggestion,
+		&i.ExpiresAt,
+	)
+	return i, err
+}
+
 const createSession = `-- name: CreateSession :exec
 INSERT INTO auth_sessions (id_hash, user_id, expires_at)
 VALUES ($1, $2::uuid, $3)
@@ -80,6 +332,16 @@ type CreateSessionParams struct {
 
 func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) error {
 	_, err := q.db.Exec(ctx, createSession, arg.IDHash, arg.UserID, arg.ExpiresAt)
+	return err
+}
+
+const deleteExpiredAuthFlows = `-- name: DeleteExpiredAuthFlows :exec
+DELETE FROM auth_flows
+WHERE expires_at <= $1 OR consumed_at <= $1 - interval '10 minutes'
+`
+
+func (q *Queries) DeleteExpiredAuthFlows(ctx context.Context, now pgtype.Timestamptz) error {
+	_, err := q.db.Exec(ctx, deleteExpiredAuthFlows, now)
 	return err
 }
 
@@ -119,6 +381,45 @@ func (q *Queries) DeleteSession(ctx context.Context, idHash []byte) (int64, erro
 	return result.RowsAffected(), nil
 }
 
+const getAuthFlowByState = `-- name: GetAuthFlowByState :one
+SELECT id::text, phase, operation, provider_kind, provider_key,
+       initiating_user_id, parent_flow_id, browser_binding_hash,
+       expires_at, consumed_at
+FROM auth_flows
+WHERE state_hash = $1
+`
+
+type GetAuthFlowByStateRow struct {
+	ID                 string
+	Phase              string
+	Operation          string
+	ProviderKind       string
+	ProviderKey        string
+	InitiatingUserID   pgtype.UUID
+	ParentFlowID       pgtype.UUID
+	BrowserBindingHash []byte
+	ExpiresAt          pgtype.Timestamptz
+	ConsumedAt         pgtype.Timestamptz
+}
+
+func (q *Queries) GetAuthFlowByState(ctx context.Context, stateHash []byte) (GetAuthFlowByStateRow, error) {
+	row := q.db.QueryRow(ctx, getAuthFlowByState, stateHash)
+	var i GetAuthFlowByStateRow
+	err := row.Scan(
+		&i.ID,
+		&i.Phase,
+		&i.Operation,
+		&i.ProviderKind,
+		&i.ProviderKey,
+		&i.InitiatingUserID,
+		&i.ParentFlowID,
+		&i.BrowserBindingHash,
+		&i.ExpiresAt,
+		&i.ConsumedAt,
+	)
+	return i, err
+}
+
 const getIdentity = `-- name: GetIdentity :one
 SELECT id::text, user_id::text, provider_kind, provider_key, subject, display_name, email, created_at
 FROM user_identities
@@ -154,6 +455,51 @@ func (q *Queries) GetIdentity(ctx context.Context, arg GetIdentityParams) (GetId
 		&i.DisplayName,
 		&i.Email,
 		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getPendingIdentity = `-- name: GetPendingIdentity :one
+SELECT id::text, operation, provider_kind, provider_key, subject,
+       initiating_user_id, parent_flow_id, browser_binding_hash,
+       display_name, email, game_nick_suggestion, expires_at, consumed_at
+FROM auth_flows
+WHERE id = $1::uuid AND phase = 'pending'
+`
+
+type GetPendingIdentityRow struct {
+	ID                 string
+	Operation          string
+	ProviderKind       string
+	ProviderKey        string
+	Subject            pgtype.Text
+	InitiatingUserID   pgtype.UUID
+	ParentFlowID       pgtype.UUID
+	BrowserBindingHash []byte
+	DisplayName        pgtype.Text
+	Email              pgtype.Text
+	GameNickSuggestion pgtype.Text
+	ExpiresAt          pgtype.Timestamptz
+	ConsumedAt         pgtype.Timestamptz
+}
+
+func (q *Queries) GetPendingIdentity(ctx context.Context, id pgtype.UUID) (GetPendingIdentityRow, error) {
+	row := q.db.QueryRow(ctx, getPendingIdentity, id)
+	var i GetPendingIdentityRow
+	err := row.Scan(
+		&i.ID,
+		&i.Operation,
+		&i.ProviderKind,
+		&i.ProviderKey,
+		&i.Subject,
+		&i.InitiatingUserID,
+		&i.ParentFlowID,
+		&i.BrowserBindingHash,
+		&i.DisplayName,
+		&i.Email,
+		&i.GameNickSuggestion,
+		&i.ExpiresAt,
+		&i.ConsumedAt,
 	)
 	return i, err
 }

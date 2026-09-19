@@ -110,6 +110,147 @@ func TestAuthenticationPersistence(t *testing.T) {
 	}
 }
 
+func TestPersistentAuthenticationFlows(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+
+	flows := authpostgres.NewFlowStore(pool)
+	service := auth.NewFlowService(flows)
+	issuer := "https://identity.example/realms/lan"
+	first, err := service.CreateOAuth(t.Context(), auth.OAuthFlowInput{
+		State: "state-1", BrowserBinding: "same-browser", ProviderKind: "oidc", ProviderKey: issuer,
+		Operation: auth.FlowLogin, Nonce: "nonce-1", PKCEVerifier: "verifier-1",
+	})
+	if err != nil {
+		t.Fatalf("create first flow: %v", err)
+	}
+	second, err := service.CreateOAuth(t.Context(), auth.OAuthFlowInput{
+		State: "state-2", BrowserBinding: "same-browser", ProviderKind: "oidc", ProviderKey: issuer,
+		Operation: auth.FlowLogin, Nonce: "nonce-2", PKCEVerifier: "verifier-2",
+	})
+	if err != nil || first.ID == second.ID {
+		t.Fatalf("create parallel flow = %#v, %v", second, err)
+	}
+
+	callback := auth.OAuthCallback{State: "state-1", BrowserBinding: "same-browser", ProviderKind: "oidc", ProviderKey: issuer, Operation: auth.FlowLogin}
+	wrong := callback
+	wrong.BrowserBinding = "other-browser"
+	if _, err := service.ConsumeOAuth(t.Context(), wrong); !errors.Is(err, auth.ErrFlowBrowser) {
+		t.Fatalf("wrong browser error = %v", err)
+	}
+	wrong = callback
+	wrong.ProviderKey = "https://other.example"
+	if _, err := service.ConsumeOAuth(t.Context(), wrong); !errors.Is(err, auth.ErrFlowProvider) {
+		t.Fatalf("wrong provider error = %v", err)
+	}
+	wrong = callback
+	wrong.Operation = auth.FlowResolution
+	if _, err := service.ConsumeOAuth(t.Context(), wrong); !errors.Is(err, auth.ErrFlowOperation) {
+		t.Fatalf("wrong operation error = %v", err)
+	}
+	consumed, err := service.ConsumeOAuth(t.Context(), callback)
+	if err != nil || consumed.Nonce != "nonce-1" || consumed.PKCEVerifier != "verifier-1" {
+		t.Fatalf("consume flow = %#v, %v", consumed, err)
+	}
+	var retainedProtocolSecrets int
+	if err := pool.QueryRow(t.Context(), `
+		SELECT count(*) FROM auth_flows
+		WHERE id = $1 AND (nonce IS NOT NULL OR pkce_verifier IS NOT NULL)
+	`, consumed.ID).Scan(&retainedProtocolSecrets); err != nil {
+		t.Fatalf("inspect consumed flow secrets: %v", err)
+	}
+	if retainedProtocolSecrets != 0 {
+		t.Fatal("consumed OAuth flow retained nonce or PKCE verifier")
+	}
+	if _, err := service.ConsumeOAuth(t.Context(), callback); !errors.Is(err, auth.ErrFlowConsumed) {
+		t.Fatalf("replay error = %v", err)
+	}
+
+	var firstUserID, secondUserID string
+	if err := pool.QueryRow(t.Context(), `INSERT INTO users (game_nick) VALUES ('FlowOwner') RETURNING id::text`).Scan(&firstUserID); err != nil {
+		t.Fatalf("create first link user: %v", err)
+	}
+	if err := pool.QueryRow(t.Context(), `INSERT INTO users (game_nick) VALUES ('OtherOwner') RETURNING id::text`).Scan(&secondUserID); err != nil {
+		t.Fatalf("create second link user: %v", err)
+	}
+	if _, err := service.CreateOAuth(t.Context(), auth.OAuthFlowInput{
+		State: "link-state", BrowserBinding: "same-browser", ProviderKind: "discord", ProviderKey: "discord",
+		Operation: auth.FlowLink, InitiatingUserID: firstUserID, Nonce: "nonce", PKCEVerifier: "verifier",
+	}); err != nil {
+		t.Fatalf("create link flow: %v", err)
+	}
+	linkCallback := auth.OAuthCallback{
+		State: "link-state", BrowserBinding: "same-browser", ProviderKind: "discord", ProviderKey: "discord",
+		Operation: auth.FlowLink, InitiatingUserID: secondUserID,
+	}
+	if _, err := service.ConsumeOAuth(t.Context(), linkCallback); !errors.Is(err, auth.ErrFlowInitiatingUser) {
+		t.Fatalf("wrong initiating user error = %v", err)
+	}
+	linkCallback.InitiatingUserID = firstUserID
+	if _, err := service.ConsumeOAuth(t.Context(), linkCallback); err != nil {
+		t.Fatalf("consume correctly bound link flow: %v", err)
+	}
+
+	if _, err := service.CreateOAuth(t.Context(), auth.OAuthFlowInput{
+		State: "racing-state", BrowserBinding: "same-browser", ProviderKind: "oidc", ProviderKey: issuer,
+		Operation: auth.FlowLogin, Nonce: "nonce", PKCEVerifier: "verifier",
+	}); err != nil {
+		t.Fatalf("create racing flow: %v", err)
+	}
+	racingCallback := auth.OAuthCallback{
+		State: "racing-state", BrowserBinding: "same-browser", ProviderKind: "oidc", ProviderKey: issuer, Operation: auth.FlowLogin,
+	}
+	results := runConcurrently(
+		func() error { _, err := service.ConsumeOAuth(t.Context(), racingCallback); return err },
+		func() error { _, err := service.ConsumeOAuth(t.Context(), racingCallback); return err },
+	)
+	assertOneWinner(t, "OAuth callback", results, auth.ErrFlowConsumed)
+
+	stateHash := sha256.Sum256([]byte("expired-state"))
+	browserHash := sha256.Sum256([]byte("same-browser"))
+	if _, err := flows.CreateOAuth(t.Context(), auth.OAuthFlow{
+		StateHash: stateHash, BrowserBindingHash: browserHash, ProviderKind: "oidc", ProviderKey: issuer,
+		Operation: auth.FlowLogin, Nonce: "nonce", PKCEVerifier: "verifier", ExpiresAt: time.Now().Add(time.Minute),
+	}); err != nil {
+		t.Fatalf("create expired flow: %v", err)
+	}
+	if _, err := pool.Exec(t.Context(), `
+		UPDATE auth_flows SET created_at = now() - interval '2 minutes', expires_at = now() - interval '1 minute'
+		WHERE state_hash = $1
+	`, stateHash[:]); err != nil {
+		t.Fatalf("expire flow fixture: %v", err)
+	}
+	if _, err := service.ConsumeOAuth(t.Context(), auth.OAuthCallback{
+		State: "expired-state", BrowserBinding: "same-browser", ProviderKind: "oidc", ProviderKey: issuer, Operation: auth.FlowLogin,
+	}); !errors.Is(err, auth.ErrFlowExpired) {
+		t.Fatalf("expired flow error = %v", err)
+	}
+
+	pending, err := service.CreatePending(t.Context(), auth.PendingIdentityInput{
+		BrowserBinding: "same-browser", ProviderKind: "discord", ProviderKey: "discord", Subject: "1234",
+		Operation: auth.FlowLogin, DisplayName: "Alice Example", GameNickSuggestion: "NightOtter",
+	})
+	if err != nil {
+		t.Fatalf("create pending identity: %v", err)
+	}
+	for range 2 {
+		if _, err := service.Pending(t.Context(), pending.ID, "same-browser"); err != nil {
+			t.Fatalf("non-consuming pending lookup: %v", err)
+		}
+	}
+	if _, err := service.Pending(t.Context(), pending.ID, "other-browser"); !errors.Is(err, auth.ErrFlowBrowser) {
+		t.Fatalf("pending wrong browser error = %v", err)
+	}
+	if err := service.ConsumePending(t.Context(), pending.ID, "same-browser"); err != nil {
+		t.Fatalf("consume pending identity: %v", err)
+	}
+	if _, err := service.Pending(t.Context(), pending.ID, "same-browser"); !errors.Is(err, auth.ErrFlowConsumed) {
+		t.Fatalf("consumed pending error = %v", err)
+	}
+}
+
 func TestGameCatalogPersistence(t *testing.T) {
 	pool := newTestPool(t)
 	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
@@ -3245,14 +3386,14 @@ func TestForwardMigrationIntroducesGameNickAndAuthFlows(t *testing.T) {
 	}
 	var consumed string
 	if err := pool.QueryRow(t.Context(), `
-		UPDATE auth_flows SET consumed_at = now()
+		UPDATE auth_flows SET consumed_at = now(), nonce = NULL, pkce_verifier = NULL
 		WHERE id = $1 AND consumed_at IS NULL AND expires_at > now()
 		RETURNING id::text
 	`, flowID).Scan(&consumed); err != nil || consumed != flowID {
 		t.Fatalf("consume oauth flow = %q, %v", consumed, err)
 	}
 	if err := pool.QueryRow(t.Context(), `
-		UPDATE auth_flows SET consumed_at = now()
+		UPDATE auth_flows SET consumed_at = now(), nonce = NULL, pkce_verifier = NULL
 		WHERE id = $1 AND consumed_at IS NULL AND expires_at > now()
 		RETURNING id::text
 	`, flowID).Scan(&consumed); !errors.Is(err, pgx.ErrNoRows) {

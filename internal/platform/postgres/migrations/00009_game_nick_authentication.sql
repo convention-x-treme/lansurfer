@@ -38,7 +38,10 @@ CREATE TABLE auth_flows (
     created_at timestamptz NOT NULL DEFAULT now(),
     CHECK (expires_at > created_at),
     CHECK (
-        (phase = 'oauth' AND state_hash IS NOT NULL AND nonce IS NOT NULL AND pkce_verifier IS NOT NULL)
+        (phase = 'oauth' AND state_hash IS NOT NULL AND (
+            (consumed_at IS NULL AND nonce IS NOT NULL AND pkce_verifier IS NOT NULL)
+            OR (consumed_at IS NOT NULL AND nonce IS NULL AND pkce_verifier IS NULL)
+        ))
         OR (phase = 'pending' AND state_hash IS NULL)
     ),
     CHECK ((operation = 'link') = (initiating_user_id IS NOT NULL))
