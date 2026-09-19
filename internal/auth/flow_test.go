@@ -47,10 +47,33 @@ func TestFlowServiceHashesSecretsOnOAuthConsumption(t *testing.T) {
 	}
 }
 
+func TestFlowServiceConsumesProviderCallbackWithoutCookieOperationState(t *testing.T) {
+	repository := &recordingFlowRepository{oauthResult: OAuthFlow{ID: "flow-1", Operation: FlowResolution}}
+	service := NewFlowService(repository)
+
+	flow, err := service.ConsumeProviderCallback(t.Context(), ProviderCallback{
+		State: "raw-state", BrowserBinding: "raw-browser", ProviderKind: "discord",
+		ProviderKey: "discord", CurrentUserID: "",
+	})
+	if err != nil || flow.Operation != FlowResolution {
+		t.Fatalf("ConsumeProviderCallback() = %#v, %v", flow, err)
+	}
+	if repository.providerCallback.StateHash != sha256.Sum256([]byte("raw-state")) ||
+		repository.providerCallback.BrowserBindingHash != sha256.Sum256([]byte("raw-browser")) {
+		t.Fatalf("lookup hashes = %x, %x", repository.providerCallback.StateHash, repository.providerCallback.BrowserBindingHash)
+	}
+}
+
 type recordingFlowRepository struct {
-	oauth       OAuthFlow
-	callback    OAuthCallbackHashes
-	oauthResult OAuthFlow
+	oauth            OAuthFlow
+	callback         OAuthCallbackHashes
+	providerCallback ProviderCallbackHashes
+	oauthResult      OAuthFlow
+}
+
+func (r *recordingFlowRepository) ConsumeProviderCallback(_ context.Context, callback ProviderCallbackHashes) (OAuthFlow, error) {
+	r.providerCallback = callback
+	return r.oauthResult, nil
 }
 
 func (r *recordingFlowRepository) CreateOAuth(_ context.Context, flow OAuthFlow) (OAuthFlow, error) {

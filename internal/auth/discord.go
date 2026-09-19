@@ -31,6 +31,9 @@ type DiscordProvider struct {
 	userURL string
 }
 
+func (*DiscordProvider) ProviderKind() string { return "discord" }
+func (*DiscordProvider) ProviderKey() string  { return "discord" }
+
 func NewDiscordProvider(cfg DiscordConfig) *DiscordProvider {
 	return &DiscordProvider{
 		oauth: oauth2.Config{

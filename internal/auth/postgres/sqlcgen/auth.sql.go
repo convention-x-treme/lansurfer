@@ -113,6 +113,84 @@ func (q *Queries) ConsumePendingIdentity(ctx context.Context, arg ConsumePending
 	return id, err
 }
 
+const consumeProviderCallback = `-- name: ConsumeProviderCallback :one
+WITH matched AS (
+    SELECT source.id, source.nonce, source.pkce_verifier
+    FROM auth_flows source
+    WHERE source.state_hash = $1
+      AND source.phase = 'oauth'
+      AND source.consumed_at IS NULL
+      AND source.expires_at > $2
+      AND source.browser_binding_hash = $3
+      AND source.provider_kind = $4
+      AND source.provider_key = $5
+      AND (
+          source.operation <> 'link'
+          OR source.initiating_user_id IS NOT DISTINCT FROM $6::uuid
+      )
+    FOR UPDATE
+), consumed AS (
+    UPDATE auth_flows flow
+    SET consumed_at = $2, nonce = NULL, pkce_verifier = NULL
+    FROM matched
+    WHERE flow.id = matched.id
+    RETURNING flow.id::text AS id, flow.operation, flow.provider_kind, flow.provider_key,
+              flow.initiating_user_id, flow.parent_flow_id, flow.state_hash,
+              flow.browser_binding_hash, matched.nonce, matched.pkce_verifier,
+              flow.expires_at
+)
+SELECT id, operation, provider_kind, provider_key, initiating_user_id, parent_flow_id, state_hash, browser_binding_hash, nonce, pkce_verifier, expires_at FROM consumed
+`
+
+type ConsumeProviderCallbackParams struct {
+	LookupStateHash    []byte
+	Now                pgtype.Timestamptz
+	BrowserBindingHash []byte
+	ProviderKind       string
+	ProviderKey        string
+	CurrentUserID      pgtype.UUID
+}
+
+type ConsumeProviderCallbackRow struct {
+	ID                 string
+	Operation          string
+	ProviderKind       string
+	ProviderKey        string
+	InitiatingUserID   pgtype.UUID
+	ParentFlowID       pgtype.UUID
+	StateHash          []byte
+	BrowserBindingHash []byte
+	Nonce              pgtype.Text
+	PkceVerifier       pgtype.Text
+	ExpiresAt          pgtype.Timestamptz
+}
+
+func (q *Queries) ConsumeProviderCallback(ctx context.Context, arg ConsumeProviderCallbackParams) (ConsumeProviderCallbackRow, error) {
+	row := q.db.QueryRow(ctx, consumeProviderCallback,
+		arg.LookupStateHash,
+		arg.Now,
+		arg.BrowserBindingHash,
+		arg.ProviderKind,
+		arg.ProviderKey,
+		arg.CurrentUserID,
+	)
+	var i ConsumeProviderCallbackRow
+	err := row.Scan(
+		&i.ID,
+		&i.Operation,
+		&i.ProviderKind,
+		&i.ProviderKey,
+		&i.InitiatingUserID,
+		&i.ParentFlowID,
+		&i.StateHash,
+		&i.BrowserBindingHash,
+		&i.Nonce,
+		&i.PkceVerifier,
+		&i.ExpiresAt,
+	)
+	return i, err
+}
+
 const createIdentity = `-- name: CreateIdentity :one
 INSERT INTO user_identities (user_id, provider_kind, provider_key, subject, display_name, email)
 VALUES (

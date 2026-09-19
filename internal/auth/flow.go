@@ -60,6 +60,19 @@ type OAuthCallbackHashes struct {
 	Now                           time.Time
 }
 
+type ProviderCallback struct {
+	State, BrowserBinding     string
+	ProviderKind, ProviderKey string
+	CurrentUserID             string
+}
+
+type ProviderCallbackHashes struct {
+	StateHash, BrowserBindingHash [sha256.Size]byte
+	ProviderKind, ProviderKey     string
+	CurrentUserID                 string
+	Now                           time.Time
+}
+
 type PendingIdentityInput struct {
 	BrowserBinding                         string
 	ProviderKind, ProviderKey, Subject     string
@@ -80,9 +93,18 @@ type PendingIdentity struct {
 type FlowRepository interface {
 	CreateOAuth(context.Context, OAuthFlow) (OAuthFlow, error)
 	ConsumeOAuth(context.Context, OAuthCallbackHashes) (OAuthFlow, error)
+	ConsumeProviderCallback(context.Context, ProviderCallbackHashes) (OAuthFlow, error)
 	CreatePending(context.Context, PendingIdentity) (PendingIdentity, error)
 	Pending(context.Context, string, [sha256.Size]byte, time.Time) (PendingIdentity, error)
 	ConsumePending(context.Context, string, [sha256.Size]byte, time.Time) error
+}
+
+func (s *FlowService) ConsumeProviderCallback(ctx context.Context, callback ProviderCallback) (OAuthFlow, error) {
+	return s.repository.ConsumeProviderCallback(ctx, ProviderCallbackHashes{
+		StateHash: hashFlowSecret(callback.State), BrowserBindingHash: hashFlowSecret(callback.BrowserBinding),
+		ProviderKind: callback.ProviderKind, ProviderKey: callback.ProviderKey,
+		CurrentUserID: callback.CurrentUserID, Now: s.now(),
+	})
 }
 
 type FlowService struct {

@@ -69,6 +69,51 @@ func (s *FlowStore) ConsumeOAuth(ctx context.Context, callback auth.OAuthCallbac
 	return auth.OAuthFlow{}, s.oauthFailure(ctx, callback)
 }
 
+func (s *FlowStore) ConsumeProviderCallback(ctx context.Context, callback auth.ProviderCallbackHashes) (auth.OAuthFlow, error) {
+	currentUserID, err := optionalUUID(callback.CurrentUserID)
+	if err != nil {
+		return auth.OAuthFlow{}, auth.ErrFlowInitiatingUser
+	}
+	row, err := s.queries.ConsumeProviderCallback(ctx, sqlcgen.ConsumeProviderCallbackParams{
+		Now: pgtype.Timestamptz{Time: callback.Now, Valid: true}, LookupStateHash: callback.StateHash[:],
+		BrowserBindingHash: callback.BrowserBindingHash[:], ProviderKind: callback.ProviderKind,
+		ProviderKey: callback.ProviderKey, CurrentUserID: currentUserID,
+	})
+	if err == nil {
+		return oauthFromProviderCallback(row), nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return auth.OAuthFlow{}, fmt.Errorf("consume provider callback: %w", err)
+	}
+	return auth.OAuthFlow{}, s.providerCallbackFailure(ctx, callback)
+}
+
+func (s *FlowStore) providerCallbackFailure(ctx context.Context, callback auth.ProviderCallbackHashes) error {
+	row, err := s.queries.GetAuthFlowByState(ctx, callback.StateHash[:])
+	if errors.Is(err, pgx.ErrNoRows) {
+		return auth.ErrFlowNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("inspect provider callback flow: %w", err)
+	}
+	if row.ConsumedAt.Valid {
+		return auth.ErrFlowConsumed
+	}
+	if !row.ExpiresAt.Time.After(callback.Now) {
+		return auth.ErrFlowExpired
+	}
+	if subtle.ConstantTimeCompare(row.BrowserBindingHash, callback.BrowserBindingHash[:]) != 1 {
+		return auth.ErrFlowBrowser
+	}
+	if row.ProviderKind != callback.ProviderKind || row.ProviderKey != callback.ProviderKey {
+		return auth.ErrFlowProvider
+	}
+	if row.Operation == string(auth.FlowLink) && uuidString(row.InitiatingUserID) != callback.CurrentUserID {
+		return auth.ErrFlowInitiatingUser
+	}
+	return auth.ErrFlowNotFound
+}
+
 func (s *FlowStore) oauthFailure(ctx context.Context, callback auth.OAuthCallbackHashes) error {
 	row, err := s.queries.GetAuthFlowByState(ctx, callback.StateHash[:])
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -200,6 +245,13 @@ func oauthFromCreate(row sqlcgen.CreateOAuthFlowRow) auth.OAuthFlow {
 }
 
 func oauthFromConsumed(row sqlcgen.ConsumeOAuthFlowRow) auth.OAuthFlow {
+	return auth.OAuthFlow{ID: row.ID, Operation: auth.FlowOperation(row.Operation), ProviderKind: row.ProviderKind,
+		ProviderKey: row.ProviderKey, InitiatingUserID: uuidString(row.InitiatingUserID), ParentFlowID: uuidString(row.ParentFlowID),
+		StateHash: hashArray(row.StateHash), BrowserBindingHash: hashArray(row.BrowserBindingHash),
+		Nonce: row.Nonce.String, PKCEVerifier: row.PkceVerifier.String, ExpiresAt: row.ExpiresAt.Time}
+}
+
+func oauthFromProviderCallback(row sqlcgen.ConsumeProviderCallbackRow) auth.OAuthFlow {
 	return auth.OAuthFlow{ID: row.ID, Operation: auth.FlowOperation(row.Operation), ProviderKind: row.ProviderKind,
 		ProviderKey: row.ProviderKey, InitiatingUserID: uuidString(row.InitiatingUserID), ParentFlowID: uuidString(row.ParentFlowID),
 		StateHash: hashArray(row.StateHash), BrowserBindingHash: hashArray(row.BrowserBindingHash),

@@ -27,6 +27,9 @@ type OIDCProvider struct {
 	gameNickClaim string
 }
 
+func (*OIDCProvider) ProviderKind() string  { return "oidc" }
+func (p *OIDCProvider) ProviderKey() string { return p.issuer }
+
 // DiscoverOIDCProvider performs provider discovery once during application
 // startup and constructs the long-lived token verifier/key cache.
 func DiscoverOIDCProvider(ctx context.Context, cfg OIDCConfig) (*OIDCProvider, error) {

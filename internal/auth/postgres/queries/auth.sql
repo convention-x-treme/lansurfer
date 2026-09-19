@@ -93,6 +93,34 @@ WITH matched AS (
 )
 SELECT * FROM consumed;
 
+-- name: ConsumeProviderCallback :one
+WITH matched AS (
+    SELECT source.id, source.nonce, source.pkce_verifier
+    FROM auth_flows source
+    WHERE source.state_hash = sqlc.arg(lookup_state_hash)
+      AND source.phase = 'oauth'
+      AND source.consumed_at IS NULL
+      AND source.expires_at > sqlc.arg(now)
+      AND source.browser_binding_hash = sqlc.arg(browser_binding_hash)
+      AND source.provider_kind = sqlc.arg(provider_kind)
+      AND source.provider_key = sqlc.arg(provider_key)
+      AND (
+          source.operation <> 'link'
+          OR source.initiating_user_id IS NOT DISTINCT FROM sqlc.narg(current_user_id)::uuid
+      )
+    FOR UPDATE
+), consumed AS (
+    UPDATE auth_flows flow
+    SET consumed_at = sqlc.arg(now), nonce = NULL, pkce_verifier = NULL
+    FROM matched
+    WHERE flow.id = matched.id
+    RETURNING flow.id::text AS id, flow.operation, flow.provider_kind, flow.provider_key,
+              flow.initiating_user_id, flow.parent_flow_id, flow.state_hash,
+              flow.browser_binding_hash, matched.nonce, matched.pkce_verifier,
+              flow.expires_at
+)
+SELECT * FROM consumed;
+
 -- name: GetAuthFlowByState :one
 SELECT id::text, phase, operation, provider_kind, provider_key,
        initiating_user_id, parent_flow_id, browser_binding_hash,
