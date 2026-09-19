@@ -54,7 +54,7 @@ func TestCompleteLoginRegistersLocalUserAndStoresHashedSession(t *testing.T) {
 	if account.ID != "user-1" || users.registeredName != "player-one" {
 		t.Fatalf("account = %#v, registered name = %q", account, users.registeredName)
 	}
-	if identities.created.Provider != "https://identity.example/realms/lan" || identities.created.Subject != "subject-1" {
+	if identities.created.ProviderKind != "oidc" || identities.created.ProviderKey != "https://identity.example/realms/lan" || identities.created.Subject != "subject-1" {
 		t.Fatalf("created identity = %#v", identities.created)
 	}
 	if sessions.createdHash != sha256.Sum256([]byte(session.Token)) {
@@ -145,19 +145,23 @@ type stubIdentityStore struct {
 	updatedEmail string
 }
 
-func (s *stubIdentityStore) ByProviderSubject(context.Context, string, string) (Identity, error) {
+func (s *stubIdentityStore) ByProviderSubject(context.Context, string, string, string) (Identity, error) {
 	return s.found, s.findErr
 }
+
+func (*stubIdentityStore) ListByUser(context.Context, string) ([]Identity, error) { return nil, nil }
 
 func (s *stubIdentityStore) Create(_ context.Context, identity Identity) (Identity, error) {
 	s.created = identity
 	return identity, s.createErr
 }
 
-func (s *stubIdentityStore) UpdateMetadata(_ context.Context, _, _, name, email string) error {
+func (s *stubIdentityStore) UpdateMetadata(_ context.Context, _, _, _, name, email string) error {
 	s.updatedName, s.updatedEmail = name, email
 	return nil
 }
+
+func (*stubIdentityStore) Unlink(context.Context, string, string) error { return nil }
 
 type stubSessionStore struct {
 	createdHash   [sha256.Size]byte

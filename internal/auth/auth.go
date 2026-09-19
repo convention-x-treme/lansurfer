@@ -37,6 +37,8 @@ var (
 
 type Profile struct {
 	Provider          string
+	ProviderKind      string
+	ProviderKey       string
 	Subject           string
 	Name              string
 	PreferredUsername string
@@ -44,13 +46,14 @@ type Profile struct {
 }
 
 type Identity struct {
-	ID          string
-	UserID      string
-	Provider    string
-	Subject     string
-	DisplayName string
-	Email       string
-	CreatedAt   time.Time
+	ID           string
+	UserID       string
+	ProviderKind string
+	ProviderKey  string
+	Subject      string
+	DisplayName  string
+	Email        string
+	CreatedAt    time.Time
 }
 
 type Session struct {
@@ -79,9 +82,11 @@ type Provider interface {
 }
 
 type IdentityStore interface {
-	ByProviderSubject(context.Context, string, string) (Identity, error)
+	ByProviderSubject(context.Context, string, string, string) (Identity, error)
+	ListByUser(context.Context, string) ([]Identity, error)
 	Create(context.Context, Identity) (Identity, error)
-	UpdateMetadata(context.Context, string, string, string, string) error
+	UpdateMetadata(context.Context, string, string, string, string, string) error
+	Unlink(context.Context, string, string) error
 }
 
 type SessionStore interface {
@@ -202,9 +207,9 @@ func (s *Service) Logout(ctx context.Context, token string) error {
 }
 
 func (s *Service) accountForProfile(ctx context.Context, profile Profile) (user.User, error) {
-	identity, err := s.identities.ByProviderSubject(ctx, profile.Provider, profile.Subject)
+	identity, err := s.identities.ByProviderSubject(ctx, profile.ProviderKind, profile.ProviderKey, profile.Subject)
 	if err == nil {
-		if err := s.identities.UpdateMetadata(ctx, profile.Provider, profile.Subject, profile.Name, profile.Email); err != nil {
+		if err := s.identities.UpdateMetadata(ctx, profile.ProviderKind, profile.ProviderKey, profile.Subject, profile.Name, profile.Email); err != nil {
 			return user.User{}, fmt.Errorf("update identity metadata: %w", err)
 		}
 		return s.users.ByID(ctx, identity.UserID)
@@ -218,11 +223,12 @@ func (s *Service) accountForProfile(ctx context.Context, profile Profile) (user.
 		return user.User{}, fmt.Errorf("register user: %w", err)
 	}
 	_, linkErr := s.identities.Create(ctx, Identity{
-		UserID:      account.ID,
-		Provider:    profile.Provider,
-		Subject:     profile.Subject,
-		DisplayName: profile.Name,
-		Email:       profile.Email,
+		UserID:       account.ID,
+		ProviderKind: profile.ProviderKind,
+		ProviderKey:  profile.ProviderKey,
+		Subject:      profile.Subject,
+		DisplayName:  profile.Name,
+		Email:        profile.Email,
 	})
 	if linkErr == nil {
 		return account, nil
@@ -230,7 +236,7 @@ func (s *Service) accountForProfile(ctx context.Context, profile Profile) (user.
 
 	rollbackErr := s.users.RollbackRegistration(ctx, account.ID)
 	if errors.Is(linkErr, ErrIdentityExists) && rollbackErr == nil {
-		identity, findErr := s.identities.ByProviderSubject(ctx, profile.Provider, profile.Subject)
+		identity, findErr := s.identities.ByProviderSubject(ctx, profile.ProviderKind, profile.ProviderKey, profile.Subject)
 		if findErr != nil {
 			return user.User{}, fmt.Errorf("resolve concurrent identity: %w", findErr)
 		}
@@ -241,6 +247,11 @@ func (s *Service) accountForProfile(ctx context.Context, profile Profile) (user.
 
 func normalizeProfile(profile Profile) Profile {
 	profile.Provider = strings.TrimSpace(profile.Provider)
+	profile.ProviderKind = strings.TrimSpace(profile.ProviderKind)
+	profile.ProviderKey = strings.TrimSpace(profile.ProviderKey)
+	if profile.ProviderKind == "" && profile.Provider != "" {
+		profile.ProviderKind, profile.ProviderKey = "oidc", profile.Provider
+	}
 	profile.Subject = strings.TrimSpace(profile.Subject)
 	profile.Name = strings.TrimSpace(profile.Name)
 	profile.PreferredUsername = strings.TrimSpace(profile.PreferredUsername)
@@ -255,7 +266,8 @@ func normalizeProfile(profile Profile) Profile {
 }
 
 func validateProfile(profile Profile) error {
-	if profile.Provider == "" || len(profile.Provider) > maxProviderLength ||
+	if profile.ProviderKind == "" || (profile.ProviderKind != "oidc" && profile.ProviderKind != "discord") ||
+		profile.ProviderKey == "" || len(profile.ProviderKey) > maxProviderLength ||
 		profile.Subject == "" || len(profile.Subject) > maxSubjectLength {
 		return ErrInvalidProfile
 	}
