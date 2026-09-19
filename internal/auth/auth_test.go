@@ -143,13 +143,16 @@ type stubIdentityStore struct {
 	createErr    error
 	updatedName  string
 	updatedEmail string
+	listed       []Identity
 }
 
 func (s *stubIdentityStore) ByProviderSubject(context.Context, string, string, string) (Identity, error) {
 	return s.found, s.findErr
 }
 
-func (*stubIdentityStore) ListByUser(context.Context, string) ([]Identity, error) { return nil, nil }
+func (s *stubIdentityStore) ListByUser(context.Context, string) ([]Identity, error) {
+	return s.listed, nil
+}
 
 func (s *stubIdentityStore) Create(_ context.Context, identity Identity) (Identity, error) {
 	s.created = identity
