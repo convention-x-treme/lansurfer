@@ -7,7 +7,7 @@ SELECT gr.id::text AS request_id,
        enrichment.game_type,
        enrichment.platform_names,
        enrichment.first_release_date,
-       gr.creator_id::text AS creator_id, u.game_nick AS creator_name,
+       gr.creator_id::text AS creator_id, u.game_nick AS creator_game_nick,
        gr.max_players, gr.starts_at, gr.description, gr.status,
        gr.created_at, gr.updated_at,
        count(m.user_id) AS member_count,
@@ -49,7 +49,7 @@ SELECT gr.id::text AS request_id,
        enrichment.game_type,
        enrichment.platform_names,
        enrichment.first_release_date,
-       gr.creator_id::text AS creator_id, u.game_nick AS creator_name,
+       gr.creator_id::text AS creator_id, u.game_nick AS creator_game_nick,
        gr.max_players, gr.starts_at, gr.description, gr.status,
        gr.created_at, gr.updated_at,
        count(m.user_id) AS member_count,
@@ -66,14 +66,14 @@ WHERE gr.id = sqlc.arg(id)::uuid
 GROUP BY gr.id, g.id, g.name, g.slug, enrichment.game_id, u.game_nick;
 
 -- name: ListGameRequestMembers :many
-SELECT u.id::text AS user_id, u.game_nick AS display_name, m.joined_at
+SELECT u.id::text AS user_id, u.game_nick AS member_game_nick, m.joined_at
 FROM game_request_members m
 JOIN users u ON u.id = m.user_id
 WHERE m.game_request_id = sqlc.arg(game_request_id)::uuid
 ORDER BY m.joined_at, u.id;
 
 -- name: ListGameRequestActivity :many
-SELECT a.kind, a.occurred_at, a.actor_id::text AS actor_id, u.game_nick AS actor_name
+SELECT a.kind, a.occurred_at, a.actor_id::text AS actor_id, u.game_nick AS actor_game_nick
 FROM game_request_activity a
 JOIN users u ON u.id = a.actor_id
 WHERE a.game_request_id = sqlc.arg(game_request_id)::uuid

@@ -133,7 +133,7 @@ func TestRootRendersLoginLandingPage(t *testing.T) {
 var remoteAssetPattern = regexp.MustCompile(`(?i)<(?:script|link|img|iframe|source|video|audio|embed)\b[^>]*\b(?:src|href)\s*=\s*["']https?://`)
 
 func TestHomeRendersAuthenticatedViewer(t *testing.T) {
-	authentication := &routerAuthentication{account: user.User{DisplayName: "Ada Player", GameNick: "Ada Player", Role: user.RoleAdmin}}
+	authentication := &routerAuthentication{account: user.User{GameNick: "Ada Player", Role: user.RoleAdmin}}
 	request := httptest.NewRequest(http.MethodGet, "/", nil)
 	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
 	response := httptest.NewRecorder()
@@ -327,7 +327,7 @@ func TestEmbeddedAssetsAreServed(t *testing.T) {
 }
 
 func TestAdminRoutesRequireAdmin(t *testing.T) {
-	viewer := &routerAuthentication{account: user.User{DisplayName: "Player", Role: user.RoleUser}}
+	viewer := &routerAuthentication{account: user.User{GameNick: "Player", Role: user.RoleUser}}
 	dependencies := RouterDependencies{
 		Ready:          func(context.Context) error { return nil },
 		Authentication: viewer,
@@ -364,7 +364,7 @@ func TestAdminGameSearchRendersAliasMatch(t *testing.T) {
 }
 
 func TestAdminIGDBRoutesRequireAdmin(t *testing.T) {
-	viewer := &routerAuthentication{account: user.User{DisplayName: "Player", Role: user.RoleUser}}
+	viewer := &routerAuthentication{account: user.User{GameNick: "Player", Role: user.RoleUser}}
 	dependencies := RouterDependencies{
 		Ready:          func(context.Context) error { return nil },
 		Authentication: viewer,
@@ -658,7 +658,7 @@ func TestRealtimeRequiresAuthentication(t *testing.T) {
 func TestRealtimeRefreshHighlightsFollowedGame(t *testing.T) {
 	queries := &routerGameRequestQueries{items: []requestquery.Request{{
 		ID: "request-1", Game: game.GamePresentation{Name: "Warcraft III"},
-		CreatorID: "creator-1", CreatorName: "Grace", StartsAt: time.Now(),
+		CreatorID: "creator-1", CreatorGameNick: "Grace", StartsAt: time.Now(),
 		Status: gamerequest.StatusOpen, MemberCount: 1, ViewerSubscribed: true,
 	}}}
 	request := httptest.NewRequest(http.MethodGet, "/game-requests/refresh?highlight=request-1", nil)
@@ -686,7 +686,7 @@ func TestGameRequestDiscoveryFiltersAndTrending(t *testing.T) {
 	queries := &routerGameRequestQueries{
 		items: []requestquery.Request{{
 			ID: "request-1", Game: game.GamePresentation{Name: "Warcraft III"}, CreatorID: "creator-1",
-			CreatorName: "Grace", StartsAt: time.Now(), Status: gamerequest.StatusOpen, MemberCount: 1,
+			CreatorGameNick: "Grace", StartsAt: time.Now(), Status: gamerequest.StatusOpen, MemberCount: 1,
 		}},
 		trending: []requestquery.TrendingGame{{GameID: "game-1", GameName: "Warcraft III", ActivityCount: 4, RequestCount: 2}},
 	}
@@ -740,7 +740,7 @@ func TestNavigationBadgeIgnoresDiscoveryFilters(t *testing.T) {
 	queries := &routerGameRequestQueries{
 		items: []requestquery.Request{{
 			ID: "request-1", Game: game.GamePresentation{Name: "Warcraft III"}, CreatorID: "creator-1",
-			CreatorName: "Grace", StartsAt: time.Now(), Status: gamerequest.StatusOpen, MemberCount: 1,
+			CreatorGameNick: "Grace", StartsAt: time.Now(), Status: gamerequest.StatusOpen, MemberCount: 1,
 		}},
 		openTotal: 10,
 	}
@@ -793,7 +793,7 @@ func TestGameRequestBrowserWorkflow(t *testing.T) {
 	queries := &routerGameRequestQueries{
 		items: []requestquery.Request{{
 			ID: "request-1", Game: game.GamePresentation{Name: "Warcraft III"},
-			CreatorID: "creator-1", CreatorName: "Grace", StartsAt: time.Now(),
+			CreatorID: "creator-1", CreatorGameNick: "Grace", StartsAt: time.Now(),
 			Status: gamerequest.StatusOpen, MemberCount: 1,
 		}},
 	}
@@ -899,7 +899,7 @@ type routerAuthentication struct {
 }
 
 func adminTestRouter(games *routerGames) http.Handler {
-	admin := &routerAuthentication{account: user.User{DisplayName: "Ada Admin", GameNick: "Ada Admin", Role: user.RoleAdmin}}
+	admin := &routerAuthentication{account: user.User{GameNick: "Ada Admin", Role: user.RoleAdmin}}
 	return NewRouter(RouterDependencies{
 		Ready:          func(context.Context) error { return nil },
 		Authentication: admin,
@@ -909,7 +909,7 @@ func adminTestRouter(games *routerGames) http.Handler {
 }
 
 func adminIGDBTestRouter(providerSync *routerProviderSync) http.Handler {
-	admin := &routerAuthentication{account: user.User{DisplayName: "Ada Admin", GameNick: "Ada Admin", Role: user.RoleAdmin}}
+	admin := &routerAuthentication{account: user.User{GameNick: "Ada Admin", Role: user.RoleAdmin}}
 	return NewRouter(RouterDependencies{
 		Ready:          func(context.Context) error { return nil },
 		Authentication: admin,
@@ -921,7 +921,7 @@ func adminIGDBTestRouter(providerSync *routerProviderSync) http.Handler {
 
 func gameTestRouter(discovery *routerDiscovery) http.Handler {
 	viewer := &routerAuthentication{account: user.User{
-		ID: "user-1", DisplayName: "Ada Player", GameNick: "Ada Player", Role: user.RoleUser,
+		ID: "user-1", GameNick: "Ada Player", Role: user.RoleUser,
 	}}
 	return NewRouter(RouterDependencies{
 		Ready:          func(context.Context) error { return nil },
@@ -936,7 +936,7 @@ func gameRequestTestRouter(commands *routerGameRequests, queries *routerGameRequ
 		discovery = &routerDiscovery{}
 	}
 	viewer := &routerAuthentication{account: user.User{
-		ID: "user-1", DisplayName: "Ada Player", GameNick: "Ada Player", Role: user.RoleUser,
+		ID: "user-1", GameNick: "Ada Player", Role: user.RoleUser,
 	}}
 	return NewRouter(RouterDependencies{
 		Ready:          func(context.Context) error { return nil },
@@ -1145,7 +1145,7 @@ func TestDuplicateJoinReportsRecoverableConflict(t *testing.T) {
 	commands := &routerGameRequests{joinError: gamerequest.ErrAlreadyMember}
 	queries := &routerGameRequestQueries{items: []requestquery.Request{{
 		ID: "request-1", Game: game.GamePresentation{Name: "Warcraft III"}, CreatorID: "user-2",
-		CreatorName: "Other", MemberCount: 2, ViewerJoined: true, Status: gamerequest.StatusOpen,
+		CreatorGameNick: "Other", MemberCount: 2, ViewerJoined: true, Status: gamerequest.StatusOpen,
 		StartsAt: time.Now().Add(time.Hour),
 	}}}
 	router := gameRequestTestRouter(commands, queries, nil)

@@ -2513,9 +2513,9 @@ func GameRequestDetailContent(request requestquery.Request, viewerID string, ref
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var115 string
-			templ_7745c5c3_Var115, templ_7745c5c3_Err = templ.JoinStringErrs(components.ViewerInitial(member.DisplayName))
+			templ_7745c5c3_Var115, templ_7745c5c3_Err = templ.JoinStringErrs(components.ViewerInitial(member.GameNick))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/game_requests.templ`, Line: 554, Col: 123}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/game_requests.templ`, Line: 554, Col: 120}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var115))
 			if templ_7745c5c3_Err != nil {
@@ -2526,9 +2526,9 @@ func GameRequestDetailContent(request requestquery.Request, viewerID string, ref
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var116 string
-			templ_7745c5c3_Var116, templ_7745c5c3_Err = templ.JoinStringErrs(member.DisplayName)
+			templ_7745c5c3_Var116, templ_7745c5c3_Err = templ.JoinStringErrs(member.GameNick)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/game_requests.templ`, Line: 555, Col: 79}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/game_requests.templ`, Line: 555, Col: 76}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var116))
 			if templ_7745c5c3_Err != nil {
@@ -2960,17 +2960,17 @@ func memberAvatarClass(member requestquery.Member, request requestquery.Request)
 func activityLabel(entry requestquery.Activity) string {
 	switch entry.Kind {
 	case gamerequest.ActivityCreated:
-		return entry.ActorName + " created the request"
+		return entry.ActorGameNick + " created the request"
 	case gamerequest.ActivityJoined:
-		return entry.ActorName + " joined"
+		return entry.ActorGameNick + " joined"
 	case gamerequest.ActivityLeft:
-		return entry.ActorName + " left"
+		return entry.ActorGameNick + " left"
 	case gamerequest.ActivityClosed:
-		return entry.ActorName + " closed the request for new players"
+		return entry.ActorGameNick + " closed the request for new players"
 	case gamerequest.ActivityCancelled:
-		return entry.ActorName + " cancelled the request"
+		return entry.ActorGameNick + " cancelled the request"
 	default:
-		return entry.ActorName
+		return entry.ActorGameNick
 	}
 }
 

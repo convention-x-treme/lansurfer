@@ -22,7 +22,7 @@ func themeAttributes(ctx context.Context) templ.Attributes {
 
 type Viewer struct {
 	ID string
-	DisplayName string
+	GameNick string
 	Role string
 }
 
@@ -182,8 +182,8 @@ templ NavigationLink(href, label, section, current string) {
 templ ViewerPanel(viewer *Viewer) {
 	if viewer != nil {
 		<a class="viewer-panel" href="/account">
-			<span class="avatar-placeholder" aria-hidden="true">{ ViewerInitial(viewer.DisplayName) }</span>
-			<span class="min-w-0"><strong class="block truncate text-sm">{ viewer.DisplayName }</strong><span class="block text-xs font-semibold text-primary">{ viewerRole(viewer.Role) }</span></span>
+			<span class="avatar-placeholder" aria-hidden="true">{ ViewerInitial(viewer.GameNick) }</span>
+			<span class="min-w-0"><strong class="block truncate text-sm">{ viewer.GameNick }</strong><span class="block text-xs font-semibold text-primary">{ viewerRole(viewer.Role) }</span></span>
 		</a>
 	}
 }

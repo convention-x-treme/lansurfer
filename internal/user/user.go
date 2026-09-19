@@ -33,15 +33,11 @@ const (
 
 // User is LANsurfer's local user, independent of any identity provider.
 type User struct {
-	ID       string
-	GameNick string
-	// DisplayName is a compatibility projection while web/read-model callers
-	// are migrated to GameNick. It is always derived from GameNick and is not
-	// persisted separately.
-	DisplayName string
-	Role        Role
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID        string
+	GameNick  string
+	Role      Role
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 // Repository persists local users. The interface belongs to the consuming

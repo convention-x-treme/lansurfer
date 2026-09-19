@@ -147,7 +147,7 @@ func (h *Games) renderError(w http.ResponseWriter, r *http.Request) {
 func gameNavigation(r *http.Request, section string) components.NavigationState {
 	account, _ := webmiddleware.CurrentUser(r.Context())
 	return components.NavigationState{
-		Viewer:  &components.Viewer{ID: account.ID, DisplayName: account.DisplayName, Role: string(account.Role)},
+		Viewer:  &components.Viewer{ID: account.ID, GameNick: account.GameNick, Role: string(account.Role)},
 		Section: section,
 	}
 }

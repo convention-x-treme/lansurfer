@@ -34,7 +34,7 @@ SELECT gr.id::text AS request_id,
        enrichment.game_type,
        enrichment.platform_names,
        enrichment.first_release_date,
-       gr.creator_id::text AS creator_id, u.game_nick AS creator_name,
+       gr.creator_id::text AS creator_id, u.game_nick AS creator_game_nick,
        gr.max_players, gr.starts_at, gr.description, gr.status,
        gr.created_at, gr.updated_at,
        count(m.user_id) AS member_count,
@@ -66,7 +66,7 @@ type GetGameRequestRow struct {
 	PlatformNames    []string
 	FirstReleaseDate pgtype.Timestamptz
 	CreatorID        string
-	CreatorName      pgtype.Text
+	CreatorGameNick  pgtype.Text
 	MaxPlayers       pgtype.Int4
 	StartsAt         pgtype.Timestamptz
 	Description      string
@@ -91,7 +91,7 @@ func (q *Queries) GetGameRequest(ctx context.Context, arg GetGameRequestParams) 
 		&i.PlatformNames,
 		&i.FirstReleaseDate,
 		&i.CreatorID,
-		&i.CreatorName,
+		&i.CreatorGameNick,
 		&i.MaxPlayers,
 		&i.StartsAt,
 		&i.Description,
@@ -114,7 +114,7 @@ SELECT gr.id::text AS request_id,
        enrichment.game_type,
        enrichment.platform_names,
        enrichment.first_release_date,
-       gr.creator_id::text AS creator_id, u.game_nick AS creator_name,
+       gr.creator_id::text AS creator_id, u.game_nick AS creator_game_nick,
        gr.max_players, gr.starts_at, gr.description, gr.status,
        gr.created_at, gr.updated_at,
        count(m.user_id) AS member_count,
@@ -165,7 +165,7 @@ type ListActiveGameRequestsRow struct {
 	PlatformNames    []string
 	FirstReleaseDate pgtype.Timestamptz
 	CreatorID        string
-	CreatorName      pgtype.Text
+	CreatorGameNick  pgtype.Text
 	MaxPlayers       pgtype.Int4
 	StartsAt         pgtype.Timestamptz
 	Description      string
@@ -201,7 +201,7 @@ func (q *Queries) ListActiveGameRequests(ctx context.Context, arg ListActiveGame
 			&i.PlatformNames,
 			&i.FirstReleaseDate,
 			&i.CreatorID,
-			&i.CreatorName,
+			&i.CreatorGameNick,
 			&i.MaxPlayers,
 			&i.StartsAt,
 			&i.Description,
@@ -223,7 +223,7 @@ func (q *Queries) ListActiveGameRequests(ctx context.Context, arg ListActiveGame
 }
 
 const listGameRequestActivity = `-- name: ListGameRequestActivity :many
-SELECT a.kind, a.occurred_at, a.actor_id::text AS actor_id, u.game_nick AS actor_name
+SELECT a.kind, a.occurred_at, a.actor_id::text AS actor_id, u.game_nick AS actor_game_nick
 FROM game_request_activity a
 JOIN users u ON u.id = a.actor_id
 WHERE a.game_request_id = $1::uuid
@@ -231,10 +231,10 @@ ORDER BY a.sequence DESC
 `
 
 type ListGameRequestActivityRow struct {
-	Kind       string
-	OccurredAt pgtype.Timestamptz
-	ActorID    string
-	ActorName  pgtype.Text
+	Kind          string
+	OccurredAt    pgtype.Timestamptz
+	ActorID       string
+	ActorGameNick pgtype.Text
 }
 
 func (q *Queries) ListGameRequestActivity(ctx context.Context, gameRequestID pgtype.UUID) ([]ListGameRequestActivityRow, error) {
@@ -250,7 +250,7 @@ func (q *Queries) ListGameRequestActivity(ctx context.Context, gameRequestID pgt
 			&i.Kind,
 			&i.OccurredAt,
 			&i.ActorID,
-			&i.ActorName,
+			&i.ActorGameNick,
 		); err != nil {
 			return nil, err
 		}
@@ -263,7 +263,7 @@ func (q *Queries) ListGameRequestActivity(ctx context.Context, gameRequestID pgt
 }
 
 const listGameRequestMembers = `-- name: ListGameRequestMembers :many
-SELECT u.id::text AS user_id, u.game_nick AS display_name, m.joined_at
+SELECT u.id::text AS user_id, u.game_nick AS member_game_nick, m.joined_at
 FROM game_request_members m
 JOIN users u ON u.id = m.user_id
 WHERE m.game_request_id = $1::uuid
@@ -271,9 +271,9 @@ ORDER BY m.joined_at, u.id
 `
 
 type ListGameRequestMembersRow struct {
-	UserID      string
-	DisplayName pgtype.Text
-	JoinedAt    pgtype.Timestamptz
+	UserID         string
+	MemberGameNick pgtype.Text
+	JoinedAt       pgtype.Timestamptz
 }
 
 func (q *Queries) ListGameRequestMembers(ctx context.Context, gameRequestID pgtype.UUID) ([]ListGameRequestMembersRow, error) {
@@ -285,7 +285,7 @@ func (q *Queries) ListGameRequestMembers(ctx context.Context, gameRequestID pgty
 	var items []ListGameRequestMembersRow
 	for rows.Next() {
 		var i ListGameRequestMembersRow
-		if err := rows.Scan(&i.UserID, &i.DisplayName, &i.JoinedAt); err != nil {
+		if err := rows.Scan(&i.UserID, &i.MemberGameNick, &i.JoinedAt); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

@@ -68,7 +68,7 @@ type recordingRepository struct {
 func (r *recordingRepository) Create(_ context.Context, gameNick string, role Role) (User, error) {
 	r.gameNick = gameNick
 	r.role = role
-	return User{ID: "user-id", GameNick: gameNick, DisplayName: gameNick, Role: role}, nil
+	return User{ID: "user-id", GameNick: gameNick, Role: role}, nil
 }
 
 func (*recordingRepository) ByID(context.Context, string) (User, error) {
@@ -80,7 +80,7 @@ func (*recordingRepository) List(context.Context) ([]User, error) { return nil, 
 func (r *recordingRepository) SetGameNick(_ context.Context, id, gameNick string) (User, error) {
 	r.promotedID = id
 	r.gameNick = gameNick
-	return User{ID: id, GameNick: gameNick, DisplayName: gameNick, Role: r.role}, nil
+	return User{ID: id, GameNick: gameNick, Role: r.role}, nil
 }
 
 func (r *recordingRepository) SetRole(_ context.Context, id string, role Role) (User, error) {

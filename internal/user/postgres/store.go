@@ -35,12 +35,11 @@ func (s *Store) Create(ctx context.Context, gameNick string, role user.Role) (us
 		return user.User{}, gameNickError(err, "create user")
 	}
 	return user.User{
-		ID:          row.ID,
-		GameNick:    row.GameNick.String,
-		DisplayName: row.GameNick.String,
-		Role:        user.Role(row.Role),
-		CreatedAt:   row.CreatedAt.Time,
-		UpdatedAt:   row.UpdatedAt.Time,
+		ID:        row.ID,
+		GameNick:  row.GameNick.String,
+		Role:      user.Role(row.Role),
+		CreatedAt: row.CreatedAt.Time,
+		UpdatedAt: row.UpdatedAt.Time,
 	}, nil
 }
 
@@ -103,7 +102,7 @@ func (s *Store) SetGameNick(ctx context.Context, id, gameNick string) (user.User
 
 func fromUser(id string, gameNick pgtype.Text, role string, createdAt, updatedAt pgtype.Timestamptz) user.User {
 	return user.User{
-		ID: id, GameNick: gameNick.String, DisplayName: gameNick.String, Role: user.Role(role),
+		ID: id, GameNick: gameNick.String, Role: user.Role(role),
 		CreatedAt: createdAt.Time, UpdatedAt: updatedAt.Time,
 	}
 }

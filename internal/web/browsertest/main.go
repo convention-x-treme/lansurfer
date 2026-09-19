@@ -103,11 +103,11 @@ func (f *fixture) seed(gameName string, maxPlayers int32, members int64) {
 	f.next++
 	id := fmt.Sprintf("00000000-0000-0000-0000-00000000000%d", f.next)
 	request := requestquery.Request{
-		ID: id, Game: game.GamePresentation{Name: gameName}, CreatorID: "creator-" + id, CreatorName: "Host",
+		ID: id, Game: game.GamePresentation{Name: gameName}, CreatorID: "creator-" + id, CreatorGameNick: "Host",
 		StartsAt: time.Now().Add(time.Hour), Status: gamerequest.StatusOpen,
 		MemberCount: members, CreatedAt: time.Now().Add(-time.Hour),
-		Members:  []requestquery.Member{{ID: "creator-" + id, DisplayName: "Host", JoinedAt: time.Now().Add(-time.Hour)}},
-		Activity: []requestquery.Activity{{Kind: gamerequest.ActivityCreated, ActorID: "creator-" + id, ActorName: "Host", OccurredAt: time.Now().Add(-time.Hour)}},
+		Members:  []requestquery.Member{{ID: "creator-" + id, GameNick: "Host", JoinedAt: time.Now().Add(-time.Hour)}},
+		Activity: []requestquery.Activity{{Kind: gamerequest.ActivityCreated, ActorID: "creator-" + id, ActorGameNick: "Host", OccurredAt: time.Now().Add(-time.Hour)}},
 	}
 	if maxPlayers > 0 {
 		limit := maxPlayers
@@ -140,7 +140,7 @@ func (*fixture) Complete(context.Context, auth.OAuthCompletion) (auth.OAuthResul
 func (*fixture) Logout(context.Context, string) error { return nil }
 
 func (*fixture) Authenticate(context.Context, string) (user.User, error) {
-	return user.User{ID: viewerID, DisplayName: "Ada Player", GameNick: "Ada Player", Role: user.RoleUser}, nil
+	return user.User{ID: viewerID, GameNick: "Ada Player", Role: user.RoleUser}, nil
 }
 
 // --- realtime -------------------------------------------------------------
@@ -165,11 +165,11 @@ func (f *fixture) Create(_ context.Context, _, gameID string, maxPlayers *int32,
 	id := fmt.Sprintf("00000000-0000-0000-0000-00000000000%d", f.next)
 	f.requests[id] = &fixtureRequest{
 		request: requestquery.Request{
-			ID: id, Game: game.GamePresentation{Name: gameName(gameID)}, CreatorID: viewerID, CreatorName: "Ada Player",
+			ID: id, Game: game.GamePresentation{Name: gameName(gameID)}, CreatorID: viewerID, CreatorGameNick: "Ada Player",
 			MaxPlayers: maxPlayers, StartsAt: startsAt, Description: description,
 			Status: gamerequest.StatusOpen, MemberCount: 1, CreatedAt: time.Now(),
-			Members:  []requestquery.Member{{ID: viewerID, DisplayName: "Ada Player", JoinedAt: time.Now()}},
-			Activity: []requestquery.Activity{{Kind: gamerequest.ActivityCreated, ActorID: viewerID, ActorName: "Ada Player", OccurredAt: time.Now()}},
+			Members:  []requestquery.Member{{ID: viewerID, GameNick: "Ada Player", JoinedAt: time.Now()}},
+			Activity: []requestquery.Activity{{Kind: gamerequest.ActivityCreated, ActorID: viewerID, ActorGameNick: "Ada Player", OccurredAt: time.Now()}},
 		},
 		members: map[string]bool{},
 	}
@@ -198,8 +198,8 @@ func (f *fixture) Join(_ context.Context, requestID, userID string) error {
 	entry.members[userID] = true
 	entry.request.MemberCount++
 	entry.request.ViewerJoined = true
-	entry.request.Members = append(entry.request.Members, requestquery.Member{ID: userID, DisplayName: "Ada Player", JoinedAt: time.Now()})
-	entry.request.Activity = append([]requestquery.Activity{{Kind: gamerequest.ActivityJoined, ActorID: userID, ActorName: "Ada Player", OccurredAt: time.Now()}}, entry.request.Activity...)
+	entry.request.Members = append(entry.request.Members, requestquery.Member{ID: userID, GameNick: "Ada Player", JoinedAt: time.Now()})
+	entry.request.Activity = append([]requestquery.Activity{{Kind: gamerequest.ActivityJoined, ActorID: userID, ActorGameNick: "Ada Player", OccurredAt: time.Now()}}, entry.request.Activity...)
 	f.broker.Publish(gamerequest.Event{Type: gamerequest.EventJoined, RequestID: requestID})
 	return nil
 }
@@ -220,7 +220,7 @@ func (f *fixture) Leave(_ context.Context, requestID, userID string) error {
 	delete(entry.members, userID)
 	entry.request.MemberCount--
 	entry.request.ViewerJoined = false
-	entry.request.Activity = append([]requestquery.Activity{{Kind: gamerequest.ActivityLeft, ActorID: userID, ActorName: "Ada Player", OccurredAt: time.Now()}}, entry.request.Activity...)
+	entry.request.Activity = append([]requestquery.Activity{{Kind: gamerequest.ActivityLeft, ActorID: userID, ActorGameNick: "Ada Player", OccurredAt: time.Now()}}, entry.request.Activity...)
 	f.broker.Publish(gamerequest.Event{Type: gamerequest.EventLeft, RequestID: requestID})
 	return nil
 }

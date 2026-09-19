@@ -87,7 +87,7 @@ func (h *AccountHandler) render(w http.ResponseWriter, r *http.Request, status i
 	}
 	rows, linkable := accountIdentityRows(identities, h.providers())
 	linkError := r.URL.Query().Get("link_error") != ""
-	navigation := components.NavigationState{Viewer: &components.Viewer{ID: account.ID, DisplayName: account.DisplayName, Role: string(account.Role)}, Section: "account"}
+	navigation := components.NavigationState{Viewer: &components.Viewer{ID: account.ID, GameNick: account.GameNick, Role: string(account.Role)}, Section: "account"}
 	render(w, r, status, pages.Account(h.brand, navigation, account.GameNick, rows, linkable, linkError, gameNickInput, gameNickError))
 }
 
