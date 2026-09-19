@@ -3153,6 +3153,112 @@ func TestForwardMigrationPreservesPrototypeGameRequests(t *testing.T) {
 	})
 }
 
+// TestForwardMigrationIntroducesGameNickAndAuthFlows protects the populated
+// prototype upgrade: existing sessions and issuer namespaces must survive,
+// while the former public display name is deliberately not carried forward.
+func TestForwardMigrationIntroducesGameNickAndAuthFlows(t *testing.T) {
+	pool := newTestPool(t)
+	migrationFS := productionMigrationFS(t)
+	migrateToVersion(t, pool, migrationFS, 8)
+
+	var userID string
+	if err := pool.QueryRow(t.Context(), `
+		INSERT INTO users (display_name) VALUES ('Alice Example') RETURNING id::text
+	`).Scan(&userID); err != nil {
+		t.Fatalf("insert prototype user: %v", err)
+	}
+	issuer := "https://identity.example/realms/lan"
+	if _, err := pool.Exec(t.Context(), `
+		INSERT INTO user_identities (user_id, provider, subject, display_name, email)
+		VALUES ($1, $2, 'subject-1', 'Alice Example', 'alice@example.test')
+	`, userID, issuer); err != nil {
+		t.Fatalf("insert prototype identity: %v", err)
+	}
+	sessionHash := sha256.Sum256([]byte("pre-track-b-session"))
+	if _, err := pool.Exec(t.Context(), `
+		INSERT INTO auth_sessions (id_hash, user_id, expires_at)
+		VALUES ($1, $2, now() + interval '1 day')
+	`, sessionHash[:], userID); err != nil {
+		t.Fatalf("insert prototype session: %v", err)
+	}
+
+	if err := migrateFS(t.Context(), pool, migrationFS, testLogger()); err != nil {
+		t.Fatalf("migrate to Track B schema: %v", err)
+	}
+
+	var gameNick *string
+	if err := pool.QueryRow(t.Context(), `SELECT game_nick FROM users WHERE id = $1`, userID).Scan(&gameNick); err != nil {
+		t.Fatalf("read upgraded game nick: %v", err)
+	}
+	if gameNick != nil {
+		t.Fatalf("upgraded game nick = %q, want NULL", *gameNick)
+	}
+	var displayNameColumns int
+	if err := pool.QueryRow(t.Context(), `
+		SELECT count(*) FROM information_schema.columns
+		WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'display_name'
+	`).Scan(&displayNameColumns); err != nil {
+		t.Fatalf("inspect users columns: %v", err)
+	}
+	if displayNameColumns != 0 {
+		t.Fatal("users.display_name remains after migration")
+	}
+
+	var providerKind, providerKey, subject string
+	if err := pool.QueryRow(t.Context(), `
+		SELECT provider_kind, provider_key, subject FROM user_identities WHERE user_id = $1
+	`, userID).Scan(&providerKind, &providerKey, &subject); err != nil {
+		t.Fatalf("read upgraded identity: %v", err)
+	}
+	if providerKind != "oidc" || providerKey != issuer || subject != "subject-1" {
+		t.Fatalf("upgraded identity = (%q, %q, %q)", providerKind, providerKey, subject)
+	}
+	var sessionUserID string
+	if err := pool.QueryRow(t.Context(), `
+		SELECT user_id::text FROM auth_sessions WHERE id_hash = $1 AND expires_at > now()
+	`, sessionHash[:]).Scan(&sessionUserID); err != nil {
+		t.Fatalf("resolve upgraded session: %v", err)
+	}
+	if sessionUserID != userID {
+		t.Fatalf("upgraded session user = %q, want %q", sessionUserID, userID)
+	}
+
+	if _, err := pool.Exec(t.Context(), `INSERT INTO users (game_nick) VALUES ('NightOtter')`); err != nil {
+		t.Fatalf("insert game nick: %v", err)
+	}
+	if _, err := pool.Exec(t.Context(), `INSERT INTO users (game_nick) VALUES ('nightotter')`); err == nil {
+		t.Fatal("case-insensitive duplicate game nick unexpectedly succeeded")
+	}
+
+	browserHash := sha256.Sum256([]byte("browser-binding"))
+	stateHash := sha256.Sum256([]byte("oauth-state"))
+	var flowID string
+	if err := pool.QueryRow(t.Context(), `
+		INSERT INTO auth_flows (
+			phase, operation, provider_kind, provider_key, state_hash, browser_binding_hash,
+			nonce, pkce_verifier, expires_at
+		) VALUES ('oauth', 'login', 'oidc', $1, $2, $3, 'nonce', 'verifier', now() + interval '10 minutes')
+		RETURNING id::text
+	`, issuer, stateHash[:], browserHash[:]).Scan(&flowID); err != nil {
+		t.Fatalf("create oauth flow: %v", err)
+	}
+	var consumed string
+	if err := pool.QueryRow(t.Context(), `
+		UPDATE auth_flows SET consumed_at = now()
+		WHERE id = $1 AND consumed_at IS NULL AND expires_at > now()
+		RETURNING id::text
+	`, flowID).Scan(&consumed); err != nil || consumed != flowID {
+		t.Fatalf("consume oauth flow = %q, %v", consumed, err)
+	}
+	if err := pool.QueryRow(t.Context(), `
+		UPDATE auth_flows SET consumed_at = now()
+		WHERE id = $1 AND consumed_at IS NULL AND expires_at > now()
+		RETURNING id::text
+	`, flowID).Scan(&consumed); !errors.Is(err, pgx.ErrNoRows) {
+		t.Fatalf("replay flow error = %v, want no rows", err)
+	}
+}
+
 type prototypeFixture struct {
 	eventID, creatorID, joinerID, openID, closedID string
 	createdAt, joinedAt, updatedAt                 time.Time
@@ -3161,6 +3267,10 @@ type prototypeFixture struct {
 // migrateToPrototypeSchema stops at version 5, the last schema in which a Game
 // Request still belongs to an Event.
 func migrateToPrototypeSchema(t *testing.T, pool *pgxpool.Pool, migrationFS fs.FS) {
+	migrateToVersion(t, pool, migrationFS, 5)
+}
+
+func migrateToVersion(t *testing.T, pool *pgxpool.Pool, migrationFS fs.FS, version int64) {
 	t.Helper()
 
 	database := stdlib.OpenDBFromPool(pool)
@@ -3169,8 +3279,8 @@ func migrateToPrototypeSchema(t *testing.T, pool *pgxpool.Pool, migrationFS fs.F
 	if err != nil {
 		t.Fatalf("create goose provider: %v", err)
 	}
-	if _, err := provider.UpTo(t.Context(), 5); err != nil {
-		t.Fatalf("migrate to the prototype schema: %v", err)
+	if _, err := provider.UpTo(t.Context(), version); err != nil {
+		t.Fatalf("migrate to schema version %d: %v", version, err)
 	}
 }
 
