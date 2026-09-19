@@ -60,21 +60,22 @@ func TestAuthenticationPersistence(t *testing.T) {
 
 	identities := authpostgres.NewIdentityStore(pool)
 	identity, err := identities.Create(t.Context(), auth.Identity{
-		UserID:      account.ID,
-		Provider:    "https://identity.example/realms/lan",
-		Subject:     "subject-1",
-		DisplayName: "Identity Name",
-		Email:       "player@example.test",
+		UserID:       account.ID,
+		ProviderKind: "oidc",
+		ProviderKey:  "https://identity.example/realms/lan",
+		Subject:      "subject-1",
+		DisplayName:  "Identity Name",
+		Email:        "player@example.test",
 	})
 	if err != nil {
 		t.Fatalf("create identity: %v", err)
 	}
-	found, err := identities.ByProviderSubject(t.Context(), identity.Provider, identity.Subject)
+	found, err := identities.ByProviderSubject(t.Context(), identity.ProviderKind, identity.ProviderKey, identity.Subject)
 	if err != nil || found.UserID != account.ID || found.Email != identity.Email {
 		t.Fatalf("find identity = %#v, %v", found, err)
 	}
 	if _, err := identities.Create(t.Context(), auth.Identity{
-		UserID: account.ID, Provider: identity.Provider, Subject: identity.Subject,
+		UserID: account.ID, ProviderKind: identity.ProviderKind, ProviderKey: identity.ProviderKey, Subject: identity.Subject,
 	}); !errors.Is(err, auth.ErrIdentityExists) {
 		t.Fatalf("duplicate identity error = %v, want ErrIdentityExists", err)
 	}
