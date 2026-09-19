@@ -161,21 +161,23 @@ func (q *Queries) CreateIGDBExternalID(ctx context.Context, arg CreateIGDBExtern
 	return err
 }
 
-const createMaterializedGameAlias = `-- name: CreateMaterializedGameAlias :exec
+const createMaterializedGameAliases = `-- name: CreateMaterializedGameAliases :exec
 INSERT INTO game_aliases (game_id, alias)
-VALUES ($1::uuid, $2)
+SELECT $1::uuid, alias
+FROM unnest($2::text[]) AS alias
 ON CONFLICT DO NOTHING
 `
 
-type CreateMaterializedGameAliasParams struct {
-	GameID pgtype.UUID
-	Alias  string
+type CreateMaterializedGameAliasesParams struct {
+	GameID  pgtype.UUID
+	Aliases []string
 }
 
-// Copying a provider alternative name is best effort: a duplicate alias must
-// never abort materialization, so any uniqueness conflict is ignored.
-func (q *Queries) CreateMaterializedGameAlias(ctx context.Context, arg CreateMaterializedGameAliasParams) error {
-	_, err := q.db.Exec(ctx, createMaterializedGameAlias, arg.GameID, arg.Alias)
+// Copying provider alternative names is best effort and batched into one
+// round-trip: a duplicate alias must never abort materialization, so any
+// uniqueness conflict is ignored.
+func (q *Queries) CreateMaterializedGameAliases(ctx context.Context, arg CreateMaterializedGameAliasesParams) error {
+	_, err := q.db.Exec(ctx, createMaterializedGameAliases, arg.GameID, arg.Aliases)
 	return err
 }
 

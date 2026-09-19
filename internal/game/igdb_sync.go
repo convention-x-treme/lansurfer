@@ -2,10 +2,18 @@ package game
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"sync"
 	"time"
 )
+
+// errEmptyProviderCatalog guards against activating a generation that came
+// back with zero records: activation archives every local IGDB mapping not
+// present in the new generation and deletes the previous generation, so an
+// empty-but-error-free provider response must not overwrite the last
+// successful index.
+var errEmptyProviderCatalog = errors.New("provider catalog returned no records")
 
 // failureRecordTimeout bounds how long a failed sync gets to record its own
 // failure once the sync's own context may already be done (for example
@@ -24,6 +32,7 @@ type IGDBSyncService struct {
 
 	mu      sync.Mutex
 	running bool
+	wg      sync.WaitGroup
 }
 
 // NewIGDBSyncService constructs a sync service over the given provider
@@ -47,16 +56,34 @@ func (s *IGDBSyncService) TryStart(ctx context.Context) bool {
 	}
 	s.running = true
 	s.mu.Unlock()
+	s.wg.Add(1)
 
 	go func() {
 		defer func() {
 			s.mu.Lock()
 			s.running = false
 			s.mu.Unlock()
+			s.wg.Done()
 		}()
 		s.run(ctx)
 	}()
 	return true
+}
+
+// Wait blocks until any sync started by TryStart has finished writing its
+// result, or ctx is done, whichever comes first. Callers use it to avoid
+// closing shared infrastructure (the database pool) out from under a sync
+// goroutine's still-open transaction during shutdown.
+func (s *IGDBSyncService) Wait(ctx context.Context) {
+	done := make(chan struct{})
+	go func() {
+		s.wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-ctx.Done():
+	}
 }
 
 func (s *IGDBSyncService) run(ctx context.Context) {
@@ -79,6 +106,10 @@ func (s *IGDBSyncService) run(ctx context.Context) {
 	})
 	if err != nil {
 		s.fail(generationID, err)
+		return
+	}
+	if recordCount == 0 {
+		s.fail(generationID, errEmptyProviderCatalog)
 		return
 	}
 

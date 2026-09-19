@@ -238,7 +238,7 @@ func (h *GameRequests) Selection(w http.ResponseWriter, r *http.Request) {
 		render(w, r, http.StatusOK, pages.GameRequestSelectionSwap(item))
 		return
 	}
-	h.redirect(w, r, "/game-requests/new?"+gameSelectionQuery(item))
+	h.redirect(w, r, "/game-requests/new?"+pages.GameRequestSelectionQuery(item))
 }
 
 func (h *GameRequests) renderSelectionError(w http.ResponseWriter, r *http.Request, cause error) {
@@ -259,7 +259,11 @@ func (h *GameRequests) Create(w http.ResponseWriter, r *http.Request) {
 	if err == nil && form.GameID == "" && (form.Provider != "" || form.ExternalID != "") {
 		var ref game.ProviderReference
 		ref, err = game.NewProviderReference(form.Provider, form.ExternalID)
-		if err == nil {
+		if err == nil && h.resolver == nil {
+			catalogUnavailable = true
+			form.Provider = ""
+			form.ExternalID = ""
+		} else if err == nil {
 			var resolved game.Game
 			resolved, err = h.resolver.Resolve(r.Context(), ref)
 			if err == nil {
@@ -352,15 +356,6 @@ func populateSelectionForm(form *pages.GameRequestForm, item game.DiscoveryItem)
 		form.Provider = item.Reference.Provider
 		form.ExternalID = item.Reference.ExternalID
 	}
-}
-
-// gameSelectionQuery builds the canonical full-page composer query for an
-// already-selected item, reused by Selection's non-htmx redirect.
-func gameSelectionQuery(item game.DiscoveryItem) string {
-	if item.LocalGameID != "" {
-		return "game_id=" + url.QueryEscape(item.LocalGameID)
-	}
-	return "provider=" + url.QueryEscape(item.Reference.Provider) + "&external_id=" + url.QueryEscape(item.Reference.ExternalID)
 }
 
 // composerFormFromValues restores request-detail transport state from a

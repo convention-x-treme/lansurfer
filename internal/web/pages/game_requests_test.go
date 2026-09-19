@@ -233,8 +233,8 @@ func TestGameRequestRowUsesCoverWhenAvailable(t *testing.T) {
 	if !strings.Contains(body, "https://images.igdb.com/igdb/image/upload/t_cover_small/co1abc.jpg") {
 		t.Fatalf("row does not render the cover: %s", body)
 	}
-	if strings.Contains(body, `class="game-abbreviation"`) {
-		t.Errorf("row rendered the abbreviation tile even though a cover was available: %s", body)
+	if !strings.Contains(body, `class="game-abbreviation" aria-hidden="true" hidden>`) {
+		t.Errorf("row must render a hidden abbreviation fallback for the cover to fall back to on load failure: %s", body)
 	}
 }
 

@@ -349,11 +349,13 @@ SELECT EXISTS (
     SELECT 1 FROM games WHERE games.slug = sqlc.arg(slug)::text
 )::boolean AS taken;
 
--- name: CreateMaterializedGameAlias :exec
--- Copying a provider alternative name is best effort: a duplicate alias must
--- never abort materialization, so any uniqueness conflict is ignored.
+-- name: CreateMaterializedGameAliases :exec
+-- Copying provider alternative names is best effort and batched into one
+-- round-trip: a duplicate alias must never abort materialization, so any
+-- uniqueness conflict is ignored.
 INSERT INTO game_aliases (game_id, alias)
-VALUES (sqlc.arg(game_id)::uuid, sqlc.arg(alias))
+SELECT sqlc.arg(game_id)::uuid, alias
+FROM unnest(sqlc.arg(aliases)::text[]) AS alias
 ON CONFLICT DO NOTHING;
 
 -- name: CreateIGDBExternalID :exec

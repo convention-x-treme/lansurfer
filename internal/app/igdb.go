@@ -20,6 +20,8 @@ const igdbSyncInterval = 24 * time.Hour
 type igdbSync interface {
 	Status(context.Context) (game.ProviderStatus, error)
 	TryStart(context.Context) bool
+	// Wait blocks until any in-flight sync has finished, or ctx is done.
+	Wait(context.Context)
 }
 
 // disabledIGDBSync is wired in whenever IGDB credentials are not configured.
@@ -31,6 +33,8 @@ func (disabledIGDBSync) Status(context.Context) (game.ProviderStatus, error) {
 }
 
 func (disabledIGDBSync) TryStart(context.Context) bool { return false }
+
+func (disabledIGDBSync) Wait(context.Context) {}
 
 // appBoundIGDBSync ties every sync attempt to the application's own root
 // context rather than to whatever context a caller happens to pass in. This
@@ -49,6 +53,10 @@ func (a appBoundIGDBSync) Status(ctx context.Context) (game.ProviderStatus, erro
 
 func (a appBoundIGDBSync) TryStart(context.Context) bool {
 	return a.syncer.TryStart(a.ctx)
+}
+
+func (a appBoundIGDBSync) Wait(ctx context.Context) {
+	a.syncer.Wait(ctx)
 }
 
 // newIGDBSync builds the sync service wired to the application's root

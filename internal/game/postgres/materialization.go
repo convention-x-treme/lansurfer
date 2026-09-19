@@ -139,12 +139,12 @@ func (s *Store) materializeIGDBGame(ctx context.Context, externalID string, igdb
 	if err != nil {
 		return game.Game{}, fmt.Errorf("parse created game ID %s: %w", created.ID, err)
 	}
-	for _, alias := range materializedAliases(providerRow.AlternativeNames) {
-		if err := queries.CreateMaterializedGameAlias(ctx, sqlcgen.CreateMaterializedGameAliasParams{
-			GameID: createdID,
-			Alias:  alias,
+	if aliases := materializedAliases(providerRow.AlternativeNames); len(aliases) > 0 {
+		if err := queries.CreateMaterializedGameAliases(ctx, sqlcgen.CreateMaterializedGameAliasesParams{
+			GameID:  createdID,
+			Aliases: aliases,
 		}); err != nil {
-			return game.Game{}, fmt.Errorf("copy alias for IGDB game %s: %w", externalID, err)
+			return game.Game{}, fmt.Errorf("copy aliases for IGDB game %s: %w", externalID, err)
 		}
 	}
 	if err := queries.CreateIGDBExternalID(ctx, sqlcgen.CreateIGDBExternalIDParams{

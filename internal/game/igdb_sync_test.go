@@ -24,6 +24,27 @@ func TestIGDBSyncActivatesOnlyAfterCatalogCompletes(t *testing.T) {
 	}
 }
 
+// TestIGDBSyncEmptyCatalogDoesNotActivate covers the case where the provider
+// catalog returns success with zero records (e.g. an empty page from an API
+// response-shape change). Activation must be treated as failure, since it
+// would otherwise archive every existing IGDB mapping and delete the
+// previous, fully-populated generation.
+func TestIGDBSyncEmptyCatalogDoesNotActivate(t *testing.T) {
+	repo := newFakeProviderIndexRepository()
+	catalog := fakeCatalog{batches: nil}
+	service := NewIGDBSyncService(catalog, repo, time.Now, nil)
+	if !service.TryStart(t.Context()) {
+		t.Fatal("TryStart=false")
+	}
+	repo.wait(t)
+	if repo.activateCount != 0 || repo.failCount != 1 {
+		t.Fatalf("repo = %#v", repo)
+	}
+	if repo.lastFailureReason != errEmptyProviderCatalog.Error() {
+		t.Fatalf("lastFailureReason = %q, want %q", repo.lastFailureReason, errEmptyProviderCatalog.Error())
+	}
+}
+
 func TestIGDBSyncFailureDoesNotActivate(t *testing.T) {
 	repo := newFakeProviderIndexRepository()
 	catalog := fakeCatalog{err: errors.New("upstream failed")}

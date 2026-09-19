@@ -105,6 +105,14 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		serverErrors <- server.ListenAndServe()
 	}()
 	go runDailyIGDBSync(ctx, igdbSyncService, igdbSyncInterval)
+	// Registered after pool.Close() above so it runs first on the way out:
+	// an in-flight sync's transaction must finish (or be abandoned within the
+	// bound) before the pool it depends on is closed.
+	defer func() {
+		waitCtx, cancelWait := context.WithTimeout(context.Background(), shutdownTimeout)
+		defer cancelWait()
+		igdbSyncService.Wait(waitCtx)
+	}()
 
 	select {
 	case err := <-serverErrors:

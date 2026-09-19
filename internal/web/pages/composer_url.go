@@ -20,7 +20,11 @@ func gameRequestSelectionValues(item game.DiscoveryItem) url.Values {
 	return values
 }
 
-func gameRequestSelectionQuery(item game.DiscoveryItem) string {
+// GameRequestSelectionQuery is the exported form of the same encoding
+// boundary, reused by the handler package for the composer's non-htmx
+// selection redirect so the identity contract is defined in exactly one
+// place.
+func GameRequestSelectionQuery(item game.DiscoveryItem) string {
 	return gameRequestSelectionValues(item).Encode()
 }
 
@@ -31,7 +35,7 @@ func gameRequestComposerURL(item game.DiscoveryItem, form GameRequestForm) strin
 }
 
 func gameRequestSelectionURL(item game.DiscoveryItem) string {
-	return "/game-requests/new/selection?" + gameRequestSelectionQuery(item)
+	return "/game-requests/new/selection?" + GameRequestSelectionQuery(item)
 }
 
 func addComposerDetails(values url.Values, form GameRequestForm) {

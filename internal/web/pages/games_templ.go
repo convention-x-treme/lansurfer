@@ -900,7 +900,7 @@ func providerFollowAction(ref game.ProviderReference) string {
 // create-request handler resolves/materializes the authoritative local Game
 // itself.
 func gameRequestAction(item game.DiscoveryItem) string {
-	return "/game-requests/new?" + gameRequestSelectionQuery(item)
+	return "/game-requests/new?" + GameRequestSelectionQuery(item)
 }
 
 var _ = templruntime.GeneratedTemplate
