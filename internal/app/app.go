@@ -51,9 +51,11 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	userService := user.NewService(userpostgres.NewStore(pool))
 	sessionService := auth.NewSessionService(authpostgres.NewSessionStore(pool), userService)
 	flowService := auth.NewFlowService(authpostgres.NewFlowStore(pool))
+	identityStore := authpostgres.NewIdentityStore(pool)
 	resolutionService := auth.NewResolutionService(
-		authpostgres.NewIdentityStore(pool), flowService, sessionService, userService, authpostgres.NewPendingIdentityAttacher(pool),
+		identityStore, flowService, sessionService, userService, authpostgres.NewPendingIdentityAttacher(pool),
 	)
+	accountRegistration := NewAccountRegistration(pool, sessionService)
 
 	var providers []auth.ConfiguredProvider
 	if cfg.OIDC != nil {
@@ -91,19 +93,24 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	server := &http.Server{
 		Addr: cfg.ListenAddr,
 		Handler: web.NewRouter(web.RouterDependencies{
-			Ready:          postgres.ReadyCheck(pool),
-			Authentication: oauthService,
-			Sessions:       sessionService,
-			Games:          gameService,
-			Discovery:      gameDiscovery,
-			GameResolver:   gameDiscovery,
-			GameRequests:   gameRequests,
-			RequestQueries: gameRequestQueries,
-			Realtime:       realtime,
-			ProviderSync:   igdbSyncService,
-			SecureCookies:  strings.HasPrefix(cfg.BaseURL, "https://"),
-			Logger:         logger,
-			TrustedProxies: cfg.TrustedProxies,
+			Ready:               postgres.ReadyCheck(pool),
+			Authentication:      oauthService,
+			Sessions:            sessionService,
+			PendingIdentities:   flowService,
+			AccountRegistration: accountRegistration,
+			GameNickClaims:      userService,
+			Identities:          identityStore,
+			IdentityUnlinker:    identityStore,
+			Games:               gameService,
+			Discovery:           gameDiscovery,
+			GameResolver:        gameDiscovery,
+			GameRequests:        gameRequests,
+			RequestQueries:      gameRequestQueries,
+			Realtime:            realtime,
+			ProviderSync:        igdbSyncService,
+			SecureCookies:       strings.HasPrefix(cfg.BaseURL, "https://"),
+			Logger:              logger,
+			TrustedProxies:      cfg.TrustedProxies,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,

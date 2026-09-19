@@ -181,10 +181,10 @@ templ NavigationLink(href, label, section, current string) {
 
 templ ViewerPanel(viewer *Viewer) {
 	if viewer != nil {
-		<div class="viewer-panel">
+		<a class="viewer-panel" href="/account">
 			<span class="avatar-placeholder" aria-hidden="true">{ ViewerInitial(viewer.DisplayName) }</span>
 			<span class="min-w-0"><strong class="block truncate text-sm">{ viewer.DisplayName }</strong><span class="block text-xs font-semibold text-primary">{ viewerRole(viewer.Role) }</span></span>
-		</div>
+		</a>
 	}
 }
 

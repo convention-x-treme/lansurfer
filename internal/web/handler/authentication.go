@@ -234,6 +234,15 @@ func (h *AuthenticationHandler) ensureBrowserBinding(w http.ResponseWriter, r *h
 }
 
 func (h *AuthenticationHandler) browserBinding(r *http.Request) (string, bool) {
+	return browserBindingCookie(r)
+}
+
+// browserBindingCookie reads the browser-binding secret already on the
+// request, if any, without issuing a new one. It is shared by
+// AuthenticationHandler and OnboardingHandler, since a resolution flow
+// started from the onboarding page must present the same binding the
+// original pending identity was created under.
+func browserBindingCookie(r *http.Request) (string, bool) {
 	cookie, err := r.Cookie(browserBindingCookieName)
 	if err != nil || cookie.Value == "" {
 		return "", false

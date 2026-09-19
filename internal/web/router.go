@@ -52,25 +52,35 @@ type Discovery interface {
 }
 
 type RouterDependencies struct {
-	Ready          ReadyCheck
-	Authentication handler.Authentication
-	Sessions       Sessions
-	Games          handler.GameAdministration
-	ProviderSync   handler.ProviderSyncAdministration
-	Discovery      Discovery
-	GameResolver   handler.GameResolver
-	GameRequests   handler.GameRequestCommands
-	RequestQueries handler.GameRequestQueries
-	Realtime       handler.GameRequestEvents
-	SecureCookies  bool
-	Logger         *slog.Logger
-	TrustedProxies []netip.Prefix
+	Ready               ReadyCheck
+	Authentication      handler.Authentication
+	Sessions            Sessions
+	PendingIdentities   handler.PendingIdentities
+	AccountRegistration handler.AccountRegistration
+	GameNickClaims      handler.GameNickClaims
+	Identities          handler.IdentityLookup
+	IdentityUnlinker    handler.IdentityUnlinker
+	Games               handler.GameAdministration
+	ProviderSync        handler.ProviderSyncAdministration
+	Discovery           Discovery
+	GameResolver        handler.GameResolver
+	GameRequests        handler.GameRequestCommands
+	RequestQueries      handler.GameRequestQueries
+	Realtime            handler.GameRequestEvents
+	SecureCookies       bool
+	Logger              *slog.Logger
+	TrustedProxies      []netip.Prefix
 }
 
 // NewRouter constructs the HTTP router.
 func NewRouter(dependencies RouterDependencies) http.Handler {
 	brand := branding.Default()
 	authenticationHandler := handler.NewAuthentication(dependencies.Authentication, dependencies.Sessions, brand, dependencies.SecureCookies)
+	onboardingHandler := handler.NewOnboarding(
+		dependencies.PendingIdentities, dependencies.AccountRegistration, dependencies.GameNickClaims,
+		dependencies.Identities, dependencies.Authentication, brand, dependencies.SecureCookies,
+	)
+	accountHandler := handler.NewAccount(dependencies.Identities, dependencies.IdentityUnlinker, dependencies.GameNickClaims, dependencies.Authentication, brand)
 	administrationHandler := handler.NewAdministration(dependencies.Games, dependencies.ProviderSync, brand)
 	gamesHandler := handler.NewGames(dependencies.Discovery, brand)
 	gameRequestsHandler := handler.NewGameRequests(dependencies.GameRequests, dependencies.RequestQueries, dependencies.GameResolver, dependencies.Discovery, brand)
@@ -96,14 +106,23 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 		authenticated.Get("/auth/discord", authenticationHandler.BeginFor("discord"))
 		authenticated.Get("/auth/callback", authenticationHandler.CallbackFor("oidc"))
 		authenticated.Get("/auth/discord/callback", authenticationHandler.CallbackFor("discord"))
+		authenticated.Route("/onboarding", func(onboarding chi.Router) {
+			onboarding.Get("/", onboardingHandler.ShowExisting)
+			onboarding.Post("/", onboardingHandler.SubmitExisting)
+			onboarding.Get("/{pendingID}", onboardingHandler.ShowPending)
+			onboarding.Post("/{pendingID}", onboardingHandler.SubmitPending)
+		})
 		authenticated.Route("/account", func(account chi.Router) {
-			account.Use(handler.RequireAuthentication)
+			account.Use(handler.RequireAuthentication, handler.RequireGameNick)
+			account.Get("/", accountHandler.Show)
+			account.Post("/game-nick", accountHandler.RenameGameNick)
 			account.Post("/link/oidc", authenticationHandler.LinkFor("oidc"))
 			account.Post("/link/discord", authenticationHandler.LinkFor("discord"))
+			account.Post("/identities/{identityID}/unlink", accountHandler.Unlink)
 		})
 		if dependencies.Discovery != nil {
 			authenticated.Route("/games", func(games chi.Router) {
-				games.Use(handler.RequireAuthentication)
+				games.Use(handler.RequireAuthentication, handler.RequireGameNick)
 				games.Get("/", gamesHandler.Browse)
 				games.Get("/mine", gamesHandler.MyGames)
 				games.Post("/providers/{provider}/{externalID}/follow", gamesHandler.FollowProvider)
@@ -113,7 +132,7 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 		}
 		if dependencies.GameRequests != nil && dependencies.RequestQueries != nil {
 			authenticated.Route("/game-requests", func(requests chi.Router) {
-				requests.Use(handler.RequireAuthentication)
+				requests.Use(handler.RequireAuthentication, handler.RequireGameNick)
 				requests.Get("/", gameRequestsHandler.List)
 				requests.Get("/new", gameRequestsHandler.New)
 				requests.Get("/new/discovery", gameRequestsHandler.Discovery)
@@ -129,11 +148,11 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 			})
 		}
 		if dependencies.Realtime != nil {
-			authenticated.With(handler.RequireAuthentication).Get("/events/game-requests", realtimeHandler.GameRequests)
+			authenticated.With(handler.RequireAuthentication, handler.RequireGameNick).Get("/events/game-requests", realtimeHandler.GameRequests)
 		}
 		if dependencies.Games != nil {
 			authenticated.Route("/admin", func(admin chi.Router) {
-				admin.Use(handler.RequireAdmin)
+				admin.Use(handler.RequireAdmin, handler.RequireGameNick)
 				admin.Get("/games", administrationHandler.Games)
 				admin.Post("/games", administrationHandler.CreateGame)
 				admin.Post("/games/{gameID}", administrationHandler.UpdateGame)
@@ -158,7 +177,11 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 
 func rootHandler(brand branding.Brand, authentication handler.Authentication) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := webmiddleware.CurrentUser(r.Context()); ok {
+		if account, ok := webmiddleware.CurrentUser(r.Context()); ok {
+			if account.GameNick == "" {
+				http.Redirect(w, r, "/onboarding", http.StatusSeeOther)
+				return
+			}
 			http.Redirect(w, r, "/game-requests", http.StatusSeeOther)
 			return
 		}

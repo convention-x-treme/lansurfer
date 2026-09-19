@@ -133,7 +133,7 @@ func TestRootRendersLoginLandingPage(t *testing.T) {
 var remoteAssetPattern = regexp.MustCompile(`(?i)<(?:script|link|img|iframe|source|video|audio|embed)\b[^>]*\b(?:src|href)\s*=\s*["']https?://`)
 
 func TestHomeRendersAuthenticatedViewer(t *testing.T) {
-	authentication := &routerAuthentication{account: user.User{DisplayName: "Ada Player", Role: user.RoleAdmin}}
+	authentication := &routerAuthentication{account: user.User{DisplayName: "Ada Player", GameNick: "Ada Player", Role: user.RoleAdmin}}
 	request := httptest.NewRequest(http.MethodGet, "/", nil)
 	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
 	response := httptest.NewRecorder()
@@ -146,6 +146,59 @@ func TestHomeRendersAuthenticatedViewer(t *testing.T) {
 
 	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/game-requests" {
 		t.Fatalf("status = %d", response.Code)
+	}
+}
+
+func TestHomeRedirectsUpgradedUserWithoutGameNickToOnboarding(t *testing.T) {
+	authentication := &routerAuthentication{account: user.User{ID: "user-1", Role: user.RoleUser}}
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	response := httptest.NewRecorder()
+
+	NewRouter(RouterDependencies{
+		Ready:          func(context.Context) error { return nil },
+		Authentication: authentication,
+		Sessions:       authentication,
+	}).ServeHTTP(response, request)
+
+	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/onboarding" {
+		t.Fatalf("status/location = %d, %q", response.Code, response.Header().Get("Location"))
+	}
+}
+
+func TestGamesRouteGatesUserWithoutGameNickToOnboarding(t *testing.T) {
+	authentication := &routerAuthentication{account: user.User{ID: "user-1", Role: user.RoleUser}}
+	request := httptest.NewRequest(http.MethodGet, "/games", nil)
+	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	response := httptest.NewRecorder()
+
+	NewRouter(RouterDependencies{
+		Ready:          func(context.Context) error { return nil },
+		Authentication: authentication,
+		Sessions:       authentication,
+		Discovery:      &routerDiscovery{},
+	}).ServeHTTP(response, request)
+
+	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/onboarding" {
+		t.Fatalf("status/location = %d, %q", response.Code, response.Header().Get("Location"))
+	}
+}
+
+func TestOnboardingShowsFormForUpgradedUserWithoutGameNick(t *testing.T) {
+	authentication := &routerAuthentication{account: user.User{ID: "user-1", Role: user.RoleUser}}
+	request := httptest.NewRequest(http.MethodGet, "/onboarding", nil)
+	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	response := httptest.NewRecorder()
+
+	NewRouter(RouterDependencies{
+		Ready:          func(context.Context) error { return nil },
+		Authentication: authentication,
+		Sessions:       authentication,
+		Identities:     &routerIdentities{},
+	}).ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "Choose your Game Nick") {
+		t.Fatalf("status/body = %d, %q", response.Code, response.Body.String())
 	}
 }
 
@@ -168,7 +221,7 @@ func TestAuthLoginStartRedirectsSignedInUserToAccount(t *testing.T) {
 
 func TestAccountLinkStartBindsSignedInUserAndRedirectsToProvider(t *testing.T) {
 	authentication := &routerAuthentication{
-		account: user.User{ID: "user-1", Role: user.RoleUser},
+		account: user.User{ID: "user-1", GameNick: "NightOtter", Role: user.RoleUser},
 		start:   auth.OAuthStart{AuthorizationURL: "https://discord.example/authorize"},
 	}
 	request := httptest.NewRequest(http.MethodPost, "/account/link/discord", nil)
@@ -846,7 +899,7 @@ type routerAuthentication struct {
 }
 
 func adminTestRouter(games *routerGames) http.Handler {
-	admin := &routerAuthentication{account: user.User{DisplayName: "Ada Admin", Role: user.RoleAdmin}}
+	admin := &routerAuthentication{account: user.User{DisplayName: "Ada Admin", GameNick: "Ada Admin", Role: user.RoleAdmin}}
 	return NewRouter(RouterDependencies{
 		Ready:          func(context.Context) error { return nil },
 		Authentication: admin,
@@ -856,7 +909,7 @@ func adminTestRouter(games *routerGames) http.Handler {
 }
 
 func adminIGDBTestRouter(providerSync *routerProviderSync) http.Handler {
-	admin := &routerAuthentication{account: user.User{DisplayName: "Ada Admin", Role: user.RoleAdmin}}
+	admin := &routerAuthentication{account: user.User{DisplayName: "Ada Admin", GameNick: "Ada Admin", Role: user.RoleAdmin}}
 	return NewRouter(RouterDependencies{
 		Ready:          func(context.Context) error { return nil },
 		Authentication: admin,
@@ -868,7 +921,7 @@ func adminIGDBTestRouter(providerSync *routerProviderSync) http.Handler {
 
 func gameTestRouter(discovery *routerDiscovery) http.Handler {
 	viewer := &routerAuthentication{account: user.User{
-		ID: "user-1", DisplayName: "Ada Player", Role: user.RoleUser,
+		ID: "user-1", DisplayName: "Ada Player", GameNick: "Ada Player", Role: user.RoleUser,
 	}}
 	return NewRouter(RouterDependencies{
 		Ready:          func(context.Context) error { return nil },
@@ -883,7 +936,7 @@ func gameRequestTestRouter(commands *routerGameRequests, queries *routerGameRequ
 		discovery = &routerDiscovery{}
 	}
 	viewer := &routerAuthentication{account: user.User{
-		ID: "user-1", DisplayName: "Ada Player", Role: user.RoleUser,
+		ID: "user-1", DisplayName: "Ada Player", GameNick: "Ada Player", Role: user.RoleUser,
 	}}
 	return NewRouter(RouterDependencies{
 		Ready:          func(context.Context) error { return nil },
@@ -891,6 +944,14 @@ func gameRequestTestRouter(commands *routerGameRequests, queries *routerGameRequ
 		Sessions:       viewer,
 		GameRequests:   commands, RequestQueries: queries, Discovery: discovery,
 	})
+}
+
+type routerIdentities struct {
+	identities []auth.Identity
+}
+
+func (r *routerIdentities) ListByUser(context.Context, string) ([]auth.Identity, error) {
+	return r.identities, nil
 }
 
 type routerGames struct {

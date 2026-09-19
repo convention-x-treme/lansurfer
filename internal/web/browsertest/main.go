@@ -140,7 +140,7 @@ func (*fixture) Complete(context.Context, auth.OAuthCompletion) (auth.OAuthResul
 func (*fixture) Logout(context.Context, string) error { return nil }
 
 func (*fixture) Authenticate(context.Context, string) (user.User, error) {
-	return user.User{ID: viewerID, DisplayName: "Ada Player", Role: user.RoleUser}, nil
+	return user.User{ID: viewerID, DisplayName: "Ada Player", GameNick: "Ada Player", Role: user.RoleUser}, nil
 }
 
 // --- realtime -------------------------------------------------------------

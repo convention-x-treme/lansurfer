@@ -201,6 +201,11 @@
     padding: 0.625rem;
   }
 
+  .viewer-panel:hover,
+  .viewer-panel:focus-visible {
+    background: var(--color-base-200);
+  }
+
   .avatar-placeholder {
     display: inline-grid;
     width: 2.5rem;

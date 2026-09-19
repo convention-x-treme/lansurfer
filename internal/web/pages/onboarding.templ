@@ -1,0 +1,48 @@
+package pages
+
+import (
+	"github.com/convention-x-treme/lansurfer/internal/web/branding"
+	"github.com/convention-x-treme/lansurfer/internal/web/components"
+)
+
+// OnboardingResolveOption is one "I already have a LANsurfer account"
+// choice: proving the pending identity's owner through a different
+// configured provider than the one that just produced the pending state.
+type OnboardingResolveOption struct {
+	Label string
+	Href  string
+}
+
+templ Onboarding(brand branding.Brand, actionPath, gameNick, errorMessage string, resolveOptions []OnboardingResolveOption) {
+	@components.AuthLayout(brand, "Choose your Game Nick") {
+		<section class="auth-stage">
+			<div class="auth-panel justify-self-center">
+				<h1 class="text-3xl font-bold">Choose your Game Nick</h1>
+				<p class="mt-2 text-base-content/70">This is the name other players see on Game Requests. You can rename it later from your account.</p>
+				<form method="post" action={ templ.SafeURL(actionPath) } class="mt-6 grid gap-3">
+					@components.CSRFInput()
+					<label class="form-control">
+						<span class="label-text">Game Nick</span>
+						<input class="input input-bordered w-full" type="text" name="game_nick" value={ gameNick } maxlength="32" required autofocus/>
+					</label>
+					if errorMessage != "" {
+						<div role="alert" class="alert alert-error text-sm">
+							<span>{ errorMessage }</span>
+						</div>
+					}
+					<button class="btn btn-primary" type="submit">Continue</button>
+				</form>
+				if len(resolveOptions) > 0 {
+					<div class="mt-7 border-t border-base-300 pt-5">
+						<p class="text-sm text-base-content/70">Already have a LANsurfer account?</p>
+						<div class="mt-3 grid gap-2">
+							for _, option := range resolveOptions {
+								<a class="btn btn-quiet btn-sm w-full justify-start" href={ templ.URL(option.Href) }>{ option.Label }</a>
+							}
+						</div>
+					</div>
+				}
+			</div>
+		</section>
+	}
+}
