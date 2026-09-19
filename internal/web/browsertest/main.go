@@ -49,6 +49,7 @@ func main() {
 	mux.Handle("/", web.NewRouter(web.RouterDependencies{
 		Ready:          func(context.Context) error { return nil },
 		Authentication: state,
+		Sessions:       state,
 		Discovery:      state,
 		GameRequests:   state,
 		RequestQueries: state,
@@ -124,10 +125,16 @@ func (f *fixture) seed(gameName string, maxPlayers int32, members int64) {
 
 func (*fixture) Available() bool { return true }
 
-func (*fixture) BeginLogin() (auth.LoginFlow, error) { return auth.LoginFlow{}, nil }
+func (*fixture) Providers() []auth.ProviderAvailability {
+	return []auth.ProviderAvailability{{Kind: "oidc", DisplayName: "Test IdP"}}
+}
 
-func (*fixture) CompleteLogin(context.Context, string, string, string) (user.User, auth.BrowserSession, error) {
-	return user.User{}, auth.BrowserSession{}, nil
+func (*fixture) Begin(context.Context, auth.OAuthStartInput) (auth.OAuthStart, error) {
+	return auth.OAuthStart{}, nil
+}
+
+func (*fixture) Complete(context.Context, auth.OAuthCompletion) (auth.OAuthResult, error) {
+	return auth.OAuthResult{}, nil
 }
 
 func (*fixture) Logout(context.Context, string) error { return nil }

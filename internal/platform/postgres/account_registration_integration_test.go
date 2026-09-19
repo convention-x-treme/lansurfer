@@ -18,13 +18,14 @@ import (
 	authpostgres "github.com/convention-x-treme/lansurfer/internal/auth/postgres"
 	platformpostgres "github.com/convention-x-treme/lansurfer/internal/platform/postgres"
 	"github.com/convention-x-treme/lansurfer/internal/user"
+	userpostgres "github.com/convention-x-treme/lansurfer/internal/user/postgres"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func TestAccountRegistrationIsAtomic(t *testing.T) {
 	pool := registrationTestPool(t)
 	flows := auth.NewFlowService(authpostgres.NewFlowStore(pool))
-	sessions := auth.NewSessionService(authpostgres.NewSessionStore(pool))
+	sessions := auth.NewSessionService(authpostgres.NewSessionStore(pool), user.NewService(userpostgres.NewStore(pool)))
 	registration := app.NewAccountRegistration(pool, sessions)
 
 	pending, err := flows.CreatePending(t.Context(), auth.PendingIdentityInput{
@@ -67,7 +68,7 @@ func TestAccountRegistrationIsAtomic(t *testing.T) {
 func TestAccountRegistrationConcurrentGameNickClaimHasOneWinner(t *testing.T) {
 	pool := registrationTestPool(t)
 	flows := auth.NewFlowService(authpostgres.NewFlowStore(pool))
-	registration := app.NewAccountRegistration(pool, auth.NewSessionService(authpostgres.NewSessionStore(pool)))
+	registration := app.NewAccountRegistration(pool, auth.NewSessionService(authpostgres.NewSessionStore(pool), user.NewService(userpostgres.NewStore(pool))))
 	pending := make([]auth.PendingIdentity, 2)
 	for index, subject := range []string{"discord-a", "discord-b"} {
 		created, err := flows.CreatePending(t.Context(), auth.PendingIdentityInput{
@@ -109,7 +110,7 @@ func TestAccountRegistrationConcurrentGameNickClaimHasOneWinner(t *testing.T) {
 func TestAccountRegistrationConcurrentIdentityClaimHasOneWinner(t *testing.T) {
 	pool := registrationTestPool(t)
 	flows := auth.NewFlowService(authpostgres.NewFlowStore(pool))
-	registration := app.NewAccountRegistration(pool, auth.NewSessionService(authpostgres.NewSessionStore(pool)))
+	registration := app.NewAccountRegistration(pool, auth.NewSessionService(authpostgres.NewSessionStore(pool), user.NewService(userpostgres.NewStore(pool))))
 	pending := make([]auth.PendingIdentity, 2)
 	for index := range pending {
 		created, err := flows.CreatePending(t.Context(), auth.PendingIdentityInput{

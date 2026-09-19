@@ -94,6 +94,7 @@ func TestRootRendersLoginLandingPage(t *testing.T) {
 	NewRouter(RouterDependencies{
 		Ready:          func(context.Context) error { return nil },
 		Authentication: authentication,
+		Sessions:       authentication,
 	}).ServeHTTP(response, request)
 
 	result := response.Result()
@@ -111,8 +112,7 @@ func TestRootRendersLoginLandingPage(t *testing.T) {
 	for _, want := range []string{
 		"LANsurfer",
 		"Find your crew. Catch the next game.",
-		"Continue with your CXT account",
-		"CXT IdP",
+		"Continue with CXT account",
 		"Continue with Discord",
 		`href="https://www.convention-x-treme.de"`,
 		`href="/assets/app.css"`,
@@ -141,10 +141,73 @@ func TestHomeRendersAuthenticatedViewer(t *testing.T) {
 	NewRouter(RouterDependencies{
 		Ready:          func(context.Context) error { return nil },
 		Authentication: authentication,
+		Sessions:       authentication,
 	}).ServeHTTP(response, request)
 
 	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/game-requests" {
 		t.Fatalf("status = %d", response.Code)
+	}
+}
+
+func TestAuthLoginStartRedirectsSignedInUserToAccount(t *testing.T) {
+	authentication := &routerAuthentication{account: user.User{ID: "user-1", Role: user.RoleUser}}
+	request := httptest.NewRequest(http.MethodGet, "/auth/oidc", nil)
+	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	response := httptest.NewRecorder()
+
+	NewRouter(RouterDependencies{
+		Ready:          func(context.Context) error { return nil },
+		Authentication: authentication,
+		Sessions:       authentication,
+	}).ServeHTTP(response, request)
+
+	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/account" || authentication.began.ProviderKind != "" {
+		t.Fatalf("status/location/begin = %d, %q, %#v", response.Code, response.Header().Get("Location"), authentication.began)
+	}
+}
+
+func TestAccountLinkStartBindsSignedInUserAndRedirectsToProvider(t *testing.T) {
+	authentication := &routerAuthentication{
+		account: user.User{ID: "user-1", Role: user.RoleUser},
+		start:   auth.OAuthStart{AuthorizationURL: "https://discord.example/authorize"},
+	}
+	request := httptest.NewRequest(http.MethodPost, "/account/link/discord", nil)
+	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	addCSRF(request)
+	response := httptest.NewRecorder()
+
+	NewRouter(RouterDependencies{
+		Ready:          func(context.Context) error { return nil },
+		Authentication: authentication,
+		Sessions:       authentication,
+	}).ServeHTTP(response, request)
+
+	if response.Code != http.StatusFound || response.Header().Get("Location") != authentication.start.AuthorizationURL {
+		t.Fatalf("status/location = %d, %q", response.Code, response.Header().Get("Location"))
+	}
+	if authentication.began.Operation != auth.FlowLink || authentication.began.InitiatingUserID != "user-1" {
+		t.Fatalf("begin input = %#v", authentication.began)
+	}
+}
+
+func TestAuthCallbackRoutesSignedInIdentityConflictToAccount(t *testing.T) {
+	authentication := &routerAuthentication{
+		account:     user.User{ID: "user-1", Role: user.RoleUser},
+		completeErr: auth.ErrIdentityConflict,
+	}
+	request := httptest.NewRequest(http.MethodGet, "/auth/discord/callback?code=code&state=state", nil)
+	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	request.AddCookie(&http.Cookie{Name: "lansurfer_auth_binding", Value: "binding"})
+	response := httptest.NewRecorder()
+
+	NewRouter(RouterDependencies{
+		Ready:          func(context.Context) error { return nil },
+		Authentication: authentication,
+		Sessions:       authentication,
+	}).ServeHTTP(response, request)
+
+	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/account?link_error=1" {
+		t.Fatalf("status/location = %d, %q", response.Code, response.Header().Get("Location"))
 	}
 }
 
@@ -211,9 +274,11 @@ func TestEmbeddedAssetsAreServed(t *testing.T) {
 }
 
 func TestAdminRoutesRequireAdmin(t *testing.T) {
+	viewer := &routerAuthentication{account: user.User{DisplayName: "Player", Role: user.RoleUser}}
 	dependencies := RouterDependencies{
 		Ready:          func(context.Context) error { return nil },
-		Authentication: &routerAuthentication{account: user.User{DisplayName: "Player", Role: user.RoleUser}},
+		Authentication: viewer,
+		Sessions:       viewer,
 		Games:          &routerGames{},
 	}
 	request := httptest.NewRequest(http.MethodGet, "/admin/games", nil)
@@ -246,9 +311,11 @@ func TestAdminGameSearchRendersAliasMatch(t *testing.T) {
 }
 
 func TestAdminIGDBRoutesRequireAdmin(t *testing.T) {
+	viewer := &routerAuthentication{account: user.User{DisplayName: "Player", Role: user.RoleUser}}
 	dependencies := RouterDependencies{
 		Ready:          func(context.Context) error { return nil },
-		Authentication: &routerAuthentication{account: user.User{DisplayName: "Player", Role: user.RoleUser}},
+		Authentication: viewer,
+		Sessions:       viewer,
 		Games:          &routerGames{},
 		ProviderSync:   &routerProviderSync{},
 	}
@@ -771,33 +838,43 @@ func addCSRF(request *http.Request) {
 }
 
 type routerAuthentication struct {
-	account user.User
+	account     user.User
+	start       auth.OAuthStart
+	began       auth.OAuthStartInput
+	result      auth.OAuthResult
+	completeErr error
 }
 
 func adminTestRouter(games *routerGames) http.Handler {
+	admin := &routerAuthentication{account: user.User{DisplayName: "Ada Admin", Role: user.RoleAdmin}}
 	return NewRouter(RouterDependencies{
 		Ready:          func(context.Context) error { return nil },
-		Authentication: &routerAuthentication{account: user.User{DisplayName: "Ada Admin", Role: user.RoleAdmin}},
+		Authentication: admin,
+		Sessions:       admin,
 		Games:          games,
 	})
 }
 
 func adminIGDBTestRouter(providerSync *routerProviderSync) http.Handler {
+	admin := &routerAuthentication{account: user.User{DisplayName: "Ada Admin", Role: user.RoleAdmin}}
 	return NewRouter(RouterDependencies{
 		Ready:          func(context.Context) error { return nil },
-		Authentication: &routerAuthentication{account: user.User{DisplayName: "Ada Admin", Role: user.RoleAdmin}},
+		Authentication: admin,
+		Sessions:       admin,
 		Games:          &routerGames{},
 		ProviderSync:   providerSync,
 	})
 }
 
 func gameTestRouter(discovery *routerDiscovery) http.Handler {
+	viewer := &routerAuthentication{account: user.User{
+		ID: "user-1", DisplayName: "Ada Player", Role: user.RoleUser,
+	}}
 	return NewRouter(RouterDependencies{
-		Ready: func(context.Context) error { return nil },
-		Authentication: &routerAuthentication{account: user.User{
-			ID: "user-1", DisplayName: "Ada Player", Role: user.RoleUser,
-		}},
-		Discovery: discovery,
+		Ready:          func(context.Context) error { return nil },
+		Authentication: viewer,
+		Sessions:       viewer,
+		Discovery:      discovery,
 	})
 }
 
@@ -805,12 +882,14 @@ func gameRequestTestRouter(commands *routerGameRequests, queries *routerGameRequ
 	if discovery == nil {
 		discovery = &routerDiscovery{}
 	}
+	viewer := &routerAuthentication{account: user.User{
+		ID: "user-1", DisplayName: "Ada Player", Role: user.RoleUser,
+	}}
 	return NewRouter(RouterDependencies{
-		Ready: func(context.Context) error { return nil },
-		Authentication: &routerAuthentication{account: user.User{
-			ID: "user-1", DisplayName: "Ada Player", Role: user.RoleUser,
-		}},
-		GameRequests: commands, RequestQueries: queries, Discovery: discovery,
+		Ready:          func(context.Context) error { return nil },
+		Authentication: viewer,
+		Sessions:       viewer,
+		GameRequests:   commands, RequestQueries: queries, Discovery: discovery,
 	})
 }
 
@@ -980,10 +1059,17 @@ func (r *routerDiscovery) Select(_ context.Context, userID string, selection gam
 
 func (*routerAuthentication) Available() bool { return true }
 
-func (*routerAuthentication) BeginLogin() (auth.LoginFlow, error) { return auth.LoginFlow{}, nil }
+func (*routerAuthentication) Providers() []auth.ProviderAvailability {
+	return []auth.ProviderAvailability{{Kind: "oidc", DisplayName: "CXT account"}, {Kind: "discord", DisplayName: "Discord"}}
+}
 
-func (*routerAuthentication) CompleteLogin(context.Context, string, string, string) (user.User, auth.BrowserSession, error) {
-	return user.User{}, auth.BrowserSession{}, nil
+func (a *routerAuthentication) Begin(_ context.Context, input auth.OAuthStartInput) (auth.OAuthStart, error) {
+	a.began = input
+	return a.start, nil
+}
+
+func (a *routerAuthentication) Complete(context.Context, auth.OAuthCompletion) (auth.OAuthResult, error) {
+	return a.result, a.completeErr
 }
 
 func (*routerAuthentication) Logout(context.Context, string) error { return nil }

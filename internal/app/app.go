@@ -49,10 +49,16 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	}
 
 	userService := user.NewService(userpostgres.NewStore(pool))
-	var oidcProvider auth.Provider
+	sessionService := auth.NewSessionService(authpostgres.NewSessionStore(pool), userService)
+	flowService := auth.NewFlowService(authpostgres.NewFlowStore(pool))
+	resolutionService := auth.NewResolutionService(
+		authpostgres.NewIdentityStore(pool), flowService, sessionService, userService, authpostgres.NewPendingIdentityAttacher(pool),
+	)
+
+	var providers []auth.ConfiguredProvider
 	if cfg.OIDC != nil {
 		discoveryCtx, cancelDiscovery := context.WithTimeout(ctx, oidcDiscoveryTimeout)
-		oidcProvider, err = auth.DiscoverOIDCProvider(discoveryCtx, auth.OIDCConfig{
+		oidcProvider, discoverErr := auth.DiscoverOIDCProvider(discoveryCtx, auth.OIDCConfig{
 			IssuerURL:     cfg.OIDC.Issuer,
 			ClientID:      cfg.OIDC.ClientID,
 			ClientSecret:  cfg.OIDC.ClientSecret,
@@ -60,16 +66,20 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 			GameNickClaim: cfg.OIDC.GameNickClaim,
 		})
 		cancelDiscovery()
-		if err != nil {
-			return fmt.Errorf("initialize OIDC: %w", err)
+		if discoverErr != nil {
+			return fmt.Errorf("initialize OIDC: %w", discoverErr)
 		}
+		providers = append(providers, auth.ConfiguredProvider{DisplayName: cfg.OIDC.DisplayName, Adapter: oidcProvider})
 	}
-	authService := auth.NewService(
-		oidcProvider,
-		authpostgres.NewIdentityStore(pool),
-		authpostgres.NewSessionStore(pool),
-		userService,
-	)
+	if cfg.Discord != nil {
+		discordProvider := auth.NewDiscordProvider(auth.DiscordConfig{
+			ClientID: cfg.Discord.ClientID, ClientSecret: cfg.Discord.ClientSecret,
+			RedirectURL: cfg.BaseURL + "/auth/discord/callback",
+		})
+		providers = append(providers, auth.ConfiguredProvider{DisplayName: "Discord", Adapter: discordProvider})
+	}
+	oauthService := auth.NewOAuthService(providers, flowService, resolutionService)
+
 	gameStore := gamepostgres.NewStore(pool)
 	gameService := game.NewService(gameStore)
 	realtime := sse.NewBroker()
@@ -82,7 +92,8 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		Addr: cfg.ListenAddr,
 		Handler: web.NewRouter(web.RouterDependencies{
 			Ready:          postgres.ReadyCheck(pool),
-			Authentication: authService,
+			Authentication: oauthService,
+			Sessions:       sessionService,
 			Games:          gameService,
 			Discovery:      gameDiscovery,
 			GameResolver:   gameDiscovery,

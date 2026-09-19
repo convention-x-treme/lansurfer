@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/a-h/templ"
+	"github.com/convention-x-treme/lansurfer/internal/auth"
 	"github.com/convention-x-treme/lansurfer/internal/web/assets"
 	"github.com/convention-x-treme/lansurfer/internal/web/branding"
 	"github.com/convention-x-treme/lansurfer/internal/web/components"
@@ -31,9 +32,13 @@ const (
 // ReadyCheck reports whether dependencies required to serve traffic are ready.
 type ReadyCheck func(context.Context) error
 
-type Authentication interface {
-	handler.Authentication
+// Sessions resolves the current browser session for request authentication
+// and revokes it on logout. Starting/completing OAuth flows is a separate
+// narrow interface (handler.Authentication), since a different concrete type
+// (*auth.OAuthService vs *auth.SessionService) backs each.
+type Sessions interface {
 	webmiddleware.Authenticator
+	handler.Sessions
 }
 
 // Discovery combines Games' and the Game Request composer's separate narrow
@@ -48,7 +53,8 @@ type Discovery interface {
 
 type RouterDependencies struct {
 	Ready          ReadyCheck
-	Authentication Authentication
+	Authentication handler.Authentication
+	Sessions       Sessions
 	Games          handler.GameAdministration
 	ProviderSync   handler.ProviderSyncAdministration
 	Discovery      Discovery
@@ -64,7 +70,7 @@ type RouterDependencies struct {
 // NewRouter constructs the HTTP router.
 func NewRouter(dependencies RouterDependencies) http.Handler {
 	brand := branding.Default()
-	authenticationHandler := handler.NewAuthentication(dependencies.Authentication, brand, dependencies.SecureCookies)
+	authenticationHandler := handler.NewAuthentication(dependencies.Authentication, dependencies.Sessions, brand, dependencies.SecureCookies)
 	administrationHandler := handler.NewAdministration(dependencies.Games, dependencies.ProviderSync, brand)
 	gamesHandler := handler.NewGames(dependencies.Discovery, brand)
 	gameRequestsHandler := handler.NewGameRequests(dependencies.GameRequests, dependencies.RequestQueries, dependencies.GameResolver, dependencies.Discovery, brand)
@@ -83,8 +89,18 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 
 	router.Handle("/assets/*", http.StripPrefix("/assets/", assets.Handler()))
 	router.Group(func(authenticated chi.Router) {
-		authenticated.Use(webmiddleware.Authentication(dependencies.Authentication, dependencies.SecureCookies))
+		authenticated.Use(webmiddleware.Authentication(dependencies.Sessions, dependencies.SecureCookies))
 		authenticated.Get("/", rootHandler(brand, dependencies.Authentication))
+		authenticated.Get("/auth/login", authenticationHandler.Login)
+		authenticated.Get("/auth/oidc", authenticationHandler.BeginFor("oidc"))
+		authenticated.Get("/auth/discord", authenticationHandler.BeginFor("discord"))
+		authenticated.Get("/auth/callback", authenticationHandler.CallbackFor("oidc"))
+		authenticated.Get("/auth/discord/callback", authenticationHandler.CallbackFor("discord"))
+		authenticated.Route("/account", func(account chi.Router) {
+			account.Use(handler.RequireAuthentication)
+			account.Post("/link/oidc", authenticationHandler.LinkFor("oidc"))
+			account.Post("/link/discord", authenticationHandler.LinkFor("discord"))
+		})
 		if dependencies.Discovery != nil {
 			authenticated.Route("/games", func(games chi.Router) {
 				games.Use(handler.RequireAuthentication)
@@ -131,9 +147,6 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 			})
 		}
 	})
-	router.Get("/auth/login", authenticationHandler.Login)
-	router.Get("/auth/oidc", authenticationHandler.BeginLogin)
-	router.Get("/auth/callback", authenticationHandler.Callback)
 	router.Post("/auth/logout", authenticationHandler.Logout)
 	router.Get("/ui/patterns/empty", componentHandler(components.EmptyState(brand)))
 	router.Get("/ui/patterns/error", componentHandler(components.ErrorState()))
@@ -143,13 +156,17 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 	return router
 }
 
-func rootHandler(brand branding.Brand, authentication Authentication) http.HandlerFunc {
+func rootHandler(brand branding.Brand, authentication handler.Authentication) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if _, ok := webmiddleware.CurrentUser(r.Context()); ok {
 			http.Redirect(w, r, "/game-requests", http.StatusSeeOther)
 			return
 		}
-		componentHandler(pages.Login(brand, authentication != nil && authentication.Available())).ServeHTTP(w, r)
+		var providers []auth.ProviderAvailability
+		if authentication != nil {
+			providers = authentication.Providers()
+		}
+		componentHandler(pages.Login(brand, providers)).ServeHTTP(w, r)
 	}
 }
 

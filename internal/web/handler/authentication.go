@@ -4,108 +4,200 @@ package handler
 import (
 	"bytes"
 	"context"
-	"crypto/subtle"
+	"crypto/rand"
+	"encoding/base64"
 	"errors"
 	"net/http"
 	"time"
 
 	"github.com/a-h/templ"
 	"github.com/convention-x-treme/lansurfer/internal/auth"
-	"github.com/convention-x-treme/lansurfer/internal/user"
 	"github.com/convention-x-treme/lansurfer/internal/web/branding"
 	webmiddleware "github.com/convention-x-treme/lansurfer/internal/web/middleware"
 	"github.com/convention-x-treme/lansurfer/internal/web/pages"
 )
 
 const (
-	loginFlowLifetime = 10 * time.Minute
-	stateCookieName   = "lansurfer_oidc_state"
-	nonceCookieName   = "lansurfer_oidc_nonce"
-	pkceCookieName    = "lansurfer_oidc_pkce"
-	callbackPath      = "/auth/callback"
+	browserBindingCookieName = "lansurfer_auth_binding"
+	browserBindingLifetime   = 30 * time.Minute
+	browserBindingBytes      = 32
+	resolveQueryParam        = "resolve"
 )
 
+// Authentication starts and completes provider-agnostic OAuth flows. It is
+// satisfied by *auth.OAuthService.
 type Authentication interface {
 	Available() bool
-	BeginLogin() (auth.LoginFlow, error)
-	CompleteLogin(context.Context, string, string, string) (user.User, auth.BrowserSession, error)
+	Providers() []auth.ProviderAvailability
+	Begin(context.Context, auth.OAuthStartInput) (auth.OAuthStart, error)
+	Complete(context.Context, auth.OAuthCompletion) (auth.OAuthResult, error)
+}
+
+// Sessions revokes the browser session on logout. It is satisfied by
+// *auth.SessionService; session resolution for request authentication is a
+// separate narrow interface consumed directly by web/middleware.
+type Sessions interface {
 	Logout(context.Context, string) error
 }
 
 type AuthenticationHandler struct {
 	authentication Authentication
+	sessions       Sessions
 	brand          branding.Brand
 	secureCookies  bool
 }
 
-func NewAuthentication(authentication Authentication, brand branding.Brand, secureCookies bool) *AuthenticationHandler {
-	return &AuthenticationHandler{authentication: authentication, brand: brand, secureCookies: secureCookies}
+func NewAuthentication(authentication Authentication, sessions Sessions, brand branding.Brand, secureCookies bool) *AuthenticationHandler {
+	return &AuthenticationHandler{authentication: authentication, sessions: sessions, brand: brand, secureCookies: secureCookies}
 }
 
 func (h *AuthenticationHandler) Login(w http.ResponseWriter, r *http.Request) {
-	render(w, r, http.StatusOK, pages.Login(h.brand, h.authentication != nil && h.authentication.Available()))
+	render(w, r, http.StatusOK, pages.Login(h.brand, h.providers()))
 }
 
-func (h *AuthenticationHandler) BeginLogin(w http.ResponseWriter, r *http.Request) {
-	if h.authentication == nil || !h.authentication.Available() {
-		h.renderError(w, r, http.StatusServiceUnavailable, "Login is not configured for this LANsurfer instance.")
-		return
+// BeginFor starts a normal login (or, with a resolve query parameter, an
+// existing-account proof) against one fixed, explicitly configured provider.
+func (h *AuthenticationHandler) BeginFor(providerKind string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if h.authentication == nil || !h.authentication.Available() {
+			h.renderError(w, r, http.StatusServiceUnavailable, "Login is not configured for this LANsurfer instance.")
+			return
+		}
+		if _, ok := webmiddleware.CurrentUser(r.Context()); ok {
+			http.Redirect(w, r, "/account", http.StatusSeeOther)
+			return
+		}
+		binding, err := h.ensureBrowserBinding(w, r)
+		if err != nil {
+			webmiddleware.LogError(r, "issue browser-binding cookie", err)
+			h.renderError(w, r, http.StatusInternalServerError, "Login could not be started. Please try again.")
+			return
+		}
+		input := auth.OAuthStartInput{
+			ProviderKind:   providerKind,
+			Operation:      auth.FlowLogin,
+			BrowserBinding: binding,
+		}
+		if resolve := r.URL.Query().Get(resolveQueryParam); resolve != "" {
+			input.Operation = auth.FlowResolution
+			input.ParentFlowID = resolve
+		}
+		start, err := h.authentication.Begin(r.Context(), input)
+		if err != nil {
+			webmiddleware.LogError(r, "start OAuth flow", err)
+			h.renderError(w, r, http.StatusInternalServerError, "Login could not be started. Please try again.")
+			return
+		}
+		http.Redirect(w, r, start.AuthorizationURL, http.StatusFound)
 	}
-	flow, err := h.authentication.BeginLogin()
-	if err != nil {
-		webmiddleware.LogError(r, "start OIDC login", err)
-		h.renderError(w, r, http.StatusInternalServerError, "Login could not be started. Please try again.")
-		return
-	}
-	h.setFlowCookie(w, stateCookieName, flow.State)
-	h.setFlowCookie(w, nonceCookieName, flow.Nonce)
-	h.setFlowCookie(w, pkceCookieName, flow.PKCEVerifier)
-	http.Redirect(w, r, flow.AuthorizationURL, http.StatusFound)
 }
 
-func (h *AuthenticationHandler) Callback(w http.ResponseWriter, r *http.Request) {
-	state, stateErr := r.Cookie(stateCookieName)
-	nonce, nonceErr := r.Cookie(nonceCookieName)
-	verifier, verifierErr := r.Cookie(pkceCookieName)
-	h.clearFlowCookies(w)
-	if h.authentication == nil || !h.authentication.Available() {
-		h.renderError(w, r, http.StatusServiceUnavailable, "Login is not configured for this LANsurfer instance.")
-		return
+// LinkFor starts an explicit account-linking flow for the current signed-in
+// user against one fixed provider. The route this is mounted on requires
+// authentication and CSRF protection (both applied by the composition root).
+func (h *AuthenticationHandler) LinkFor(providerKind string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		account, ok := webmiddleware.CurrentUser(r.Context())
+		if !ok {
+			http.Error(w, "authentication required", http.StatusUnauthorized)
+			return
+		}
+		if h.authentication == nil || !h.authentication.Available() {
+			h.renderError(w, r, http.StatusServiceUnavailable, "Login is not configured for this LANsurfer instance.")
+			return
+		}
+		binding, err := h.ensureBrowserBinding(w, r)
+		if err != nil {
+			webmiddleware.LogError(r, "issue browser-binding cookie", err)
+			http.Redirect(w, r, "/account?link_error=1", http.StatusSeeOther)
+			return
+		}
+		start, err := h.authentication.Begin(r.Context(), auth.OAuthStartInput{
+			ProviderKind: providerKind, Operation: auth.FlowLink,
+			BrowserBinding: binding, InitiatingUserID: account.ID,
+		})
+		if err != nil {
+			webmiddleware.LogError(r, "start account link flow", err)
+			http.Redirect(w, r, "/account?link_error=1", http.StatusSeeOther)
+			return
+		}
+		http.Redirect(w, r, start.AuthorizationURL, http.StatusFound)
 	}
+}
 
-	if r.URL.Query().Get("error") != "" {
-		h.renderError(w, r, http.StatusUnauthorized, "The identity provider did not complete login.")
+// CallbackFor completes a login, existing-account-proof, or account-link
+// flow against one fixed provider, whichever operation the persisted flow
+// row was created for.
+func (h *AuthenticationHandler) CallbackFor(providerKind string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if h.authentication == nil || !h.authentication.Available() {
+			h.renderError(w, r, http.StatusServiceUnavailable, "Login is not configured for this LANsurfer instance.")
+			return
+		}
+		if r.URL.Query().Get("error") != "" {
+			h.renderError(w, r, http.StatusUnauthorized, "The identity provider did not complete login.")
+			return
+		}
+		binding, ok := h.browserBinding(r)
+		currentUser, signedIn := webmiddleware.CurrentUser(r.Context())
+		if !ok {
+			h.renderError(w, r, http.StatusBadRequest, "The login attempt expired or could not be verified. Please start again.")
+			return
+		}
+		completion := auth.OAuthCompletion{
+			ProviderKind: providerKind, State: r.URL.Query().Get("state"), BrowserBinding: binding, Code: r.URL.Query().Get("code"),
+		}
+		if signedIn {
+			completion.CurrentUserID = currentUser.ID
+		}
+		result, err := h.authentication.Complete(r.Context(), completion)
+		if err != nil {
+			h.handleCallbackError(w, r, err, signedIn)
+			return
+		}
+
+		switch {
+		case result.Pending.ID != "":
+			http.Redirect(w, r, "/onboarding/"+result.Pending.ID, http.StatusSeeOther)
+		case result.Operation == auth.FlowLink:
+			http.Redirect(w, r, "/account", http.StatusSeeOther)
+		default: // FlowLogin or FlowResolution: a normal session was created.
+			http.SetCookie(w, webmiddleware.SessionCookie(result.Session.Token, result.Session.ExpiresAt, h.secureCookies))
+			http.Redirect(w, r, "/game-requests", http.StatusSeeOther)
+		}
+	}
+}
+
+func (h *AuthenticationHandler) handleCallbackError(w http.ResponseWriter, r *http.Request, err error, signedIn bool) {
+	if (errors.Is(err, auth.ErrIdentityConflict) || errors.Is(err, auth.ErrProviderAlreadyLinked)) && signedIn {
+		http.Redirect(w, r, "/account?link_error=1", http.StatusSeeOther)
 		return
 	}
-	returnedState := r.URL.Query().Get("state")
-	if stateErr != nil || nonceErr != nil || verifierErr != nil || returnedState == "" ||
-		subtle.ConstantTimeCompare([]byte(state.Value), []byte(returnedState)) != 1 {
+	if errors.Is(err, auth.ErrResolutionIdentityUnknown) {
+		h.renderError(w, r, http.StatusUnauthorized, "We could not verify that you already have a LANsurfer account. Please start again.")
+		return
+	}
+	if errors.Is(err, auth.ErrInvalidCallback) || errors.Is(err, auth.ErrInvalidProfile) {
+		h.renderError(w, r, http.StatusUnauthorized, "Login could not be completed. Please start again.")
+		return
+	}
+	if isFlowValidationError(err) {
 		h.renderError(w, r, http.StatusBadRequest, "The login attempt expired or could not be verified. Please start again.")
 		return
 	}
+	webmiddleware.LogError(r, "complete OAuth flow", err)
+	h.renderError(w, r, http.StatusInternalServerError, "Login could not be completed. Please try again.")
+}
 
-	_, session, err := h.authentication.CompleteLogin(
-		r.Context(),
-		r.URL.Query().Get("code"),
-		verifier.Value,
-		nonce.Value,
-	)
-	if err != nil {
-		if errors.Is(err, auth.ErrInvalidCallback) || errors.Is(err, auth.ErrInvalidProfile) {
-			h.renderError(w, r, http.StatusUnauthorized, "Login could not be completed. Please start again.")
-			return
-		}
-		webmiddleware.LogError(r, "complete OIDC login", err)
-		h.renderError(w, r, http.StatusInternalServerError, "Login could not be completed. Please try again.")
-		return
-	}
-	http.SetCookie(w, webmiddleware.SessionCookie(session.Token, session.ExpiresAt, h.secureCookies))
-	http.Redirect(w, r, "/game-requests", http.StatusSeeOther)
+func isFlowValidationError(err error) bool {
+	return errors.Is(err, auth.ErrFlowNotFound) || errors.Is(err, auth.ErrFlowExpired) || errors.Is(err, auth.ErrFlowConsumed) ||
+		errors.Is(err, auth.ErrFlowBrowser) || errors.Is(err, auth.ErrFlowProvider) || errors.Is(err, auth.ErrFlowOperation) ||
+		errors.Is(err, auth.ErrFlowInitiatingUser)
 }
 
 func (h *AuthenticationHandler) Logout(w http.ResponseWriter, r *http.Request) {
-	if cookie, err := r.Cookie(webmiddleware.SessionCookieName); err == nil && h.authentication != nil {
-		if err := h.authentication.Logout(r.Context(), cookie.Value); err != nil {
+	if cookie, err := r.Cookie(webmiddleware.SessionCookieName); err == nil && h.sessions != nil {
+		if err := h.sessions.Logout(r.Context(), cookie.Value); err != nil {
 			webmiddleware.LogError(r, "revoke authentication session", err)
 			h.renderError(w, r, http.StatusInternalServerError, "Logout could not be completed. Please try again.")
 			return
@@ -115,35 +207,50 @@ func (h *AuthenticationHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
-func (h *AuthenticationHandler) setFlowCookie(w http.ResponseWriter, name, value string) {
-	http.SetCookie(w, &http.Cookie{
-		Name:     name,
-		Value:    value,
-		Path:     callbackPath,
-		Expires:  time.Now().Add(loginFlowLifetime),
-		MaxAge:   int(loginFlowLifetime.Seconds()),
-		HttpOnly: true,
-		Secure:   h.secureCookies,
-		SameSite: http.SameSiteLaxMode,
-	})
+func (h *AuthenticationHandler) providers() []auth.ProviderAvailability {
+	if h.authentication == nil {
+		return nil
+	}
+	return h.authentication.Providers()
 }
 
-func (h *AuthenticationHandler) clearFlowCookies(w http.ResponseWriter) {
-	for _, name := range []string{stateCookieName, nonceCookieName, pkceCookieName} {
-		http.SetCookie(w, &http.Cookie{
-			Name:     name,
-			Path:     callbackPath,
-			Expires:  time.Unix(1, 0),
-			MaxAge:   -1,
-			HttpOnly: true,
-			Secure:   h.secureCookies,
-			SameSite: http.SameSiteLaxMode,
-		})
+// ensureBrowserBinding returns the browser-binding secret already on the
+// request, or issues a new one. The same value is reused across concurrent
+// tabs/flows from one browser so a resolution flow started from the
+// onboarding page can still reach the original pending identity.
+func (h *AuthenticationHandler) ensureBrowserBinding(w http.ResponseWriter, r *http.Request) (string, error) {
+	if value, ok := h.browserBinding(r); ok {
+		return value, nil
 	}
+	value, err := randomBrowserBinding()
+	if err != nil {
+		return "", err
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name: browserBindingCookieName, Value: value, Path: "/",
+		MaxAge: int(browserBindingLifetime.Seconds()), HttpOnly: true, Secure: h.secureCookies, SameSite: http.SameSiteLaxMode,
+	})
+	return value, nil
+}
+
+func (h *AuthenticationHandler) browserBinding(r *http.Request) (string, bool) {
+	cookie, err := r.Cookie(browserBindingCookieName)
+	if err != nil || cookie.Value == "" {
+		return "", false
+	}
+	return cookie.Value, true
+}
+
+func randomBrowserBinding() (string, error) {
+	value := make([]byte, browserBindingBytes)
+	if _, err := rand.Read(value); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(value), nil
 }
 
 func (h *AuthenticationHandler) renderError(w http.ResponseWriter, r *http.Request, status int, message string) {
-	render(w, r, status, pages.AuthenticationError(h.brand, message, h.authentication != nil && h.authentication.Available()))
+	render(w, r, status, pages.AuthenticationError(h.brand, message, h.providers()))
 }
 
 func render(w http.ResponseWriter, r *http.Request, status int, component templ.Component) {
