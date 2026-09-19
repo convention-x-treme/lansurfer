@@ -110,6 +110,47 @@ func TestAuthenticationPersistence(t *testing.T) {
 	}
 }
 
+// A Game Nick rename claims the new spelling under the same case-insensitive
+// uniqueness invariant as the initial claim, and immediately frees the old
+// one for any other player — a pure rename does not reserve history.
+func TestGameNickRenameEnforcesUniquenessAndFreesOldNick(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+	users := user.NewService(userpostgres.NewStore(pool))
+
+	renamer, err := users.Register(t.Context(), "NightOtter")
+	if err != nil {
+		t.Fatalf("register renamer: %v", err)
+	}
+	other, err := users.Register(t.Context(), "OtherPlayer")
+	if err != nil {
+		t.Fatalf("register other player: %v", err)
+	}
+
+	if _, err := users.RenameGameNick(t.Context(), other.ID, "nightotter"); !errors.Is(err, user.ErrGameNickTaken) {
+		t.Fatalf("case-insensitive collision error = %v, want ErrGameNickTaken", err)
+	}
+
+	renamed, err := users.RenameGameNick(t.Context(), renamer.ID, "DaytimeOtter")
+	if err != nil {
+		t.Fatalf("rename: %v", err)
+	}
+	if renamed.GameNick != "DaytimeOtter" {
+		t.Fatalf("renamed.GameNick = %q, want DaytimeOtter", renamed.GameNick)
+	}
+
+	// The old nick, exact case, must be immediately reusable by anyone.
+	reclaimed, err := users.RenameGameNick(t.Context(), other.ID, "NightOtter")
+	if err != nil {
+		t.Fatalf("reclaim freed nick: %v", err)
+	}
+	if reclaimed.GameNick != "NightOtter" {
+		t.Fatalf("reclaimed.GameNick = %q, want NightOtter", reclaimed.GameNick)
+	}
+}
+
 func TestPersistentAuthenticationFlows(t *testing.T) {
 	pool := newTestPool(t)
 	if err := Migrate(t.Context(), pool, testLogger()); err != nil {

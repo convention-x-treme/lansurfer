@@ -156,6 +156,63 @@ func TestAccountRegistrationConcurrentIdentityClaimHasOneWinner(t *testing.T) {
 	}
 }
 
+// Unlinking a player's last two identities at once must never leave zero
+// identities linked. The persistence layer, not the web UI (which never
+// offers an unlink control for a player's last identity), is what actually
+// protects this invariant against a race.
+func TestUnlinkIdentityRaceLeavesAtLeastOneLinked(t *testing.T) {
+	pool := registrationTestPool(t)
+	identities := authpostgres.NewIdentityStore(pool)
+	var userID string
+	if err := pool.QueryRow(t.Context(), `INSERT INTO users (game_nick) VALUES ('NightOtter') RETURNING id::text`).Scan(&userID); err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+	oidc, err := identities.Create(t.Context(), auth.Identity{UserID: userID, ProviderKind: "oidc", ProviderKey: "https://issuer.example", Subject: "subject-1"})
+	if err != nil {
+		t.Fatalf("create oidc identity: %v", err)
+	}
+	discord, err := identities.Create(t.Context(), auth.Identity{UserID: userID, ProviderKind: "discord", ProviderKey: "discord", Subject: "subject-2"})
+	if err != nil {
+		t.Fatalf("create discord identity: %v", err)
+	}
+
+	targets := []string{oidc.ID, discord.ID}
+	start := make(chan struct{})
+	results := make([]error, 2)
+	var wait sync.WaitGroup
+	for index := range targets {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			<-start
+			results[index] = identities.Unlink(context.Background(), userID, targets[index])
+		}()
+	}
+	close(start)
+	wait.Wait()
+	winners, conflicts := 0, 0
+	for _, err := range results {
+		if err == nil {
+			winners++
+		} else if errors.Is(err, auth.ErrIdentityNotFound) {
+			conflicts++
+		} else {
+			t.Fatalf("unexpected unlink error: %v", err)
+		}
+	}
+	if winners != 1 || conflicts != 1 {
+		t.Fatalf("winners = %d, conflicts = %d, want 1 and 1", winners, conflicts)
+	}
+
+	remaining, err := identities.ListByUser(t.Context(), userID)
+	if err != nil {
+		t.Fatalf("list remaining identities: %v", err)
+	}
+	if len(remaining) != 1 {
+		t.Fatalf("remaining identities = %d, want exactly 1 (never zero)", len(remaining))
+	}
+}
+
 func registrationTestPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	databaseURL := os.Getenv("LANSURFER_TEST_DATABASE_URL")

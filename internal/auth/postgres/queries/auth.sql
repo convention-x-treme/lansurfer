@@ -27,13 +27,19 @@ SET display_name = sqlc.narg(display_name), email = sqlc.narg(email)
 WHERE provider_kind = sqlc.arg(provider_kind) AND provider_key = sqlc.arg(provider_key) AND subject = sqlc.arg(subject);
 
 -- name: DeleteIdentityUnlessLast :execrows
-DELETE FROM user_identities identity
-WHERE identity.id = sqlc.arg(id)::uuid
-  AND identity.user_id = sqlc.arg(user_id)::uuid
-  AND EXISTS (
-      SELECT 1 FROM user_identities other
-      WHERE other.user_id = identity.user_id AND other.id <> identity.id
-  );
+-- Locks every identity row for this user before deciding whether the target
+-- is safe to remove. A plain EXISTS-guarded DELETE would let two concurrent
+-- unlinks of a user's last two identities both see "another identity exists"
+-- under READ COMMITTED and both succeed, leaving zero linked; the FOR UPDATE
+-- lock instead forces the second unlink to wait, then re-evaluate against the
+-- first one's outcome.
+WITH locked AS (
+    SELECT id FROM user_identities WHERE user_id = sqlc.arg(user_id)::uuid FOR UPDATE
+)
+DELETE FROM user_identities
+WHERE id = sqlc.arg(id)::uuid
+  AND user_id = sqlc.arg(user_id)::uuid
+  AND (SELECT count(*) FROM locked) > 1;
 
 -- name: CreateSession :exec
 INSERT INTO auth_sessions (id_hash, user_id, expires_at)

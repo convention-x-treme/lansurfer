@@ -424,13 +424,13 @@ func (q *Queries) DeleteExpiredAuthFlows(ctx context.Context, now pgtype.Timesta
 }
 
 const deleteIdentityUnlessLast = `-- name: DeleteIdentityUnlessLast :execrows
-DELETE FROM user_identities identity
-WHERE identity.id = $1::uuid
-  AND identity.user_id = $2::uuid
-  AND EXISTS (
-      SELECT 1 FROM user_identities other
-      WHERE other.user_id = identity.user_id AND other.id <> identity.id
-  )
+WITH locked AS (
+    SELECT id FROM user_identities WHERE user_id = $2::uuid FOR UPDATE
+)
+DELETE FROM user_identities
+WHERE id = $1::uuid
+  AND user_id = $2::uuid
+  AND (SELECT count(*) FROM locked) > 1
 `
 
 type DeleteIdentityUnlessLastParams struct {
@@ -438,6 +438,12 @@ type DeleteIdentityUnlessLastParams struct {
 	UserID pgtype.UUID
 }
 
+// Locks every identity row for this user before deciding whether the target
+// is safe to remove. A plain EXISTS-guarded DELETE would let two concurrent
+// unlinks of a user's last two identities both see "another identity exists"
+// under READ COMMITTED and both succeed, leaving zero linked; the FOR UPDATE
+// lock instead forces the second unlink to wait, then re-evaluate against the
+// first one's outcome.
 func (q *Queries) DeleteIdentityUnlessLast(ctx context.Context, arg DeleteIdentityUnlessLastParams) (int64, error) {
 	result, err := q.db.Exec(ctx, deleteIdentityUnlessLast, arg.ID, arg.UserID)
 	if err != nil {
