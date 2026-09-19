@@ -3596,7 +3596,7 @@ func TestGameRequestActivityDiscoveryAndTrending(t *testing.T) {
 	if detail.MemberCount != 1 {
 		t.Fatalf("member count after leave = %d, want 1", detail.MemberCount)
 	}
-	if detail.Activity[1].ActorName != "Activity Guest" || detail.Activity[1].ActorID != guest.ID {
+	if detail.Activity[1].ActorGameNick != "Activity Guest" || detail.Activity[1].ActorID != guest.ID {
 		t.Fatalf("leave entry = %#v", detail.Activity[1])
 	}
 
