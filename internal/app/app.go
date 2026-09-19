@@ -53,10 +53,11 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	if cfg.OIDC != nil {
 		discoveryCtx, cancelDiscovery := context.WithTimeout(ctx, oidcDiscoveryTimeout)
 		oidcProvider, err = auth.DiscoverOIDCProvider(discoveryCtx, auth.OIDCConfig{
-			IssuerURL:    cfg.OIDC.Issuer,
-			ClientID:     cfg.OIDC.ClientID,
-			ClientSecret: cfg.OIDC.ClientSecret,
-			RedirectURL:  cfg.BaseURL + "/auth/callback",
+			IssuerURL:     cfg.OIDC.Issuer,
+			ClientID:      cfg.OIDC.ClientID,
+			ClientSecret:  cfg.OIDC.ClientSecret,
+			RedirectURL:   cfg.BaseURL + "/auth/callback",
+			GameNickClaim: cfg.OIDC.GameNickClaim,
 		})
 		cancelDiscovery()
 		if err != nil {

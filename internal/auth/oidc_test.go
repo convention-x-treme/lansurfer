@@ -37,3 +37,25 @@ func TestOIDCAuthorizationURLIncludesStateNonceAndPKCE(t *testing.T) {
 		t.Fatalf("authorization query = %v", query)
 	}
 }
+
+func TestOIDCGameNickSuggestionUsesConfiguredClaimThenFallbacks(t *testing.T) {
+	tests := []struct {
+		name        string
+		customClaim string
+		claims      map[string]any
+		want        string
+	}{
+		{name: "custom claim", customClaim: "nickname", claims: map[string]any{"nickname": " NightOtter ", "preferred_username": "fallback"}, want: "NightOtter"},
+		{name: "non-string custom", customClaim: "nickname", claims: map[string]any{"nickname": 42, "preferred_username": "NightOtter"}, want: "NightOtter"},
+		{name: "invalid custom", customClaim: "nickname", claims: map[string]any{"nickname": "bad\u200bnick", "preferred_username": "NightOtter"}, want: "NightOtter"},
+		{name: "name fallback", customClaim: "nickname", claims: map[string]any{"name": "Alice Player"}, want: "Alice Player"},
+		{name: "invalid candidates", customClaim: "nickname", claims: map[string]any{"nickname": "", "preferred_username": "bad\x00nick", "name": strings.Repeat("x", 33)}, want: ""},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := oidcGameNickSuggestion(test.claims, test.customClaim); got != test.want {
+				t.Fatalf("oidcGameNickSuggestion() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}

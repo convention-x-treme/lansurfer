@@ -36,13 +36,14 @@ var (
 )
 
 type Profile struct {
-	Provider          string
-	ProviderKind      string
-	ProviderKey       string
-	Subject           string
-	Name              string
-	PreferredUsername string
-	Email             string
+	Provider           string
+	ProviderKind       string
+	ProviderKey        string
+	Subject            string
+	Name               string
+	PreferredUsername  string
+	Email              string
+	GameNickSuggestion string
 }
 
 type Identity struct {
