@@ -25,7 +25,11 @@ type SessionStore struct {
 }
 
 func NewIdentityStore(pool *pgxpool.Pool) *IdentityStore {
-	return &IdentityStore{queries: sqlcgen.New(pool)}
+	return NewIdentityStoreDB(pool)
+}
+
+func NewIdentityStoreDB(db sqlcgen.DBTX) *IdentityStore {
+	return &IdentityStore{queries: sqlcgen.New(db)}
 }
 
 func NewSessionStore(pool *pgxpool.Pool) *SessionStore {

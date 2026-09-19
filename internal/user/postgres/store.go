@@ -19,7 +19,11 @@ type Store struct {
 }
 
 func NewStore(pool *pgxpool.Pool) *Store {
-	return &Store{queries: sqlcgen.New(pool)}
+	return NewStoreDB(pool)
+}
+
+func NewStoreDB(db sqlcgen.DBTX) *Store {
+	return &Store{queries: sqlcgen.New(db)}
 }
 
 func (s *Store) Create(ctx context.Context, gameNick string, role user.Role) (user.User, error) {

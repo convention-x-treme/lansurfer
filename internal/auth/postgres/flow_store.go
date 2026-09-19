@@ -20,8 +20,10 @@ type FlowStore struct {
 }
 
 func NewFlowStore(pool *pgxpool.Pool) *FlowStore {
-	return &FlowStore{queries: sqlcgen.New(pool)}
+	return NewFlowStoreDB(pool)
 }
+
+func NewFlowStoreDB(db sqlcgen.DBTX) *FlowStore { return &FlowStore{queries: sqlcgen.New(db)} }
 
 func (s *FlowStore) CreateOAuth(ctx context.Context, flow auth.OAuthFlow) (auth.OAuthFlow, error) {
 	if err := s.cleanup(ctx, time.Now()); err != nil {
