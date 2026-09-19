@@ -414,6 +414,18 @@
     padding-bottom: 0.875rem;
   }
 
+  /* The scope chips are one exclusive choice, so they are a fieldset for the
+     grouping semantics and laid out as a plain row of chips. */
+  .filter-scope {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem;
+    border: 0;
+    margin: 0;
+    padding: 0;
+  }
+
   /* A filter toggle is a control, so it carries the same minimum target size
      as the buttons beside it and shows focus on the whole label. */
   .filter-toggle {

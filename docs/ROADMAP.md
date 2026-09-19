@@ -125,10 +125,10 @@ Align the prototype with the focused 1.0 deployment model so the installation it
 Stable 1.0 includes:
 
 - search by Game name and aliases
-- followed/My Games discovery
-- open-capacity/free-places filtering
+- an exclusive audience scope: All, My Games, Joined, Created by me
+- open-capacity/free-places filtering, which combines with any scope
 
-Additional filters proposed in issue #12 are not automatically 1.0 requirements unless explicitly approved later.
+The Joined and Created by me scopes were approved from issue #12 after the initial Track A delivery. Further filters proposed there are not automatically 1.0 requirements unless explicitly approved later.
 
 ### Trending
 

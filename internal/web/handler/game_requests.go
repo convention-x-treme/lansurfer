@@ -113,7 +113,7 @@ func discoveryFilter(r *http.Request) requestquery.Filter {
 	query := r.URL.Query()
 	return requestquery.Filter{
 		Search:         strings.TrimSpace(query.Get("q")),
-		FollowedOnly:   query.Get("followed") == "1",
+		Scope:          requestquery.ParseScope(query.Get("scope")),
 		OpenPlacesOnly: query.Get("open_places") == "1",
 	}
 }
