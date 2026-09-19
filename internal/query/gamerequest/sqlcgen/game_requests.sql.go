@@ -138,18 +138,20 @@ WHERE gr.status = 'open'
             AND strpos(lower(ga.alias), lower($2::text)) > 0
       )
   )
-  AND (NOT $3::boolean OR gs.user_id IS NOT NULL)
+  AND ($3::text <> 'my-games' OR gs.user_id IS NOT NULL)
+  AND ($3::text <> 'mine' OR gr.creator_id = $1::uuid)
 GROUP BY gr.id, g.id, g.name, g.slug, enrichment.game_id, u.display_name
-HAVING NOT $4::boolean
+HAVING ($3::text <> 'joined' OR bool_or(m.user_id = $1::uuid))
+   AND (NOT $4::boolean
     OR gr.max_players IS NULL
-    OR count(m.user_id) < gr.max_players
+    OR count(m.user_id) < gr.max_players)
 ORDER BY gr.starts_at, gr.created_at, gr.id
 `
 
 type ListActiveGameRequestsParams struct {
 	ViewerID       pgtype.UUID
 	Search         string
-	FollowedOnly   bool
+	Scope          string
 	OpenPlacesOnly bool
 }
 
@@ -179,7 +181,7 @@ func (q *Queries) ListActiveGameRequests(ctx context.Context, arg ListActiveGame
 	rows, err := q.db.Query(ctx, listActiveGameRequests,
 		arg.ViewerID,
 		arg.Search,
-		arg.FollowedOnly,
+		arg.Scope,
 		arg.OpenPlacesOnly,
 	)
 	if err != nil {

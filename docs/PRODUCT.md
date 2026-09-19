@@ -289,10 +289,12 @@ The primary UI should show Game, player count/capacity, start time, short descri
 Stable 1.0 includes practical discovery without requiring a tag taxonomy:
 
 - search by Game name and aliases
-- a followed/My Games view or filter
+- one **audience scope**, chosen from **All**, **My Games** (Games the player follows), **Joined**, and **Created by me**
 - an open-capacity/free-places filter
 
-Additional filters are not automatically part of 1.0 merely because they appear in an issue proposal.
+The scope is a single exclusive choice rather than four combinable toggles, because asking for requests a player created *and* requests for Games they follow at the same time has no useful answer. Free places is a separate toggle, since it narrows capacity inside any scope.
+
+Additional filters beyond these are not automatically part of 1.0 merely because they appear in an issue proposal.
 
 ### Trending
 

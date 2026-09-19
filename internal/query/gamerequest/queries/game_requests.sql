@@ -31,11 +31,13 @@ WHERE gr.status = 'open'
             AND strpos(lower(ga.alias), lower(sqlc.arg(search)::text)) > 0
       )
   )
-  AND (NOT sqlc.arg(followed_only)::boolean OR gs.user_id IS NOT NULL)
+  AND (sqlc.arg(scope)::text <> 'my-games' OR gs.user_id IS NOT NULL)
+  AND (sqlc.arg(scope)::text <> 'mine' OR gr.creator_id = sqlc.arg(viewer_id)::uuid)
 GROUP BY gr.id, g.id, g.name, g.slug, enrichment.game_id, u.display_name
-HAVING NOT sqlc.arg(open_places_only)::boolean
+HAVING (sqlc.arg(scope)::text <> 'joined' OR bool_or(m.user_id = sqlc.arg(viewer_id)::uuid))
+   AND (NOT sqlc.arg(open_places_only)::boolean
     OR gr.max_players IS NULL
-    OR count(m.user_id) < gr.max_players
+    OR count(m.user_id) < gr.max_players)
 ORDER BY gr.starts_at, gr.created_at, gr.id;
 
 -- name: GetGameRequest :one

@@ -73,7 +73,12 @@ templ RequestFilters(filter requestquery.Filter) {
 	>
 		<label class="sr-only" for="request-search">Search Game Requests by game name or alias</label>
 		<input id="request-search" class="input input-sm request-search" type="search" name="q" value={ filter.Search } maxlength="120" placeholder="Search by name or alias, e.g. wc3" autocomplete="off"/>
-		<label class="filter-toggle"><input class="checkbox checkbox-sm" type="checkbox" name="followed" value="1" checked?={ filter.FollowedOnly }/><span>My Games</span></label>
+		<fieldset class="filter-scope">
+			<legend class="sr-only">Show which Game Requests</legend>
+			for _, option := range scopeOptions() {
+				<label class="filter-toggle"><input class="radio radio-sm" type="radio" name="scope" value={ string(option.scope) } checked?={ filter.Scope == option.scope }/><span>{ option.label }</span></label>
+			}
+		</fieldset>
 		<label class="filter-toggle"><input class="checkbox checkbox-sm" type="checkbox" name="open_places" value="1" checked?={ filter.OpenPlacesOnly }/><span>Free places</span></label>
 		<button class="btn btn-quiet btn-sm" type="submit">Filter</button>
 	</form>
@@ -892,6 +897,25 @@ func openRequestsLabel(count int, filter requestquery.Filter) string {
 	return fmt.Sprintf("%d open requests", count)
 }
 
+// The scope chips are one exclusive choice rather than four toggles: a player
+// asking for requests they created and requests for games they follow at the
+// same time has no useful answer. Free places stays a separate checkbox
+// because it narrows any of them.
+func scopeOptions() []struct {
+	scope requestquery.Scope
+	label string
+} {
+	return []struct {
+		scope requestquery.Scope
+		label string
+	}{
+		{requestquery.ScopeAll, "All"},
+		{requestquery.ScopeMyGames, "My Games"},
+		{requestquery.ScopeJoined, "Joined"},
+		{requestquery.ScopeMine, "Created by me"},
+	}
+}
+
 // filterQuery hands the active filters to app.ts so a live refresh reloads the
 // same selection the player is looking at.
 func filterQuery(filter requestquery.Filter) string {
@@ -899,8 +923,8 @@ func filterQuery(filter requestquery.Filter) string {
 	if filter.Search != "" {
 		values.Set("q", filter.Search)
 	}
-	if filter.FollowedOnly {
-		values.Set("followed", "1")
+	if filter.Scope != requestquery.ScopeAll {
+		values.Set("scope", string(filter.Scope))
 	}
 	if filter.OpenPlacesOnly {
 		values.Set("open_places", "1")

@@ -3371,9 +3371,9 @@ func TestGameRequestActivityDiscoveryAndTrending(t *testing.T) {
 	if err != nil || len(byAlias) != 1 || byAlias[0].ID != open.ID {
 		t.Fatalf("alias search = %#v, %v", byAlias, err)
 	}
-	followed, err := readStore.ListActive(t.Context(), guest.ID, gamerequestquery.Filter{FollowedOnly: true})
+	followed, err := readStore.ListActive(t.Context(), guest.ID, gamerequestquery.Filter{Scope: gamerequestquery.ScopeMyGames})
 	if err != nil || len(followed) != 1 || followed[0].ID != open.ID {
-		t.Fatalf("followed filter = %#v, %v", followed, err)
+		t.Fatalf("My Games scope = %#v, %v", followed, err)
 	}
 	withPlaces, err := readStore.ListActive(t.Context(), guest.ID, gamerequestquery.Filter{OpenPlacesOnly: true})
 	if err != nil {
@@ -3385,6 +3385,35 @@ func TestGameRequestActivityDiscoveryAndTrending(t *testing.T) {
 	if !slices.ContainsFunc(withPlaces, func(request gamerequestquery.Request) bool { return request.ID == open.ID }) {
 		t.Fatalf("open places filter dropped a request with free places: %#v", withPlaces)
 	}
+	// Joined and Created by me describe the viewer's own relationship to a
+	// request, so the same rows answer differently for two players. The host
+	// created both and is their first member; the guest has joined one and
+	// created none.
+	if err := requests.Join(t.Context(), open.ID, guest.ID); err != nil {
+		t.Fatalf("join open request: %v", err)
+	}
+	joinedByGuest, err := readStore.ListActive(t.Context(), guest.ID, gamerequestquery.Filter{Scope: gamerequestquery.ScopeJoined})
+	if err != nil || len(joinedByGuest) != 1 || joinedByGuest[0].ID != open.ID {
+		t.Fatalf("Joined scope for the guest = %#v, %v", joinedByGuest, err)
+	}
+	if mineForGuest, err := readStore.ListActive(t.Context(), guest.ID, gamerequestquery.Filter{Scope: gamerequestquery.ScopeMine}); err != nil || len(mineForGuest) != 0 {
+		t.Fatalf("Created by me scope returned requests the guest did not create: %#v, %v", mineForGuest, err)
+	}
+	mineForHost, err := readStore.ListActive(t.Context(), host.ID, gamerequestquery.Filter{Scope: gamerequestquery.ScopeMine})
+	if err != nil || len(mineForHost) != 2 {
+		t.Fatalf("Created by me scope for the host = %#v, %v", mineForHost, err)
+	}
+	// Scope narrows the audience and free places narrows capacity, so the two
+	// combine rather than overriding each other.
+	mineWithPlaces, err := readStore.ListActive(t.Context(), host.ID, gamerequestquery.Filter{Scope: gamerequestquery.ScopeMine, OpenPlacesOnly: true})
+	if err != nil || len(mineWithPlaces) != 1 || mineWithPlaces[0].ID != open.ID {
+		t.Fatalf("Created by me with free places = %#v, %v", mineWithPlaces, err)
+	}
+	// An unknown scope widens to the default view instead of returning nothing.
+	if all, err := readStore.ListActive(t.Context(), guest.ID, gamerequestquery.Filter{Scope: gamerequestquery.ParseScope("nonsense")}); err != nil || len(all) != 2 {
+		t.Fatalf("unknown scope = %#v, %v", all, err)
+	}
+
 	if _, err := readStore.ListActive(t.Context(), guest.ID, gamerequestquery.Filter{Search: strings.Repeat("x", 121)}); !errors.Is(err, gamerequestquery.ErrInvalidSearch) {
 		t.Fatalf("overlong search error = %v", err)
 	}
