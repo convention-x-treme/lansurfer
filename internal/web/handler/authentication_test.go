@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/convention-x-treme/lansurfer/internal/auth"
+	"github.com/convention-x-treme/lansurfer/internal/user"
 	"github.com/convention-x-treme/lansurfer/internal/web/branding"
 	webmiddleware "github.com/convention-x-treme/lansurfer/internal/web/middleware"
 )
@@ -98,6 +99,27 @@ func TestLinkForRejectsAnonymousRequest(t *testing.T) {
 
 	if response.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusUnauthorized)
+	}
+}
+
+// LinkFor must not answer its triggering POST with a 3xx redirect straight to
+// the external authorization URL: browsers enforce the form-action CSP
+// directive against every redirect hop chained from a form submission, so
+// that would be silently blocked. It instead completes the POST with a
+// same-origin page that navigates onward itself.
+func TestLinkForRendersRedirectPageInsteadOfHTTPRedirect(t *testing.T) {
+	authentication := &stubAuthentication{available: true, start: auth.OAuthStart{AuthorizationURL: "https://discord.example/authorize"}}
+	handler := NewAuthentication(authentication, &stubSessions{}, branding.Default(), false)
+	request := withCurrentUser(httptest.NewRequest(http.MethodPost, "/account/link/discord", nil), user.User{ID: "user-1"})
+	response := httptest.NewRecorder()
+
+	handler.LinkFor("discord")(response, request)
+
+	if response.Code != http.StatusOK || response.Result().Header.Get("Location") != "" {
+		t.Fatalf("status/location = %d, %q", response.Code, response.Result().Header.Get("Location"))
+	}
+	if !strings.Contains(response.Body.String(), authentication.start.AuthorizationURL) {
+		t.Fatalf("body does not carry the authorization URL: %q", response.Body.String())
 	}
 }
 

@@ -121,7 +121,13 @@ func (h *AuthenticationHandler) LinkFor(providerKind string) http.HandlerFunc {
 			http.Redirect(w, r, "/account?link_error=1", http.StatusSeeOther)
 			return
 		}
-		http.Redirect(w, r, start.AuthorizationURL, http.StatusFound)
+		// Not http.Redirect: this request is a form submission (CSRF requires
+		// POST), and the form-action CSP directive is enforced against every
+		// redirect hop chained from a form submission, so a raw 3xx redirect
+		// straight to the provider's external authorization URL is silently
+		// blocked by the browser. Completing the POST with a same-origin 200
+		// page that then navigates onward itself sidesteps that restriction.
+		render(w, r, http.StatusOK, pages.Redirecting(h.brand, start.AuthorizationURL))
 	}
 }
 

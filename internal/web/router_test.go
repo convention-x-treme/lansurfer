@@ -235,8 +235,11 @@ func TestAccountLinkStartBindsSignedInUserAndRedirectsToProvider(t *testing.T) {
 		Sessions:       authentication,
 	}).ServeHTTP(response, request)
 
-	if response.Code != http.StatusFound || response.Header().Get("Location") != authentication.start.AuthorizationURL {
-		t.Fatalf("status/location = %d, %q", response.Code, response.Header().Get("Location"))
+	// Not a 3xx redirect: form-action CSP is enforced against every redirect
+	// hop chained from a form submission, so this POST completes as a
+	// same-origin 200 page that itself navigates on to the provider.
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), authentication.start.AuthorizationURL) {
+		t.Fatalf("status/body = %d, %q", response.Code, response.Body.String())
 	}
 	if authentication.began.Operation != auth.FlowLink || authentication.began.InitiatingUserID != "user-1" {
 		t.Fatalf("begin input = %#v", authentication.began)

@@ -1,0 +1,28 @@
+package pages
+
+import "github.com/convention-x-treme/lansurfer/internal/web/branding"
+
+// Redirecting bridges a CSRF-protected form POST to an external OAuth
+// authorization URL. Browsers enforce the form-action CSP directive against
+// every redirect hop chained from a form submission, so answering the POST
+// with a plain HTTP redirect straight to the provider is silently blocked.
+// Completing the POST with this same-origin 200 page instead, then letting a
+// fresh top-level navigation (the meta refresh, or the fallback link for a
+// browser/extension that suppresses it) carry the browser onward, sidesteps
+// that restriction entirely: form-action never applies to it.
+templ Redirecting(brand branding.Brand, destination string) {
+	<!doctype html>
+	<html lang="en">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<meta http-equiv="refresh" content={ "0;url=" + destination }/>
+			<title>Continuing... · { brand.Name }</title>
+			<link rel="stylesheet" href={ brand.Assets.Stylesheet }/>
+		</head>
+		<body class="flex min-h-screen flex-col items-center justify-center gap-4 bg-base-100 p-6 text-center text-base-content antialiased">
+			<p>Continuing to sign in...</p>
+			<a class="btn btn-primary" href={ templ.URL(destination) }>Continue</a>
+		</body>
+	</html>
+}
