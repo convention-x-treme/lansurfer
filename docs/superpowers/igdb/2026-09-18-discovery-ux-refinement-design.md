@@ -3,7 +3,7 @@
 **Date:** 2026-09-18  
 **Status:** Approved design; implementation plan pending user review  
 **Scope:** Refinement of the existing Track C IGDB implementation in PR #36  
-**Related design:** `docs/superpowers/specs/2026-09-17-igdb-discovery-design.md`
+**Related design:** `docs/superpowers/igdb/2026-09-17-discovery-design.md`
 
 ## 1. Problem
 

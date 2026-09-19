@@ -13,6 +13,7 @@
 /output/playwright/
 __debug_bin*
 /.worktrees/
+/.superpowers/
 
 # Editors and operating systems
 .idea/

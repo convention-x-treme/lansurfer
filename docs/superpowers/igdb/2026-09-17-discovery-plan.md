@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go 1.27.1, PostgreSQL, pgx v5, sqlc 1.31.1, goose 3.28.0, chi, templ, HTMX, standard-library `net/http`, existing Taskfile workflows.
 
-**Spec:** `docs/superpowers/specs/2026-09-17-igdb-discovery-design.md`
+**Spec:** `docs/superpowers/igdb/2026-09-17-discovery-design.md`
 
 ## Global Constraints
 
