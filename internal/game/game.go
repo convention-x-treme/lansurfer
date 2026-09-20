@@ -18,13 +18,20 @@ const (
 )
 
 var (
-	ErrNotFound      = errors.New("game not found")
-	ErrAliasNotFound = errors.New("game alias not found")
-	ErrAlreadyExists = errors.New("game or alias already exists")
-	ErrInvalidName   = errors.New("invalid game name")
-	ErrInvalidSlug   = errors.New("invalid game slug")
-	ErrInvalidAlias  = errors.New("invalid game alias")
-	ErrInvalidSearch = errors.New("invalid game search")
+	ErrNotFound            = errors.New("game not found")
+	ErrAliasNotFound       = errors.New("game alias not found")
+	ErrAlreadyExists       = errors.New("game or alias already exists")
+	ErrInvalidName         = errors.New("invalid game name")
+	ErrInvalidSlug         = errors.New("invalid game slug")
+	ErrInvalidAlias        = errors.New("invalid game alias")
+	ErrInvalidSearch       = errors.New("invalid game search")
+	ErrSameGame            = errors.New("source and target game are the same")
+	ErrGameAlreadyLinked   = errors.New("game already has an IGDB link")
+	ErrIGDBNotLinked       = errors.New("game has no IGDB link")
+	ErrIGDBAlreadyLinked   = errors.New("IGDB record is linked to another game")
+	ErrConflictingIGDBLink = errors.New("games have conflicting IGDB links")
+	ErrGameHasRequests     = errors.New("game has game requests")
+	ErrGameHasFollowers    = errors.New("game has followers")
 )
 
 var slugPattern = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
@@ -35,13 +42,44 @@ type Alias struct {
 }
 
 type Game struct {
-	ID        string
-	Name      string
-	Slug      string
-	Active    bool
-	Aliases   []Alias
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID                string
+	Name              string
+	Slug              string
+	Active            bool
+	Aliases           []Alias
+	IGDBExternalID    string
+	IGDBEnriched      bool
+	GameRequestCount  int64
+	SubscriptionCount int64
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+}
+
+// AdminProviderGame is one active-generation IGDB record offered for an
+// explicit administrator link. LinkedGameID/Name expose an existing mapping
+// so the UI can route the administrator to merge instead of surfacing a
+// uniqueness error.
+type AdminProviderGame struct {
+	ExternalID       string
+	Name             string
+	GameType         string
+	PlatformNames    []string
+	FirstReleaseDate *time.Time
+	CoverImageID     string
+	LinkedGameID     string
+	LinkedGameName   string
+}
+
+// IGDBLinkConflict carries the existing owner of an IGDB identity. It still
+// matches ErrIGDBAlreadyLinked for ordinary error translation.
+type IGDBLinkConflict struct {
+	GameID   string
+	GameName string
+}
+
+func (e *IGDBLinkConflict) Error() string { return ErrIGDBAlreadyLinked.Error() }
+func (e *IGDBLinkConflict) Is(target error) bool {
+	return target == ErrIGDBAlreadyLinked
 }
 
 // SubscriptionGame is the user-facing catalog projection with the current
@@ -60,6 +98,11 @@ type Repository interface {
 	SetActive(context.Context, string, bool) error
 	AddAlias(context.Context, string, string) (Alias, error)
 	RemoveAlias(context.Context, string, string) error
+	SearchIGDB(context.Context, string) ([]AdminProviderGame, error)
+	LinkIGDB(context.Context, string, ProviderReference) error
+	UnlinkIGDB(context.Context, string) error
+	Merge(context.Context, string, string) error
+	Delete(context.Context, string) error
 }
 
 type Service struct {
@@ -168,6 +211,42 @@ func (s *Service) AddAlias(ctx context.Context, gameID, value string) (Alias, er
 
 func (s *Service) RemoveAlias(ctx context.Context, gameID, aliasID string) error {
 	return s.repository.RemoveAlias(ctx, gameID, aliasID)
+}
+
+func (s *Service) SearchIGDB(ctx context.Context, search string) ([]AdminProviderGame, error) {
+	search, err := validateSearch(search)
+	if err != nil {
+		return nil, err
+	}
+	if search == "" {
+		return []AdminProviderGame{}, nil
+	}
+	return s.repository.SearchIGDB(ctx, search)
+}
+
+func (s *Service) LinkIGDB(ctx context.Context, gameID, externalID string) error {
+	reference, err := NewProviderReference("igdb", externalID)
+	if err != nil {
+		return err
+	}
+	return s.repository.LinkIGDB(ctx, gameID, reference)
+}
+
+func (s *Service) UnlinkIGDB(ctx context.Context, gameID string) error {
+	return s.repository.UnlinkIGDB(ctx, gameID)
+}
+
+// Merge moves source into target. Argument order stays explicit throughout
+// the stack because reversing it would preserve the wrong local identity.
+func (s *Service) Merge(ctx context.Context, sourceID, targetID string) error {
+	if sourceID == targetID {
+		return ErrSameGame
+	}
+	return s.repository.Merge(ctx, sourceID, targetID)
+}
+
+func (s *Service) Delete(ctx context.Context, gameID string) error {
+	return s.repository.Delete(ctx, gameID)
 }
 
 func validateGame(name, slug string) (string, string, error) {

@@ -2,6 +2,7 @@ package pages
 
 import (
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/convention-x-treme/lansurfer/internal/game"
@@ -84,6 +85,30 @@ templ AdminGameCard(item game.Game) {
 				<input type="hidden" name="active" value="true"/><button class="btn btn-primary btn-sm" type="submit">Activate game</button>
 			}
 		</form>
+		<div class="divider my-1">Catalog identity</div>
+		<div class="flex flex-wrap items-center justify-between gap-3">
+			<div>
+				if item.IGDBExternalID == "" {
+					<p class="text-sm font-medium">Local-only</p>
+					<p class="text-xs text-base-content/65">No IGDB record linked</p>
+				} else {
+					<p class="text-sm font-medium">IGDB #{ item.IGDBExternalID }</p>
+					if item.IGDBEnriched {
+						<p class="text-xs text-base-content/65">Enrichment snapshot available</p>
+					} else {
+						<p class="text-xs text-warning">Linked without enrichment</p>
+					}
+				}
+			</div>
+			<div class="flex flex-wrap gap-2">
+				if item.IGDBExternalID == "" {
+					<a class="btn btn-quiet btn-sm" href={ "/admin/games/" + item.ID + "/igdb" }>Link IGDB</a>
+				} else {
+					<a class="btn btn-quiet btn-sm" href={ "/admin/games/" + item.ID + "/igdb" }>Manage IGDB link</a>
+				}
+				<a class="btn btn-quiet btn-sm" href={ "/admin/games/" + item.ID + "/merge" }>Merge duplicate</a>
+			</div>
+		</div>
 		<div class="divider my-1">Aliases</div>
 		<div class="flex flex-wrap gap-2">
 			for _, alias := range item.Aliases {
@@ -102,12 +127,189 @@ templ AdminGameCard(item game.Game) {
 			<input id={ "alias-" + item.ID } class="input input-bordered input-sm flex-1" name="alias" maxlength="120" placeholder="Add search alias" required/>
 			<button class="btn btn-quiet btn-sm" type="submit">Add alias</button>
 		</form>
+		<div class="divider my-1">Permanent deletion</div>
+		@AdminGameDelete(item)
 	</article>
+}
+
+templ AdminGameDelete(item game.Game) {
+	if item.GameRequestCount > 0 {
+		<div class="flex flex-wrap items-center justify-between gap-3">
+			<p class="max-w-xl text-sm text-base-content/70">This game has Game Requests and cannot be deleted. Deactivate or merge it instead.</p>
+			<button class="btn btn-danger btn-sm" type="button" disabled>Delete permanently</button>
+		</div>
+	} else if item.SubscriptionCount > 0 {
+		<div class="flex flex-wrap items-center justify-between gap-3">
+			<p class="max-w-xl text-sm text-base-content/70">This game is followed by users. Merge or remove those relationships before deleting.</p>
+			<button class="btn btn-danger btn-sm" type="button" disabled>Delete permanently</button>
+		</div>
+	} else {
+		<div class="flex flex-wrap items-center justify-between gap-3">
+			<p class="max-w-xl text-sm text-base-content/70">Unused game. Permanent deletion also removes its aliases and provider link.</p>
+			<form method="post" action={ "/admin/games/" + item.ID + "/delete" } data-confirm={ "Permanently delete " + item.Name + "? This cannot be undone." }>
+				@components.CSRFInput()
+				<button class="btn btn-danger btn-sm" type="submit">Delete permanently</button>
+			</form>
+		</div>
+	}
 }
 
 templ GameFields(name, slug string) {
 	<label class="form-control"><span class="label"><span class="label-text">Name</span></span><input class="input input-bordered w-full" name="name" value={ name } maxlength="120" required/></label>
 	<label class="form-control"><span class="label"><span class="label-text">Slug</span></span><input class="input input-bordered w-full data-text" name="slug" value={ slug } maxlength="120" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" placeholder="counter-strike-2" required/></label>
+}
+
+templ AdminGameIGDB(brand branding.Brand, navigation components.NavigationState, item game.Game, results []game.AdminProviderGame, search, formError string) {
+	@components.Layout(brand, "Manage IGDB Link", navigation) {
+		<header class="app-topbar"><a class="link count-open text-sm font-semibold no-underline" href="/admin/games">← Manage games</a></header>
+		<div class="content-page">
+			<div class="max-w-4xl">
+				<h1 class="app-title">IGDB link for { item.Name }</h1>
+				<p class="mt-1 text-sm text-base-content/70">The local Game ID, name, and slug stay authoritative. Provider metadata is always reloaded server-side.</p>
+				if formError != "" {
+					<div role="alert" class="alert alert-error mt-4"><span>{ formError }</span></div>
+				}
+				<section class="detail-card mt-5">
+					<div class="flex flex-wrap items-center justify-between gap-3">
+						<div>
+							<h2 class="text-[1.0625rem] font-semibold">Current identity</h2>
+							if item.IGDBExternalID == "" {
+								<p class="text-sm text-base-content/70">Local-only · not linked</p>
+							} else {
+								<p class="data-text text-sm">IGDB #{ item.IGDBExternalID }</p>
+							}
+						</div>
+						if item.IGDBExternalID != "" {
+							<form method="post" action={ "/admin/games/" + item.ID + "/igdb/unlink" } data-confirm="Unlink this IGDB record? The local Game, aliases, followers, and Game Requests will remain.">
+								@components.CSRFInput()
+								<button class="btn btn-step-back btn-sm" type="submit">Unlink IGDB</button>
+							</form>
+						}
+					</div>
+				</section>
+				if item.IGDBExternalID == "" {
+					<section class="mt-6 grid gap-3">
+						<div><h2 class="text-[1.0625rem] font-semibold">Find IGDB record</h2><p class="text-sm text-base-content/70">Search the active synchronized catalog by name or IGDB ID.</p></div>
+						<form method="get" action={ "/admin/games/" + item.ID + "/igdb" } class="request-toolbar">
+							<label class="sr-only" for="igdb-link-search">Search IGDB</label>
+							<input id="igdb-link-search" class="input input-sm request-search" type="search" name="q" value={ search } maxlength="120" placeholder="Game name or IGDB ID" required/>
+							<button class="btn btn-primary btn-sm" type="submit">Search IGDB</button>
+						</form>
+						if search != "" && len(results) == 0 {
+							<div class="detail-card"><h3 class="font-semibold">No IGDB records found</h3><p class="text-sm text-base-content/70">Try another name or run a synchronization from IGDB Sync.</p></div>
+						}
+						for _, result := range results {
+							@AdminIGDBLinkResult(item, result)
+						}
+					</section>
+				} else {
+					<p class="mt-4 text-sm text-base-content/70">To change the IGDB identity, unlink the current record first, then select the replacement.</p>
+				}
+			</div>
+		</div>
+	}
+}
+
+templ AdminIGDBLinkResult(target game.Game, result game.AdminProviderGame) {
+	<article class="detail-card">
+		<div class="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-4">
+			<div class="relative aspect-[3/4] w-[clamp(72px,12vw,100px)] max-w-[100px] overflow-hidden rounded bg-base-300">
+				if result.CoverImageID != "" {
+					<img class="h-full w-full object-cover" src={ providerCoverLargeURL(result.CoverImageID) } alt="" referrerpolicy="no-referrer" loading="lazy" data-cover-fallback="true"/>
+					<span class="absolute inset-0 grid place-items-center font-mono text-lg font-semibold text-base-content/70" aria-hidden="true" hidden>{ components.GameAbbreviation(result.Name) }</span>
+				} else {
+					<span class="absolute inset-0 grid place-items-center font-mono text-lg font-semibold text-base-content/70" aria-hidden="true">{ components.GameAbbreviation(result.Name) }</span>
+				}
+			</div>
+			<div class="min-w-0 self-center">
+				<h3 class="break-words text-base font-semibold">{ result.Name }</h3>
+				if metadata := presentationMetadata(adminProviderPresentation(result)); metadata != "" {
+					<p class="mt-1 break-words text-sm text-base-content/70">{ metadata }</p>
+				}
+				<p class="data-text mt-1 break-words text-xs text-base-content/65">IGDB #{ result.ExternalID }</p>
+			</div>
+			if result.LinkedGameID == "" {
+				<form class="justify-self-end" method="post" action={ "/admin/games/" + target.ID + "/igdb" }>
+					@components.CSRFInput()
+					<input type="hidden" name="external_id" value={ result.ExternalID }/>
+					<button class="btn btn-primary btn-sm whitespace-nowrap" type="submit">Link this record</button>
+				</form>
+			} else if result.LinkedGameID == target.ID {
+				<span class="badge badge-primary">Already linked</span>
+			} else {
+				<div class="justify-self-end text-right">
+					<p class="text-sm text-base-content/70">Linked to { result.LinkedGameName }</p>
+					<a class="btn btn-quiet btn-sm mt-2" href={ "/admin/games/" + target.ID + "/merge?source=" + result.LinkedGameID + "&notice=igdb-link-conflict" }>Review merge</a>
+				</div>
+			}
+		</div>
+	</article>
+}
+
+func adminProviderPresentation(result game.AdminProviderGame) game.GamePresentation {
+	return game.GamePresentation{
+		Name: result.Name, GameType: result.GameType, PlatformNames: result.PlatformNames,
+		FirstReleaseDate: result.FirstReleaseDate, CoverImageID: result.CoverImageID,
+	}
+}
+
+templ AdminGameMerge(brand branding.Brand, navigation components.NavigationState, target, source game.Game, games []game.Game, sourceID, formError, notice string) {
+	@components.Layout(brand, "Merge Games", navigation) {
+		<header class="app-topbar"><a class="link count-open text-sm font-semibold no-underline" href="/admin/games">← Manage games</a></header>
+		<div class="content-page">
+			<div class="max-w-4xl">
+				<h1 class="app-title">Merge duplicate Game</h1>
+				<p class="mt-1 text-sm text-base-content/70">{ target.Name } is the target. It keeps its local ID, name, slug, and active state.</p>
+				if notice != "" {
+					<div role="status" class="alert alert-info mt-4"><span>{ notice }</span></div>
+				}
+				if formError != "" {
+					<div role="alert" class="alert alert-error mt-4"><span>{ formError }</span></div>
+				}
+				<section class="detail-card mt-5">
+					<h2 class="text-[1.0625rem] font-semibold">Choose source Game</h2>
+					<p class="text-sm text-base-content/70">The source is removed after its Game Requests, followers, aliases, and IGDB identity move to the target.</p>
+					<form method="get" action={ "/admin/games/" + target.ID + "/merge" } class="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
+						<label class="form-control flex-1"><span class="label"><span class="label-text">Source Game</span></span>
+							<select class="select select-bordered w-full" name="source" required>
+								<option value="">Choose duplicate</option>
+								for _, candidate := range games {
+									if candidate.ID != target.ID {
+										<option value={ candidate.ID } selected?={ candidate.ID == sourceID }>{ candidate.Name } · { candidate.Slug }</option>
+									}
+								}
+							</select>
+						</label>
+						<button class="btn btn-quiet" type="submit">Review merge</button>
+					</form>
+				</section>
+				if source.ID != "" {
+					<section class="detail-card mt-4">
+						<h2 class="text-[1.0625rem] font-semibold">Review</h2>
+						<dl class="mt-3 grid gap-4 sm:grid-cols-2">
+							<div><dt class="text-sm text-base-content/60">Source · removed</dt><dd class="font-semibold">{ source.Name }</dd><dd class="data-text text-xs">{ source.Slug }</dd><dd class="mt-1 text-sm text-base-content/70">{ gameRelationshipSummary(source) }</dd></div>
+							<div><dt class="text-sm text-base-content/60">Target · kept</dt><dd class="font-semibold">{ target.Name }</dd><dd class="data-text text-xs">{ target.Slug }</dd><dd class="mt-1 text-sm text-base-content/70">{ gameRelationshipSummary(target) }</dd></div>
+						</dl>
+						if source.IGDBExternalID != "" && target.IGDBExternalID != "" {
+							<div role="alert" class="alert alert-warning mt-4"><span>Both Games have different IGDB links. Unlink the incorrect record before merging.</span></div>
+						} else {
+							<form method="post" action={ "/admin/games/" + target.ID + "/merge" } class="mt-5 flex justify-end" data-confirm={ "Merge " + source.Name + " into " + target.Name + "? The source Game will be permanently removed." }>
+								@components.CSRFInput()
+								<input type="hidden" name="source_id" value={ source.ID }/>
+								<button class="btn btn-danger" type="submit">Merge and remove source</button>
+							</form>
+						}
+					</section>
+				}
+			</div>
+		</div>
+	}
+}
+
+func gameRelationshipSummary(item game.Game) string {
+	parts := []string{strconv.FormatInt(item.GameRequestCount, 10) + " Game Requests", strconv.FormatInt(item.SubscriptionCount, 10) + " followers"}
+	if item.IGDBExternalID == "" { parts = append(parts, "local-only") } else { parts = append(parts, "IGDB #" + item.IGDBExternalID) }
+	return strings.Join(parts, " · ")
 }
 
 templ AdminIGDB(brand branding.Brand, navigation components.NavigationState, status game.ProviderStatus, notice string) {

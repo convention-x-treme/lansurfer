@@ -1,6 +1,14 @@
 -- name: ListGames :many
-SELECT g.id::text, g.name, g.slug, g.active, g.created_at, g.updated_at
+SELECT g.id::text, g.name, g.slug, g.active, g.created_at, g.updated_at,
+       COALESCE(mapping.external_id, '')::text AS igdb_external_id,
+       (enrichment.game_id IS NOT NULL)::boolean AS igdb_enriched,
+       (SELECT count(*) FROM game_requests request WHERE request.game_id = g.id)::bigint AS game_request_count,
+       (SELECT count(*) FROM game_subscriptions subscription WHERE subscription.game_id = g.id)::bigint AS subscription_count
 FROM games g
+LEFT JOIN game_external_ids mapping
+  ON mapping.game_id = g.id
+ AND lower(btrim(mapping.provider)) = 'igdb'
+LEFT JOIN game_igdb_enrichment enrichment ON enrichment.game_id = g.id
 WHERE sqlc.arg(search)::text = ''
    OR strpos(lower(g.name), lower(sqlc.arg(search)::text)) > 0
    OR EXISTS (
@@ -128,3 +136,106 @@ SELECT count(*)
 FROM game_subscriptions gs
 JOIN games g ON g.id = gs.game_id
 WHERE gs.user_id = sqlc.arg(user_id)::uuid AND g.active;
+
+-- name: SearchActiveIGDBGamesForAdmin :many
+SELECT provider_game.igdb_id::text AS external_id,
+       provider_game.name,
+       COALESCE(provider_game.game_type, '')::text AS game_type,
+       provider_game.platform_names,
+       provider_game.first_release_date,
+       COALESCE(provider_game.cover_image_id, '')::text AS cover_image_id,
+       COALESCE(linked_game.id::text, '')::text AS linked_game_id,
+       COALESCE(linked_game.name, '')::text AS linked_game_name
+FROM igdb_game_index provider_game
+JOIN igdb_provider_state state
+  ON state.singleton
+ AND state.active_generation_id = provider_game.generation_id
+LEFT JOIN game_external_ids mapping
+  ON lower(btrim(mapping.provider)) = 'igdb'
+ AND mapping.external_id = provider_game.igdb_id::text
+LEFT JOIN games linked_game ON linked_game.id = mapping.game_id
+WHERE provider_game.igdb_id::text = sqlc.arg(search)::text
+   OR strpos(lower(provider_game.search_text), lower(sqlc.arg(search)::text)) > 0
+ORDER BY (provider_game.igdb_id::text = sqlc.arg(search)::text) DESC,
+         (lower(provider_game.name) = lower(sqlc.arg(search)::text)) DESC,
+         (lower(provider_game.name) LIKE lower(sqlc.arg(search)::text) || '%') DESC,
+         lower(provider_game.name), provider_game.igdb_id
+LIMIT 25;
+
+-- name: LockAdminGame :one
+SELECT id::text
+FROM games
+WHERE id = sqlc.arg(game_id)::uuid
+FOR UPDATE;
+
+-- name: LockGamesForMerge :many
+SELECT id::text
+FROM games
+WHERE id IN (sqlc.arg(source_id)::uuid, sqlc.arg(target_id)::uuid)
+ORDER BY id
+FOR UPDATE;
+
+-- name: AdminGameIGDBLink :one
+SELECT external_id
+FROM game_external_ids
+WHERE game_id = sqlc.arg(game_id)::uuid
+  AND lower(btrim(provider)) = 'igdb';
+
+-- name: IGDBLinkOwner :one
+SELECT linked_game.id::text AS game_id, linked_game.name AS game_name
+FROM game_external_ids mapping
+JOIN games linked_game ON linked_game.id = mapping.game_id
+WHERE lower(btrim(mapping.provider)) = 'igdb'
+  AND mapping.external_id = sqlc.arg(external_id)::text;
+
+-- name: DeleteGameIGDBEnrichment :exec
+DELETE FROM game_igdb_enrichment
+WHERE game_id = sqlc.arg(game_id)::uuid;
+
+-- name: DeleteGameIGDBLink :execrows
+DELETE FROM game_external_ids
+WHERE game_id = sqlc.arg(game_id)::uuid
+  AND lower(btrim(provider)) = 'igdb';
+
+-- name: MoveGameRequests :exec
+UPDATE game_requests
+SET game_id = sqlc.arg(target_id)::uuid
+WHERE game_id = sqlc.arg(source_id)::uuid;
+
+-- name: CopyGameSubscriptions :exec
+INSERT INTO game_subscriptions (user_id, game_id, created_at)
+SELECT user_id, sqlc.arg(target_id)::uuid, created_at
+FROM game_subscriptions
+WHERE game_id = sqlc.arg(source_id)::uuid
+ON CONFLICT (user_id, game_id) DO NOTHING;
+
+-- name: DeleteGameSubscriptions :exec
+DELETE FROM game_subscriptions
+WHERE game_id = sqlc.arg(game_id)::uuid;
+
+-- name: CopyGameAliases :exec
+INSERT INTO game_aliases (game_id, alias, created_at)
+SELECT sqlc.arg(target_id)::uuid, alias, created_at
+FROM game_aliases
+WHERE game_id = sqlc.arg(source_id)::uuid
+ON CONFLICT DO NOTHING;
+
+-- name: MoveGameIGDBLink :exec
+UPDATE game_external_ids
+SET game_id = sqlc.arg(target_id)::uuid
+WHERE game_id = sqlc.arg(source_id)::uuid
+  AND lower(btrim(provider)) = 'igdb';
+
+-- name: MoveGameIGDBEnrichment :exec
+UPDATE game_igdb_enrichment
+SET game_id = sqlc.arg(target_id)::uuid,
+    updated_at = now()
+WHERE game_id = sqlc.arg(source_id)::uuid;
+
+-- name: GameUsage :one
+SELECT (SELECT count(*) FROM game_requests WHERE game_id = sqlc.arg(game_id)::uuid)::bigint AS game_request_count,
+       (SELECT count(*) FROM game_subscriptions WHERE game_id = sqlc.arg(game_id)::uuid)::bigint AS subscription_count;
+
+-- name: DeleteGame :execrows
+DELETE FROM games
+WHERE id = sqlc.arg(game_id)::uuid;

@@ -40,6 +40,8 @@ func (s *Store) List(ctx context.Context, search string) ([]game.Game, error) {
 		}
 		item := game.Game{
 			ID: row.GID, Name: row.Name, Slug: row.Slug, Active: row.Active,
+			IGDBExternalID: row.IgdbExternalID, IGDBEnriched: row.IgdbEnriched,
+			GameRequestCount: row.GameRequestCount, SubscriptionCount: row.SubscriptionCount,
 			CreatedAt: row.CreatedAt.Time, UpdatedAt: row.UpdatedAt.Time,
 			Aliases: make([]game.Alias, 0, len(aliases)),
 		}
