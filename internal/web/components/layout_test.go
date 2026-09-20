@@ -52,3 +52,91 @@ func themeContext(cookie string) context.Context {
 	})).ServeHTTP(httptest.NewRecorder(), request)
 	return carried
 }
+
+// instanceContext returns a request context carrying the given resolved
+// instance name, the way NewRouter's Instance middleware always does in
+// production. An empty name simulates a component test that never ran the
+// middleware at all (Layout must fall back to the brand name either way).
+func instanceContext(name string) context.Context {
+	if name == "" {
+		return context.Background()
+	}
+	var carried context.Context
+	webmiddleware.Instance(name)(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		carried = r.Context()
+	})).ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/game-requests", nil))
+	return carried
+}
+
+func TestLayoutTitleUsesResolvedInstanceName(t *testing.T) {
+	var rendered bytes.Buffer
+	if err := Layout(branding.Default(), "Game Requests", NavigationState{}).Render(instanceContext("Camp Nova"), &rendered); err != nil {
+		t.Fatalf("render Layout: %v", err)
+	}
+	if body := rendered.String(); !strings.Contains(body, "<title>Game Requests · Camp Nova</title>") {
+		t.Fatalf("title missing resolved instance name, got %q", body[:min(len(body), 400)])
+	}
+}
+
+func TestLayoutTitleFallsBackToBrandNameWhenUnset(t *testing.T) {
+	var rendered bytes.Buffer
+	if err := Layout(branding.Default(), "Game Requests", NavigationState{}).Render(instanceContext(""), &rendered); err != nil {
+		t.Fatalf("render Layout: %v", err)
+	}
+	if body := rendered.String(); !strings.Contains(body, "<title>Game Requests · LANsurfer</title>") {
+		t.Fatalf("title = %q, want fallback to brand name", body[:min(len(body), 400)])
+	}
+}
+
+func TestLayoutRendersManifestAndIconLinks(t *testing.T) {
+	brand := branding.Default()
+	var rendered bytes.Buffer
+	if err := Layout(brand, "Game Requests", NavigationState{}).Render(instanceContext(""), &rendered); err != nil {
+		t.Fatalf("render Layout: %v", err)
+	}
+	body := rendered.String()
+	for _, want := range []string{
+		`<link rel="manifest" href="/manifest.webmanifest">`,
+		`<link rel="apple-touch-icon" href="` + brand.Assets.Icons.AppleTouch180 + `">`,
+		`<link rel="icon" type="image/png" sizes="32x32" href="` + brand.Assets.Icons.Favicon32 + `">`,
+		`<link rel="icon" type="image/png" sizes="16x16" href="` + brand.Assets.Icons.Favicon16 + `">`,
+		`<link rel="icon" href="` + brand.Assets.Icons.FaviconICO + `">`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("document missing %q", want)
+		}
+	}
+}
+
+func TestLayoutSecondaryInstanceLabel(t *testing.T) {
+	tests := map[string]struct {
+		instance string
+		want     bool
+	}{
+		"custom name shows a label": {instance: "Camp Nova", want: true},
+		"unset shows no label":      {instance: "", want: false},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			var rendered bytes.Buffer
+			if err := Layout(branding.Default(), "Game Requests", NavigationState{}).Render(instanceContext(test.instance), &rendered); err != nil {
+				t.Fatalf("render Layout: %v", err)
+			}
+			got := strings.Contains(rendered.String(), `data-instance-name`)
+			if got != test.want {
+				t.Errorf("public header instance label present = %v, want %v", got, test.want)
+			}
+		})
+	}
+}
+
+func TestLayoutSecondaryInstanceLabelInAuthenticatedShell(t *testing.T) {
+	navigation := NavigationState{Viewer: &Viewer{ID: "user-1", GameNick: "Ada", Role: "player"}}
+	var rendered bytes.Buffer
+	if err := Layout(branding.Default(), "Game Requests", navigation).Render(instanceContext("Camp Nova"), &rendered); err != nil {
+		t.Fatalf("render Layout: %v", err)
+	}
+	if body := rendered.String(); !strings.Contains(body, `data-instance-name`) || !strings.Contains(body, "Camp Nova") {
+		t.Fatalf("authenticated shell missing instance label, got %q", body[:min(len(body), 800)])
+	}
+}
