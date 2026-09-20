@@ -84,14 +84,16 @@ ORDER BY a.sequence DESC;
 -- from search queries or page views.
 -- name: TrendingGames :many
 SELECT g.id::text AS game_id, g.name AS game_name,
+       enrichment.cover_image_id,
        count(*) AS activity_count,
        count(DISTINCT a.game_request_id) AS request_count
 FROM game_request_activity a
 JOIN game_requests gr ON gr.id = a.game_request_id
 JOIN games g ON g.id = gr.game_id
+LEFT JOIN game_igdb_enrichment enrichment ON enrichment.game_id = g.id
 WHERE a.occurred_at >= sqlc.arg(since)
   AND a.kind IN ('created', 'joined')
-GROUP BY g.id, g.name
+GROUP BY g.id, g.name, enrichment.game_id
 ORDER BY count(*) DESC, count(DISTINCT a.game_request_id) DESC, lower(g.name), g.id
 LIMIT sqlc.arg(result_limit);
 
@@ -100,3 +102,18 @@ LIMIT sqlc.arg(result_limit);
 -- affected by the viewer's discovery filters.
 -- name: CountOpenGameRequests :one
 SELECT count(*) FROM game_requests WHERE status = 'open';
+
+-- ListRecentlyViewedGameRequests backs the navigation's "Recently viewed"
+-- list. It is per-viewer reading history, so it deliberately ignores status:
+-- a request the player closed or cancelled is still the one they just read.
+-- name: ListRecentlyViewedGameRequests :many
+SELECT gr.id::text AS request_id,
+       g.name AS game_name,
+       gr.status,
+       v.viewed_at
+FROM game_request_views v
+JOIN game_requests gr ON gr.id = v.game_request_id
+JOIN games g ON g.id = gr.game_id
+WHERE v.user_id = sqlc.arg(viewer_id)::uuid
+ORDER BY v.viewed_at DESC, gr.id
+LIMIT sqlc.arg(result_limit);

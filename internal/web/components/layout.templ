@@ -4,8 +4,11 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
+	"unicode"
 	"unicode/utf8"
 
+	requestquery "github.com/convention-x-treme/lansurfer/internal/query/gamerequest"
 	"github.com/convention-x-treme/lansurfer/internal/web/branding"
 	webmiddleware "github.com/convention-x-treme/lansurfer/internal/web/middleware"
 )
@@ -61,6 +64,16 @@ type NavigationState struct {
 	// open Game Request on the installation, never the subset a discovery
 	// filter matched. Sections without a count on the current page omit it.
 	OpenRequests int64
+	// Games counts the active local catalog; FollowedGames counts what this
+	// viewer follows, matching what the Games screen's "Followed only" filter
+	// itself lists.
+	Games int64
+	FollowedGames int64
+	// Upcoming is the viewer's own joined Game Requests, soonest first and
+	// already bounded by the caller.
+	Upcoming []requestquery.Request
+	// RecentlyViewed is the viewer's own reading history, newest first.
+	RecentlyViewed []requestquery.RecentRequest
 }
 
 templ Layout(brand branding.Brand, title string, navigation NavigationState) {
@@ -152,6 +165,8 @@ templ DesktopNavigation(brand branding.Brand, state NavigationState) {
 		</a>
 		@InstanceLabel(brand)
 		@NavigationLinks(state)
+		@UpcomingGames(state)
+		@RecentlyViewedRequests(state)
 		<div class="mt-auto grid gap-3">
 			@ViewerPanel(state.Viewer)
 			<div class="flex items-center justify-between gap-2 px-2">
@@ -178,6 +193,8 @@ templ MobileNavigation(brand branding.Brand, state NavigationState) {
 				</div>
 				@InstanceLabel(brand)
 				@NavigationLinks(state)
+				@UpcomingGames(state)
+				@RecentlyViewedRequests(state)
 				<div class="mt-auto grid gap-3">
 					@ViewerPanel(state.Viewer)
 					<div class="flex items-center justify-between gap-2 px-2">
@@ -197,12 +214,26 @@ templ NavigationLinks(state NavigationState) {
 			<a class={ navigationLinkClass(state.Section == "game-requests") } href="/game-requests" aria-current={ navigationCurrent(state.Section == "game-requests") }>
 				<span>Game Requests</span>
 				if state.OpenRequests > 0 {
-					<span class="data-text count-hot ml-auto text-xs">{ fmt.Sprint(state.OpenRequests) }</span>
+					<span class={ navigationCountClass(state.Section == "game-requests") }>{ fmt.Sprint(state.OpenRequests) }</span>
 				}
 			</a>
 		</li>
-		<li>@NavigationLink("/games", "Games", "games", state.Section)</li>
-		<li>@NavigationLink("/games/mine", "My Games", "my-games", state.Section)</li>
+		<li>
+			<a class={ navigationLinkClass(state.Section == "games" || state.Section == "games-followed") } href="/games" aria-current={ navigationCurrent(state.Section == "games") }>
+				<span>Games</span>
+				if state.Games > 0 {
+					<span class={ navigationCountClass(state.Section == "games") }>{ fmt.Sprint(state.Games) }</span>
+				}
+			</a>
+		</li>
+		<li>
+			<a class={ navigationSubLinkClass(state.Section == "games-followed") } href="/games?followed=1" aria-current={ navigationCurrent(state.Section == "games-followed") }>
+				<span>Followed</span>
+				if state.FollowedGames > 0 {
+					<span class={ navigationCountClass(state.Section == "games-followed") }>{ fmt.Sprint(state.FollowedGames) }</span>
+				}
+			</a>
+		</li>
 		if state.Viewer != nil && state.Viewer.Role == "admin" {
 			<li>
 				<a class={ navigationLinkClass(state.Section == "administration") } href="/admin/games" aria-current={ navigationCurrent(state.Section == "administration") }>
@@ -211,6 +242,60 @@ templ NavigationLinks(state NavigationState) {
 			</li>
 		}
 	</ul>
+}
+
+// UpcomingGames lists the Game Requests the viewer has joined, soonest first,
+// as a shortcut back into a round that is about to start. A request whose
+// start time has arrived is marked urgent with the same sunset ink the request
+// list uses for "now", so the two screens agree about urgency.
+templ UpcomingGames(state NavigationState) {
+	if len(state.Upcoming) > 0 {
+		<section class="nav-section" aria-labelledby="nav-upcoming-heading">
+			<h2 class="nav-section-heading" id="nav-upcoming-heading">
+				<span>Your next games</span>
+				<span class="data-text ml-auto text-xs font-medium text-base-content/70">{ fmt.Sprint(len(state.Upcoming)) }</span>
+			</h2>
+			<ul class="grid gap-1.5">
+				for _, request := range state.Upcoming {
+					<li>
+						<a class={ upcomingItemClass(request.StartsAt) } href={ templ.SafeURL("/game-requests/" + request.ID) }>
+							<span class="nav-upcoming-dot" aria-hidden="true"></span>
+							<span class="min-w-0 flex-1 truncate text-sm font-semibold">{ request.Game.Name }</span>
+							<time class="data-text flex-none text-xs font-bold" datetime={ request.StartsAt.Format(time.RFC3339) }>{ StartLabel(request.StartsAt) }</time>
+						</a>
+					</li>
+				}
+			</ul>
+		</section>
+	}
+}
+
+// RecentlyViewedRequests lists the Game Requests this viewer last opened,
+// newest first. It is private reading history: it states what they read, not
+// what is still open, so a closed or cancelled request stays listed and says
+// so in text rather than quietly disappearing.
+templ RecentlyViewedRequests(state NavigationState) {
+	if len(state.RecentlyViewed) > 0 {
+		<section class="nav-section" aria-labelledby="nav-recent-heading">
+			<h2 class="nav-section-heading" id="nav-recent-heading"><span>Recently viewed</span></h2>
+			<ul class="grid">
+				for _, entry := range state.RecentlyViewed {
+					<li>
+						<a class="nav-recent-item" href={ templ.SafeURL("/game-requests/" + entry.ID) }>
+							<span class="data-text w-7 flex-none text-xs text-base-content/70" aria-hidden="true">{ GameAbbreviation(entry.GameName) }</span>
+							<span class="min-w-0 flex-1 truncate text-sm">
+								{ entry.GameName }
+								if entry.Status != "open" {
+									<span class="text-base-content/60">{ " · " + string(entry.Status) }</span>
+								}
+							</span>
+							<time class="data-text flex-none text-xs text-base-content/70" datetime={ entry.ViewedAt.Format(time.RFC3339) }>{ ViewedAgoLabel(entry.ViewedAt) }</time>
+						</a>
+					</li>
+				}
+			</ul>
+		</section>
+	}
 }
 
 templ NavigationLink(href, label, section, current string) {
@@ -297,6 +382,122 @@ func navigationCurrent(active bool) string {
 		return "page"
 	}
 	return "false"
+}
+
+func navigationSubLinkClass(active bool) string {
+	return navigationLinkClass(active) + " app-navigation-link-nested"
+}
+
+// navigationCountClass keeps one rule for every count in the sidebar: the
+// current section's own number is the warm one, the rest stay muted, so the
+// colour marks where you are rather than competing for attention on every row.
+func navigationCountClass(active bool) string {
+	if active {
+		return "data-text count-hot ml-auto text-xs"
+	}
+	return "data-text ml-auto text-xs text-base-content/70"
+}
+
+// upcomingItemClass turns a joined round urgent once its start time has
+// arrived, matching StartLabel's own "now" threshold.
+func upcomingItemClass(startsAt time.Time) string {
+	if time.Until(startsAt) <= startsNowWithin {
+		return "nav-upcoming-item nav-upcoming-item-now"
+	}
+	return "nav-upcoming-item"
+}
+
+// startsNowWithin is the window inside which a Game Request reads as starting
+// "now" rather than counting down.
+const startsNowWithin = 2 * time.Minute
+
+// StartLabel states when a Game Request starts, relative to now and coarse
+// enough to stay stable between renders. It lives here because both the
+// Game Request list and the navigation's "Your next games" state the same
+// thing and must not drift apart.
+func StartLabel(startsAt time.Time) string {
+	remaining := time.Until(startsAt)
+	if remaining <= startsNowWithin {
+		return "now"
+	}
+	if remaining < time.Hour {
+		return fmt.Sprintf("in %d min", max(1, int(remaining.Round(time.Minute)/time.Minute)))
+	}
+	if remaining < 24*time.Hour {
+		return fmt.Sprintf("in %d h", max(1, int(remaining.Round(time.Hour)/time.Hour)))
+	}
+	return startsAt.Local().Format("Jan 2")
+}
+
+// ViewedAgoLabel states how long ago the viewer opened a Game Request, in the
+// compact form the sidebar has room for.
+func ViewedAgoLabel(viewedAt time.Time) string {
+	elapsed := time.Since(viewedAt)
+	switch {
+	case elapsed < time.Minute:
+		return "now"
+	case elapsed < time.Hour:
+		return fmt.Sprintf("%dm", int(elapsed/time.Minute))
+	case elapsed < 24*time.Hour:
+		return fmt.Sprintf("%dh", int(elapsed/time.Hour))
+	default:
+		return fmt.Sprintf("%dd", int(elapsed/(24*time.Hour)))
+	}
+}
+
+// GameAbbreviation compresses a Game's name to the short mono tag used
+// wherever a full name will not fit: the request rows and the navigation's
+// reading history. Roman numerals become digits, because "Warcraft III" reads
+// as "W3" to players and "WI" reads as nothing.
+//
+// ponytail: derived from the name, with no per-Game abbreviation field. Add
+// one only if curated abbreviations turn out to matter.
+func GameAbbreviation(name string) string {
+	words := strings.Fields(name)
+	if len(words) == 0 {
+		return "?"
+	}
+	if len(words) == 1 {
+		runes := []rune(words[0])
+		if len(runes) > 3 {
+			runes = runes[:3]
+		}
+		return strings.ToUpper(string(runes))
+	}
+	result := make([]rune, 0, 3)
+	for _, word := range words {
+		if roman := romanDigit(word); roman != 0 {
+			result = append(result, roman)
+		} else {
+			for _, value := range word {
+				if unicode.IsLetter(value) || unicode.IsDigit(value) {
+					result = append(result, unicode.ToUpper(value))
+					break
+				}
+			}
+		}
+		if len(result) == 3 {
+			break
+		}
+	}
+	return string(result)
+}
+
+func romanDigit(word string) rune {
+	switch strings.ToUpper(strings.TrimSpace(word)) {
+	case "I":
+		return '1'
+	case "II":
+		return '2'
+	case "III":
+		return '3'
+	case "IV":
+		return '4'
+	case "V":
+		return '5'
+	default:
+		return 0
+	}
 }
 
 func ViewerInitial(name string) string {

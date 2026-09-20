@@ -79,6 +79,14 @@ func (r *recordingSubscriptionRepository) Browse(_ context.Context, _, search st
 func (*recordingSubscriptionRepository) MyGames(context.Context, string) ([]SubscriptionGame, error) {
 	return nil, nil
 }
+func (*recordingSubscriptionRepository) CountCatalog(context.Context) (int64, error) {
+	return 0, nil
+}
+
+func (*recordingSubscriptionRepository) CountFollowed(context.Context, string) (int64, error) {
+	return 0, nil
+}
+
 func (r *recordingSubscriptionRepository) Follow(_ context.Context, userID, gameID string) error {
 	r.followed = userID + "/" + gameID
 	return nil

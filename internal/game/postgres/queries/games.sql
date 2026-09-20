@@ -116,3 +116,15 @@ SELECT EXISTS (
 DELETE FROM game_subscriptions
 WHERE user_id = sqlc.arg(user_id)::uuid
   AND game_id = sqlc.arg(game_id)::uuid;
+
+-- CountActiveGames states how large the authoritative local catalog is. It
+-- counts local Games only: the synchronized provider index is a search
+-- surface, not a catalog the navigation can meaningfully total.
+-- name: CountActiveGames :one
+SELECT count(*) FROM games WHERE active;
+
+-- name: CountSubscribedGames :one
+SELECT count(*)
+FROM game_subscriptions gs
+JOIN games g ON g.id = gs.game_id
+WHERE gs.user_id = sqlc.arg(user_id)::uuid AND g.active;

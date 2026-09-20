@@ -88,6 +88,7 @@ type Repository interface {
 	Join(context.Context, string, string) error
 	Leave(context.Context, string, string) error
 	SetStatus(context.Context, string, string, Status) error
+	RecordView(context.Context, string, string) error
 }
 
 // GameLookup is implemented by the game module and keeps catalog rules with its owner.
@@ -161,6 +162,14 @@ func (s *Service) Leave(ctx context.Context, requestID, userID string) error {
 		s.publish(Event{Type: EventLeft, RequestID: requestID})
 	}
 	return err
+}
+
+// RecordView notes that a player opened a Game Request, which is what the
+// navigation's "Recently viewed" list reads back. It publishes no event: a
+// view is private reading history, not a change to the Game Request, and must
+// never reach the realtime stream or Track E's notification handoff.
+func (s *Service) RecordView(ctx context.Context, requestID, userID string) error {
+	return s.repository.RecordView(ctx, requestID, userID)
 }
 
 func (s *Service) Close(ctx context.Context, requestID, userID string) error {

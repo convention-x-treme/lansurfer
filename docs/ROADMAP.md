@@ -423,7 +423,7 @@ Ship the canonical LANsurfer brand and design system as the fixed/default presen
 
 ### Feature-surface adoption
 
-- Adopt the design system across the shared shell and current authentication, Game Request, Games/My Games, administration, empty/error, and related supported surfaces represented by the existing product.
+- Adopt the design system across the shared shell and current authentication, Game Request, Games, administration, empty/error, and related supported surfaces represented by the existing product.
 - As Tracks A–F add or change user-visible states, render them through the established shell, tokens, components, and interaction vocabulary rather than creating parallel visual systems.
 - Track G does not own domain rules, persistence, read models, authorization, or product-scope decisions. It consumes the affected track's server-side contracts and translates them into consistent presentation.
 - Preserve SSR/HTMX behavior and progressive enhancement; do not create an internal JSON API solely to serve the UI.

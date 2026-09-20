@@ -104,6 +104,14 @@ func (f *fakeSubscriptions) MyGames(context.Context, string) ([]SubscriptionGame
 	return f.myGames, nil
 }
 
+func (f *fakeSubscriptions) CountCatalog(context.Context) (int64, error) {
+	return int64(len(f.browse)), nil
+}
+
+func (f *fakeSubscriptions) CountFollowed(context.Context, string) (int64, error) {
+	return int64(len(f.myGames)), nil
+}
+
 func (f *fakeSubscriptions) Follow(_ context.Context, userID, gameID string) error {
 	f.followedUser, f.followedGame = userID, gameID
 	return f.followErr
@@ -503,5 +511,46 @@ func TestDiscoverySelectProviderRejectsDisabledProvider(t *testing.T) {
 	}
 	if repo.findProviderCalls != 0 {
 		t.Fatalf("findProviderCalls = %d, want 0", repo.findProviderCalls)
+	}
+}
+
+// "Followed only" is a filter on the one Games screen rather than a second
+// catalog: it runs the same ranked Browse and drops what the viewer does not
+// follow, on both the no-search local path and the searched provider path.
+// An unmaterialized provider result is never followed, so it can never
+// survive the filter.
+func TestDiscoveryBrowseFollowedKeepsOnlySubscribedItems(t *testing.T) {
+	subs := &fakeSubscriptions{browse: []SubscriptionGame{
+		{ID: "local-1", GamePresentation: GamePresentation{Name: "Followed"}, Subscribed: true},
+		{ID: "local-2", GamePresentation: GamePresentation{Name: "Unfollowed"}},
+	}}
+	service := NewDiscoveryService(&fakeDiscoveryRepository{}, nil, subs, enabledProviderStatus())
+
+	page, err := service.BrowseFollowed(t.Context(), "user-1", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Items) != 1 || page.Items[0].Name != "Followed" {
+		t.Fatalf("page.Items = %#v, want only the followed Game", page.Items)
+	}
+
+	repo := &fakeDiscoveryRepository{result: DiscoverySearchResult{
+		Items: []DiscoveryItem{
+			{LocalGameID: "local-1", GamePresentation: GamePresentation{Name: "Followed"}, Subscribed: true},
+			{Reference: ProviderReference{Provider: "igdb", ExternalID: "42"}, GamePresentation: GamePresentation{Name: "Provider"}},
+		},
+		HasMore: true,
+	}}
+	searched, err := NewDiscoveryService(repo, nil, subs, enabledProviderStatus()).BrowseFollowed(t.Context(), "user-1", "wc3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(searched.Items) != 1 || searched.Items[0].Name != "Followed" {
+		t.Fatalf("searched.Items = %#v, want only the followed Game", searched.Items)
+	}
+	// The filter narrows what this page shows; it does not change the fact
+	// that the underlying ranked search was truncated.
+	if !searched.HasMore {
+		t.Error("filtering the page must not drop the truncation signal")
 	}
 }

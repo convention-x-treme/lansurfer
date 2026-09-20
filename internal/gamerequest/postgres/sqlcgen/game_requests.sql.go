@@ -164,6 +164,25 @@ func (q *Queries) RecordGameRequestActivity(ctx context.Context, arg RecordGameR
 	return err
 }
 
+const recordGameRequestView = `-- name: RecordGameRequestView :exec
+INSERT INTO game_request_views (user_id, game_request_id, viewed_at)
+VALUES ($1::uuid, $2::uuid, now())
+ON CONFLICT (user_id, game_request_id) DO UPDATE SET viewed_at = now()
+`
+
+type RecordGameRequestViewParams struct {
+	UserID        pgtype.UUID
+	GameRequestID pgtype.UUID
+}
+
+// RecordGameRequestView is idempotent per (player, request): a repeat visit
+// refreshes the timestamp instead of growing history, so "Recently viewed"
+// lists distinct requests newest-first.
+func (q *Queries) RecordGameRequestView(ctx context.Context, arg RecordGameRequestViewParams) error {
+	_, err := q.db.Exec(ctx, recordGameRequestView, arg.UserID, arg.GameRequestID)
+	return err
+}
+
 const removeGameRequestMember = `-- name: RemoveGameRequestMember :execrows
 DELETE FROM game_request_members
 WHERE game_request_id = $1::uuid

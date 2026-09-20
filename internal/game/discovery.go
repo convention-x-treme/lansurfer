@@ -2,6 +2,7 @@ package game
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"unicode/utf8"
 )
@@ -95,6 +96,23 @@ func (s *DiscoveryService) Browse(ctx context.Context, userID, search string) (D
 	}, nil
 }
 
+// BrowseFollowed is Browse narrowed to the Games this viewer already
+// follows. It backs the merged Games screen's "Followed only" filter rather
+// than a second catalog: the same ranked, bounded Browse result with
+// everything unfollowed removed, so search and the filter compose instead of
+// living on separate screens. An unmaterialized provider result is never
+// followed, so one can never appear here. HasMore keeps Browse's meaning --
+// matches exist past this page -- which the filter narrows but does not
+// change.
+func (s *DiscoveryService) BrowseFollowed(ctx context.Context, userID, search string) (DiscoveryPage, error) {
+	page, err := s.Browse(ctx, userID, search)
+	if err != nil {
+		return DiscoveryPage{}, err
+	}
+	page.Items = slices.DeleteFunc(page.Items, func(item DiscoveryItem) bool { return !item.Subscribed })
+	return page, nil
+}
+
 // Resolve turns an opaque provider reference into the one authoritative
 // local Game for it, materializing that Game on first use. Only the provider
 // and external ID cross this boundary: the materializer reloads the provider
@@ -181,6 +199,18 @@ func (s *DiscoveryService) Follow(ctx context.Context, userID string, ref Provid
 // MyGames returns the current user's followed local Games.
 func (s *DiscoveryService) MyGames(ctx context.Context, userID string) ([]SubscriptionGame, error) {
 	return s.subscriptions.MyGames(ctx, userID)
+}
+
+// CountCatalog and CountFollowed state the navigation's Games/My Games
+// totals. CountCatalog covers the authoritative local catalog only: the
+// synchronized provider index is reachable through search, but it is not a
+// catalog this installation owns or can meaningfully total.
+func (s *DiscoveryService) CountCatalog(ctx context.Context) (int64, error) {
+	return s.subscriptions.CountCatalog(ctx)
+}
+
+func (s *DiscoveryService) CountFollowed(ctx context.Context, userID string) (int64, error) {
+	return s.subscriptions.CountFollowed(ctx, userID)
 }
 
 // FollowLocal follows an already-authoritative local Game by ID. Following

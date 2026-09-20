@@ -187,6 +187,30 @@ func (s *Store) MyGames(ctx context.Context, userID string) ([]game.Subscription
 	return result, nil
 }
 
+// CountCatalog reports how many active local Games exist, which is the number
+// the navigation states beside "Games".
+func (s *Store) CountCatalog(ctx context.Context) (int64, error) {
+	total, err := s.queries.CountActiveGames(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("count active games: %w", err)
+	}
+	return total, nil
+}
+
+// CountFollowed reports how many active Games the viewer follows, matching
+// what My Games itself lists.
+func (s *Store) CountFollowed(ctx context.Context, userID string) (int64, error) {
+	databaseUserID, err := parseUUID(userID)
+	if err != nil {
+		return 0, fmt.Errorf("parse user ID: %w", err)
+	}
+	total, err := s.queries.CountSubscribedGames(ctx, databaseUserID)
+	if err != nil {
+		return 0, fmt.Errorf("count subscribed games: %w", err)
+	}
+	return total, nil
+}
+
 // textValue reads a possibly-NULL text column into a plain string, empty
 // when NULL. game_igdb_enrichment columns are NULL until a local Game has
 // materialized via IGDB (LEFT JOIN with no matching row), so this is the

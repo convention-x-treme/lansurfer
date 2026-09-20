@@ -113,6 +113,34 @@ func (q *Queries) BrowseSubscriptionGames(ctx context.Context, arg BrowseSubscri
 	return items, nil
 }
 
+const countActiveGames = `-- name: CountActiveGames :one
+SELECT count(*) FROM games WHERE active
+`
+
+// CountActiveGames states how large the authoritative local catalog is. It
+// counts local Games only: the synchronized provider index is a search
+// surface, not a catalog the navigation can meaningfully total.
+func (q *Queries) CountActiveGames(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, countActiveGames)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countSubscribedGames = `-- name: CountSubscribedGames :one
+SELECT count(*)
+FROM game_subscriptions gs
+JOIN games g ON g.id = gs.game_id
+WHERE gs.user_id = $1::uuid AND g.active
+`
+
+func (q *Queries) CountSubscribedGames(ctx context.Context, userID pgtype.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countSubscribedGames, userID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createGame = `-- name: CreateGame :one
 INSERT INTO games (name, slug)
 VALUES ($1, $2)

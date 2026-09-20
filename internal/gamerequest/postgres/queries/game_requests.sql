@@ -49,3 +49,11 @@ SET status = sqlc.arg(status), updated_at = now()
 WHERE id = sqlc.arg(id)::uuid
   AND creator_id = sqlc.arg(creator_id)::uuid
   AND status = 'open';
+
+-- RecordGameRequestView is idempotent per (player, request): a repeat visit
+-- refreshes the timestamp instead of growing history, so "Recently viewed"
+-- lists distinct requests newest-first.
+-- name: RecordGameRequestView :exec
+INSERT INTO game_request_views (user_id, game_request_id, viewed_at)
+VALUES (sqlc.arg(user_id)::uuid, sqlc.arg(game_request_id)::uuid, now())
+ON CONFLICT (user_id, game_request_id) DO UPDATE SET viewed_at = now();

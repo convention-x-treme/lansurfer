@@ -6,7 +6,6 @@ import (
 
 	"github.com/convention-x-treme/lansurfer/internal/auth"
 	"github.com/convention-x-treme/lansurfer/internal/web/branding"
-	"github.com/convention-x-treme/lansurfer/internal/web/components"
 	webmiddleware "github.com/convention-x-treme/lansurfer/internal/web/middleware"
 	"github.com/convention-x-treme/lansurfer/internal/web/pages"
 	"github.com/go-chi/chi/v5"
@@ -24,11 +23,15 @@ type AccountHandler struct {
 	unlinker       IdentityUnlinker
 	claims         GameNickClaims
 	authentication Authentication
+	navigation     *Navigation
 	brand          branding.Brand
 }
 
-func NewAccount(identities IdentityLookup, unlinker IdentityUnlinker, claims GameNickClaims, authentication Authentication, brand branding.Brand) *AccountHandler {
-	return &AccountHandler{identities: identities, unlinker: unlinker, claims: claims, authentication: authentication, brand: brand}
+func NewAccount(identities IdentityLookup, unlinker IdentityUnlinker, claims GameNickClaims, authentication Authentication, navigation *Navigation, brand branding.Brand) *AccountHandler {
+	return &AccountHandler{
+		identities: identities, unlinker: unlinker, claims: claims,
+		authentication: authentication, navigation: navigation, brand: brand,
+	}
 }
 
 func (h *AccountHandler) Show(w http.ResponseWriter, r *http.Request) {
@@ -87,7 +90,7 @@ func (h *AccountHandler) render(w http.ResponseWriter, r *http.Request, status i
 	}
 	rows, linkable := accountIdentityRows(identities, h.providers())
 	linkError := r.URL.Query().Get("link_error") != ""
-	navigation := components.NavigationState{Viewer: &components.Viewer{ID: account.ID, GameNick: account.GameNick, Role: string(account.Role)}, Section: "account"}
+	navigation := h.navigation.For(r, "account")
 	render(w, r, status, pages.Account(h.brand, navigation, account.GameNick, rows, linkable, linkError, gameNickInput, gameNickError))
 }
 

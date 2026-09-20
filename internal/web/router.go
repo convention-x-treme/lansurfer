@@ -66,10 +66,17 @@ type RouterDependencies struct {
 	GameResolver        handler.GameResolver
 	GameRequests        handler.GameRequestCommands
 	RequestQueries      handler.GameRequestQueries
-	Realtime            handler.GameRequestEvents
-	SecureCookies       bool
-	Logger              *slog.Logger
-	TrustedProxies      []netip.Prefix
+	// NavigationQueries and NavigationCatalog back the shared sidebar every
+	// authenticated screen renders. The same concrete read model and
+	// discovery service behind RequestQueries/Discovery satisfy them; saying
+	// so is this composition root's job, not a reason to widen either
+	// handler's own narrower interface.
+	NavigationQueries handler.NavigationQueries
+	NavigationCatalog handler.NavigationCatalog
+	Realtime          handler.GameRequestEvents
+	SecureCookies     bool
+	Logger            *slog.Logger
+	TrustedProxies    []netip.Prefix
 	// InstanceName is the raw, already-trimmed config.Config.InstanceName
 	// value. Empty means unset; NewRouter resolves the display fallback.
 	InstanceName string
@@ -81,22 +88,27 @@ type RouterDependencies struct {
 // NewRouter constructs the HTTP router.
 func NewRouter(dependencies RouterDependencies) http.Handler {
 	brand := branding.Default()
-	instanceName := dependencies.InstanceName
-	if instanceName == "" {
-		instanceName = brand.Name
+	// resolvedInstanceName is what a surface renders when it always needs a
+	// name (the manifest, the administration diagnostics). The layouts need
+	// the opposite: whether one was configured at all, which is why the
+	// middleware below carries the raw value rather than this fallback.
+	resolvedInstanceName := dependencies.InstanceName
+	if resolvedInstanceName == "" {
+		resolvedInstanceName = brand.Name
 	}
 	authenticationHandler := handler.NewAuthentication(dependencies.Authentication, dependencies.Sessions, brand, dependencies.SecureCookies)
 	onboardingHandler := handler.NewOnboarding(
 		dependencies.PendingIdentities, dependencies.AccountRegistration, dependencies.GameNickClaims,
 		dependencies.Identities, dependencies.Authentication, brand, dependencies.SecureCookies,
 	)
-	accountHandler := handler.NewAccount(dependencies.Identities, dependencies.IdentityUnlinker, dependencies.GameNickClaims, dependencies.Authentication, brand)
+	navigation := handler.NewNavigation(dependencies.NavigationQueries, dependencies.NavigationCatalog)
+	accountHandler := handler.NewAccount(dependencies.Identities, dependencies.IdentityUnlinker, dependencies.GameNickClaims, dependencies.Authentication, navigation, brand)
 	administrationHandler := handler.NewAdministration(
-		dependencies.Games, dependencies.ProviderSync, brand,
-		instanceName, dependencies.BaseURL, SecureContextStatus(dependencies.BaseURL),
+		dependencies.Games, dependencies.ProviderSync, navigation, brand,
+		resolvedInstanceName, dependencies.BaseURL, SecureContextStatus(dependencies.BaseURL),
 	)
-	gamesHandler := handler.NewGames(dependencies.Discovery, brand)
-	gameRequestsHandler := handler.NewGameRequests(dependencies.GameRequests, dependencies.RequestQueries, dependencies.GameResolver, dependencies.Discovery, brand)
+	gamesHandler := handler.NewGames(dependencies.Discovery, navigation, brand)
+	gameRequestsHandler := handler.NewGameRequests(dependencies.GameRequests, dependencies.RequestQueries, dependencies.GameResolver, dependencies.Discovery, navigation, brand)
 	realtimeHandler := handler.NewRealtime(dependencies.Realtime)
 	router := chi.NewRouter()
 	router.Use(middleware.RequestID)
@@ -109,10 +121,13 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 	router.Use(webmiddleware.SecurityHeaders(dependencies.SecureCookies))
 	router.Use(webmiddleware.CSRF(dependencies.SecureCookies))
 	router.Use(webmiddleware.Theme)
-	router.Use(webmiddleware.Instance(instanceName))
+	// The raw configured value, not the brand fallback: an unset instance must
+	// reach the layouts as empty, or the secondary instance label renders the
+	// brand name a second time beside the wordmark on every screen.
+	router.Use(webmiddleware.Instance(dependencies.InstanceName))
 
 	router.Handle("/assets/*", http.StripPrefix("/assets/", assets.Handler()))
-	manifest := manifestHandler(brand, instanceName)
+	manifest := manifestHandler(brand, resolvedInstanceName)
 	router.Get("/manifest.webmanifest", manifest)
 	router.Head("/manifest.webmanifest", manifest)
 	serviceWorker, err := serviceWorkerHandler()
@@ -159,7 +174,6 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 				requests.Get("/", gameRequestsHandler.List)
 				requests.Get("/new", gameRequestsHandler.New)
 				requests.Get("/new/discovery", gameRequestsHandler.Discovery)
-				requests.Get("/new/selection", gameRequestsHandler.Selection)
 				requests.Get("/refresh", gameRequestsHandler.RefreshList)
 				requests.Post("/", gameRequestsHandler.Create)
 				requests.Get("/{requestID}", gameRequestsHandler.View)

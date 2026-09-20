@@ -20,46 +20,62 @@ import (
 // follows an already-local Game by ID.
 type GameDiscovery interface {
 	Browse(context.Context, string, string) (game.DiscoveryPage, error)
-	MyGames(context.Context, string) ([]game.SubscriptionGame, error)
+	BrowseFollowed(context.Context, string, string) (game.DiscoveryPage, error)
+	Select(context.Context, string, game.GameSelection) (game.DiscoveryItem, error)
 	FollowLocal(context.Context, string, string) error
 	Follow(context.Context, string, game.ProviderReference) (game.Game, error)
 	Unfollow(context.Context, string, string) error
 }
 
 type Games struct {
-	discovery GameDiscovery
-	brand     branding.Brand
+	discovery  GameDiscovery
+	navigation *Navigation
+	brand      branding.Brand
 }
 
-func NewGames(discovery GameDiscovery, brand branding.Brand) *Games {
-	return &Games{discovery: discovery, brand: brand}
+func NewGames(discovery GameDiscovery, navigation *Navigation, brand branding.Brand) *Games {
+	return &Games{discovery: discovery, navigation: navigation, brand: brand}
 }
 
+// Browse serves the one Games screen. "Followed only" is a filter on it
+// rather than a second route: the same search, the same cards, narrowed to
+// what this viewer follows.
 func (h *Games) Browse(w http.ResponseWriter, r *http.Request) {
 	account, _ := webmiddleware.CurrentUser(r.Context())
 	search := r.URL.Query().Get("q")
-	page, err := h.discovery.Browse(r.Context(), account.ID, search)
+	followedOnly := followedFilter(r)
+	page, err := h.browse(r, account.ID, search, followedOnly)
 	if err != nil {
 		if errors.Is(err, game.ErrInvalidSearch) {
-			h.renderBrowse(w, r, http.StatusUnprocessableEntity, game.DiscoveryPage{}, search, "Search must be 120 characters or fewer.")
+			h.renderBrowse(w, r, http.StatusUnprocessableEntity, game.DiscoveryPage{}, search, followedOnly, "Search must be 120 characters or fewer.")
 			return
 		}
 		webmiddleware.LogError(r, "browse game catalog", err)
 		h.renderError(w, r)
 		return
 	}
-	h.renderBrowse(w, r, http.StatusOK, page, search, "")
+	h.renderBrowse(w, r, http.StatusOK, page, search, followedOnly, "")
 }
 
+// MyGames keeps the retired /games/mine route working. The followed list is
+// now the Games screen's own filter, so the old address resolves to it
+// instead of 404ing bookmarks and links that predate the merge.
 func (h *Games) MyGames(w http.ResponseWriter, r *http.Request) {
-	account, _ := webmiddleware.CurrentUser(r.Context())
-	items, err := h.discovery.MyGames(r.Context(), account.ID)
-	if err != nil {
-		webmiddleware.LogError(r, "load followed games", err)
-		h.renderError(w, r)
-		return
+	http.Redirect(w, r, pages.CatalogURL(true), http.StatusSeeOther)
+}
+
+func (h *Games) browse(r *http.Request, userID, search string, followedOnly bool) (game.DiscoveryPage, error) {
+	if followedOnly {
+		return h.discovery.BrowseFollowed(r.Context(), userID, search)
 	}
-	render(w, r, http.StatusOK, pages.MyGames(h.brand, gameNavigation(r, "my-games"), items))
+	return h.discovery.Browse(r.Context(), userID, search)
+}
+
+// followedFilter reads the screen's one filter. Any value other than the
+// checkbox's own "1" is treated as off rather than rejected: a filter is
+// decoration on a list that still has a correct unfiltered answer.
+func followedFilter(r *http.Request) bool {
+	return r.URL.Query().Get("followed") == "1"
 }
 
 func (h *Games) Follow(w http.ResponseWriter, r *http.Request) {
@@ -68,7 +84,7 @@ func (h *Games) Follow(w http.ResponseWriter, r *http.Request) {
 		h.renderMutationError(w, r, err)
 		return
 	}
-	h.mutationSuccess(w, r, true)
+	h.mutationSuccess(w, r, account.ID, chi.URLParam(r, "gameID"))
 }
 
 // FollowProvider follows an IGDB discovery result identified only by its
@@ -86,11 +102,7 @@ func (h *Games) FollowProvider(w http.ResponseWriter, r *http.Request) {
 		h.renderMutationError(w, r, err)
 		return
 	}
-	if r.Header.Get("HX-Request") == "true" {
-		render(w, r, http.StatusOK, pages.GameFollowControl(result.ID, true, false))
-		return
-	}
-	http.Redirect(w, r, "/games", http.StatusSeeOther)
+	h.mutationSuccess(w, r, account.ID, result.ID)
 }
 
 func (h *Games) Unfollow(w http.ResponseWriter, r *http.Request) {
@@ -99,32 +111,50 @@ func (h *Games) Unfollow(w http.ResponseWriter, r *http.Request) {
 		h.renderMutationError(w, r, err)
 		return
 	}
-	h.mutationSuccess(w, r, false)
+	h.mutationSuccess(w, r, account.ID, chi.URLParam(r, "gameID"))
 }
 
-func (h *Games) renderBrowse(w http.ResponseWriter, r *http.Request, status int, page game.DiscoveryPage, search, message string) {
-	navigation := gameNavigation(r, "games")
+func (h *Games) renderBrowse(w http.ResponseWriter, r *http.Request, status int, page game.DiscoveryPage, search string, followedOnly bool, message string) {
+	navigation := h.navigationFor(r, navigationSection(followedOnly))
 	if r.Header.Get("HX-Request") == "true" {
-		render(w, r, status, pages.GameCatalogResults(page, search, message, navigation.Viewer))
+		render(w, r, status, pages.GameCatalogResults(h.brand, page, search, followedOnly, message, navigation.Viewer))
 		return
 	}
-	render(w, r, status, pages.GameCatalog(h.brand, navigation, page, search, message))
+	render(w, r, status, pages.GameCatalog(h.brand, navigation, page, search, followedOnly, message))
 }
 
-func (h *Games) mutationSuccess(w http.ResponseWriter, r *http.Request, subscribed bool) {
-	if r.Header.Get("HX-Request") == "true" {
-		if !subscribed && r.FormValue("view") == "mine" {
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-		render(w, r, http.StatusOK, pages.GameFollowControl(chi.URLParam(r, "gameID"), subscribed, false))
+// mutationSuccess re-reads the Game the follow just changed and re-renders
+// its whole card. Following changes the cover tag and the card border as
+// well as the button, so the card is the smallest fragment that can still
+// be correct afterwards; the read is Select, which carries the same cover
+// and enrichment the browsed card had, so the swapped-in card never
+// degrades to a poorer re-render than the one it replaced.
+//
+// A re-read that fails leaves the mutation itself committed, so this
+// reports the follow as succeeded and lets the next page load state the
+// result rather than surfacing a write error that did not happen.
+func (h *Games) mutationSuccess(w http.ResponseWriter, r *http.Request, userID, gameID string) {
+	followedOnly := r.FormValue("followed") == "1"
+	if r.Header.Get("HX-Request") != "true" {
+		http.Redirect(w, r, pages.CatalogURL(followedOnly), http.StatusSeeOther)
 		return
 	}
-	target := "/games"
-	if r.FormValue("view") == "mine" {
-		target = "/games/mine"
+	item, err := h.discovery.Select(r.Context(), userID, game.GameSelection{LocalGameID: gameID})
+	if err != nil {
+		webmiddleware.LogError(r, "reload followed game card", err)
+		w.WriteHeader(http.StatusOK)
+		return
 	}
-	http.Redirect(w, r, target, http.StatusSeeOther)
+	render(w, r, http.StatusOK, pages.GameCard(item, followedOnly))
+}
+
+// navigationSection marks the filtered view as its own navigation entry, so
+// the sidebar's followed shortcut reads as current while that filter is on.
+func navigationSection(followedOnly bool) string {
+	if followedOnly {
+		return "games-followed"
+	}
+	return "games"
 }
 
 func (h *Games) renderMutationError(w http.ResponseWriter, r *http.Request, cause error) {
@@ -141,15 +171,11 @@ func (h *Games) renderMutationError(w http.ResponseWriter, r *http.Request, caus
 }
 
 func (h *Games) renderError(w http.ResponseWriter, r *http.Request) {
-	render(w, r, http.StatusInternalServerError, pages.GameCatalogError(h.brand, gameNavigation(r, "games")))
+	render(w, r, http.StatusInternalServerError, pages.GameCatalogError(h.brand, h.navigationFor(r, "games")))
 }
 
-func gameNavigation(r *http.Request, section string) components.NavigationState {
-	account, _ := webmiddleware.CurrentUser(r.Context())
-	return components.NavigationState{
-		Viewer:  &components.Viewer{ID: account.ID, GameNick: account.GameNick, Role: string(account.Role)},
-		Section: section,
-	}
+func (h *Games) navigationFor(r *http.Request, section string) components.NavigationState {
+	return h.navigation.For(r, section)
 }
 
 func RequireAuthentication(next http.Handler) http.Handler {

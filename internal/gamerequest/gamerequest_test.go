@@ -110,6 +110,7 @@ func (r *recordingRepository) Create(_ context.Context, request GameRequest) (Ga
 func (r *recordingRepository) Join(context.Context, string, string) error            { return r.joinErr }
 func (*recordingRepository) Leave(context.Context, string, string) error             { return nil }
 func (*recordingRepository) SetStatus(context.Context, string, string, Status) error { return nil }
+func (*recordingRepository) RecordView(context.Context, string, string) error        { return nil }
 
 type staticGames bool
 

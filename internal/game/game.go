@@ -75,6 +75,8 @@ type SubscriptionRepository interface {
 	MyGames(context.Context, string) ([]SubscriptionGame, error)
 	Follow(context.Context, string, string) error
 	Unfollow(context.Context, string, string) error
+	CountCatalog(context.Context) (int64, error)
+	CountFollowed(context.Context, string) (int64, error)
 }
 
 type SubscriptionService struct {
@@ -95,6 +97,17 @@ func (s *SubscriptionService) Browse(ctx context.Context, userID, search string)
 
 func (s *SubscriptionService) MyGames(ctx context.Context, userID string) ([]SubscriptionGame, error) {
 	return s.repository.MyGames(ctx, userID)
+}
+
+// CountCatalog and CountFollowed back the navigation's Games/My Games counts.
+// They are counts, not the lists themselves, so every screen can state them
+// without loading a catalog it is not showing.
+func (s *SubscriptionService) CountCatalog(ctx context.Context) (int64, error) {
+	return s.repository.CountCatalog(ctx)
+}
+
+func (s *SubscriptionService) CountFollowed(ctx context.Context, userID string) (int64, error) {
+	return s.repository.CountFollowed(ctx, userID)
 }
 
 func (s *SubscriptionService) Follow(ctx context.Context, userID, gameID string) error {
