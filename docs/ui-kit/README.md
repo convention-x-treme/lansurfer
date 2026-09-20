@@ -33,13 +33,13 @@ The leading source for colour and typography is the Claude Design project [LANsu
 
 - Corner radii are tighter than the kit: `--radius-selector` `0.25rem`, `--radius-field` `0.375rem`, `--radius-box` `0.5rem`.
 - Panel headings are sentence-case text in the UI font; the tracked uppercase mono eyebrow is gone.
-- List search, the "My Games" toggle, and the "Free places" toggle are rendered now that Track A backs them with server-side discovery filters. Search applies while typing, debounced, and replaces the URL instead of pushing history; the submit button remains for the no-scripting path. "Load more" is still not rendered; it returns with server-side paging.
+- List search, the "My Games" toggle, and the "Free places" toggle are rendered now that Track A backs them with server-side discovery filters. Every visible control applies live, search is debounced, and updates replace the URL instead of pushing history; the submit button renders only without scripting. "Load more" is still not rendered; it returns with server-side paging.
 - The rail ranks games as **Trending** over the rolling window Track A's read model states (`Trending · last 6 hours`), not as an unbounded "most requested" tally.
 - Player rows in the detail view are separated by rules inside the Players panel instead of being filled cards inside a card.
 - The detail view's Game panel does not repeat the kit's catalog total, which the navigation already carries. It states the Game's own type, platforms, and release year instead, so the panel disambiguates two Games of the same name. Its link keeps the implemented wording, "More rounds of this game".
 - The navigation frame labels the Games sub-item "Followed". The implementation renders it as **My Games**, the term PRODUCT fixes for explicitly followed Games; only the frame's indentation and row metrics are adopted.
 - The navigation frame's "Games" counter is the active local catalog, not the synchronized IGDB provider index, which is a search surface rather than a catalog this installation can total.
-- "Your next games" and "Recently viewed" are implemented; the frame's uppercase mono eyebrows follow the sentence-case panel-heading deviation above.
+- "Your next games" and "Recently viewed" are implemented as uppercase navigation headings in Deep Ocean for light mode and Sea Foam for dark mode; they remain in the UI font rather than the frame's mono eyebrow.
 
 ## Open
 

@@ -174,7 +174,6 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 				requests.Get("/", gameRequestsHandler.List)
 				requests.Get("/new", gameRequestsHandler.New)
 				requests.Get("/new/discovery", gameRequestsHandler.Discovery)
-				requests.Get("/new/selection", gameRequestsHandler.Selection)
 				requests.Get("/refresh", gameRequestsHandler.RefreshList)
 				requests.Post("/", gameRequestsHandler.Create)
 				requests.Get("/{requestID}", gameRequestsHandler.View)

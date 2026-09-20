@@ -2,6 +2,7 @@ package pages
 
 import (
 	"net/url"
+	"strings"
 
 	"github.com/a-h/templ"
 	"github.com/convention-x-treme/lansurfer/internal/game"
@@ -21,11 +22,9 @@ func gameRequestSelectionValues(item game.DiscoveryItem) url.Values {
 	return values
 }
 
-// GameRequestSelectionQuery is the exported form of the same encoding
-// boundary, reused by the handler package for the composer's non-htmx
-// selection redirect so the identity contract is defined in exactly one
-// place.
-func GameRequestSelectionQuery(item game.DiscoveryItem) string {
+// gameRequestSelectionQuery is the same encoding as a query string, for
+// Games' "Find Players" link into the composer.
+func gameRequestSelectionQuery(item game.DiscoveryItem) string {
 	return gameRequestSelectionValues(item).Encode()
 }
 
@@ -35,8 +34,17 @@ func gameRequestComposerURL(item game.DiscoveryItem, form GameRequestForm) strin
 	return "/game-requests/new?" + values.Encode()
 }
 
-func gameRequestSelectionURL(item game.DiscoveryItem) string {
-	return "/game-requests/new/selection?" + GameRequestSelectionQuery(item)
+// composerChangeGameURL is "Change game": the composer's own pick list
+// again, carrying every request detail already typed and no selection, so
+// the player picks a replacement and comes back to a form that still knows
+// their max players, start time, and description.
+func composerChangeGameURL(form GameRequestForm) string {
+	values := url.Values{}
+	addComposerDetails(values, form)
+	if len(values) == 0 {
+		return "/game-requests/new"
+	}
+	return "/game-requests/new?" + values.Encode()
 }
 
 func addComposerDetails(values url.Values, form GameRequestForm) {
@@ -63,20 +71,41 @@ func gameRequestPickEmpty(search string) templ.Component {
 	return GameRequestPickEmpty()
 }
 
-// composerSearchInputID keeps the first-pick search and the "Change game"
-// search distinct ids: each form's live-search trigger names its own input,
-// and the two never coexist in one document.
-func composerSearchInputID(changeGame bool) string {
-	if changeGame {
-		return "game-request-change-search"
+// describedBy lists the ids that describe one control -- its standing hint,
+// plus its error when one is showing -- and renders nothing at all when
+// there is neither, rather than an empty aria-describedby.
+func describedBy(hintID string, hasError bool, errorID string) templ.Attributes {
+	ids := make([]string, 0, 2)
+	if hasError {
+		ids = append(ids, errorID)
 	}
-	return "game-request-search"
+	if hintID != "" {
+		ids = append(ids, hintID)
+	}
+	if len(ids) == 0 {
+		return templ.Attributes{}
+	}
+	return templ.Attributes{"aria-describedby": strings.Join(ids, " ")}
 }
 
-// composerSearchTrigger is Games' live-search trigger (Task 4), including
-// the type=search clear button's own "search" event, so clearing the field
-// returns to the followed list without a submit.
-func composerSearchTrigger(changeGame bool) string {
-	id := "#" + composerSearchInputID(changeGame)
-	return "submit, input changed delay:300ms from:(" + id + "), search from:(" + id + ")"
+// fieldState is describedBy plus the state a rejected control must carry:
+// aria-invalid spelled "true" (an empty aria-invalid reads as valid to a
+// screen reader), and autofocus so the re-rendered page opens on the field
+// that needs the correction -- no script required.
+func fieldState(hintID string, hasError bool, errorID string) templ.Attributes {
+	attrs := describedBy(hintID, hasError, errorID)
+	if hasError {
+		attrs["aria-invalid"] = "true"
+		attrs["autofocus"] = true
+	}
+	return attrs
+}
+
+// coverLoading marks the one cover a screen opens on as eager; every other
+// cover stays lazy.
+func coverLoading(priority bool) templ.Attributes {
+	if priority {
+		return templ.Attributes{"loading": "eager", "fetchpriority": "high"}
+	}
+	return templ.Attributes{"loading": "lazy"}
 }

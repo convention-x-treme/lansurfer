@@ -217,7 +217,8 @@
     padding-inline: 0.75rem;
     font-size: 0.875rem;
     font-weight: 600;
-    color: color-mix(in srgb, var(--color-base-content) 80%, transparent);
+    color: light-dark(var(--brand-deep-ocean), var(--brand-sea-foam));
+    text-transform: uppercase;
   }
 
   /* A joined round is a card, not a nav row: the fill marks it as a distinct
@@ -614,12 +615,6 @@
     background: color-mix(in srgb, var(--color-primary) 22%, var(--color-base-200));
   }
 
-  /* Small enough that a followed list reads as a list rather than a wall of
-     box art, at the ratio the covers are published in. */
-  .pick-cover {
-    width: 4.6875rem;
-  }
-
   .pick-name {
     min-width: 0;
     overflow-wrap: anywhere;
@@ -697,6 +692,14 @@
   .trending-cover:hover,
   .trending-cover:focus-visible {
     border-color: color-mix(in srgb, var(--color-primary) 58%, var(--border-raised));
+  }
+
+  /* A debounced search that has left but not landed: the list it is about
+     to replace dims, so a slow event network reads as "working", not as
+     "typed and nothing happened". */
+  .request-toolbar.htmx-request + [aria-live] {
+    opacity: 0.55;
+    transition: opacity 120ms ease-out;
   }
 
   .request-toolbar {
@@ -885,7 +888,8 @@
   .request-cover,
   .trending-cover,
   .detail-cover,
-  .pick-cover {
+  .pick-cover,
+  .selected-game-cover {
     position: relative;
     display: grid;
     width: 6rem;
@@ -900,6 +904,13 @@
 
   .detail-cover {
     width: 4.5rem;
+  }
+
+  /* Small enough that a followed list reads as a list rather than a wall of
+     box art. These per-use widths have to follow the shared rule above:
+     same specificity, so order is what decides them. */
+  .pick-cover {
+    width: 4.6875rem;
   }
 
   /* Out of flow, so a cover that has not loaded yet cannot resize the row
@@ -1104,12 +1115,69 @@
     box-shadow: var(--shadow-raised);
   }
 
+  /* The chosen Game leads the details step the way the cover leads the
+     pick row, and it wears the primary edge because it is the one answer
+     already given on this screen. Name only: the player just picked it. */
+  .selected-game {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 0.875rem;
+    border: 2px solid var(--color-primary);
+    border-radius: var(--radius-box);
+    background: var(--color-base-100);
+    padding: 0.75rem;
+  }
+
+  .selected-game-cover {
+    width: 6.25rem;
+  }
+
+  .selected-game-body {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .selected-game-name {
+    overflow-wrap: anywhere;
+    font-size: 1.1875rem;
+    font-weight: 700;
+    line-height: 1.25;
+  }
+
+  /* An error that names one field sits with that field, close enough to
+     read as its answer rather than as a page-wide complaint. */
+  .field-error {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--ink-danger);
+  }
+
+  /* One primary action, sized to be the obvious one, with the way out
+     beside it rather than competing for the same weight. */
+  .composer-actions {
+    display: flex;
+    flex-wrap: wrap-reverse;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .composer-commit {
+    flex: 1 1 14rem;
+  }
+
+  /* The border is the whole boundary of an unselected chip, so it carries
+     the 3:1 non-text contrast itself (WCAG 1.4.11) rather than the softer
+     edge a decorative divider can afford. */
   .start-choice span {
     display: inline-flex;
     min-height: 2.5rem;
     cursor: pointer;
     align-items: center;
-    border: 1px solid var(--border-raised);
+    border: 1px solid color-mix(in srgb, var(--color-base-content) 50%, transparent);
     border-radius: var(--radius-field);
     padding-inline: 0.875rem;
     color: color-mix(in srgb, var(--color-base-content) 72%, transparent);
@@ -1329,6 +1397,22 @@
   color: light-dark(var(--ink-danger), var(--color-error-content));
 }
 
+.alert[data-live-toast] {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.alert[data-live-toast] .btn-ghost {
+  color: inherit;
+}
+
+.alert[data-live-toast] .btn-ghost:hover,
+.alert[data-live-toast] .btn-ghost:focus-visible {
+  background-color: transparent;
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+
 /* Form fields: DaisyUI's 20%-of-ink border is 1.8:1 in dark mode, so nothing
    marks the control (SC 1.4.11). The focus ring is the system's own, not the
    2 px outline DaisyUI derives from the same border colour. */
@@ -1501,8 +1585,12 @@ textarea::placeholder {
    standing player hits reliably. Pointer-coarse only, so desktop keeps its
    density. */
 @media (pointer: coarse) {
+  .btn,
   .btn-sm,
-  .action-static {
+  .action-static,
+  .input,
+  .select,
+  .start-choice span {
     min-height: 2.75rem;
   }
 

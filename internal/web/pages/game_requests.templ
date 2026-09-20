@@ -13,6 +13,23 @@ import (
 	"github.com/convention-x-treme/lansurfer/internal/web/components"
 )
 
+// ComposerMessage is one server-side complaint about a submitted
+// composer. Field names the control the complaint is about
+// ("max_players", "start", "description"), so the message can be rendered
+// with that control, wired to it through aria-describedby, and focused --
+// rather than as a banner the player has to match to a field themselves.
+// An empty Field is a message about the request as a whole (a Game that
+// left the catalog, an infrastructure failure) and stays a page-level
+// alert.
+type ComposerMessage struct {
+	Text  string
+	Field string
+}
+
+func (m ComposerMessage) for_(field string) bool { return m.Text != "" && m.Field == field }
+
+func (m ComposerMessage) pageLevel() bool { return m.Text != "" && m.Field == "" }
+
 type GameRequestForm struct {
 	GameID         string
 	Provider       string
@@ -51,8 +68,8 @@ templ GameRequestList(brand branding.Brand, navigation components.NavigationStat
 }
 
 // RequestFilters submits normally without scripting and swaps only the list
-// with htmx, so discovery stays server-rendered either way. Typing filters
-// directly after a short pause; the button is the no-scripting submit path.
+// with htmx, so discovery stays server-rendered either way. Every visible
+// control filters live; the submit button renders only without scripting.
 //
 // The URL is replaced rather than pushed: a debounced keystroke that pushed
 // history would bury the previous page under one entry per pause. hx-sync drops
@@ -79,7 +96,7 @@ templ RequestFilters(filter requestquery.Filter) {
 			}
 		</fieldset>
 		<label class="filter-toggle"><input class="checkbox checkbox-sm" type="checkbox" name="open_places" value="1" checked?={ filter.OpenPlacesOnly }/><span>Free places</span></label>
-		<button class="btn btn-quiet btn-sm" type="submit">Filter</button>
+		<noscript><button class="btn btn-quiet btn-sm" type="submit">Filter</button></noscript>
 	</form>
 }
 
@@ -108,7 +125,7 @@ templ TrendingSection(trending []requestquery.TrendingGame, oob bool) {
 				for _, entry := range trending {
 					<li>
 						<a class="trending-cover" href={ templ.SafeURL("/game-requests?q=" + url.QueryEscape(entry.GameName)) } title={ entry.GameName } aria-label={ trendingAccessibleLabel(entry) }>
-							@CoverArt(entry.CoverImageID, entry.GameName)
+							@CoverArt(entry.CoverImageID, entry.GameName, false)
 						</a>
 					</li>
 				}
@@ -123,9 +140,13 @@ templ TrendingSection(trending []requestquery.TrendingGame, oob bool) {
 // and the abbreviation in its place when it does not. The abbreviation also
 // stays in the markup behind a known cover as the immediate next sibling,
 // which is what app.ts unhides when the remote image fails to load.
-templ CoverArt(coverImageID, gameName string) {
+//
+// priority marks the one cover a screen opens on -- the composer's chosen
+// Game, the detail hero -- which is in the viewport immediately and so is
+// fetched eagerly; every cover in a list stays lazy.
+templ CoverArt(coverImageID, gameName string, priority bool) {
 	if coverImageID != "" {
-		<img class="cover-art-image" src={ providerCoverLargeURL(coverImageID) } alt="" referrerpolicy="no-referrer" loading="lazy" data-cover-fallback="true"/>
+		<img class="cover-art-image" src={ providerCoverLargeURL(coverImageID) } alt="" referrerpolicy="no-referrer" { coverLoading(priority)... } data-cover-fallback="true"/>
 		<span class="cover-art-fallback" aria-hidden="true" hidden>{ components.GameAbbreviation(gameName) }</span>
 	} else {
 		<span class="cover-art-fallback" aria-hidden="true">{ components.GameAbbreviation(gameName) }</span>
@@ -212,7 +233,7 @@ templ GameRequestRow(request requestquery.Request, viewerID, highlightedID strin
 	<article id={ "game-request-" + request.ID } class={ gameRequestRowClass(request, highlightedID) } data-game-request-id={ request.ID }>
 		<a class="request-row-main" href={ "/game-requests/" + request.ID }>
 			<span class="request-cover">
-				@CoverArt(request.Game.CoverImageID, request.Game.Name)
+				@CoverArt(request.Game.CoverImageID, request.Game.Name, false)
 			</span>
 			<span class="request-row-body">
 				<span class="request-row-title">
@@ -280,7 +301,7 @@ templ GameRequestRow(request requestquery.Request, viewerID, highlightedID strin
 // showDetails true) even when the previously selected provider Game just
 // became unavailable and selected is nil again, so the player can pick a
 // replacement without retyping max players/start/description.
-templ NewGameRequest(brand branding.Brand, navigation components.NavigationState, page game.DiscoveryPage, selected *game.DiscoveryItem, showDetails bool, search string, form GameRequestForm, message string) {
+templ NewGameRequest(brand branding.Brand, navigation components.NavigationState, page game.DiscoveryPage, selected *game.DiscoveryItem, showDetails bool, search string, form GameRequestForm, message ComposerMessage) {
 	@components.Layout(brand, "Create Game Request", navigation) {
 		<header class="app-topbar">
 			<a class="link count-open text-sm font-semibold no-underline" href="/game-requests">← Game Requests</a>
@@ -288,20 +309,21 @@ templ NewGameRequest(brand branding.Brand, navigation components.NavigationState
 		<div class="content-page">
 			<div class="composer-panel">
 				<div><h1 class="app-title">Who's up for a round?</h1><p class="mt-1 text-sm text-base-content/70">Pick a game, a start time, and how many players can join.</p></div>
-				if message != "" {
-					<div role="alert" class="alert alert-error mt-5"><span>{ message }</span></div>
-				}
-				if selected != nil {
-					@GameRequestSelectedGame(*selected)
+				if message.pageLevel() {
+					<div role="alert" class="alert alert-error mt-5"><span>{ message.Text }</span></div>
 				}
 				if showDetails {
 					<form method="post" action="/game-requests" class="mt-6 grid gap-6">
 						@components.CSRFInput()
 						if selected != nil {
-							@GameRequestGameFields(*selected, false)
+							@GameRequestSelectedGame(*selected, form)
+							@GameRequestGameFields(*selected)
 						}
-						@GameRequestDetailsFields(form)
-						<div class="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-end"><a class="btn btn-ghost" href="/game-requests">Cancel</a><button class="btn btn-primary sm:min-w-64" type="submit">Create Game Request</button></div>
+						@GameRequestDetailsFields(form, message)
+						<div class="composer-actions">
+							<button class="btn btn-primary composer-commit" type="submit">Create Game Request</button>
+							<a class="btn btn-ghost" href="/game-requests">Cancel</a>
+						</div>
 					</form>
 				}
 				if selected == nil {
@@ -309,8 +331,8 @@ templ NewGameRequest(brand branding.Brand, navigation components.NavigationState
 						<h2 class="text-[1.0625rem] font-semibold">Find your game</h2>
 						<p class="text-sm text-base-content/70">The games you follow, or search the whole catalog.</p>
 					</div>
-					@GameRequestDiscoverySearchForm(search, false, form)
-					@GameRequestDiscovery(page, search, false, navigation.Viewer, form)
+					@GameRequestDiscoverySearchForm(search, form)
+					@GameRequestDiscovery(page, search, navigation.Viewer, form)
 				}
 			</div>
 		</div>
@@ -319,39 +341,28 @@ templ NewGameRequest(brand branding.Brand, navigation components.NavigationState
 
 // GameRequestSelectedGame is the composer's read-only display of the
 // currently selected Game (either an authoritative local Game or an
-// unmaterialized provider result, rendered identically via GameIdentity --
-// spec: "4.1 One player-facing Game card"). Its nested "Change game" panel
-// is the only place the composer's ajax reselection (GameRequestDiscovery
-// with changeGame=true, Selection's htmx swap) is ever reachable, so
-// #game-request-game-fields and #game-request-details already exist by the
-// time any of those controls can fire.
-templ GameRequestSelectedGame(item game.DiscoveryItem) {
-	<div id="game-request-selected-game" class="detail-card">
+// unmaterialized provider result, rendered identically -- spec: "4.1 One
+// player-facing Game card"). It shows the cover and the name only: the
+// player already recognised this Game well enough to pick it, so repeating
+// its type/platform/release line here would be noise on the one screen
+// where they are answering a different question.
+//
+// "Change game" is a plain link back to the composer's own pick list,
+// carrying every request detail already typed, rather than an inline
+// second search: one list, one way to pick, and the back/forward buttons
+// work the way the player expects.
+templ GameRequestSelectedGame(item game.DiscoveryItem, form GameRequestForm) {
+	<div id="game-request-selected-game">
 		<p class="section-label">Game</p>
-		@GameIdentity(item.GamePresentation)
-		<details class="mt-3" data-change-game>
-			<summary class="btn btn-quiet btn-sm">Change game</summary>
-			<div class="mt-4 grid gap-4">
-				@GameRequestDiscoverySearchForm("", true, GameRequestForm{})
-				@GameRequestChangeGameDiscovery()
+		<div class="selected-game">
+			<span class="selected-game-cover">
+				@CoverArt(item.CoverImageID, item.Name, true)
+			</span>
+			<div class="selected-game-body">
+				<strong class="selected-game-name">{ item.Name }</strong>
+				<a class="btn btn-quiet self-start" href={ composerChangeGameURL(form) }>← Change game</a>
 			</div>
-		</details>
-	</div>
-}
-
-// GameRequestChangeGameDiscovery is the "Change game" panel's own pre-search
-// state. It deliberately never renders GameRequestDiscovery with a
-// fabricated zero-value DiscoveryPage: that page's zero-value ProviderStatus
-// (State == "", CatalogAvailable == false) matches neither ProviderNotSynced
-// nor ProviderSyncing in GameCatalogAvailability, so it would fall through to
-// "No games are available yet." on every healthy instance, regardless of the
-// real catalog state. The live-search fragment
-// (GameRequestDiscoverySearchForm's ajax path, always backed by a real
-// discovery.Browse call) replaces this same #game-request-discovery id with
-// the real result once the player types.
-templ GameRequestChangeGameDiscovery() {
-	<div id="game-request-discovery" aria-live="polite">
-		<p class="text-sm text-base-content/70">Search the catalog to pick another game.</p>
+		</div>
 	</div>
 }
 
@@ -359,10 +370,9 @@ templ GameRequestChangeGameDiscovery() {
 // POST body: either the authoritative local Game ID, or the opaque provider
 // reference alone (never a browser-supplied name/slug -- the final Create
 // POST resolves/materializes the Game itself, exactly like /games' provider
-// follow). oob marks the out-of-band replacement Selection sends when
-// swapping in a new choice from the "Change game" panel.
-templ GameRequestGameFields(item game.DiscoveryItem, oob bool) {
-	<div id="game-request-game-fields" { outOfBand(oob)... }>
+// follow).
+templ GameRequestGameFields(item game.DiscoveryItem) {
+	<div id="game-request-game-fields">
 		if item.LocalGameID != "" {
 			<input type="hidden" name="game_id" value={ item.LocalGameID }/>
 		} else {
@@ -372,17 +382,37 @@ templ GameRequestGameFields(item game.DiscoveryItem, oob bool) {
 	</div>
 }
 
-// GameRequestDetailsFields is the request-local fields the composer's own
-// Select/Discovery flow never touches (Task 7 Step 7): a "Change game"
-// selection swap explicitly excludes #game-request-details, which is what
-// keeps whatever the player already typed here exactly as it is in the
-// browser.
-templ GameRequestDetailsFields(form GameRequestForm) {
+// GameRequestDetailsFields is the request-local half of the composer: max
+// players, when the round starts, and an optional description. Every value
+// here survives a trip back to the pick list, because "Change game" carries
+// them in its own URL.
+templ GameRequestDetailsFields(form GameRequestForm, message ComposerMessage) {
 	<div id="game-request-details" class="grid gap-6">
-		<div class="grid gap-6 md:grid-cols-[10rem_minmax(0,1fr)]">
-			<label class="grid content-start gap-2"><span class="label-text font-medium">Max players</span><input class="input input-bordered data-text w-full text-lg" type="number" name="max_players" min="1" max="2147483647" inputmode="numeric" value={ form.MaxPlayers } placeholder="No limit"/></label>
-			<fieldset class="grid gap-3" data-start-options>
+		<div class="grid gap-6">
+			<div class="grid content-start gap-2">
+				<label class="label-text font-medium" for="max-players">Max players</label>
+				<input
+					id="max-players"
+					class="input input-bordered data-text w-32 text-2xl placeholder:text-sm"
+					type="number"
+					name="max_players"
+					min="0"
+					max="999"
+					step="1"
+					inputmode="numeric"
+					value={ form.MaxPlayers }
+					{ fieldState("max-players-hint", message.for_("max_players"), "max-players-error")... }
+				/>
+				if message.for_("max_players") {
+					<p id="max-players-error" class="field-error">{ message.Text }</p>
+				}
+				<span id="max-players-hint" class="text-xs text-base-content/65">Up to 999 players, or 0 for an open round.</span>
+			</div>
+			<fieldset class="grid gap-3" data-start-options { describedBy("", message.for_("start"), "start-error")... }>
 				<legend class="label-text mb-2 font-medium">Start</legend>
+				if message.for_("start") {
+					<p id="start-error" class="field-error">{ message.Text }</p>
+				}
 				<div class="flex flex-wrap gap-2">
 					@StartChoice("now", "Now", form.StartPreset)
 					@StartChoice("15", "in 15 min", form.StartPreset)
@@ -391,24 +421,36 @@ templ GameRequestDetailsFields(form GameRequestForm) {
 					@StartChoice("custom", "Pick date & time", form.StartPreset)
 				</div>
 				<div class="custom-start-fields gap-3 rounded-md bg-base-100 p-4 sm:grid-cols-2" data-custom-start>
-					<label class="grid gap-2"><span class="section-label">Date</span><input class="input input-bordered data-text w-full" type="date" name="start_date" value={ form.StartDate }/></label>
+					<label class="grid gap-2"><span class="section-label">Date</span><input class="input input-bordered data-text w-full" type="date" name="start_date" value={ form.StartDate } { fieldState("", message.for_("start"), "start-error")... }/></label>
 					<label class="grid gap-2"><span class="section-label">Time</span><input class="input input-bordered data-text w-full" type="time" name="start_time" value={ form.StartTime }/></label>
 				</div>
 			</fieldset>
 		</div>
 		<input type="hidden" name="timezone_offset" value={ form.TimezoneOffset } data-timezone-offset/>
-		<label class="grid gap-2"><span class="label-text font-medium">Description <span class="font-normal text-base-content/65">(optional)</span></span><textarea class="textarea textarea-bordered min-h-28 w-full" name="description" maxlength="1000" placeholder="Anything players should know" data-description>{ form.Description }</textarea><span class="flex justify-between gap-4 text-xs text-base-content/65"><span>Leave max players empty for an open round.</span><span class="data-text" data-description-count>{ fmt.Sprintf("%d / 1000", len([]rune(form.Description))) }</span></span></label>
+		<label class="grid gap-2">
+			<span class="label-text font-medium">Description <span class="font-normal text-base-content/65">(optional)</span></span>
+			<textarea
+				class="textarea textarea-bordered min-h-24 w-full"
+				rows="3"
+				name="description"
+				maxlength="1000"
+				placeholder="Anything players should know"
+				data-description
+				{ fieldState("", message.for_("description"), "description-error")... }
+			>{ form.Description }</textarea>
+			if message.for_("description") {
+				<p id="description-error" class="field-error">{ message.Text }</p>
+			}
+			<span class="flex justify-end gap-4 text-xs text-base-content/65"><span class="data-text" data-description-count>{ fmt.Sprintf("%d / 1000", len([]rune(form.Description))) }</span></span>
+		</label>
 	</div>
 }
 
-// GameRequestDiscoverySearchForm is the composer's own search box, reusing
+// GameRequestDiscoverySearchForm is the composer's search box, reusing
 // Games' live-search interaction model (Task 4's GameSearchForm) rather
-// than reinventing it: both the first-pick list and the "Change game" panel
-// search live on the same 300ms debounce, with no submit button to press.
-// changeGame only selects which fragment mode the swap asks for (the
-// "change" field) and whether the composer's request details ride along as
-// transport state; the first-pick form carries them so a card's plain href
-// still preserves whatever the player already typed.
+// than reinventing it: the same 300ms debounce, no submit button to press,
+// and the composer's already-typed request details riding along as hidden
+// transport state so a result's plain href still preserves them.
 //
 // The form's action is the real composer page, not the layout-less
 // discovery fragment: without JS a plain submit (the noscript button, or
@@ -417,47 +459,39 @@ templ GameRequestDetailsFields(form GameRequestForm) {
 // actually uses. It also does not replace the address bar with the
 // fragment's own URL, which would leave reload/back/share pointing at that
 // same layout-less fragment.
-templ GameRequestDiscoverySearchForm(search string, changeGame bool, form GameRequestForm) {
+templ GameRequestDiscoverySearchForm(search string, form GameRequestForm) {
 	<form
 		class="request-toolbar"
+		data-game-request-search
 		method="get"
 		action="/game-requests/new"
 		hx-get="/game-requests/new/discovery"
 		hx-target="#game-request-discovery"
 		hx-swap="outerHTML"
 		hx-sync="this:replace"
-		hx-trigger={ composerSearchTrigger(changeGame) }
+		hx-trigger="submit, input changed delay:300ms from:(#game-request-search), search from:(#game-request-search)"
 	>
-		<label class="sr-only" for={ composerSearchInputID(changeGame) }>Search by game name or alias</label>
-		<input id={ composerSearchInputID(changeGame) } class="input input-sm request-search" type="search" name="q" value={ search } maxlength="120" placeholder="Search by name or alias, e.g. wc3" autocomplete="off"/>
-		if changeGame {
-			<input type="hidden" name="change" value="1"/>
-		} else {
-			@GameRequestDetailsTransportFields(form)
-		}
+		<label class="sr-only" for="game-request-search">Search by game name or alias</label>
+		<input id="game-request-search" class="input input-sm request-search" type="search" name="q" value={ search } maxlength="120" placeholder="Search by name or alias, e.g. wc3" autocomplete="off"/>
+		@GameRequestDetailsTransportFields(form)
 		<noscript><button class="btn btn-quiet btn-sm" type="submit">Search</button></noscript>
 	</form>
 }
 
-// GameRequestDiscovery renders the composer's shared discovery results,
-// with the same page-state/copy rules as Games' GameCatalogResults (Task 4)
-// -- reused rather than reinvented. changeGame selects the card action: false
-// (the composer's own first-pick list) links a plain full-page href to
-// /game-requests/new, exactly like Games' "Find Players" action; true (the
-// "Change game" search, always rendered by the dedicated
-// /game-requests/new/discovery fragment) additionally wires an htmx
-// selection swap, so re-picking a game there never reloads the page and
-// never disturbs #game-request-details.
-templ GameRequestDiscovery(page game.DiscoveryPage, search string, changeGame bool, viewer *components.Viewer, form GameRequestForm) {
+// GameRequestDiscovery renders the composer's pick list, with the same
+// page-state/copy rules as Games' GameCatalogResults (Task 4) -- reused
+// rather than reinvented. Every card is a plain full-page link back to the
+// composer, exactly like Games' "Find Players" action.
+templ GameRequestDiscovery(page game.DiscoveryPage, search string, viewer *components.Viewer, form GameRequestForm) {
 	<div id="game-request-discovery" aria-live="polite">
-		@GameDiscoveryState(page, search, viewer, GameRequestDiscoveryCards(page.Items, changeGame, form), gameRequestPickEmpty(search))
+		@GameDiscoveryState(page, search, viewer, GameRequestDiscoveryCards(page.Items, form), gameRequestPickEmpty(search))
 	</div>
 }
 
-templ GameRequestDiscoveryCards(items []game.DiscoveryItem, changeGame bool, form GameRequestForm) {
+templ GameRequestDiscoveryCards(items []game.DiscoveryItem, form GameRequestForm) {
 	<div class="game-grid">
 		for _, item := range items {
-			@GameRequestDiscoveryCard(item, changeGame, form)
+			@GameRequestDiscoveryCard(item, form)
 		}
 	</div>
 }
@@ -467,27 +501,15 @@ templ GameRequestDiscoveryCards(items []game.DiscoveryItem, changeGame bool, for
 // anywhere on it rather than a hunt for a button. It carries no follow
 // action and no metadata line -- /games owns the catalog browsing, this list
 // only picks.
-//
-// The row branches on item.LocalGameID rather than
-// item.Reference/Materialized -- an already-materialized row's Reference is
-// not always reliably populated by the underlying query (Task 3's known
-// nondeterminism), while LocalGameID is -- exactly like Games'
-// gameRequestAction (Task 4).
-templ GameRequestDiscoveryCard(item game.DiscoveryItem, changeGame bool, form GameRequestForm) {
-	if changeGame {
-		<a class="pick-card" href={ gameRequestComposerURL(item, form) } hx-get={ gameRequestSelectionURL(item) } hx-target="#game-request-selected-game" hx-swap="outerHTML" hx-sync="this:replace">
-			@gameRequestPickIdentity(item)
-		</a>
-	} else {
-		<a class="pick-card" href={ gameRequestComposerURL(item, form) }>
-			@gameRequestPickIdentity(item)
-		</a>
-	}
+templ GameRequestDiscoveryCard(item game.DiscoveryItem, form GameRequestForm) {
+	<a class="pick-card" href={ gameRequestComposerURL(item, form) }>
+		@gameRequestPickIdentity(item)
+	</a>
 }
 
 templ gameRequestPickIdentity(item game.DiscoveryItem) {
 	<span class="pick-cover">
-		@CoverArt(item.CoverImageID, item.Name)
+		@CoverArt(item.CoverImageID, item.Name, false)
 	</span>
 	<span class="pick-name">{ item.Name }</span>
 }
@@ -498,19 +520,9 @@ templ gameRequestPickIdentity(item game.DiscoveryItem) {
 // is already right above this panel.
 templ GameRequestPickEmpty() {
 	<section class="detail-card">
-		<h2 class="text-[1.0625rem] font-semibold">You follow no games yet.</h2>
+		<h3 class="text-[1.0625rem] font-semibold">You follow no games yet.</h3>
 		<p class="text-sm text-base-content/70">Search above to pick any game from the catalog.</p>
 	</section>
-}
-
-// GameRequestSelectionSwap is Selection's htmx response body (Task 7 Step
-// 7): the replacement selected-game display plus the out-of-band hidden
-// identity fields, and nothing else -- deliberately never
-// #game-request-details, which is what leaves the request-detail fields the
-// player already typed completely undisturbed in the browser.
-templ GameRequestSelectionSwap(item game.DiscoveryItem) {
-	@GameRequestSelectedGame(item)
-	@GameRequestGameFields(item, true)
 }
 
 templ GameRequestDetailsTransportFields(form GameRequestForm) {
@@ -579,7 +591,7 @@ templ GameRequestDetailContent(request requestquery.Request, viewerID string, re
 			<article class={ detailHeroClass(request) }>
 				<div class="flex flex-wrap items-start gap-4">
 					<span class="detail-cover">
-						@CoverArt(request.Game.CoverImageID, request.Game.Name)
+						@CoverArt(request.Game.CoverImageID, request.Game.Name, true)
 					</span>
 					<div class="min-w-[12rem] flex-1">
 						<div class="flex flex-wrap items-center gap-2.5">
@@ -669,7 +681,7 @@ templ GameRequestDetailContent(request requestquery.Request, viewerID string, re
 				<p class="section-label">Game</p>
 				<div class="flex items-center gap-3.5">
 					<span class="detail-cover">
-						@CoverArt(request.Game.CoverImageID, request.Game.Name)
+						@CoverArt(request.Game.CoverImageID, request.Game.Name, false)
 					</span>
 					<p class="min-w-0 text-[1.0625rem] font-semibold">{ request.Game.Name }</p>
 				</div>

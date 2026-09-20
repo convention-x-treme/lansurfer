@@ -175,9 +175,9 @@ func TestOpenRequestsLabelDistinguishesFilteredLists(t *testing.T) {
 	}
 }
 
-// Typing filters the list without pressing the button, and it does so once the
-// player pauses rather than once per keystroke. The button stays as the
-// no-scripting submit path.
+// Typing filters the list without a visible submit button, and it does so once
+// the player pauses rather than once per keystroke. A noscript submit path
+// remains for progressive enhancement.
 func TestRequestFiltersApplyWhileTyping(t *testing.T) {
 	var rendered bytes.Buffer
 	if err := RequestFilters(requestquery.Filter{}).Render(context.Background(), &rendered); err != nil {
@@ -190,7 +190,7 @@ func TestRequestFiltersApplyWhileTyping(t *testing.T) {
 		`hx-sync="this:replace"`,
 		// A debounced keystroke must not push one history entry per pause.
 		`hx-replace-url="true"`,
-		`type="submit"`,
+		`<noscript><button class="btn btn-quiet btn-sm" type="submit">Filter</button></noscript>`,
 	} {
 		if !strings.Contains(markup, want) {
 			t.Errorf("filter form is missing %q: %s", want, markup)
@@ -417,7 +417,7 @@ func TestNewGameRequestShowsDiscoveryBeforeSelection(t *testing.T) {
 	form := GameRequestForm{StartPreset: "now"}
 
 	var rendered bytes.Buffer
-	if err := NewGameRequest(branding.Default(), components.NavigationState{}, page, nil, false, "", form, "").Render(context.Background(), &rendered); err != nil {
+	if err := NewGameRequest(branding.Default(), components.NavigationState{}, page, nil, false, "", form, ComposerMessage{}).Render(context.Background(), &rendered); err != nil {
 		t.Fatalf("render NewGameRequest: %v", err)
 	}
 	body := rendered.String()
@@ -443,13 +443,15 @@ func TestNewGameRequestSelectedStateRendersIdentityAndHiddenFields(t *testing.T)
 	form := GameRequestForm{StartPreset: "now", Provider: "igdb", ExternalID: "42"}
 
 	var rendered bytes.Buffer
-	if err := NewGameRequest(branding.Default(), components.NavigationState{}, game.DiscoveryPage{}, &selected, true, "", form, "").Render(context.Background(), &rendered); err != nil {
+	if err := NewGameRequest(branding.Default(), components.NavigationState{}, game.DiscoveryPage{}, &selected, true, "", form, ComposerMessage{}).Render(context.Background(), &rendered); err != nil {
 		t.Fatalf("render NewGameRequest: %v", err)
 	}
 	body := rendered.String()
 	for _, want := range []string{
 		"Warcraft III: Reign of Chaos",
-		"https://images.igdb.com/igdb/image/upload/t_cover_small/co1abc.jpg",
+		"https://images.igdb.com/igdb/image/upload/t_cover_big/co1abc.jpg",
+		`loading="eager"`,
+		`fetchpriority="high"`,
 		"Change game",
 		`id="game-request-game-fields"`,
 		`name="provider" value="igdb"`,
@@ -471,7 +473,7 @@ func TestNewGameRequestDetailFieldsAppearOnlyAfterSelection(t *testing.T) {
 	form := GameRequestForm{StartPreset: "now"}
 
 	var unselected bytes.Buffer
-	if err := NewGameRequest(branding.Default(), components.NavigationState{}, game.DiscoveryPage{}, nil, false, "", form, "").Render(context.Background(), &unselected); err != nil {
+	if err := NewGameRequest(branding.Default(), components.NavigationState{}, game.DiscoveryPage{}, nil, false, "", form, ComposerMessage{}).Render(context.Background(), &unselected); err != nil {
 		t.Fatalf("render unselected composer: %v", err)
 	}
 	if strings.Contains(unselected.String(), `name="max_players"`) {
@@ -480,7 +482,7 @@ func TestNewGameRequestDetailFieldsAppearOnlyAfterSelection(t *testing.T) {
 
 	selected := game.DiscoveryItem{LocalGameID: "game-1", GamePresentation: game.GamePresentation{Name: "Warcraft III"}, Materialized: true}
 	var afterSelection bytes.Buffer
-	if err := NewGameRequest(branding.Default(), components.NavigationState{}, game.DiscoveryPage{}, &selected, true, "", form, "").Render(context.Background(), &afterSelection); err != nil {
+	if err := NewGameRequest(branding.Default(), components.NavigationState{}, game.DiscoveryPage{}, &selected, true, "", form, ComposerMessage{}).Render(context.Background(), &afterSelection); err != nil {
 		t.Fatalf("render selected composer: %v", err)
 	}
 	if !strings.Contains(afterSelection.String(), `name="max_players"`) {
@@ -488,101 +490,55 @@ func TestNewGameRequestDetailFieldsAppearOnlyAfterSelection(t *testing.T) {
 	}
 }
 
-// The "Change game" panel's own search uses the identical 300ms debounce/
-// replace-URL live-search interaction model as Games' GameSearchForm (Task
-// 4), reused rather than reinvented.
-func TestGameRequestChangeGameSearchUsesLiveSearchInteractionModel(t *testing.T) {
+// "Change game" is a link back to the pick list, not an inline second
+// search: one list picks games, and the link carries every request detail
+// already typed so coming back does not cost the player their answers.
+func TestGameRequestSelectedGameChangesGameThroughThePickList(t *testing.T) {
 	selected := game.DiscoveryItem{LocalGameID: "game-1", GamePresentation: game.GamePresentation{Name: "Warcraft III"}, Materialized: true}
+	form := GameRequestForm{MaxPlayers: "4", StartPreset: "custom", StartDate: "2027-05-01", StartTime: "18:00", Description: "LAN night"}
 
 	var rendered bytes.Buffer
-	if err := GameRequestSelectedGame(selected).Render(context.Background(), &rendered); err != nil {
+	if err := GameRequestSelectedGame(selected, form).Render(context.Background(), &rendered); err != nil {
 		t.Fatalf("render GameRequestSelectedGame: %v", err)
 	}
 	body := rendered.String()
-	for _, want := range []string{
-		`hx-get="/game-requests/new/discovery"`,
-		`hx-target="#game-request-discovery"`,
-		"input changed delay:300ms",
-		`hx-sync="this:replace"`,
-	} {
-		if !strings.Contains(body, want) {
-			t.Errorf("change-game search missing %q: %s", want, body)
+	if !strings.Contains(body, `href="/game-requests/new?description=LAN+night&amp;max_players=4&amp;start_date=2027-05-01&amp;start_preset=custom&amp;start_time=18%3A00"`) {
+		t.Errorf("change-game link does not return to the pick list with the typed details: %s", body)
+	}
+	for _, unwanted := range []string{"hx-get=", `id="game-request-discovery"`, "<details"} {
+		if strings.Contains(body, unwanted) {
+			t.Errorf("change-game still carries the inline search panel (%s): %s", unwanted, body)
 		}
 	}
 }
 
-// Review finding: the change-game search form's no-scripting fallback must
-// land on the real composer page, never on the layout-less discovery
-// fragment endpoint -- that fragment has no page chrome, no selection, and
-// no create form. hx-replace-url must not be set either, since it would
-// otherwise point the address bar at that same broken fragment URL on every
-// live search.
-func TestGameRequestChangeGameSearchFallsBackToTheComposerPage(t *testing.T) {
-	selected := game.DiscoveryItem{LocalGameID: "game-1", GamePresentation: game.GamePresentation{Name: "Warcraft III"}, Materialized: true}
+// The details step names the Game and nothing else about it: the player
+// picked it one screen ago, so its type/platform/release line and its
+// follow state are both noise where they are answering a different
+// question.
+func TestGameRequestSelectedGameShowsNameWithoutCatalogMetadata(t *testing.T) {
+	release := time.Date(2002, time.July, 3, 0, 0, 0, 0, time.UTC)
+	selected := game.DiscoveryItem{
+		LocalGameID: "game-1",
+		GamePresentation: game.GamePresentation{
+			Name: "Warcraft III", Slug: "warcraft-3", GameType: "Main Game",
+			PlatformNames: []string{"PC (Microsoft Windows)"}, FirstReleaseDate: &release,
+		},
+		Subscribed: true, Materialized: true,
+	}
 
 	var rendered bytes.Buffer
-	if err := GameRequestSelectedGame(selected).Render(context.Background(), &rendered); err != nil {
+	if err := GameRequestSelectedGame(selected, GameRequestForm{}).Render(context.Background(), &rendered); err != nil {
 		t.Fatalf("render GameRequestSelectedGame: %v", err)
 	}
 	body := rendered.String()
-	if !strings.Contains(body, `action="/game-requests/new"`) {
-		t.Errorf("change-game search does not fall back to the composer page: %s", body)
+	if !strings.Contains(body, "Warcraft III") {
+		t.Errorf("selected game does not name the Game: %s", body)
 	}
-	if strings.Contains(body, `action="/game-requests/new/discovery"`) {
-		t.Errorf("change-game search still falls back to the layout-less fragment endpoint: %s", body)
-	}
-	if strings.Contains(body, "hx-replace-url") {
-		t.Errorf("change-game search unexpectedly sets hx-replace-url: %s", body)
-	}
-}
-
-// Review finding: the collapsed "Change game" panel must not render a false
-// "No games are available yet." message on a perfectly healthy instance --
-// that happened because it rendered GameRequestDiscovery with a fabricated
-// zero-value DiscoveryPage (zero-value ProviderStatus) instead of a real
-// Browse result or its own pre-search prompt.
-func TestGameRequestSelectedGameChangePanelDoesNotFakeUnavailability(t *testing.T) {
-	selected := game.DiscoveryItem{LocalGameID: "game-1", GamePresentation: game.GamePresentation{Name: "Warcraft III"}, Materialized: true}
-
-	var rendered bytes.Buffer
-	if err := GameRequestSelectedGame(selected).Render(context.Background(), &rendered); err != nil {
-		t.Fatalf("render GameRequestSelectedGame: %v", err)
-	}
-	body := rendered.String()
-	if strings.Contains(body, "No games are available yet.") {
-		t.Errorf("change-game panel falsely reports the catalog unavailable: %s", body)
-	}
-	if !strings.Contains(body, `id="game-request-discovery"`) {
-		t.Errorf("change-game panel is missing its live-search swap target: %s", body)
-	}
-}
-
-// Selecting a new game via the "Change game" panel must swap only the
-// selected-game display and the hidden identity fields, never
-// #game-request-details -- that is what leaves the start/max-player/
-// description values the player already typed exactly as they are in the
-// browser (Task 7 Step 7).
-func TestGameRequestSelectionSwapExcludesRequestDetails(t *testing.T) {
-	item := game.DiscoveryItem{LocalGameID: "game-2", GamePresentation: game.GamePresentation{Name: "Age of Empires"}, Materialized: true}
-
-	var rendered bytes.Buffer
-	if err := GameRequestSelectionSwap(item).Render(context.Background(), &rendered); err != nil {
-		t.Fatalf("render GameRequestSelectionSwap: %v", err)
-	}
-	body := rendered.String()
-	for _, want := range []string{
-		`id="game-request-selected-game"`,
-		`id="game-request-game-fields"`,
-		`hx-swap-oob="true"`,
-		"Age of Empires",
-		`name="game_id" value="game-2"`,
-	} {
-		if !strings.Contains(body, want) {
-			t.Errorf("selection swap missing %q: %s", want, body)
+	for _, unwanted := range []string{"Main Game", "PC (Microsoft Windows)", "2002", "warcraft-3", "followed"} {
+		if strings.Contains(body, unwanted) {
+			t.Errorf("selected game still renders catalog metadata (%s): %s", unwanted, body)
 		}
-	}
-	if strings.Contains(body, `id="game-request-details"`) {
-		t.Errorf("selection swap unexpectedly touches request details: %s", body)
 	}
 }
 
@@ -599,7 +555,7 @@ func TestComposerRecoveryDiscoveryPreservesDetailsInNoJSActions(t *testing.T) {
 	}
 
 	var rendered bytes.Buffer
-	if err := NewGameRequest(branding.Default(), components.NavigationState{}, page, nil, true, "age", form, "Choose another game.").Render(context.Background(), &rendered); err != nil {
+	if err := NewGameRequest(branding.Default(), components.NavigationState{}, page, nil, true, "age", form, ComposerMessage{Text: "Choose another game."}).Render(context.Background(), &rendered); err != nil {
 		t.Fatalf("render recovery composer: %v", err)
 	}
 	body := rendered.String()
@@ -618,19 +574,20 @@ func TestComposerRecoveryDiscoveryPreservesDetailsInNoJSActions(t *testing.T) {
 	}
 }
 
-// The first-pick search is live like Games' search: typing filters the
-// list on the same debounce, and the only submit control left is the
+// The pick search is live like Games' search: typing filters the list on
+// the same debounce, and the only submit control left is the
 // no-JavaScript fallback.
-func TestComposerFirstPickSearchIsLive(t *testing.T) {
+func TestComposerPickSearchIsLive(t *testing.T) {
 	form := GameRequestForm{MaxPlayers: "4", Description: "LAN night"}
 
 	var rendered bytes.Buffer
-	if err := GameRequestDiscoverySearchForm("war", false, form).Render(context.Background(), &rendered); err != nil {
+	if err := GameRequestDiscoverySearchForm("war", form).Render(context.Background(), &rendered); err != nil {
 		t.Fatalf("render first-pick search: %v", err)
 	}
 	body := rendered.String()
 	for _, want := range []string{
 		`hx-get="/game-requests/new/discovery"`,
+		`data-game-request-search`,
 		`hx-target="#game-request-discovery"`,
 		"input changed delay:300ms from:(#game-request-search)",
 		"search from:(#game-request-search)",
@@ -639,30 +596,92 @@ func TestComposerFirstPickSearchIsLive(t *testing.T) {
 		`<noscript><button`,
 	} {
 		if !strings.Contains(body, want) {
-			t.Errorf("first-pick search missing %q: %s", want, body)
+			t.Errorf("pick search missing %q: %s", want, body)
 		}
 	}
-	if strings.Contains(body, `name="change"`) {
-		t.Errorf("first-pick search asks for the change-game fragment mode: %s", body)
-	}
 	if before, _, _ := strings.Cut(body, "<noscript>"); strings.Contains(before, "<button") {
-		t.Errorf("first-pick search still renders a visible search button: %s", body)
+		t.Errorf("pick search still renders a visible search button: %s", body)
 	}
 }
 
-// The "Change game" search asks the same fragment for the selection-swap
-// card mode, so its results keep swapping the selection in place.
-func TestComposerChangeGameSearchRequestsSelectionSwapCards(t *testing.T) {
+// Max players is a plain numeric field: 0 (or empty) is an open round, and
+// the field itself states both the bound and what 0 means, so a player
+// never has to submit to find out.
+func TestGameRequestMaxPlayersIsABoundedNumericField(t *testing.T) {
 	var rendered bytes.Buffer
-	if err := GameRequestDiscoverySearchForm("", true, GameRequestForm{}).Render(context.Background(), &rendered); err != nil {
-		t.Fatalf("render change-game search: %v", err)
+	if err := GameRequestDetailsFields(GameRequestForm{MaxPlayers: "4", StartPreset: "now"}, ComposerMessage{}).Render(context.Background(), &rendered); err != nil {
+		t.Fatalf("render details fields: %v", err)
 	}
 	body := rendered.String()
-	if !strings.Contains(body, `name="change" value="1"`) {
-		t.Errorf("change-game search does not request the selection-swap mode: %s", body)
+	for _, want := range []string{
+		`for="max-players"`,
+		`type="number" name="max_players" min="0" max="999"`,
+		"Up to 999 players, or 0 for an open round.",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("max players field missing %q: %s", want, body)
+		}
 	}
-	if !strings.Contains(body, "input changed delay:300ms from:(#game-request-change-search)") {
-		t.Errorf("change-game search lost its own debounce trigger: %s", body)
+	if strings.Contains(body, "data-stepper") {
+		t.Errorf("max players still renders the stepper buttons: %s", body)
+	}
+}
+
+// A rejection that names one field belongs with that field: rendered
+// inside its group, announced through aria-describedby, marked invalid,
+// and focused on arrival, rather than as a banner the player has to match
+// to a control by eye.
+func TestComposerFieldErrorsAreAttachedToTheirField(t *testing.T) {
+	form := GameRequestForm{MaxPlayers: "1000", StartPreset: "now"}
+	message := ComposerMessage{Text: "Maximum players must be a whole number from 0 to 999. 0 means no limit.", Field: "max_players"}
+
+	var rendered bytes.Buffer
+	if err := GameRequestDetailsFields(form, message).Render(context.Background(), &rendered); err != nil {
+		t.Fatalf("render details fields: %v", err)
+	}
+	body := rendered.String()
+	for _, want := range []string{
+		`aria-describedby="max-players-error max-players-hint"`,
+		`aria-invalid="true"`,
+		`autofocus`,
+		`<p id="max-players-error" class="field-error">Maximum players must be`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("max players error missing %q: %s", want, body)
+		}
+	}
+	if strings.Contains(body, `id="description-error"`) || strings.Contains(body, `id="start-error"`) {
+		t.Errorf("a max players error leaked onto another field: %s", body)
+	}
+}
+
+// With nothing rejected, the same fields carry their hint alone and no
+// invalid state at all.
+func TestComposerFieldsCarryNoErrorStateWhenValid(t *testing.T) {
+	var rendered bytes.Buffer
+	if err := GameRequestDetailsFields(GameRequestForm{StartPreset: "now"}, ComposerMessage{}).Render(context.Background(), &rendered); err != nil {
+		t.Fatalf("render details fields: %v", err)
+	}
+	body := rendered.String()
+	if !strings.Contains(body, `aria-describedby="max-players-hint"`) {
+		t.Errorf("max players lost its hint association: %s", body)
+	}
+	for _, unwanted := range []string{"aria-invalid", "autofocus", "field-error", `aria-describedby=""`} {
+		if strings.Contains(body, unwanted) {
+			t.Errorf("valid composer renders %q: %s", unwanted, body)
+		}
+	}
+}
+
+// A message about the request as a whole -- a Game that left the catalog --
+// has no field to sit beside and stays the page-level alert.
+func TestComposerRequestLevelMessageStaysAPageAlert(t *testing.T) {
+	var rendered bytes.Buffer
+	if err := NewGameRequest(branding.Default(), components.NavigationState{}, game.DiscoveryPage{}, nil, false, "", GameRequestForm{}, ComposerMessage{Text: "This game is no longer available."}).Render(context.Background(), &rendered); err != nil {
+		t.Fatalf("render composer: %v", err)
+	}
+	if body := rendered.String(); !strings.Contains(body, `role="alert"`) || !strings.Contains(body, "This game is no longer available.") {
+		t.Errorf("request-level message is not announced: %s", body)
 	}
 }
 
@@ -678,7 +697,7 @@ func TestGameRequestDiscoveryRowIsTheSelectControl(t *testing.T) {
 	}}}
 
 	var rendered bytes.Buffer
-	if err := GameRequestDiscovery(page, "", false, nil, GameRequestForm{}).Render(context.Background(), &rendered); err != nil {
+	if err := GameRequestDiscovery(page, "", nil, GameRequestForm{}).Render(context.Background(), &rendered); err != nil {
 		t.Fatalf("render discovery: %v", err)
 	}
 	body := rendered.String()
@@ -704,7 +723,7 @@ func TestGameRequestDiscoveryEmptyStates(t *testing.T) {
 	available := game.ProviderStatus{CatalogAvailable: true}
 
 	var followed bytes.Buffer
-	if err := GameRequestDiscovery(game.DiscoveryPage{ProviderStatus: available}, "", false, nil, GameRequestForm{}).Render(context.Background(), &followed); err != nil {
+	if err := GameRequestDiscovery(game.DiscoveryPage{ProviderStatus: available}, "", nil, GameRequestForm{}).Render(context.Background(), &followed); err != nil {
 		t.Fatalf("render pre-search discovery: %v", err)
 	}
 	if body := followed.String(); !strings.Contains(body, "You follow no games yet.") {
@@ -712,7 +731,7 @@ func TestGameRequestDiscoveryEmptyStates(t *testing.T) {
 	}
 
 	var searched bytes.Buffer
-	if err := GameRequestDiscovery(game.DiscoveryPage{ProviderStatus: available}, "warcraft", false, nil, GameRequestForm{}).Render(context.Background(), &searched); err != nil {
+	if err := GameRequestDiscovery(game.DiscoveryPage{ProviderStatus: available}, "warcraft", nil, GameRequestForm{}).Render(context.Background(), &searched); err != nil {
 		t.Fatalf("render searched discovery: %v", err)
 	}
 	body := searched.String()
@@ -728,7 +747,7 @@ func TestGameRequestDiscoveryUsesAdminForCatalogAvailability(t *testing.T) {
 	page := game.DiscoveryPage{ProviderStatus: game.ProviderStatus{State: game.ProviderDisabled}}
 	viewer := &components.Viewer{Role: "admin"}
 	var rendered bytes.Buffer
-	if err := GameRequestDiscovery(page, "", false, viewer, GameRequestForm{}).Render(context.Background(), &rendered); err != nil {
+	if err := GameRequestDiscovery(page, "", viewer, GameRequestForm{}).Render(context.Background(), &rendered); err != nil {
 		t.Fatalf("render discovery: %v", err)
 	}
 	if body := rendered.String(); !strings.Contains(body, `href="/admin/igdb"`) {

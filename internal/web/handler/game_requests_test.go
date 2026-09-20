@@ -18,18 +18,20 @@ import (
 )
 
 type fakeGameRequestCommands struct {
-	createCalls  int
-	createGameID string
-	created      gamerequest.GameRequest
-	createErr    error
+	createCalls       int
+	createGameID      string
+	createdMaxPlayers *int32
+	created           gamerequest.GameRequest
+	createErr         error
 
 	viewed        []string
 	recordViewErr error
 }
 
-func (f *fakeGameRequestCommands) Create(_ context.Context, _, gameID string, _ *int32, _ time.Time, _ string) (gamerequest.GameRequest, error) {
+func (f *fakeGameRequestCommands) Create(_ context.Context, _, gameID string, maxPlayers *int32, _ time.Time, _ string) (gamerequest.GameRequest, error) {
 	f.createCalls++
 	f.createGameID = gameID
+	f.createdMaxPlayers = maxPlayers
 	if f.createErr != nil {
 		return gamerequest.GameRequest{}, f.createErr
 	}
@@ -152,6 +154,51 @@ func TestCreateGameRequestResolvesProviderReference(t *testing.T) {
 	}
 }
 
+// 0 and an empty field are the composer's two ways of saying "open round",
+// and both must reach the service as no maximum at all rather than as a
+// zero the domain would reject.
+func TestCreateGameRequestTreatsZeroMaxPlayersAsNoLimit(t *testing.T) {
+	for _, value := range []string{"0", ""} {
+		commands := &fakeGameRequestCommands{created: gamerequest.GameRequest{ID: "request-1"}}
+		handler := NewGameRequests(commands, fakeGameRequestQueries{}, &fakeGameResolver{}, &fakeGameRequestDiscovery{}, nil, branding.Default())
+
+		form := url.Values{"game_id": {"game-1"}, "max_players": {value}}
+		request := httptest.NewRequest(http.MethodPost, "/game-requests", strings.NewReader(form.Encode()))
+		request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+		handler.Create(httptest.NewRecorder(), request)
+
+		if commands.createCalls != 1 {
+			t.Fatalf("max_players=%q: createCalls = %d, want 1", value, commands.createCalls)
+		}
+		if commands.createdMaxPlayers != nil {
+			t.Errorf("max_players=%q: maximum = %d, want no limit", value, *commands.createdMaxPlayers)
+		}
+	}
+}
+
+// A rejected max players must come back named as a max players problem,
+// not as an anonymous banner: the field association in the composer is
+// built from this.
+func TestCreateGameRequestNamesTheRejectedField(t *testing.T) {
+	handler := NewGameRequests(&fakeGameRequestCommands{}, fakeGameRequestQueries{}, &fakeGameResolver{}, &fakeGameRequestDiscovery{}, nil, branding.Default())
+
+	form := url.Values{"game_id": {"game-1"}, "max_players": {"1000"}}
+	request := httptest.NewRequest(http.MethodPost, "/game-requests", strings.NewReader(form.Encode()))
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	response := httptest.NewRecorder()
+
+	handler.Create(response, request)
+
+	body := response.Body.String()
+	if !strings.Contains(body, `id="max-players-error"`) {
+		t.Errorf("rejection is not rendered with the max players field: %s", body)
+	}
+	if !strings.Contains(body, `aria-invalid="true"`) {
+		t.Errorf("rejected field is not marked invalid: %s", body)
+	}
+}
+
 func TestCreateGameRequestSkipsResolutionOnValidationFailure(t *testing.T) {
 	commands := &fakeGameRequestCommands{}
 	resolver := &fakeGameResolver{game: game.Game{ID: "local-1"}}
@@ -160,7 +207,7 @@ func TestCreateGameRequestSkipsResolutionOnValidationFailure(t *testing.T) {
 	form := url.Values{
 		"provider":    {"igdb"},
 		"external_id": {"100"},
-		"max_players": {"0"},
+		"max_players": {"1000"},
 	}
 	request := httptest.NewRequest(http.MethodPost, "/game-requests", strings.NewReader(form.Encode()))
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -308,33 +355,24 @@ func TestNewGameRequestNoJSSelectionPreservesRequestDetails(t *testing.T) {
 	}
 }
 
-// The live-search fragment serves both composer search boxes. The "change"
-// field decides which card action comes back: a selection swap for the
-// "Change game" panel, a plain full-page link for the first-pick list --
-// whose href must still carry the request details the player already typed.
-func TestGameRequestDiscoveryFragmentCardModeFollowsTheAskingForm(t *testing.T) {
-	item := game.DiscoveryItem{
+// The live-search fragment renders the composer's own pick list: plain
+// full-page links whose href must still carry the request details the
+// player already typed.
+func TestGameRequestDiscoveryFragmentKeepsComposerDetailsInCardLinks(t *testing.T) {
+	discovery := &fakeGameRequestDiscovery{browseItem: game.DiscoveryPage{Items: []game.DiscoveryItem{{
 		LocalGameID: "local-2", GamePresentation: game.GamePresentation{Name: "Age of Empires"}, Materialized: true,
-	}
+	}}}}
+	handler := NewGameRequests(&fakeGameRequestCommands{}, fakeGameRequestQueries{}, &fakeGameResolver{}, discovery, nil, branding.Default())
 
-	firstPick := &fakeGameRequestDiscovery{browseItem: game.DiscoveryPage{Items: []game.DiscoveryItem{item}}}
-	handler := NewGameRequests(&fakeGameRequestCommands{}, fakeGameRequestQueries{}, &fakeGameResolver{}, firstPick, nil, branding.Default())
 	response := httptest.NewRecorder()
 	handler.Discovery(response, httptest.NewRequest(http.MethodGet, "/game-requests/new/discovery?q=age&max_players=4", nil))
-	body := response.Body.String()
-	if strings.Contains(body, "hx-get=") {
-		t.Errorf("first-pick fragment returned selection-swap cards: %s", body)
-	}
-	if !strings.Contains(body, "max_players=4") {
-		t.Errorf("first-pick fragment dropped the composer request details: %s", body)
-	}
 
-	changeGame := &fakeGameRequestDiscovery{browseItem: game.DiscoveryPage{Items: []game.DiscoveryItem{item}}}
-	handler = NewGameRequests(&fakeGameRequestCommands{}, fakeGameRequestQueries{}, &fakeGameResolver{}, changeGame, nil, branding.Default())
-	response = httptest.NewRecorder()
-	handler.Discovery(response, httptest.NewRequest(http.MethodGet, "/game-requests/new/discovery?q=age&change=1", nil))
-	if body := response.Body.String(); !strings.Contains(body, `hx-target="#game-request-selected-game"`) {
-		t.Errorf("change-game fragment did not return selection-swap cards: %s", body)
+	body := response.Body.String()
+	if !strings.Contains(body, "max_players=4") {
+		t.Errorf("fragment dropped the composer request details: %s", body)
+	}
+	if strings.Contains(body, "hx-get=") {
+		t.Errorf("fragment cards are no longer plain links: %s", body)
 	}
 }
 
@@ -359,65 +397,6 @@ func TestGameRequestDiscoveryFragmentUsesSameSearchModel(t *testing.T) {
 	}
 	if !strings.Contains(response.Body.String(), `id="game-request-discovery"`) {
 		t.Fatalf("body does not render the discovery fragment: %s", response.Body.String())
-	}
-}
-
-// TestGameRequestSelectionIsReadOnly proves the Selection fragment calls only
-// the read-only discovery.Select for a provider reference, never
-// GameResolver.Resolve -- reselecting in the composer must never materialize
-// a provider Game.
-func TestGameRequestSelectionIsReadOnly(t *testing.T) {
-	discovery := &fakeGameRequestDiscovery{selectItem: game.DiscoveryItem{
-		Reference:        game.ProviderReference{Provider: "igdb", ExternalID: "100"},
-		GamePresentation: game.GamePresentation{Name: "Provider Game"},
-	}}
-	resolver := &fakeGameResolver{}
-	handler := NewGameRequests(&fakeGameRequestCommands{}, fakeGameRequestQueries{}, resolver, discovery, nil, branding.Default())
-
-	request := httptest.NewRequest(http.MethodGet, "/game-requests/new/selection?provider=igdb&external_id=100", nil)
-	request.Header.Set("HX-Request", "true")
-	response := httptest.NewRecorder()
-
-	handler.Selection(response, request)
-
-	if discovery.selectCalls != 1 {
-		t.Fatalf("selectCalls = %d, want 1", discovery.selectCalls)
-	}
-	want := game.GameSelection{Reference: game.ProviderReference{Provider: "igdb", ExternalID: "100"}}
-	if discovery.selectSelection != want {
-		t.Fatalf("selection = %#v, want %#v", discovery.selectSelection, want)
-	}
-	if resolver.calls != 0 {
-		t.Fatalf("resolver.calls = %d, want 0", resolver.calls)
-	}
-	if response.Code != http.StatusOK {
-		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
-	}
-	if !strings.Contains(response.Body.String(), "Provider Game") {
-		t.Fatalf("body does not render the selected game: %s", response.Body.String())
-	}
-}
-
-// TestGameRequestSelectionAcceptsLocalGameID proves a game_id query
-// parameter becomes GameSelection{LocalGameID: ...}, exactly like New.
-func TestGameRequestSelectionAcceptsLocalGameID(t *testing.T) {
-	discovery := &fakeGameRequestDiscovery{selectItem: game.DiscoveryItem{
-		LocalGameID: "local-1", GamePresentation: game.GamePresentation{Name: "Local Game"}, Materialized: true,
-	}}
-	handler := NewGameRequests(&fakeGameRequestCommands{}, fakeGameRequestQueries{}, &fakeGameResolver{}, discovery, nil, branding.Default())
-
-	request := httptest.NewRequest(http.MethodGet, "/game-requests/new/selection?game_id=local-1", nil)
-	request.Header.Set("HX-Request", "true")
-	response := httptest.NewRecorder()
-
-	handler.Selection(response, request)
-
-	want := game.GameSelection{LocalGameID: "local-1"}
-	if discovery.selectSelection != want {
-		t.Fatalf("selection = %#v, want %#v", discovery.selectSelection, want)
-	}
-	if response.Code != http.StatusOK {
-		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
 	}
 }
 

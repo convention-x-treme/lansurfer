@@ -84,6 +84,30 @@ document.querySelectorAll<HTMLButtonElement>("[data-theme-toggle]").forEach((but
   });
 });
 
+// A number input enforces min/max only at submit time, so a typed 1000
+// would sit there looking accepted until the form is sent. Correcting it
+// as it is typed says the bound immediately; the server still validates
+// the same range for anything that reaches it without this script.
+document.querySelectorAll<HTMLInputElement>("input[type=number][max]").forEach((field) => {
+  field.addEventListener("input", () => {
+    const value = Number(field.value);
+    if (field.value === "" || !Number.isFinite(value)) return;
+    const maximum = Number(field.max);
+    const minimum = field.min === "" ? -Infinity : Number(field.min);
+    if (value > maximum) field.value = field.max;
+    else if (value < minimum) field.value = field.min;
+  });
+});
+
+function setGameRequestSearchBusy(event: Event, busy: boolean): void {
+  const source = event.target;
+  if (!(source instanceof HTMLFormElement) || !source.hasAttribute("data-game-request-search")) return;
+  document.querySelector("#game-request-discovery")?.setAttribute("aria-busy", String(busy));
+}
+
+document.addEventListener("htmx:beforeRequest", (event) => setGameRequestSearchBusy(event, true));
+document.addEventListener("htmx:afterRequest", (event) => setGameRequestSearchBusy(event, false));
+
 const description = document.querySelector<HTMLTextAreaElement>("[data-description]");
 const descriptionCount = document.querySelector<HTMLElement>("[data-description-count]");
 description?.addEventListener("input", () => {

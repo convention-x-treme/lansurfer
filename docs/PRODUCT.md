@@ -32,6 +32,12 @@ Creating a request should take only a few seconds. Joining should require very l
 
 Players should understand the UI without learning LANsurfer-specific terminology.
 
+### Live filtering
+
+Every filter in the UI applies as soon as its value changes. Do not require or provide a separate **Filter** or **Apply filters** button. Search fields are live filters too, but debounce their input before applying it.
+
+A **Clear filters** control is optional rather than a default requirement. Add one only when the implementation request explicitly includes it or after confirming with the requester that the screen should provide it.
+
 ### Event focused
 
 LANsurfer 1.0 should work especially well when the people using an installation already share the same physical LAN party or gaming event.

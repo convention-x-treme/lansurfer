@@ -3,7 +3,6 @@ package handler
 import (
 	"context"
 	"errors"
-	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -22,6 +21,11 @@ import (
 )
 
 const gameRequestTimeLayout = "2006-01-02T15:04"
+
+// maxPlayersLimit bounds what the composer accepts in the max players
+// field. A LAN round of a thousand players is a typo, not a plan, and the
+// field says so before the request is created.
+const maxPlayersLimit = 999
 
 type GameRequestCommands interface {
 	Create(context.Context, string, string, *int32, time.Time, string) (gamerequest.GameRequest, error)
@@ -193,7 +197,7 @@ func (h *GameRequests) New(w http.ResponseWriter, r *http.Request) {
 			h.renderError(w, r)
 			return
 		}
-		render(w, r, http.StatusOK, pages.NewGameRequest(h.brand, h.navigationFor(r), page, nil, false, search, form, ""))
+		render(w, r, http.StatusOK, pages.NewGameRequest(h.brand, h.navigationFor(r), page, nil, false, search, form, pages.ComposerMessage{}))
 		return
 	}
 
@@ -210,24 +214,19 @@ func (h *GameRequests) New(w http.ResponseWriter, r *http.Request) {
 			h.renderError(w, r)
 			return
 		}
-		render(w, r, http.StatusUnprocessableEntity, pages.NewGameRequest(h.brand, h.navigationFor(r), page, nil, false, "", form, gameCatalogUnavailableMessage))
+		render(w, r, http.StatusUnprocessableEntity, pages.NewGameRequest(h.brand, h.navigationFor(r), page, nil, false, "", form, pages.ComposerMessage{Text: gameCatalogUnavailableMessage}))
 		return
 	}
 	populateSelectionForm(&form, item)
-	render(w, r, http.StatusOK, pages.NewGameRequest(h.brand, h.navigationFor(r), game.DiscoveryPage{}, &item, true, "", form, ""))
+	render(w, r, http.StatusOK, pages.NewGameRequest(h.brand, h.navigationFor(r), game.DiscoveryPage{}, &item, true, "", form, pages.ComposerMessage{}))
 }
 
-// Discovery is the composer's live-search fragment, serving both search
-// boxes (Task 7 Step 6): it always calls the same read-only browsePicker as
-// New and never materializes anything. The "change" field says which one
-// asked -- the "Change game" panel, whose cards swap the selection in place,
-// or the first-pick list, whose cards stay plain full-page navigations.
-// Sending it as a form field rather than a query parameter keeps it part of
-// the same request htmx already serializes from the form.
-//
-// The first-pick form also carries the composer's request details as hidden
-// transport fields, so the cards this fragment renders keep them in their
-// hrefs and a failed-submission recovery never loses what the player typed.
+// Discovery is the composer's live-search fragment (Task 7 Step 6): it
+// calls the same read-only browsePicker as New and never materializes
+// anything. The search form carries the composer's request details as
+// hidden transport fields, so the cards this fragment renders keep them in
+// their hrefs and a failed-submission recovery never loses what the player
+// typed.
 func (h *GameRequests) Discovery(w http.ResponseWriter, r *http.Request) {
 	account, _ := webmiddleware.CurrentUser(r.Context())
 	search := r.URL.Query().Get("q")
@@ -237,45 +236,7 @@ func (h *GameRequests) Discovery(w http.ResponseWriter, r *http.Request) {
 		h.renderError(w, r)
 		return
 	}
-	changeGame := r.URL.Query().Get("change") == "1"
-	render(w, r, http.StatusOK, pages.GameRequestDiscovery(page, search, changeGame, h.navigationFor(r).Viewer, composerFormFromValues(r.URL.Query())))
-}
-
-// Selection is the composer's read-only reselection endpoint (Task 7 Step
-// 7): it parses exactly the same identity fields as New, calls the
-// read-only discovery.Select, and never touches GameResolver.Resolve, so
-// picking a different game in the composer never materializes a provider
-// Game by itself. For htmx it swaps only the selected-game display and the
-// hidden identity fields -- never #game-request-details -- so the request
-// details the player already typed stay exactly as they are in the browser.
-func (h *GameRequests) Selection(w http.ResponseWriter, r *http.Request) {
-	account, _ := webmiddleware.CurrentUser(r.Context())
-	selection, ok := gameSelectionFromValues(
-		r.URL.Query().Get("game_id"), r.URL.Query().Get("provider"), r.URL.Query().Get("external_id"),
-	)
-	if !ok {
-		http.Error(w, "select a game", http.StatusUnprocessableEntity)
-		return
-	}
-	item, err := h.discovery.Select(r.Context(), account.ID, selection)
-	if err != nil {
-		h.renderSelectionError(w, r, err)
-		return
-	}
-	if r.Header.Get("HX-Request") == "true" {
-		render(w, r, http.StatusOK, pages.GameRequestSelectionSwap(item))
-		return
-	}
-	h.redirect(w, r, "/game-requests/new?"+pages.GameRequestSelectionQuery(item))
-}
-
-func (h *GameRequests) renderSelectionError(w http.ResponseWriter, r *http.Request, cause error) {
-	if isCatalogSelectionError(cause) {
-		http.Error(w, "game not found", http.StatusNotFound)
-		return
-	}
-	webmiddleware.LogError(r, "select Game Request game", cause)
-	http.Error(w, "select game", http.StatusInternalServerError)
+	render(w, r, http.StatusOK, pages.GameRequestDiscovery(page, search, h.navigationFor(r).Viewer, composerFormFromValues(r.URL.Query())))
 }
 
 func (h *GameRequests) Create(w http.ResponseWriter, r *http.Request) {
@@ -322,10 +283,10 @@ func (h *GameRequests) Create(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	status := gameRequestErrorStatus(err)
-	message := gameRequestMessage(err)
+	message := pages.ComposerMessage{Text: gameRequestMessage(err), Field: gameRequestMessageField(err)}
 	if catalogUnavailable {
 		status = http.StatusUnprocessableEntity
-		message = gameCatalogUnavailableMessage
+		message = pages.ComposerMessage{Text: gameCatalogUnavailableMessage}
 	}
 	h.renderComposerError(w, r, form, status, message)
 }
@@ -336,7 +297,7 @@ func (h *GameRequests) Create(w http.ResponseWriter, r *http.Request) {
 // too (Task 7 Step 9). It never re-resolves a provider reference -- only the
 // read-only discovery.Select -- so re-rendering a failed submission can never
 // itself materialize anything.
-func (h *GameRequests) renderComposerError(w http.ResponseWriter, r *http.Request, form pages.GameRequestForm, status int, message string) {
+func (h *GameRequests) renderComposerError(w http.ResponseWriter, r *http.Request, form pages.GameRequestForm, status int, message pages.ComposerMessage) {
 	account, _ := webmiddleware.CurrentUser(r.Context())
 	var selected *game.DiscoveryItem
 	if selection, ok := gameSelectionFromValues(form.GameID, form.Provider, form.ExternalID); ok {
@@ -530,14 +491,20 @@ func (h *GameRequests) parseCreateForm(r *http.Request) (pages.GameRequestForm, 
 		Description:    r.FormValue("description"),
 		Provider:       strings.TrimSpace(r.FormValue("provider")), ExternalID: strings.TrimSpace(r.FormValue("external_id")),
 	}
+	// 0 and an empty field both mean "no limit", which the domain spells as
+	// a nil maximum. maxPlayersLimit is the composer's own input bound, not
+	// a domain rule: the domain accepts any positive maximum, and rounds
+	// created before this bound existed keep theirs.
 	var maxPlayers *int32
 	if form.MaxPlayers != "" {
 		value, err := strconv.ParseInt(form.MaxPlayers, 10, 32)
-		if err != nil || value < 1 || value > math.MaxInt32 {
+		if err != nil || value < 0 || value > maxPlayersLimit {
 			return form, nil, time.Time{}, gamerequest.ErrInvalidMaxPlayers
 		}
-		parsed := int32(value)
-		maxPlayers = &parsed
+		if value > 0 {
+			parsed := int32(value)
+			maxPlayers = &parsed
+		}
 	}
 	startsAt := h.now().UTC()
 	var startErr error
@@ -618,12 +585,30 @@ func gameRequestErrorStatus(err error) int {
 	}
 }
 
+// gameRequestMessageField names the composer control one rejection is
+// about, so the message can be rendered with that control instead of as a
+// banner the player has to match to a field. Anything not about a single
+// field -- a Game that left the catalog, an infrastructure failure --
+// reports no field and stays a page-level alert.
+func gameRequestMessageField(err error) string {
+	switch {
+	case errors.Is(err, gamerequest.ErrInvalidMaxPlayers):
+		return "max_players"
+	case errors.Is(err, gamerequest.ErrInvalidStartsAt):
+		return "start"
+	case errors.Is(err, gamerequest.ErrInvalidDescription):
+		return "description"
+	default:
+		return ""
+	}
+}
+
 func gameRequestMessage(err error) string {
 	switch {
 	case errors.Is(err, gamerequest.ErrGameUnavailable):
 		return "Choose an active game from the list."
 	case errors.Is(err, gamerequest.ErrInvalidMaxPlayers):
-		return "Maximum players must be a whole number of at least 1, or left blank."
+		return "Maximum players must be a whole number from 0 to 999. 0 means no limit."
 	case errors.Is(err, gamerequest.ErrInvalidStartsAt):
 		return "Enter a valid scheduled start time, or leave it blank to start now."
 	case errors.Is(err, gamerequest.ErrInvalidDescription):
