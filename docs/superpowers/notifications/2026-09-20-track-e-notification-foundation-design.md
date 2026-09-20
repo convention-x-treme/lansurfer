@@ -1,6 +1,6 @@
 # Track E1 — Durable Notification Foundation Design
 
-Status: Draft — interactive design in progress
+Status: Design complete — awaiting shared-understanding approval
 Date: 2026-09-20
 Tracking issue: #28
 Branch: docs/track-e-notifications-sdd
@@ -86,18 +86,16 @@ Settled personal-notification rules so far:
 - **Actor exclusion:** the user whose action produced the activity never receives a personal notification for that same activity.
 - **`created`:** notify eligible users for the Game according to their Web Push audience preference; never notify the creator.
 - **`joined`:** notify the Game Request participants, excluding the joining actor.
-- **`left`:** notify the remaining Game Request participants, excluding the leaving actor.
+- **`left`:** notify current Game Request participants, excluding the leaving actor.
+- **`closed`:** notify current Game Request participants, excluding the actor.
+- **`cancelled`:** notify current Game Request participants, excluding the actor.
+- **Lifecycle snapshot:** resolve current participant eligibility at delivery time; delayed/retried sends may suppress recipients who are no longer eligible, but old work never gains newly eligible recipients.
 - **Discord:** one message is created per Game Request and the same message is edited as request state changes; its current status and capacity/free-place summary are synchronized from later activity.
 - E1 consumes the durable live activity stream independently of whether every transport emits a delivery for every activity kind.
 
-The exact personal-notification behavior for `closed` and `cancelled`, and the exact participant snapshot used for recipient resolution, remain open E2 design decisions.
+### Implementation details intentionally delegated
 
-### Open decision branches
-
-- exact Go method/type names for the narrow transport-facing interface;
-- exact SQL column names/index names and other implementation-level naming.
-
-These are intentionally unresolved until the interactive design rounds settle them.
+The remaining choices are implementation-level naming and mechanics that do not change the settled contract, such as exact Go method/type names and exact SQL column/index names. They are not open product/architecture decisions.
 
 ## Acceptance direction
 
