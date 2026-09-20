@@ -1,6 +1,6 @@
 # Track E2 — Web Push Design
 
-Status: Draft — waiting on E1 shared-contract decisions
+Status: Design complete — awaiting shared-understanding approval
 Date: 2026-09-20
 Tracking issue: #28
 Branch: docs/track-e-notifications-sdd
@@ -104,17 +104,8 @@ Detailed E2 questions are intentionally blocked until E1 settles the shared dura
 - **Removed/re-registered device:** deleting a subscription suppresses any still-pending delivery targeting that subscription. Re-registering the same browser/endpoint later does not revive or redirect old deliveries; only new activity can target the new/current subscription.
 - This is an intentional extension beyond the current roadmap's creation-focused Web Push and identity-minimized wording and requires canonical documentation reconciliation before implementation merge.
 
-### Open decision branches
+### Implementation details intentionally delegated
 
-- exact subscription persistence fields and key constraints;
-- subscribe/unsubscribe HTTP contract and CSRF behavior;
-- browser permission/enablement state transitions;
-- exact wording/payload schema for each activity kind;
-- delivery-time eligibility query;
-- payload shape;
-- notification replacement/tag behavior;
-- notification click/focus behavior;
-- invalid endpoint cleanup;
-- automated and real-device validation details.
+The design frontier is closed. Remaining choices are implementation details that do not alter the settled product/architecture contract, including exact route/function/type names, exact SQL field/index names, final concise UI copy for supported/default/denied/disabled/no-device states, and the exact browser/version matrix used as validation evidence.
 
-These remain unresolved until E1 prerequisites and later Web Push grilling rounds are complete.
+Those details must follow the existing Account UI, Track G presentation rules, Track D service-worker contract, repository CSRF conventions, and the settled behavior above.
