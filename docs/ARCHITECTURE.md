@@ -297,7 +297,7 @@ Owns:
 - durable request-local activity for successful create/join/leave/close/cancel changes
 - the transactional notification-intent record Track E consumes
 
-One table, `game_request_activity`, currently serves both of those responsibilities. Every successful change writes its entry inside the same transaction as the change itself, so a rolled-back mutation leaves neither the change nor a notification intent, and a committed one survives a restart before delivery. A second table would duplicate the same write for the same guarantee. This remains provisional until Track E consumes it; if delivery turns out to need state that does not belong to `gamerequest`, splitting the notification record out is the expected change rather than a reversal.
+One table, `game_request_activity`, currently serves both of those responsibilities. Every successful change writes its entry inside the same transaction as the change itself, so a rolled-back mutation leaves neither the change nor a notification intent, and a committed one survives a restart before delivery. A second table would duplicate the same write for the same guarantee. Track E1's implementation confirmed this design: the `notification` module consumes this table asynchronously and keeps its own `notification_work`/`notification_delivery` state, with no second write into `gamerequest`'s tables or transactions. Splitting the notification record out remains the expected change only if a future track demonstrates delivery-specific state that does not belong here.
 
 Two rules govern how a consumer reads it:
 
@@ -310,11 +310,13 @@ Request-local activity is not event sourcing, generic audit logging, chat, or no
 
 Owns:
 
-- Web Push subscriptions and audience preferences
-- the single instance-level Discord destination
-- delivery attempts, retries, and external message references
+- `notification_work`: one durable row per consumed live `game_request_activity` row, snapshotting the fields (`game_request_id`, `actor_id`, `kind`, `occurred_at`) delivery processing and diagnostics need, so neither has to join back into `gamerequest`'s tables afterward.
+- `notification_delivery`: zero or more rows per work item, one per external target that was eligible for that activity at materialization time. Owns delivery status (`pending`, `claimed`, `succeeded`, `permanent`, `exhausted`, `uncertain`), attempts, retry scheduling, and (in later tracks) transport-specific external references.
+- Web Push subscriptions and audience preferences, and the single instance-level Discord destination (Tracks E2/E3, not yet implemented).
 
-The notification module consumes durable Game Request outbox work. It does not own or write Game Requests.
+The notification module consumes durable Game Request outbox work asynchronously; it does not own or write Game Requests, and Track A never writes into `notification`'s tables. Discovery uses a `NOT EXISTS` anti-join against `game_request_activity.sequence` plus a unique constraint on `notification_work.activity_sequence`, not a high-watermark cursor, so a row committed late is never silently skipped. A one-time, idempotent baseline pass materializes all pre-existing `origin=live` activity as never-deliverable "baseline" work before the worker starts; `origin=backfill` rows are excluded from discovery entirely. Delivery claiming uses `FOR UPDATE SKIP LOCKED` with a 60-second lease so a crashed worker's claim becomes eligible again automatically, with no in-process mutex and no additional required runtime service.
+
+E1 (this durable foundation) is implemented. E2 (Web Push) and E3 (Discord delivery) are not yet implemented; see `docs/ROADMAP.md`.
 
 A module must not directly update another module's tables merely because they are in the same database.
 

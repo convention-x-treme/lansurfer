@@ -40,4 +40,13 @@ Track C is implemented. These retained files are historical supporting records:
 4. `igdb/2026-09-18-discovery-ux-refinement-plan.md` — historical implementation plan for that refinement.
 5. `igdb/2026-09-19-ux-final-review-fix-report.md` — final UX review/fix report and verification evidence.
 
+## Notifications
+
+Track E1 (the durable notification foundation) is implemented. Its retained historical record is:
+
+1. `notifications/2026-09-20-track-e-notification-foundation-design.md` — design rationale for the two-level work/delivery persistence model, baseline initialization, claiming/lease recovery, and retry/backoff policy.
+2. `notifications/2026-09-20-track-e1-notification-foundation-plan.md` — historical execution plan for E1.
+
+Track E2 (Web Push) remains open design work; `notifications/2026-09-20-track-e-web-push-design.md` is still an active draft, not a historical record, and is unaffected by E1's implementation.
+
 When adding another durable artifact, place it in the relevant feature directory and link related documents with repository-relative paths.

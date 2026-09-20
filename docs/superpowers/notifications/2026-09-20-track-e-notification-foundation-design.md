@@ -1,6 +1,6 @@
 # Track E1 — Durable Notification Foundation Design
 
-Status: Draft — interactive design in progress
+Status: Historical — E1 implemented; see docs/ARCHITECTURE.md §7 (notification) for current architecture
 Date: 2026-09-20
 Tracking issue: #28
 Branch: docs/track-e-notifications-sdd
