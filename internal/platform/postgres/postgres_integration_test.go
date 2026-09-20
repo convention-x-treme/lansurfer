@@ -677,6 +677,70 @@ func TestIGDBGenerationPersistence(t *testing.T) {
 	}
 }
 
+// The admin status page distinguishes a running full sync from a hung one by
+// the number of rows already staged into the in-progress generation, so that
+// count has to track the staging generation alone. RecordCount must keep
+// reporting the last successful baseline instead of following it: a refresh
+// that is only half way through must not make the active catalog look bigger.
+func TestIGDBStatusReportsStagedRecords(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+
+	store := gamepostgres.NewStore(pool)
+	firstID, err := store.BeginGeneration(t.Context())
+	if err != nil {
+		t.Fatalf("BeginGeneration: %v", err)
+	}
+	firstBatch := []game.ProviderGame{testProviderGame("100"), testProviderGame("101")}
+	if err := store.StoreProviderGames(t.Context(), firstID, firstBatch); err != nil {
+		t.Fatalf("StoreProviderGames: %v", err)
+	}
+	staging, err := store.Status(t.Context(), time.Now().UTC())
+	if err != nil {
+		t.Fatalf("Status while staging first baseline: %v", err)
+	}
+	if staging.StagedRecords != 2 {
+		t.Fatalf("StagedRecords while staging = %d, want 2", staging.StagedRecords)
+	}
+	if staging.RecordCount != 0 {
+		t.Fatalf("RecordCount while staging = %d, want 0 before any baseline", staging.RecordCount)
+	}
+
+	if err := store.ActivateGeneration(t.Context(), firstID, int64(len(firstBatch))); err != nil {
+		t.Fatalf("ActivateGeneration: %v", err)
+	}
+	active, err := store.Status(t.Context(), time.Now().UTC())
+	if err != nil {
+		t.Fatalf("Status after activation: %v", err)
+	}
+	if active.StagedRecords != 0 {
+		t.Fatalf("StagedRecords after activation = %d, want 0", active.StagedRecords)
+	}
+	if active.RecordCount != 2 {
+		t.Fatalf("RecordCount after activation = %d, want 2", active.RecordCount)
+	}
+
+	secondID, err := store.BeginGeneration(t.Context())
+	if err != nil {
+		t.Fatalf("BeginGeneration (refresh): %v", err)
+	}
+	if err := store.StoreProviderGames(t.Context(), secondID, []game.ProviderGame{testProviderGame("200")}); err != nil {
+		t.Fatalf("StoreProviderGames (refresh): %v", err)
+	}
+	refreshing, err := store.Status(t.Context(), time.Now().UTC())
+	if err != nil {
+		t.Fatalf("Status while refreshing: %v", err)
+	}
+	if refreshing.StagedRecords != 1 {
+		t.Fatalf("StagedRecords during refresh = %d, want 1", refreshing.StagedRecords)
+	}
+	if refreshing.RecordCount != 2 {
+		t.Fatalf("RecordCount during refresh = %d, want the last baseline's 2", refreshing.RecordCount)
+	}
+}
+
 func TestIGDBGenerationRejectsWritesAfterActivation(t *testing.T) {
 	pool := newTestPool(t)
 	if err := Migrate(t.Context(), pool, testLogger()); err != nil {

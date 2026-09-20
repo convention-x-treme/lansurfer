@@ -505,7 +505,12 @@ SELECT state.active_generation_id,
        state.last_attempt_succeeded,
        state.last_success_at,
        state.last_error,
-       COALESCE(generation.record_count, 0)::bigint AS record_count
+       COALESCE(generation.record_count, 0)::bigint AS record_count,
+       (SELECT count(*)
+        FROM igdb_sync_generations attempt
+        JOIN igdb_game_index staged ON staged.generation_id = attempt.id
+        WHERE attempt.id = state.latest_attempt_generation_id
+          AND attempt.status = 'syncing') AS staged_record_count
 FROM igdb_provider_state state
 LEFT JOIN igdb_sync_generations generation ON generation.id = state.active_generation_id
 WHERE state.singleton
@@ -518,8 +523,19 @@ type IGDBProviderStatusRow struct {
 	LastSuccessAt        pgtype.Timestamptz
 	LastError            pgtype.Text
 	RecordCount          int64
+	StagedRecordCount    int64
 }
 
+// record_count is the active (last successfully activated) generation's
+// count. staged_record_count is separate on purpose: it reports how many
+// rows the in-progress generation has accumulated so far, so an operator can
+// see a running full sync move. latest_attempt_generation_id is the only
+// pointer to that generation, and ActivateIGDBGeneration/FailIGDBGeneration
+// make its row terminal, so a terminal or absent attempt yields 0. The count
+// is served by the igdb_game_index primary key (generation_id, igdb_id) and
+// is read-only, so it never blocks the sync's own batch inserts.
+// ponytail: one count(*) per status read. If this ever measures hot, maintain
+// a counter column in StoreIGDBProviderGame's statement instead.
 func (q *Queries) IGDBProviderStatus(ctx context.Context) (IGDBProviderStatusRow, error) {
 	row := q.db.QueryRow(ctx, iGDBProviderStatus)
 	var i IGDBProviderStatusRow
@@ -530,6 +546,7 @@ func (q *Queries) IGDBProviderStatus(ctx context.Context) (IGDBProviderStatusRow
 		&i.LastSuccessAt,
 		&i.LastError,
 		&i.RecordCount,
+		&i.StagedRecordCount,
 	)
 	return i, err
 }

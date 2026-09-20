@@ -514,6 +514,18 @@ func TestAdminIGDBRoutesRequireAdmin(t *testing.T) {
 	if response.Code != http.StatusForbidden {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusForbidden)
 	}
+
+	// The polled status fragment carries the same provider state as the page,
+	// so it lives behind the same administrator guard.
+	fragment := httptest.NewRequest(http.MethodGet, "/admin/igdb/status", nil)
+	fragment.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	fragmentResponse := httptest.NewRecorder()
+
+	NewRouter(dependencies).ServeHTTP(fragmentResponse, fragment)
+
+	if fragmentResponse.Code != http.StatusForbidden {
+		t.Fatalf("fragment status = %d, want %d", fragmentResponse.Code, http.StatusForbidden)
+	}
 }
 
 func TestAdminIGDBPageRendersStatusAndHidesSyncWhenDisabled(t *testing.T) {
@@ -560,6 +572,102 @@ func TestAdminIGDBPageShowsSyncActionAndLastError(t *testing.T) {
 		if strings.Contains(body, unwanted) {
 			t.Errorf("body unexpectedly contains %q", unwanted)
 		}
+	}
+}
+
+// While a full sync is in progress the page has to show the staging count
+// separately from the last successful baseline, and it has to keep refreshing
+// itself, or an operator cannot tell progress from a hung sync.
+func TestAdminIGDBPageReportsStagedProgressWhileSyncing(t *testing.T) {
+	providerSync := &routerProviderSync{status: game.ProviderStatus{
+		State:         game.ProviderSyncing,
+		RecordCount:   120000,
+		StagedRecords: 200345,
+	}}
+	request := httptest.NewRequest(http.MethodGet, "/admin/igdb", nil)
+	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	response := httptest.NewRecorder()
+
+	adminIGDBTestRouter(providerSync).ServeHTTP(response, request)
+
+	body := response.Body.String()
+	for _, want := range []string{
+		"Syncing", "Staged in this sync", "200345", "120000",
+		`aria-live="polite"`,
+		`hx-get="/admin/igdb/status"`,
+		`hx-trigger="every 2s"`,
+		`hx-swap="outerHTML"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("body does not contain %q: %q", want, body)
+		}
+	}
+	if strings.Contains(body, "Sync now") {
+		t.Error("body offers a manual sync while one is already running")
+	}
+}
+
+// The polling element is the element the refresh replaces, so a settled state
+// rendering without the polling attributes is what ends the loop: it must not
+// still poll, and it must not claim a staging count that does not exist.
+func TestAdminIGDBSettledPageStopsPolling(t *testing.T) {
+	providerSync := &routerProviderSync{status: game.ProviderStatus{State: game.ProviderCurrent, RecordCount: 42}}
+	request := httptest.NewRequest(http.MethodGet, "/admin/igdb", nil)
+	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	response := httptest.NewRecorder()
+
+	adminIGDBTestRouter(providerSync).ServeHTTP(response, request)
+
+	body := response.Body.String()
+	for _, unwanted := range []string{`hx-trigger="every 2s"`, "/admin/igdb/status", "Staged in this sync"} {
+		if strings.Contains(body, unwanted) {
+			t.Errorf("settled page unexpectedly contains %q: %q", unwanted, body)
+		}
+	}
+}
+
+// The refresh polls a fragment, not the page: it must render the status card
+// without the surrounding chrome, so repeated swaps cannot nest layouts.
+func TestAdminIGDBStatusFragmentRendersCardOnly(t *testing.T) {
+	providerSync := &routerProviderSync{status: game.ProviderStatus{
+		State:         game.ProviderSyncing,
+		RecordCount:   120000,
+		StagedRecords: 200345,
+	}}
+	request := httptest.NewRequest(http.MethodGet, "/admin/igdb/status", nil)
+	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	response := httptest.NewRecorder()
+
+	adminIGDBTestRouter(providerSync).ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
+	}
+	body := response.Body.String()
+	for _, want := range []string{`id="igdb-status"`, "Staged in this sync", "200345", `hx-trigger="every 2s"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("fragment does not contain %q: %q", want, body)
+		}
+	}
+	for _, unwanted := range []string{"<html", "app-topbar", "IGDB synchronization"} {
+		if strings.Contains(body, unwanted) {
+			t.Errorf("fragment unexpectedly contains page chrome %q", unwanted)
+		}
+	}
+}
+
+// A failed refresh must not blank the card: the fragment answers 500 so htmx
+// leaves the last good status on screen.
+func TestAdminIGDBStatusFragmentReportsReadFailure(t *testing.T) {
+	providerSync := &routerProviderSync{statusErr: errors.New("database unavailable")}
+	request := httptest.NewRequest(http.MethodGet, "/admin/igdb/status", nil)
+	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	response := httptest.NewRecorder()
+
+	adminIGDBTestRouter(providerSync).ServeHTTP(response, request)
+
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusInternalServerError)
 	}
 }
 

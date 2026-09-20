@@ -240,6 +240,22 @@ func (h *Administration) IGDB(w http.ResponseWriter, r *http.Request) {
 	render(w, r, http.StatusOK, pages.AdminIGDB(h.brand, h.navigationFor(r), status, notice(r)))
 }
 
+// IGDBStatus renders the status card on its own for the refresh /admin/igdb
+// runs while a sync is in progress. It renders the same component the page
+// embeds, so the refreshed markup cannot drift from the page's own. A failed
+// read is answered with 500 rather than a degraded card: htmx leaves a non-2xx
+// response unswapped, so the last good status stays on screen and the next
+// poll retries.
+func (h *Administration) IGDBStatus(w http.ResponseWriter, r *http.Request) {
+	status, err := h.providerSync.Status(r.Context())
+	if err != nil {
+		webmiddleware.LogError(r, "serve administration request", err)
+		http.Error(w, "load IGDB status", http.StatusInternalServerError)
+		return
+	}
+	render(w, r, http.StatusOK, pages.AdminIGDBStatus(status))
+}
+
 func (h *Administration) SyncIGDB(w http.ResponseWriter, r *http.Request) {
 	if h.providerSync.TryStart(r.Context()) {
 		h.redirect(w, r, "/admin/igdb?notice=igdb-sync-started")

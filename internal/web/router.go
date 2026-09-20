@@ -204,6 +204,7 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 				admin.Post("/games/{gameID}/delete", administrationHandler.DeleteGame)
 				if dependencies.ProviderSync != nil {
 					admin.Get("/igdb", administrationHandler.IGDB)
+					admin.Get("/igdb/status", administrationHandler.IGDBStatus)
 					admin.Post("/igdb/sync", administrationHandler.SyncIGDB)
 				}
 				admin.Get("/pwa", administrationHandler.PWA)
