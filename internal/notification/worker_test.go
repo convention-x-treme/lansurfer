@@ -21,15 +21,19 @@ func (r *blockingWorkerRepository) DiscoverActivity(ctx context.Context, limit i
 	return nil, ctx.Err()
 }
 
-func (r *blockingWorkerRepository) MaterializeWork(context.Context, Activity, []Target) error { return nil }
+func (r *blockingWorkerRepository) MaterializeWork(context.Context, Activity, []Target) error {
+	return nil
+}
 func (r *blockingWorkerRepository) ClaimDueDeliveries(context.Context, int, time.Time) ([]ClaimedDelivery, error) {
 	return nil, nil
 }
-func (r *blockingWorkerRepository) RecordSuccess(context.Context, int64) error                  { return nil }
-func (r *blockingWorkerRepository) RecordRetry(context.Context, int64, time.Time, string) error { return nil }
-func (r *blockingWorkerRepository) RecordExhausted(context.Context, int64, string) error        { return nil }
-func (r *blockingWorkerRepository) RecordPermanent(context.Context, int64, string) error         { return nil }
-func (r *blockingWorkerRepository) RecordUncertain(context.Context, int64, string) error         { return nil }
+func (r *blockingWorkerRepository) RecordSuccess(context.Context, int64) error { return nil }
+func (r *blockingWorkerRepository) RecordRetry(context.Context, int64, time.Time, string) error {
+	return nil
+}
+func (r *blockingWorkerRepository) RecordExhausted(context.Context, int64, string) error { return nil }
+func (r *blockingWorkerRepository) RecordPermanent(context.Context, int64, string) error { return nil }
+func (r *blockingWorkerRepository) RecordUncertain(context.Context, int64, string) error { return nil }
 
 func TestWorkerWaitBlocksUntilRunReturnsAfterShutdown(t *testing.T) {
 	repo := &blockingWorkerRepository{unblock: make(chan struct{})}
