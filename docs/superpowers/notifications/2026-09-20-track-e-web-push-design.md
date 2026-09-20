@@ -46,8 +46,13 @@ Detailed E2 questions are intentionally blocked until E1 settles the shared dura
 - **Actor exclusion is general for personal Web Push:** the actor who caused an activity never receives a push for that same activity.
 - **Created:** eligible followers/My Games users receive a push for a newly created request; users in the explicit all-new-requests audience may receive it regardless of following. The creator is excluded.
 - **Joined:** Game Request participants receive a push that someone joined, excluding the joining actor.
-- **Left:** Game Request participants receive a push that someone left, excluding the leaving actor.
-- This is an intentional extension beyond the current roadmap's creation-focused Web Push wording and requires canonical documentation reconciliation before implementation merge.
+- **Left:** current Game Request participants receive a push that someone left, excluding the leaving actor.
+- **Closed:** current Game Request participants receive a push that the request closed, excluding the actor.
+- **Cancelled:** current Game Request participants receive a push that the request was cancelled, excluding the actor.
+- **Delivery-time membership:** lifecycle recipients are resolved from current membership at send/retry time; users who have since left are not sent stale lifecycle pushes.
+- **Audience scope:** followed/My Games versus all-new-requests applies to `created` discovery only. Lifecycle notifications are based on current participation.
+- **Join/leave actor identity:** the push may include the activity actor's public Game Nick. Provider identity/name/email remain forbidden.
+- This is an intentional extension beyond the current roadmap's creation-focused Web Push and identity-minimized wording and requires canonical documentation reconciliation before implementation merge.
 
 ### Open decision branches
 
@@ -56,8 +61,7 @@ Detailed E2 questions are intentionally blocked until E1 settles the shared dura
 - duplicate endpoint ownership;
 - subscribe/unsubscribe HTTP contract;
 - enable/disable semantics;
-- `closed` / `cancelled` Web Push coverage;
-- exact participant snapshot for join/leave recipient resolution;
+- exact wording/payload schema for each activity kind;
 - delivery-time eligibility query;
 - payload shape;
 - notification replacement/tag behavior;
