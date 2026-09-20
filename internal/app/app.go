@@ -15,6 +15,7 @@ import (
 	gamepostgres "github.com/convention-x-treme/lansurfer/internal/game/postgres"
 	"github.com/convention-x-treme/lansurfer/internal/gamerequest"
 	gamerequestpostgres "github.com/convention-x-treme/lansurfer/internal/gamerequest/postgres"
+	notificationpostgres "github.com/convention-x-treme/lansurfer/internal/notification/postgres"
 	"github.com/convention-x-treme/lansurfer/internal/platform/config"
 	"github.com/convention-x-treme/lansurfer/internal/platform/postgres"
 	"github.com/convention-x-treme/lansurfer/internal/platform/sse"
@@ -54,6 +55,11 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	cancelMigration()
 	if err != nil {
 		return fmt.Errorf("apply database migrations: %w", err)
+	}
+
+	notificationStore := notificationpostgres.NewStore(pool)
+	if err := notificationStore.InitializeBaseline(ctx); err != nil {
+		return fmt.Errorf("initialize notification baseline: %w", err)
 	}
 
 	userService := user.NewService(userpostgres.NewStore(pool))
@@ -96,6 +102,7 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	realtime := sse.NewBroker()
 	gameRequests := gamerequest.NewService(gamerequestpostgres.NewStore(pool), gameService, realtime)
 	gameRequestQueries := gamerequestquery.NewStore(pool)
+	notificationWorker := newNotificationWorker(notificationStore, logger)
 	igdbSyncService := newIGDBSync(ctx, cfg.IGDB, gameStore, logger)
 	gameDiscovery := game.NewDiscoveryService(gameStore, gameStore, gameStore, igdbSyncService)
 
@@ -134,6 +141,7 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		logger.Info("HTTP server listening", "address", cfg.ListenAddr)
 		serverErrors <- server.ListenAndServe()
 	}()
+	go notificationWorker.Run(ctx)
 	go runDailyIGDBSync(ctx, igdbSyncService, igdbSyncInterval)
 	go runPeriodicFlowCleanup(ctx, flowStore, authFlowCleanupInterval, logger)
 	// Registered after pool.Close() above so it runs first on the way out:
@@ -143,6 +151,15 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		waitCtx, cancelWait := context.WithTimeout(context.Background(), shutdownTimeout)
 		defer cancelWait()
 		igdbSyncService.Wait(waitCtx)
+	}()
+	// Registered after the igdb wait above so it runs even earlier on the way
+	// out (defers are LIFO): the notification worker's in-flight database
+	// operations must finish (or be abandoned within the bound) before the
+	// pool they depend on is closed.
+	defer func() {
+		waitCtx, cancelWait := context.WithTimeout(context.Background(), shutdownTimeout)
+		defer cancelWait()
+		notificationWorker.Wait(waitCtx)
 	}()
 
 	select {
