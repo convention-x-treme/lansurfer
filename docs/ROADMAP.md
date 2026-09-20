@@ -50,7 +50,7 @@ Each track has a GitHub tracking issue carrying its current checklist. The issue
 | **B** | Game Nick & Authentication | [#25](https://github.com/convention-x-treme/lansurfer/issues/25) | **Integration ready** — PR #41 merged; tracker closed | None |
 | **C** | Game Catalog & IGDB Discovery | [#26](https://github.com/convention-x-treme/lansurfer/issues/26) | **Integration ready** — PR #36 merged | None for provider/index work; issue #37 is an operator-UX follow-up |
 | **D** | Minimum Instance Identity & PWA | [#27](https://github.com/convention-x-treme/lansurfer/issues/27) | **In progress** — draft PR #42; not yet on `main` | None; service-worker contract is consumed by E; G owns visual presentation |
-| **E** | Durable Notifications | [#28](https://github.com/convention-x-treme/lansurfer/issues/28) | **In progress** — E1 (durable foundation) implemented; E2 (Web Push) and E3 (Discord) not yet implemented | A for Game Request handoff; D for browser Web Push integration; B where Game Nick is rendered; G presents settings/permission states |
+| **E** | Durable Notifications | [#28](https://github.com/convention-x-treme/lansurfer/issues/28) | **In progress** — E1 implemented; E2/E3 designs approved, implementation pending | A for Game Request handoff; D for browser Web Push integration; B where Game Nick is rendered; G presents settings/permission states |
 | **F** | Distribution & Operations | [#29](https://github.com/convention-x-treme/lansurfer/issues/29) | **Prioritized** — not implemented on `main` | Final upgrade/restore validation depends on persistent migrations from A–E; release validation consumes G's production assets |
 | **G** | Default Brand & UI System Adoption | [#30](https://github.com/convention-x-treme/lansurfer/issues/30) | **In progress** — foundation PRs #17/#19/#21 merged; cross-track surfaces/audit remain | None for shared tokens/shell/components; final feature-surface integration waits only for affected A–F contracts |
 
@@ -64,7 +64,7 @@ Current delivery snapshot: **2026-09-20**, against `main` after Tracks B and C m
 - **Track B — Integration ready.** PR #41 merged Game Nick, provider-neutral OIDC/Discord authentication, persistent browser-bound flows, explicit link/unlink, onboarding, and public-identity rendering. Issue #25 is closed. The retained feature design is supporting history; PRODUCT/ARCHITECTURE own the durable behavior and ROADMAP owns current status.
 - **Track C — Integration ready.** PR #36 merged optional asynchronous IGDB synchronization, local provider search, materialization, provider lifecycle handling, and enrichment. Issue #37 remains a real operator-UX follow-up for in-progress sync visibility; it does not redefine Track C's architecture.
 - **Track D — In progress, not on `main`.** Draft PR #42 implements the minimum instance-name/manifest/service-worker shell and PWA diagnostics, but explicitly leaves real-device validation and final icon approval outstanding. Do not describe Track D as implemented on `main` until that PR (or its successor) lands.
-- **Track E — In progress.** The `notification` module's durable foundation (E1) is implemented: asynchronous consumption of Track A's `game_request_activity` handoff, two-level `notification_work`/`notification_delivery` persistence, PostgreSQL-backed claiming with crash-safe leases, capped exponential backoff with jitter, a `suppressed` terminal state for deliveries whose target becomes ineligible before send/retry, and authorized diagnostics/manual retry, proven with a fake transport. Personal Web Push (E2) and Discord delivery (E3) remain outstanding and unimplemented; no transport-specific behavior or UI exists yet.
+- **Track E — In progress.** The `notification` module's durable foundation (E1) is implemented: asynchronous consumption of Track A's `game_request_activity` handoff, two-level `notification_work`/`notification_delivery` persistence, PostgreSQL-backed claiming with crash-safe leases, capped exponential backoff with jitter, a `suppressed` terminal state for deliveries whose target becomes ineligible before send/retry, and authorized diagnostics/manual retry, proven with a fake transport. The E2 Web Push and E3 Discord delivery designs are approved and reconciled into canonical product/architecture scope, but their transport-specific implementation and UI remain outstanding.
 - **Track F — Planned.** Stable distribution artifacts, clean-host/backup/restore/upgrade evidence, and production operations work remain outstanding.
 - **Track G — In progress.** PRs #17, #19, and #21 established and remediated the shared design system, and implemented A/B/C surfaces consume it. Remaining work follows new D/E/F surfaces, the full re-audit when a new audit result is claimed, and release-time asset verification.
 
@@ -78,7 +78,7 @@ Tracking issues are progress views, not scope authorities. If a tracker body dis
    - `origin` distinguishes `live` rows from the `backfill` rows the single-event migration reconstructed. Backfilled rows are history only and are never deliverable. A consumer's first start on an installation that already has `live` history establishes its own baseline so an upgrade does not deliver the archive.
    - Track E owns durable workers, retry behavior, delivery persistence, and transport adapters.
    - Domain write + notification intent commit in the same PostgreSQL transaction where notification work is required.
-   - Agree stable request/work identifiers, change kinds, ordering, replay, and stale-update handling. A failed/rolled-back mutation leaves no notification intent.
+   - Track E's approved design keeps one consumer work record per live activity and separate per-target delivery state, with transport-specific stale-update handling where required. A failed/rolled-back mutation leaves no notification intent.
 
 2. **Track B internal: authentication → Game Nick onboarding**
    - OIDC and Discord resolve to the same local LANsurfer User model.
@@ -327,47 +327,54 @@ Deliver relevant Game Request changes beyond the open browser without coupling e
 
 ### Notification architecture
 
-- Add focused durable notification delivery through PostgreSQL outbox/work persistence and asynchronous workers.
-- Persist delivery status, retry schedule, external message references, and enough ordering/replay information to avoid stale Discord edits overwriting newer state.
+- Keep Track A's durable `game_request_activity` row as the single transactional handoff; do not add a parallel Track A notification outbox.
+- Consume live activity asynchronously into durable per-work/per-delivery state. Ignore `origin=backfill`, baseline pre-existing live history on first consumer start, and never use activity `sequence` as a global replay cursor.
+- Persist delivery status, retry schedule, external message references, and enough state for restart recovery, suppression, uncertainty, and Discord stale-update protection.
 - Never fail/roll back a Game Request action because an external delivery fails.
 - Keep SSE as the ephemeral in-browser update path.
-- Retry 429 via `Retry-After`; retry network/5xx failures with capped exponential backoff+jitter; expose exhausted/permanent/uncertain delivery for authorized diagnosis/manual retry.
+- Use six-attempt automatic retry rounds with capped exponential backoff+jitter. LANsurfer-computed waits cap at five minutes; an explicit provider `Retry-After` is respected in full.
+- Expose exhausted/permanent/uncertain delivery for authorized diagnosis/manual retry. Uncertain work is not blindly retried when the external effect may already have occurred.
 - Do not add a persistent in-app notification inbox.
 
 ### Web Push
 
-- Use VAPID and the approved narrow Web Push adapter.
-- Support multiple labeled subscriptions per user.
-- Require feature detection and explicit user gesture/permission.
-- Preserve explicit enablement/consent.
-- Support two player audience modes:
-  - **followed/My Games only** — default
-  - **all new Game Requests** — explicit opt-in
-- Do not push the creator for their own newly created request.
-- Re-check eligibility before delayed/retried sends.
-- Keep payload limited to Game, time, deep link, and minimum instance context; omit creator identity, description, roster, and activity.
+- Use VAPID and the approved narrow Web Push adapter integrated into Track D's single service worker.
+- Support multiple labeled subscriptions per user and explicit LANsurfer enablement. Browser permission, registered devices, enablement, and new-request audience preference remain distinct states.
+- Support two new-request audience modes:
+  - **followed/My Games only** — default;
+  - **all new Game Requests** — explicit opt-in.
+- Exclude the activity actor from their own personal notification.
+- Notify current request participants for join, leave, close, and cancel independently of the new-request audience mode.
+- Re-check current eligibility before delayed/retried sends. Old work may lose recipients/devices but never gains newly eligible ones.
+- Use a versioned minimal payload with Game, time, activity kind, deep link, minimum instance context, and optional join/leave actor Game Nick. Omit description, roster, provider identity data, and activity history.
+- Suppress duplicate OS notification while a LANsurfer window is visibly open and SSE is the active in-browser path.
+- Encrypt PushSubscription endpoint/`p256dh`/`auth` at rest with the Track E data-encryption key and use a keyed endpoint fingerprint for uniqueness/ownership lookup.
+- Keep Push device identity separate from the short-lived authentication session so explicit logout can remove exactly the current browser subscription.
 
 ### Discord delivery
 
-- Keep Discord delivery independent from Discord authentication.
+- Keep Discord delivery independent from Discord authentication, including separate operator OAuth credentials.
 - Configure at most one instance-level Discord destination through Discord `webhook.incoming` OAuth; do not accept pasted webhooks or add a bot/gateway.
-- Encrypt stored webhook identifiers/tokens at rest and never reveal stored secrets.
-- Create one message per Game Request with `wait=true`, store its message ID, and edit that same message as the request changes.
-- Include Game, planned start time, status, capacity/free-place summary, creator Game Nick, short sanitized description, and LANsurfer deep link.
-- Do not mirror the full participant roster or durable activity history.
-- Provider identity data is not public identity.
-- Disable Discord mentions.
+- Encrypt stored webhook ID/token at rest and never reveal or reconstruct stored webhook credentials/URL. Do not retain setup OAuth access/refresh tokens after the webhook is stored.
+- Create one message per Game Request with `wait=true`, store its message ID, and update it from the current request snapshot as state changes.
+- Serialize external mutation per destination + Game Request, coalesce obsolete intermediate state, and prevent stale edits from overwriting a newer synchronized message.
+- Include Game, planned start time, current status, capacity/free-place summary, creator Game Nick, short sanitized/plain-content description, LANsurfer deep link, and minimum instance context.
+- Do not mirror the full participant roster or durable activity history. Provider identity data is not public identity. Disable Discord mentions on create and edit.
+- A deleted webhook breaks the destination and requires administrator reconnect. A deleted message with a still-valid webhook is recreated from current state.
+- Ambiguous initial message creation may become `uncertain`; replay-safe edits use normal retry handling.
+- Connecting/reconnecting never replays historical work, but later live activity for an existing request may create its first current-state message in the new destination.
 
 ## Acceptance
 
-Outbox persistence survives restarts, retries are bounded/observable, Web Push targeting/privacy are correct, Discord keeps one current message per request, and provider outages never prevent Game Request actions.
+Durable work survives restarts, retries and terminal states are bounded/observable, Web Push targeting/privacy/consent are correct for creation and lifecycle activity, Discord keeps one current non-stale message per request, and provider outages never prevent Game Request actions.
 
 ### Verification evidence
 
-- Exercise worker interruption, abandoned work recovery, duplicate work, out-of-order changes, and provider-accepted-but-response-lost uncertainty.
-- Test 429 handling, capped retries, exhausted/permanent failures, and manual retry authorization.
-- Recheck push eligibility after unfollow/toggle-off/audience changes and creator exclusion.
-- Demonstrate disabled/failing transports do not block request writes.
+- Exercise worker interruption, abandoned work recovery, duplicate discovery, first-start baseline behavior, out-of-order changes, suppression, and provider-accepted-but-response-lost uncertainty.
+- Test LANsurfer backoff plus provider `Retry-After`, exhausted/permanent/uncertain failures, and authorized manual retry.
+- Verify Web Push actor exclusion, followed/all creation targeting, lifecycle participant targeting, eligibility loss before retry, multi-device delivery, logout/device removal, encrypted subscription persistence, visible-window OS-notification suppression, and invalid endpoint removal.
+- Verify Discord OAuth destination replacement/disconnect, encrypted credential storage, current-state create/edit, serialized stale-update protection, coalescing/supersession, deleted-message recovery, deleted-webhook broken state, and ambiguous-create manual retry.
+- Demonstrate disabled/failing transports do not block request writes and neither transport causes historical replay after first enable/connect.
 
 # Track F — Distribution & Operations
 
