@@ -883,3 +883,113 @@ func TestNotificationTransportFailureNeverAffectsOriginatingGameRequestWrites(t 
 		t.Fatalf("game request state after a permanent transport failure = status=%q members=%d, want status=%q members=2 (unaffected)", status, memberCount, "open")
 	}
 }
+
+func TestNotificationManualRetryReopensExhaustedDeliveryEndToEnd(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+	fixture := newNotificationFixture(t, pool)
+	store := notificationpostgres.NewStore(pool)
+	if err := store.InitializeBaseline(t.Context()); err != nil {
+		t.Fatalf("InitializeBaseline() error = %v", err)
+	}
+	if _, err := fixture.requests.Create(t.Context(), fixture.host.ID, fixture.gameID, nil, time.Now().Add(time.Hour), "Exhaust then retry"); err != nil {
+		t.Fatalf("create game request: %v", err)
+	}
+	transport := newFakeTransport("test", []notification.Target{{Transport: "test", Key: "target-1"}})
+	transport.defaultSend = notification.SendResult{Outcome: notification.OutcomeRetryable, Err: errors.New("temporary")}
+	activities, err := store.DiscoverActivity(t.Context(), 10)
+	if err != nil || len(activities) != 1 {
+		t.Fatalf("DiscoverActivity() = %#v, %v", activities, err)
+	}
+	materializeOneActivityWithTransport(t, store, activities[0], transport)
+
+	worker := newTestWorker(store, []notification.Transport{transport})
+	var deliveryID int64
+	for attempt := 1; attempt <= notification.MaxAutomaticAttempts; attempt++ {
+		if _, err := pool.Exec(t.Context(), "UPDATE notification_delivery SET next_attempt_at = now()"); err != nil {
+			t.Fatalf("force delivery due: %v", err)
+		}
+		worker.Tick(t.Context())
+	}
+	if err := pool.QueryRow(t.Context(), "SELECT id FROM notification_delivery ORDER BY id DESC LIMIT 1").Scan(&deliveryID); err != nil {
+		t.Fatalf("read exhausted delivery ID: %v", err)
+	}
+	var statusBeforeRetry string
+	if err := pool.QueryRow(t.Context(), "SELECT status FROM notification_delivery WHERE id = $1", deliveryID).Scan(&statusBeforeRetry); err != nil {
+		t.Fatalf("read status before manual retry: %v", err)
+	}
+	if statusBeforeRetry != "exhausted" {
+		t.Fatalf("status before manual retry = %q, want %q", statusBeforeRetry, "exhausted")
+	}
+
+	service := notification.NewService(store, []notification.Transport{transport})
+	if err := service.ManualRetry(t.Context(), deliveryID); err != nil {
+		t.Fatalf("ManualRetry() error = %v", err)
+	}
+	var statusAfterRetry string
+	var attemptCountAfterRetry int32
+	if err := pool.QueryRow(t.Context(),
+		"SELECT status, attempt_count FROM notification_delivery WHERE id = $1", deliveryID,
+	).Scan(&statusAfterRetry, &attemptCountAfterRetry); err != nil {
+		t.Fatalf("read status after manual retry: %v", err)
+	}
+	if statusAfterRetry != "pending" || attemptCountAfterRetry != 0 {
+		t.Fatalf("status/attempt_count after ManualRetry() = %q/%d, want pending/0 (a fresh retry budget)", statusAfterRetry, attemptCountAfterRetry)
+	}
+
+	transport.defaultSend = notification.SendResult{Outcome: notification.OutcomeSucceeded}
+	worker.Tick(t.Context())
+	var finalStatus string
+	if err := pool.QueryRow(t.Context(), "SELECT status FROM notification_delivery WHERE id = $1", deliveryID).Scan(&finalStatus); err != nil {
+		t.Fatalf("read final status: %v", err)
+	}
+	if finalStatus != "succeeded" {
+		t.Fatalf("final status after the manually retried attempt = %q, want %q", finalStatus, "succeeded")
+	}
+}
+
+func TestNotificationManualRetryUncertainReopensUncertainDeliveryEndToEnd(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+	fixture := newNotificationFixture(t, pool)
+	store := notificationpostgres.NewStore(pool)
+	if err := store.InitializeBaseline(t.Context()); err != nil {
+		t.Fatalf("InitializeBaseline() error = %v", err)
+	}
+	if _, err := fixture.requests.Create(t.Context(), fixture.host.ID, fixture.gameID, nil, time.Now().Add(time.Hour), "Uncertain then retry"); err != nil {
+		t.Fatalf("create game request: %v", err)
+	}
+	transport := newFakeTransport("test", []notification.Target{{Transport: "test", Key: "target-1"}})
+	transport.defaultSend = notification.SendResult{Outcome: notification.OutcomeUncertain, Err: errors.New("ambiguous")}
+	activities, err := store.DiscoverActivity(t.Context(), 10)
+	if err != nil || len(activities) != 1 {
+		t.Fatalf("DiscoverActivity() = %#v, %v", activities, err)
+	}
+	materializeOneActivityWithTransport(t, store, activities[0], transport)
+
+	worker := newTestWorker(store, []notification.Transport{transport})
+	worker.Tick(t.Context())
+	var deliveryID int64
+	if err := pool.QueryRow(t.Context(), "SELECT id FROM notification_delivery ORDER BY id DESC LIMIT 1").Scan(&deliveryID); err != nil {
+		t.Fatalf("read uncertain delivery ID: %v", err)
+	}
+
+	service := notification.NewService(store, []notification.Transport{transport})
+	if err := service.ManualRetry(t.Context(), deliveryID); err == nil {
+		t.Fatal("ordinary ManualRetry() on an uncertain delivery must fail; use ManualRetryUncertain")
+	}
+	if err := service.ManualRetryUncertain(t.Context(), deliveryID); err != nil {
+		t.Fatalf("ManualRetryUncertain() error = %v", err)
+	}
+	var statusAfterRetry string
+	if err := pool.QueryRow(t.Context(), "SELECT status FROM notification_delivery WHERE id = $1", deliveryID).Scan(&statusAfterRetry); err != nil {
+		t.Fatalf("read status after ManualRetryUncertain(): %v", err)
+	}
+	if statusAfterRetry != "pending" {
+		t.Fatalf("status after ManualRetryUncertain() = %q, want %q", statusAfterRetry, "pending")
+	}
+}

@@ -206,6 +206,80 @@ func (s *Store) RecordUncertain(ctx context.Context, deliveryID int64, lastError
 	return nil
 }
 
+// ListProblemDeliveries returns every delivery in a terminal problem state
+// (exhausted, permanent, or uncertain), most recently updated first, for
+// authorized diagnostics.
+func (s *Store) ListProblemDeliveries(ctx context.Context) ([]notification.ProblemDelivery, error) {
+	rows, err := s.queries.ListProblemDeliveries(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list problem deliveries: %w", err)
+	}
+	problems := make([]notification.ProblemDelivery, 0, len(rows))
+	for _, row := range rows {
+		problems = append(problems, notification.ProblemDelivery{
+			DeliveryID: row.ID, Target: notification.Target{Transport: row.Transport, Key: row.TargetKey},
+			Status: notification.DeliveryStatus(row.Status), AttemptCount: row.AttemptCount,
+			LastError: textString(row.LastError), UpdatedAt: row.UpdatedAt.Time,
+			Activity: notification.Activity{
+				Sequence: row.ActivitySequence, GameRequestID: row.GameRequestID, ActorID: row.ActorID,
+				Kind: notification.ActivityKind(row.Kind), OccurredAt: row.OccurredAt.Time,
+			},
+		})
+	}
+	return problems, nil
+}
+
+// GetDeliveryDetail returns the minimal view Service needs to validate and
+// reopen one delivery for manual retry.
+func (s *Store) GetDeliveryDetail(ctx context.Context, deliveryID int64) (notification.DeliveryDetail, error) {
+	row, err := s.queries.GetDeliveryDetail(ctx, deliveryID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return notification.DeliveryDetail{}, notification.ErrDeliveryNotFound
+	}
+	if err != nil {
+		return notification.DeliveryDetail{}, fmt.Errorf("get delivery detail: %w", err)
+	}
+	return notification.DeliveryDetail{
+		DeliveryID: row.ID, Target: notification.Target{Transport: row.Transport, Key: row.TargetKey},
+		Status: notification.DeliveryStatus(row.Status),
+		Activity: notification.Activity{
+			Sequence: row.ActivitySequence, GameRequestID: row.GameRequestID, ActorID: row.ActorID,
+			Kind: notification.ActivityKind(row.Kind), OccurredAt: row.OccurredAt.Time,
+		},
+	}, nil
+}
+
+// ReopenDelivery reopens one exhausted or permanent delivery for a fresh
+// automatic retry budget. The UPDATE's WHERE clause enforces the same status
+// precondition Service already checked, atomically, so a concurrent status
+// change between Service's check and this call can never reopen a delivery
+// that is no longer eligible.
+func (s *Store) ReopenDelivery(ctx context.Context, deliveryID int64) (bool, error) {
+	_, err := s.queries.ReopenDeliveryForManualRetry(ctx, deliveryID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("reopen delivery for manual retry: %w", err)
+	}
+	return true, nil
+}
+
+// ReopenUncertainDelivery reopens one uncertain delivery. Its UPDATE only
+// matches status = 'uncertain', so it can never reopen an exhausted or
+// permanent delivery, symmetrically to how ReopenDelivery can never reopen
+// an uncertain one.
+func (s *Store) ReopenUncertainDelivery(ctx context.Context, deliveryID int64) (bool, error) {
+	_, err := s.queries.ReopenUncertainDeliveryForManualRetry(ctx, deliveryID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("reopen uncertain delivery for manual retry: %w", err)
+	}
+	return true, nil
+}
+
 func parseUUID(value string) (pgtype.UUID, error) {
 	var id pgtype.UUID
 	if err := id.Scan(value); err != nil {
