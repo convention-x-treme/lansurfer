@@ -7,6 +7,7 @@ import (
 	"net/netip"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -31,9 +32,11 @@ type Discord struct {
 	ClientSecret string
 }
 
-type IGDB struct {
+type Twitch struct {
 	ClientID     string
 	ClientSecret string
+	AuthEnabled  bool
+	IGDBEnabled  bool
 }
 
 // Config contains the technical settings required by the application foundation.
@@ -43,7 +46,7 @@ type Config struct {
 	BaseURL        string
 	OIDC           *OIDC
 	Discord        *Discord
-	IGDB           *IGDB
+	Twitch         *Twitch
 	TrustedProxies []netip.Prefix
 	// InstanceName is the trimmed, optional minimum instance identity from
 	// LANSURFER_INSTANCE_NAME. Empty means unset; the web layer resolves the
@@ -82,7 +85,7 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	igdb, err := loadIGDB()
+	twitch, err := loadTwitch()
 	if err != nil {
 		return Config{}, err
 	}
@@ -103,7 +106,7 @@ func Load() (Config, error) {
 		BaseURL:        baseURL,
 		OIDC:           oidc,
 		Discord:        discord,
-		IGDB:           igdb,
+		Twitch:         twitch,
 		TrustedProxies: trustedProxies,
 		InstanceName:   instanceName,
 	}, nil
@@ -147,16 +150,38 @@ func loadTrustedProxies() ([]netip.Prefix, error) {
 	return proxies, nil
 }
 
-func loadIGDB() (*IGDB, error) {
-	clientID := strings.TrimSpace(os.Getenv("LANSURFER_IGDB_CLIENT_ID"))
-	clientSecret := strings.TrimSpace(os.Getenv("LANSURFER_IGDB_CLIENT_SECRET"))
-	if clientID == "" && clientSecret == "" {
+func loadTwitch() (*Twitch, error) {
+	clientID := strings.TrimSpace(os.Getenv("LANSURFER_TWITCH_CLIENT_ID"))
+	clientSecret := strings.TrimSpace(os.Getenv("LANSURFER_TWITCH_CLIENT_SECRET"))
+	authEnabled, err := optionalBool("LANSURFER_TWITCH_AUTH_ENABLED")
+	if err != nil {
+		return nil, err
+	}
+	igdbEnabled, err := optionalBool("LANSURFER_IGDB_ENABLED")
+	if err != nil {
+		return nil, err
+	}
+	if !authEnabled && !igdbEnabled && clientID == "" && clientSecret == "" {
 		return nil, nil
 	}
-	if clientID == "" || clientSecret == "" {
-		return nil, errors.New("LANSURFER_IGDB_CLIENT_ID and LANSURFER_IGDB_CLIENT_SECRET must be configured together")
+	if authEnabled || igdbEnabled {
+		if clientID == "" || clientSecret == "" {
+			return nil, errors.New("LANSURFER_TWITCH_CLIENT_ID and LANSURFER_TWITCH_CLIENT_SECRET are required when Twitch authentication or IGDB is enabled")
+		}
 	}
-	return &IGDB{ClientID: clientID, ClientSecret: clientSecret}, nil
+	return &Twitch{ClientID: clientID, ClientSecret: clientSecret, AuthEnabled: authEnabled, IGDBEnabled: igdbEnabled}, nil
+}
+
+func optionalBool(name string) (bool, error) {
+	value := strings.TrimSpace(os.Getenv(name))
+	if value == "" {
+		return false, nil
+	}
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		return false, fmt.Errorf("%s must be a boolean: %w", name, err)
+	}
+	return parsed, nil
 }
 
 func loadOIDC() (*OIDC, error) {

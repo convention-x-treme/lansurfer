@@ -103,7 +103,7 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	gameRequests := gamerequest.NewService(gamerequestpostgres.NewStore(pool), gameService, realtime)
 	gameRequestQueries := gamerequestquery.NewStore(pool)
 	notificationWorker := newNotificationWorker(notificationStore, logger)
-	igdbSyncService := newIGDBSync(ctx, cfg.IGDB, gameStore, logger)
+	igdbSyncService := newIGDBSync(ctx, cfg.Twitch, gameStore, logger)
 	gameDiscovery := game.NewDiscoveryService(gameStore, gameStore, gameStore, igdbSyncService)
 
 	server := &http.Server{

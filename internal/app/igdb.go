@@ -62,8 +62,8 @@ func (a appBoundIGDBSync) Wait(ctx context.Context) {
 // newIGDBSync builds the sync service wired to the application's root
 // context when IGDB credentials are configured, or a disabled adapter
 // otherwise. It never makes a network call.
-func newIGDBSync(ctx context.Context, cfg *config.IGDB, repo game.ProviderIndexRepository, logger *slog.Logger) igdbSync {
-	if cfg == nil {
+func newIGDBSync(ctx context.Context, cfg *config.Twitch, repo game.ProviderIndexRepository, logger *slog.Logger) igdbSync {
+	if cfg == nil || !cfg.IGDBEnabled {
 		return disabledIGDBSync{}
 	}
 	client := igdb.NewClient(cfg.ClientID, cfg.ClientSecret)
