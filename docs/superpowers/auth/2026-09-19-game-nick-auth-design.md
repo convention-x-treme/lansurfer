@@ -1,13 +1,13 @@
 # Track B — Game Nick & Authentication Design
 
-Status: Approved for implementation
+Status: Historical supporting design — implemented by PR #41
 Date: 2026-09-19
 Branch: `feat/game-nick-auth`
 Tracking issue: #25
 
 ## Authority and intent
 
-This design records the approved Track B decisions from the interactive design review. Implement it together with `AGENTS.md`, `docs/ROADMAP.md`, `docs/PRODUCT.md`, and `docs/ARCHITECTURE.md`. Do not reopen settled product/security decisions during implementation.
+This design records the decisions that guided Track B implementation. Track B has since merged via PR #41. For current behavior and scope, use `docs/PRODUCT.md`; for current architecture, use `docs/ARCHITECTURE.md`; for current delivery status, use `docs/ROADMAP.md`. This file is retained as historical rationale and must not compete with those sources.
 
 If code reality requires a change to the approved technology, module boundaries, database/authentication/security model, deployment model, public domain model, or stable-1.0 scope, stop and request approval instead of silently redesigning Track B.
 

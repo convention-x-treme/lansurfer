@@ -123,16 +123,15 @@ For the prototype and single-instance 1.0 release, the SSE broker may run in mem
 ```text
 Game Request transaction
   ├── domain write
-  ├── durable request activity when applicable
-  └── notification outbox record when applicable
+  └── game_request_activity row when applicable
           |
           v
-notification worker
+Track E delivery state / notification worker
   ├── Web Push adapter
   └── Discord webhook adapter
 ```
 
-Game Request writes, request-local activity, and notification intent that correspond to the same successful domain change must be transactionally consistent. A failed or rolled-back mutation must not leave successful activity or notification work behind.
+Game Request writes and the corresponding live `game_request_activity` row must be transactionally consistent. That row is the current Track A → E notification-intent handoff as well as request-local history. A failed or rolled-back mutation must not leave successful activity or notification work behind. If Track E later requires delivery-specific state that does not belong in `gamerequest`, add that state on the consumer side or explicitly split the handoff; do not maintain two competing transactional records by default.
 
 Persist delivery status, retry schedule, ordering/replay identifiers, and external message references. External transport failure never fails or reverses the originating Game Request action. Honor `Retry-After` for HTTP 429 responses; use capped exponential backoff with jitter for network and 5xx failures; mark permanent or exhausted failures for authorized manual retry.
 

@@ -1,6 +1,8 @@
 # Track B — Game Nick & Authentication Implementation Plan
 
-> For the coding agent: execute this plan task-by-task. The approved design is `docs/superpowers/specs/2026-09-19-game-nick-auth-design.md`. Do not reopen settled design choices. Prefer failing test -> minimal implementation -> passing test. Keep commits coherent and reviewable.
+> **Historical execution record:** Track B merged via PR #41. This checklist is not current status and must not override PRODUCT, ARCHITECTURE, ROADMAP, or AGENTS.
+
+> For the coding agent: execute this plan task-by-task. The approved design is `docs/superpowers/auth/2026-09-19-game-nick-auth-design.md`. Do not reopen settled design choices. Prefer failing test -> minimal implementation -> passing test. Keep commits coherent and reviewable.
 
 **Goal:** Implement issue #25 without expanding stable-1.0 scope.
 
