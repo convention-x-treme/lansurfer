@@ -75,6 +75,7 @@ The interactive design tree is being resolved with the user in rounds. Only deci
 - **Uncertain retry UX:** `uncertain` requires an explicit administrator action that warns of possible duplicate external effect (semantically “retry despite possible duplicate”); it is not presented as the same action as an ordinary exhausted/permanent retry.
 - **Retention:** 1.0 performs no automatic cleanup of notification work/delivery history. This technical diagnostic history is not a user-facing notification inbox.
 - **Stale Discord boundary:** E1 persists the activity/work identity and state needed to reason about ordering, but E3 owns Discord-specific stale-update/supersession policy. Web Push deliveries are not generically coalesced or ordered through a transport-neutral stream abstraction.
+- **Suppressed delivery state:** `suppressed` is a general terminal E1 delivery state meaning an originally materialized delivery is intentionally not sent because current eligibility no longer permits it. It is not a provider failure, is not automatically retried, and is retained for diagnostics. Transports may use this state when a target/user/destination becomes ineligible after materialization.
 
 ### Notification coverage
 
@@ -93,8 +94,8 @@ The exact personal-notification behavior for `closed` and `cancelled`, and the e
 
 ### Open decision branches
 
-- provider-result classification details;
-- exact transport-facing interface and delivery outcome vocabulary.
+- exact Go method/type names for the narrow transport-facing interface;
+- exact SQL column names/index names and other implementation-level naming.
 
 These are intentionally unresolved until the interactive design rounds settle them.
 
