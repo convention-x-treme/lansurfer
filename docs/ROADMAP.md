@@ -483,7 +483,7 @@ The Pilot Gate is green only when the following approved pilot subset is impleme
 - New Game Requests publish one Discord message and later request changes edit that same message.
 - Discord content follows Track E's approved public fields/privacy rules.
 - Personal Web Push is working.
-- Player Web Push audience is configurable between followed/My Games (default) and all new Game Requests (explicit opt-in); the creator receives no creation push for their own request.
+- Player Web Push audience for new requests is configurable between followed/My Games (default) and all new Game Requests (explicit opt-in); lifecycle join/leave/close/cancel pushes target current request participants, and the activity actor never receives their own personal push.
 - Real PWA/Web Push verification exists for **Desktop, Android, and iPhone** platform categories.
 - The validation artifact records the concrete browser/version used per platform category and demonstrates the applicable install, permission/consent, subscription, and real push-receipt flow. Browser versions are not permanently pinned in this roadmap.
 
