@@ -324,25 +324,32 @@ The 1.0 durable notification system has Web Push and Discord transports. Externa
 
 ### Web Push
 
-- A player may register multiple labeled browser/device subscriptions.
-- Permission is requested only after feature detection and an explicit user gesture.
-- Existing device/global push enablement remains explicit consent.
-- Each player chooses an audience mode: **followed/My Games only** or **all new Game Requests**.
-- The default audience is followed/My Games; a player may explicitly opt into all new requests.
-- The creator never receives a push for the request they just created.
-- Payloads contain only the Game, time, and a deep link. A minimum configured instance display identity may provide context. They omit creator identity, description, roster, and member data.
+- A player may register multiple labeled browser/device subscriptions and manage them from the authenticated Account/Profile area.
+- Permission is requested only after feature detection and an explicit user gesture. Browser permission, registered devices, LANsurfer enablement, and audience preference remain distinct states.
+- Personal Web Push is explicitly disabled by default. A player may pause it without deleting registered devices.
+- New Game Requests use two audience modes:
+  - **followed/My Games only** — default;
+  - **all new Game Requests** — explicit opt-in.
+- For a newly created request, notify currently eligible players in the selected audience except the creator.
+- Join, leave, close, and cancel activity may also notify current request participants independently of the new-request audience setting. The actor never receives a personal push for their own activity.
+- Join/leave notifications may name the actor by public Game Nick. Close/cancel notifications remain actor-neutral.
+- Recipient/device sets are not expanded later for old work. Delayed/retried delivery re-checks current eligibility and suppresses a delivery that is no longer permitted rather than sending stale personal notification work.
+- When LANsurfer is already visibly open in the browser, the service worker suppresses the duplicate OS notification and SSE remains the in-browser live-update path.
+- Push payloads contain only the minimum data needed to render the notification: activity kind, Game, planned time, deep link, minimum instance context, and optional join/leave actor Game Nick. They omit description, roster, provider identity data, and activity history.
 
 ### Discord delivery
 
-- Discord notification delivery is separate from Discord authentication.
-- One Discord destination may be configured for the LANsurfer instance through Discord's `webhook.incoming` OAuth flow; users do not paste webhooks.
-- Global administrators configure the destination.
-- LANsurfer creates one message per Game Request and edits that same message as the request changes.
-- The message contains the Game, planned start time, current request status, current capacity/free-place summary, the creator's public LANsurfer Game Nick, a short request description, and a deep link back to LANsurfer.
+- Discord notification delivery is separate from Discord authentication and uses independently configurable OAuth credentials.
+- One Discord destination may be configured for the LANsurfer instance through Discord's `webhook.incoming` OAuth flow; users do not paste webhooks and LANsurfer does not add a bot/gateway.
+- Global administrators connect, reconnect, disconnect, and diagnose the destination.
+- LANsurfer maintains one synchronized Discord message per Game Request in the current destination. It creates the message with `wait=true`, stores the returned message ID, and edits that same message as request state changes.
+- Discord reflects the current Game Request snapshot rather than replaying request activity. Rapid changes may collapse into one newer edit, and a new live change after reconnect may create the current request's first message in the new destination without replaying older work.
+- The message contains the Game, planned start time, current request status, current capacity/free-place summary, the creator's public LANsurfer Game Nick, a short sanitized request description, a deep link back to LANsurfer, and minimal instance context.
 - The full participant roster and durable request activity remain in LANsurfer and are not mirrored into Discord.
-- Provider identity data such as Discord usernames or email addresses is never used as the public identity in the message.
-- User-authored descriptions are sanitized and Discord mentions are disabled.
-- Stored webhook credentials are encrypted and never displayed back to an operator.
+- Provider identity data such as Discord usernames or email addresses is never used as public identity in the message.
+- User-authored descriptions are treated as plain content and Discord mentions are disabled on every create/edit.
+- Stored webhook identifiers/tokens are encrypted and never displayed back to an operator. OAuth access/refresh tokens are not retained after successful destination setup.
+- Disconnecting or replacing a destination does not delete already-posted Discord messages and never replays historical notification work.
 
 Per-Event Discord destinations and Event-scoped notification preferences are post-1.0 candidates.
 
