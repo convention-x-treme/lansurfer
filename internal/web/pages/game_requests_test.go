@@ -265,7 +265,7 @@ func TestGameRequestRowCarriesTheWholeDecision(t *testing.T) {
 	}
 	body := rendered.String()
 	for _, want := range []string{
-		"Otter#1337 is looking for Warcraft III",
+		`>Otter#1337 <span class="request-row-connector">is looking for</span> Warcraft III</span>`,
 		"2v2 melee on Twisted Meadows, no mic needed.",
 		">2/4<",
 		">Join</button>",

@@ -882,6 +882,12 @@
     letter-spacing: -0.01em;
   }
 
+  /* The Game Nick and the Game are what a player scans the line for, so the
+     words joining them step back out of the way. */
+  .request-row-connector {
+    font-weight: 400;
+  }
+
   /* One line, always: the description is a player-authored paragraph, and
      wrapping it would let one round set the height of the whole list. */
   .request-row-description {

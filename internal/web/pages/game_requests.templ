@@ -197,6 +197,12 @@ templ GameRequestListContent(brand branding.Brand, requests []requestquery.Reque
 // and the places/start/state line PRODUCT asks the list to carry without a
 // detail-page detour.
 //
+// The title is one sentence in two weights: the Game Nick and the Game are
+// what a player scans for, so "is looking for" between them stays regular
+// and lets the two names carry the line. A Game Request whose creator has no
+// public Game Nick yet is titled by the Game alone, rather than by a dangling
+// sentence or a placeholder.
+//
 // The description is deliberately clamped to a single line rather than
 // wrapped: the row is a scanning surface, and a player-authored paragraph
 // would set the height of every row around it. The whole reading block is one
@@ -209,7 +215,13 @@ templ GameRequestRow(request requestquery.Request, viewerID, highlightedID strin
 				@CoverArt(request.Game.CoverImageID, request.Game.Name)
 			</span>
 			<span class="request-row-body">
-				<span class="request-row-title">{ requestTitle(request) }</span>
+				<span class="request-row-title">
+					if request.CreatorGameNick != "" {
+						{ request.CreatorGameNick }
+						<span class="request-row-connector">is looking for</span>
+					}
+					{ request.Game.Name }
+				</span>
 				if request.Description != "" {
 					<span class="request-row-description">{ request.Description }</span>
 				}
@@ -826,16 +838,6 @@ func startTimeClass(startsAt time.Time) string {
 		return "data-text text-xs font-bold count-last"
 	}
 	return "data-text text-xs text-base-content/70"
-}
-
-// requestTitle names the row the way a player reads it: who is looking for
-// which Game. A Game Request whose creator has no public Game Nick yet falls
-// back to the Game alone rather than to an empty name or a placeholder.
-func requestTitle(request requestquery.Request) string {
-	if request.CreatorGameNick == "" {
-		return request.Game.Name
-	}
-	return request.CreatorGameNick + " is looking for " + request.Game.Name
 }
 
 func startLongLabel(startsAt time.Time) string {
