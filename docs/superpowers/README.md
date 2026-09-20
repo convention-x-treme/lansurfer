@@ -42,11 +42,11 @@ Track C is implemented. These retained files are historical supporting records:
 
 ## Notifications
 
-Track E1 (the durable notification foundation) is implemented. Its retained historical record is:
+Track E1 (the durable notification foundation) is implemented, including the `suppressed` terminal delivery state added after the initial implementation to catch up with the settled design. Its retained historical record is:
 
-1. `notifications/2026-09-20-track-e-notification-foundation-design.md` — design rationale for the two-level work/delivery persistence model, baseline initialization, claiming/lease recovery, and retry/backoff policy.
+1. `notifications/2026-09-20-track-e-notification-foundation-design.md` — design rationale for the two-level work/delivery persistence model, baseline initialization, claiming/lease recovery, retry/backoff policy, and the `suppressed` state.
 2. `notifications/2026-09-20-track-e1-notification-foundation-plan.md` — historical execution plan for E1.
 
-Track E2 (Web Push) remains open design work; `notifications/2026-09-20-track-e-web-push-design.md` is still an active draft, not a historical record, and is unaffected by E1's implementation.
+Track E2 (Web Push) design is approved (`notifications/2026-09-20-track-e-web-push-design.md`) but not yet implemented. Track E3 (Discord delivery) design is still in progress (`notifications/2026-09-20-track-e-discord-delivery-design.md`).
 
 When adding another durable artifact, place it in the relevant feature directory and link related documents with repository-relative paths.
