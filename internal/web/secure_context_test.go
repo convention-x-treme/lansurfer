@@ -10,6 +10,7 @@ func TestSecureContextStatus(t *testing.T) {
 	}{
 		{"https", "https://lan.example.test", true},
 		{"http localhost", "http://localhost:8080", true},
+		{"http localhost mixed case", "http://LocalHost:8080", true},
 		{"http loopback IPv4", "http://127.0.0.1:8080", true},
 		{"http loopback IPv6", "http://[::1]:8080", true},
 		{"http public host", "http://lan.example.test", false},

@@ -23,6 +23,7 @@ tasks:
 
   build:
     desc: Build the LANsurfer binary
+    deps: [frontend:build]
     cmds:
       - mkdir -p bin
       - go build -trimpath -o bin/lansurfer ./cmd/lansurfer

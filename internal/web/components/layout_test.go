@@ -113,8 +113,9 @@ func TestLayoutSecondaryInstanceLabel(t *testing.T) {
 		instance string
 		want     bool
 	}{
-		"custom name shows a label": {instance: "Camp Nova", want: true},
-		"unset shows no label":      {instance: "", want: false},
+		"custom name shows a label":                                 {instance: "Camp Nova", want: true},
+		"unset shows no label":                                      {instance: "", want: false},
+		"name explicitly set to the brand name still shows a label": {instance: "LANsurfer", want: true},
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {

@@ -115,7 +115,7 @@ func loadInstanceName() (string, error) {
 		return "", nil
 	}
 	for _, r := range name {
-		if unicode.IsControl(r) {
+		if unicode.IsControl(r) || r == ' ' || r == ' ' {
 			return "", fmt.Errorf("LANSURFER_INSTANCE_NAME must not contain control characters or line breaks")
 		}
 	}

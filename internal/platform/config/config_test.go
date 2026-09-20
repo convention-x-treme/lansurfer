@@ -253,6 +253,28 @@ func TestLoadRejectsInstanceNameWithNewline(t *testing.T) {
 	}
 }
 
+func TestLoadRejectsInstanceNameWithUnicodeLineSeparator(t *testing.T) {
+	clearOptionalEnvironment(t)
+	t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
+	t.Setenv("LANSURFER_INSTANCE_NAME", "Camp Nova")
+
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "LANSURFER_INSTANCE_NAME") {
+		t.Fatalf("Load() error = %v, want instance name line-separator error", err)
+	}
+}
+
+func TestLoadRejectsInstanceNameWithUnicodeParagraphSeparator(t *testing.T) {
+	clearOptionalEnvironment(t)
+	t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
+	t.Setenv("LANSURFER_INSTANCE_NAME", "Camp Nova")
+
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "LANSURFER_INSTANCE_NAME") {
+		t.Fatalf("Load() error = %v, want instance name paragraph-separator error", err)
+	}
+}
+
 func TestLoadRejectsInstanceNameOverMaxLength(t *testing.T) {
 	clearOptionalEnvironment(t)
 	t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")

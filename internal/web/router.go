@@ -112,12 +112,15 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 	router.Use(webmiddleware.Instance(instanceName))
 
 	router.Handle("/assets/*", http.StripPrefix("/assets/", assets.Handler()))
-	router.Get("/manifest.webmanifest", manifestHandler(brand, instanceName))
+	manifest := manifestHandler(brand, instanceName)
+	router.Get("/manifest.webmanifest", manifest)
+	router.Head("/manifest.webmanifest", manifest)
 	serviceWorker, err := serviceWorkerHandler()
 	if err != nil {
 		panic("read compiled service worker: " + err.Error())
 	}
 	router.Get("/service-worker.js", serviceWorker)
+	router.Head("/service-worker.js", serviceWorker)
 	router.Group(func(authenticated chi.Router) {
 		authenticated.Use(webmiddleware.Authentication(dependencies.Sessions, dependencies.SecureCookies))
 		authenticated.Get("/", rootHandler(brand, dependencies.Authentication))

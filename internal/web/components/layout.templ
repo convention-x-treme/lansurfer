@@ -30,18 +30,21 @@ func resolvedInstanceName(ctx context.Context, brand branding.Brand) string {
 	return brand.Name
 }
 
-// pageTitle mirrors LANSURFER_INSTANCE_NAME's contract: unset renders exactly
+// PageTitle mirrors LANSURFER_INSTANCE_NAME's contract: unset renders exactly
 // as it always has ("<page> · LANsurfer"); configured renders "<page> ·
 // <instance>".
-func pageTitle(ctx context.Context, brand branding.Brand, title string) string {
+func PageTitle(ctx context.Context, brand branding.Brand, title string) string {
 	return title + " · " + resolvedInstanceName(ctx, brand)
 }
 
-// hasCustomInstanceName reports whether a deployment configured an instance
-// name distinct from the fixed LANsurfer brand, which is the only condition
-// under which the secondary instance label renders.
+// hasCustomInstanceName reports whether a deployment configured
+// LANSURFER_INSTANCE_NAME at all, which is the only condition under which
+// the secondary instance label renders. It checks configuration presence
+// directly rather than comparing the resolved name against the fixed
+// LANsurfer brand, so an operator who explicitly configures the instance
+// name to "LANsurfer" still gets the label.
 func hasCustomInstanceName(ctx context.Context, brand branding.Brand) bool {
-	return resolvedInstanceName(ctx, brand) != brand.Name
+	return webmiddleware.InstanceName(ctx) != ""
 }
 
 type Viewer struct {
@@ -67,7 +70,7 @@ templ Layout(brand branding.Brand, title string, navigation NavigationState) {
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
 			<meta name="description" content={ brand.Tagline }/>
-			<title>{ pageTitle(ctx, brand, title) }</title>
+			<title>{ PageTitle(ctx, brand, title) }</title>
 			@FontPreloads(brand)
 			@PWAHeadLinks(brand)
 			<link rel="stylesheet" href={ brand.Assets.Stylesheet }/>
@@ -107,7 +110,7 @@ templ AuthLayout(brand branding.Brand, title string) {
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
 			<meta name="description" content={ brand.Tagline }/>
-			<title>{ pageTitle(ctx, brand, title) }</title>
+			<title>{ PageTitle(ctx, brand, title) }</title>
 			@FontPreloads(brand)
 			@PWAHeadLinks(brand)
 			<link rel="stylesheet" href={ brand.Assets.Stylesheet }/>

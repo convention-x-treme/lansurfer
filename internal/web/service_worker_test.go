@@ -32,6 +32,24 @@ func TestServiceWorkerRoute(t *testing.T) {
 	}
 }
 
+func TestServiceWorkerRouteAllowsHead(t *testing.T) {
+	request := httptest.NewRequest(http.MethodHead, "/service-worker.js", nil)
+	response := httptest.NewRecorder()
+
+	NewRouter(RouterDependencies{Ready: func(context.Context) error { return nil }}).ServeHTTP(response, request)
+
+	result := response.Result()
+	if result.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", result.StatusCode, http.StatusOK)
+	}
+	if got := result.Header.Get("Content-Type"); got != "text/javascript; charset=utf-8" {
+		t.Errorf("Content-Type = %q", got)
+	}
+	if response.Body.Len() != 0 {
+		t.Errorf("HEAD response body length = %d, want 0", response.Body.Len())
+	}
+}
+
 func TestServiceWorkerRejectsOtherMethods(t *testing.T) {
 	request := httptest.NewRequest(http.MethodPost, "/service-worker.js", nil)
 	response := httptest.NewRecorder()

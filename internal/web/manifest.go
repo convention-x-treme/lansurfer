@@ -47,9 +47,12 @@ func manifestHandler(brand branding.Brand, instanceName string) http.HandlerFunc
 	if err != nil {
 		panic("marshal web app manifest: " + err.Error())
 	}
-	return func(w http.ResponseWriter, _ *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/manifest+json; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-store")
+		if r.Method == http.MethodHead {
+			return
+		}
 		_, _ = w.Write(body)
 	}
 }

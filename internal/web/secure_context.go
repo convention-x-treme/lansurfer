@@ -3,6 +3,7 @@ package web
 import (
 	"net/netip"
 	"net/url"
+	"strings"
 )
 
 // SecureContextStatus reports whether baseURL is expected to satisfy the
@@ -26,7 +27,7 @@ func SecureContextStatus(baseURL string) bool {
 }
 
 func isLoopbackHost(host string) bool {
-	if host == "localhost" {
+	if strings.EqualFold(host, "localhost") {
 		return true
 	}
 	addr, err := netip.ParseAddr(host)

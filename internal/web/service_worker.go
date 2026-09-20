@@ -14,9 +14,12 @@ func serviceWorkerHandler() (http.HandlerFunc, error) {
 	if err != nil {
 		return nil, err
 	}
-	return func(w http.ResponseWriter, _ *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-store")
+		if r.Method == http.MethodHead {
+			return
+		}
 		_, _ = w.Write(body)
 	}, nil
 }
