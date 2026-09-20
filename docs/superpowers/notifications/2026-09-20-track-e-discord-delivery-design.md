@@ -94,13 +94,18 @@ Deliver one synchronized Discord message per Game Request to at most one adminis
 - **Description handling:** treat user-authored request description as plain content, not as permission to control Discord presentation. Neutralize Discord formatting/control characters as needed, respect the existing LANsurfer description limit, do not allow user-controlled embed URLs/structure, and send an empty `allowed_mentions` on every create and edit.
 - **Deleted/broken webhook:** a definitive unknown/deleted-webhook result is permanent for the current destination. Mark the local destination broken/disconnected and stop creating new deliveries to it until an administrator explicitly reconnects. Reconnect never replays old work.
 - **Deleted message recovery:** if the webhook still exists but the stored Discord message no longer exists, clear/replace the stale message reference and create one new message from the current Game Request snapshot with `wait=true`. Do not replay historical intermediate activity.
+- **Encrypted credential shape:** encrypt both Discord webhook ID and webhook token together as a versioned AES-GCM credential blob. Guild ID, channel ID, webhook display name, connection state, and diagnostic timestamps may remain queryable metadata. Never expose webhook ID/token or reconstruct/display a webhook URL.
+- **Provider Retry-After:** Discord 429 responses use E1 retry scheduling and honor Discord's explicit `Retry-After` in full, even if it exceeds LANsurfer's normal five-minute self-computed backoff cap.
+- **Configuration fail-closed:** if both Discord-delivery client credentials are absent, E3 is disabled normally. Partial Discord-delivery OAuth configuration is a startup error. If Discord delivery is configured but the Track E data-encryption key is absent/invalid, startup fails rather than storing secrets in plaintext or silently disabling the configured integration.
+- **Create/edit result classification:** Discord create and edit are intentionally classified differently. A create failure known to occur before transmission, explicit 429, or explicit 5xx is retryable. A create timeout/connection loss after the request may have reached Discord is `uncertain` because replay could duplicate the message. Edits to a known message ID are replay-safe for the same current snapshot and treat network/5xx/429 as retryable. `10008 Unknown Message` enters deleted-message recovery; `10015 Unknown Webhook` breaks the destination; other non-retryable 4xx responses are permanent without automatically deleting a still-known destination.
+- **Post-connect live activity:** connecting/replacing a destination never replays old work. However, a later new live activity for an already-existing Game Request may create that request's first message in the new destination, rendered directly from the current snapshot.
+- **Broken destination state:** retain safe destination metadata and the failure timestamp/reason for administrator diagnosis, but delete the unusable encrypted webhook credential blob. Stop creating new deliveries while broken. Reconnect replaces the broken destination with a newly authorized webhook. Explicit disconnect removes the remaining local destination metadata.
+- **Admin surface:** expose Discord delivery under the existing administrator area with at least `Not configured`, `Connected`, and `Broken` states; show only safe destination metadata and diagnostics, plus Connect/Reconnect/Disconnect and access to E1 delivery diagnostics. Do not add a separate send-test-message workflow in 1.0.
 
 ## Design questions to settle
 
-- exact persisted destination fields and secret-encryption representation;
-- retry/result classification for create versus edit;
-- manual retry semantics for ambiguous create results;
-- admin diagnostics and destination health presentation;
-- validation and integration-test strategy.
+- exact persisted column/type names and OAuth redirect route naming;
+- exact administrator UI copy/layout;
+- exact automated/live Discord validation matrix.
 
 No implementation plan is authorized by this draft until the interactive frontier is empty and shared understanding is explicitly approved.
