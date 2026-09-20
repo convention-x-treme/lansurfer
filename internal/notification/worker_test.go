@@ -65,7 +65,7 @@ func TestWorkerWaitBlocksUntilRunReturnsAfterShutdown(t *testing.T) {
 	worker.Wait(waitCtx)
 	select {
 	case <-runReturned:
-	default:
+	case <-time.After(time.Second):
 		t.Fatal("Wait returned before Run had actually finished")
 	}
 }
