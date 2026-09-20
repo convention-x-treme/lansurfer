@@ -551,8 +551,8 @@ templ GameRequestDetailContent(request requestquery.Request, viewerID string, re
 				<ul class="grid">
 					for _, member := range request.Members {
 						<li class="member-row">
-							<span class={ memberAvatarClass(member, request) } aria-hidden="true">{ components.ViewerInitial(member.DisplayName) }</span>
-							<span class="min-w-0 flex-1 truncate font-semibold">{ member.DisplayName }</span>
+							<span class={ memberAvatarClass(member, request) } aria-hidden="true">{ components.ViewerInitial(member.GameNick) }</span>
+							<span class="min-w-0 flex-1 truncate font-semibold">{ member.GameNick }</span>
 							if member.ID == request.CreatorID {
 								<span class="status-chip status-chip-host">Host</span>
 							}
@@ -742,17 +742,17 @@ func memberAvatarClass(member requestquery.Member, request requestquery.Request)
 func activityLabel(entry requestquery.Activity) string {
 	switch entry.Kind {
 	case gamerequest.ActivityCreated:
-		return entry.ActorName + " created the request"
+		return entry.ActorGameNick + " created the request"
 	case gamerequest.ActivityJoined:
-		return entry.ActorName + " joined"
+		return entry.ActorGameNick + " joined"
 	case gamerequest.ActivityLeft:
-		return entry.ActorName + " left"
+		return entry.ActorGameNick + " left"
 	case gamerequest.ActivityClosed:
-		return entry.ActorName + " closed the request for new players"
+		return entry.ActorGameNick + " closed the request for new players"
 	case gamerequest.ActivityCancelled:
-		return entry.ActorName + " cancelled the request"
+		return entry.ActorGameNick + " cancelled the request"
 	default:
-		return entry.ActorName
+		return entry.ActorGameNick
 	}
 }
 

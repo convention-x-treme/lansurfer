@@ -57,6 +57,14 @@ func CurrentUser(ctx context.Context) (user.User, bool) {
 	return account, ok
 }
 
+// ContextWithUser attaches the authenticated user to ctx. Production code
+// only ever does this inside the Authentication middleware above; it is
+// exported so other packages' handler tests can simulate a signed-in
+// request without driving the whole middleware chain.
+func ContextWithUser(ctx context.Context, account user.User) context.Context {
+	return context.WithValue(ctx, currentUserKey{}, account)
+}
+
 func SessionCookie(token string, expiresAt time.Time, secure bool) *http.Cookie {
 	return &http.Cookie{
 		Name:     SessionCookieName,

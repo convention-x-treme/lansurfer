@@ -100,12 +100,12 @@ func TestGameRequestDetailRefreshCarriesStampAndNewestActivityFirst(t *testing.T
 		ID: "request-1", Game: game.GamePresentation{Name: "Warcraft III"}, CreatorID: "host-1",
 		Status: gamerequest.StatusOpen, MemberCount: 2, CreatedAt: now.Add(-10 * time.Minute),
 		Members: []requestquery.Member{
-			{ID: "host-1", DisplayName: "Otter", JoinedAt: now.Add(-10 * time.Minute)},
-			{ID: "user-2", DisplayName: "Alex", JoinedAt: now.Add(-2 * time.Minute)},
+			{ID: "host-1", GameNick: "Otter", JoinedAt: now.Add(-10 * time.Minute)},
+			{ID: "user-2", GameNick: "Alex", JoinedAt: now.Add(-2 * time.Minute)},
 		},
 		Activity: []requestquery.Activity{
-			{Kind: gamerequest.ActivityJoined, ActorID: "user-2", ActorName: "Alex", OccurredAt: now.Add(-2 * time.Minute)},
-			{Kind: gamerequest.ActivityCreated, ActorID: "host-1", ActorName: "Otter", OccurredAt: now.Add(-10 * time.Minute)},
+			{Kind: gamerequest.ActivityJoined, ActorID: "user-2", ActorGameNick: "Alex", OccurredAt: now.Add(-2 * time.Minute)},
+			{Kind: gamerequest.ActivityCreated, ActorID: "host-1", ActorGameNick: "Otter", OccurredAt: now.Add(-10 * time.Minute)},
 		},
 	}
 
@@ -143,11 +143,11 @@ func TestDetailActivityKeepsHistoryAfterLeave(t *testing.T) {
 	request := requestquery.Request{
 		ID: "request-1", Game: game.GamePresentation{Name: "Warcraft III"}, CreatorID: "host-1",
 		Status: gamerequest.StatusOpen, MemberCount: 1, CreatedAt: now.Add(-30 * time.Minute),
-		Members: []requestquery.Member{{ID: "host-1", DisplayName: "Otter", JoinedAt: now.Add(-30 * time.Minute)}},
+		Members: []requestquery.Member{{ID: "host-1", GameNick: "Otter", JoinedAt: now.Add(-30 * time.Minute)}},
 		Activity: []requestquery.Activity{
-			{Kind: gamerequest.ActivityLeft, ActorID: "user-2", ActorName: "Alex", OccurredAt: now.Add(-time.Minute)},
-			{Kind: gamerequest.ActivityJoined, ActorID: "user-2", ActorName: "Alex", OccurredAt: now.Add(-5 * time.Minute)},
-			{Kind: gamerequest.ActivityCreated, ActorID: "host-1", ActorName: "Otter", OccurredAt: now.Add(-30 * time.Minute)},
+			{Kind: gamerequest.ActivityLeft, ActorID: "user-2", ActorGameNick: "Alex", OccurredAt: now.Add(-time.Minute)},
+			{Kind: gamerequest.ActivityJoined, ActorID: "user-2", ActorGameNick: "Alex", OccurredAt: now.Add(-5 * time.Minute)},
+			{Kind: gamerequest.ActivityCreated, ActorID: "host-1", ActorGameNick: "Otter", OccurredAt: now.Add(-30 * time.Minute)},
 		},
 	}
 

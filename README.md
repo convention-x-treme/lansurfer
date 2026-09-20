@@ -113,6 +113,21 @@ Set the issuer URL itself rather than its `/.well-known/openid-configuration` en
 
 For the local Keycloak client, enable **Standard flow**, leave **Client authentication** disabled, require the `S256` PKCE method, and configure `http://localhost:8080/auth/callback` as the exact valid redirect URI. A production server deployment should normally use a confidential client with client authentication enabled and provide its secret through `LANSURFER_OIDC_CLIENT_SECRET`.
 
+Every player chooses a unique, case-insensitive public **Game Nick** the first time they sign in. It is the only public player identity: authentication-provider names and emails stay private to the account owner and are visible only on that owner's own `/account` page.
+
+### Configure Discord login
+
+Discord authorization-code login is an independent, optional provider alongside OIDC; configure either one, both, or neither:
+
+```sh
+LANSURFER_DISCORD_CLIENT_ID=
+LANSURFER_DISCORD_CLIENT_SECRET=
+```
+
+In the [Discord Developer Portal](https://discord.com/developers/applications), create an application, add an OAuth2 redirect of `http://localhost:8080/auth/discord/callback` (or your deployment's base URL), and request only the `identify` scope — LANsurfer never asks for a Discord email address and never persists Discord access/refresh tokens beyond the login request that needs them.
+
+OIDC and Discord identities resolve to the same local User only through an explicit, signed-in `/account` link, or by proving an existing account through the other configured provider during onboarding. LANsurfer never merges accounts by matching email address, name, or Game Nick.
+
 When LANsurfer runs behind a reverse proxy, set `LANSURFER_BASE_URL` to the
 public HTTPS origin. Set `LANSURFER_TRUSTED_PROXIES` to a comma-separated list
 of the proxy IP addresses or CIDR ranges only when client-IP logging should use

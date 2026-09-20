@@ -36,7 +36,7 @@ type Request struct {
 	GameID           string
 	Game             game.GamePresentation
 	CreatorID        string
-	CreatorName      string
+	CreatorGameNick  string
 	MaxPlayers       *int32
 	StartsAt         time.Time
 	Description      string
@@ -50,17 +50,17 @@ type Request struct {
 }
 
 type Member struct {
-	ID          string
-	DisplayName string
-	JoinedAt    time.Time
+	ID       string
+	GameNick string
+	JoinedAt time.Time
 }
 
 // Activity is one durable request-local entry, newest first.
 type Activity struct {
-	Kind       domain.ActivityKind
-	ActorID    string
-	ActorName  string
-	OccurredAt time.Time
+	Kind          domain.ActivityKind
+	ActorID       string
+	ActorGameNick string
+	OccurredAt    time.Time
 }
 
 // Scope is the audience a player is looking at. The four values are mutually
@@ -145,7 +145,7 @@ func (s *Store) ListActive(ctx context.Context, viewerID string, filter Filter) 
 		result = append(result, requestFromFields(requestFields{
 			ID: row.RequestID, GameID: row.GameID,
 			Game:      gamePresentationFromRow(row.GameName, row.GameSlug, row.GameType, row.CoverImageID, row.PlatformNames, row.FirstReleaseDate),
-			CreatorID: row.CreatorID, CreatorName: row.CreatorName,
+			CreatorID: row.CreatorID, CreatorGameNick: row.CreatorGameNick.String,
 			MaxPlayers: row.MaxPlayers, StartsAt: row.StartsAt, Description: row.Description, Status: row.Status,
 			CreatedAt: row.CreatedAt, MemberCount: row.MemberCount, ViewerJoined: row.ViewerJoined, ViewerSubscribed: row.ViewerSubscribed,
 		}))
@@ -172,7 +172,7 @@ func (s *Store) ByID(ctx context.Context, id, viewerID string) (Request, error) 
 	request := requestFromFields(requestFields{
 		ID: row.RequestID, GameID: row.GameID,
 		Game:      gamePresentationFromRow(row.GameName, row.GameSlug, row.GameType, row.CoverImageID, row.PlatformNames, row.FirstReleaseDate),
-		CreatorID: row.CreatorID, CreatorName: row.CreatorName,
+		CreatorID: row.CreatorID, CreatorGameNick: row.CreatorGameNick.String,
 		MaxPlayers: row.MaxPlayers, StartsAt: row.StartsAt, Description: row.Description, Status: row.Status,
 		CreatedAt: row.CreatedAt, MemberCount: row.MemberCount, ViewerJoined: row.ViewerJoined, ViewerSubscribed: row.ViewerSubscribed,
 	})
@@ -182,7 +182,7 @@ func (s *Store) ByID(ctx context.Context, id, viewerID string) (Request, error) 
 	}
 	request.Members = make([]Member, 0, len(members))
 	for _, member := range members {
-		request.Members = append(request.Members, Member{ID: member.UserID, DisplayName: member.DisplayName, JoinedAt: member.JoinedAt.Time})
+		request.Members = append(request.Members, Member{ID: member.UserID, GameNick: member.MemberGameNick.String, JoinedAt: member.JoinedAt.Time})
 	}
 	activity, err := s.queries.ListGameRequestActivity(ctx, databaseID)
 	if err != nil {
@@ -192,7 +192,7 @@ func (s *Store) ByID(ctx context.Context, id, viewerID string) (Request, error) 
 	for _, entry := range activity {
 		request.Activity = append(request.Activity, Activity{
 			Kind: domain.ActivityKind(entry.Kind), ActorID: entry.ActorID,
-			ActorName: entry.ActorName, OccurredAt: entry.OccurredAt.Time,
+			ActorGameNick: entry.ActorGameNick.String, OccurredAt: entry.OccurredAt.Time,
 		})
 	}
 	return request, nil
@@ -237,7 +237,7 @@ type requestFields struct {
 	GameID           string
 	Game             game.GamePresentation
 	CreatorID        string
-	CreatorName      string
+	CreatorGameNick  string
 	MaxPlayers       pgtype.Int4
 	StartsAt         pgtype.Timestamptz
 	Description      string
@@ -251,7 +251,7 @@ type requestFields struct {
 func requestFromFields(fields requestFields) Request {
 	return Request{
 		ID: fields.ID, GameID: fields.GameID, Game: fields.Game,
-		CreatorID: fields.CreatorID, CreatorName: fields.CreatorName,
+		CreatorID: fields.CreatorID, CreatorGameNick: fields.CreatorGameNick,
 		MaxPlayers: int4Pointer(fields.MaxPlayers), StartsAt: fields.StartsAt.Time, Description: fields.Description,
 		Status: domain.Status(fields.Status), CreatedAt: fields.CreatedAt.Time, MemberCount: fields.MemberCount,
 		ViewerJoined: fields.ViewerJoined, ViewerSubscribed: fields.ViewerSubscribed,

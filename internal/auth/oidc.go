@@ -7,22 +7,28 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/convention-x-treme/lansurfer/internal/user"
 	"github.com/coreos/go-oidc/v3/oidc"
 	"golang.org/x/oauth2"
 )
 
 type OIDCConfig struct {
-	IssuerURL    string
-	ClientID     string
-	ClientSecret string
-	RedirectURL  string
+	IssuerURL     string
+	ClientID      string
+	ClientSecret  string
+	RedirectURL   string
+	GameNickClaim string
 }
 
 type OIDCProvider struct {
-	issuer   string
-	oauth    oauth2.Config
-	verifier *oidc.IDTokenVerifier
+	issuer        string
+	oauth         oauth2.Config
+	verifier      *oidc.IDTokenVerifier
+	gameNickClaim string
 }
+
+func (*OIDCProvider) ProviderKind() string  { return "oidc" }
+func (p *OIDCProvider) ProviderKey() string { return p.issuer }
 
 // DiscoverOIDCProvider performs provider discovery once during application
 // startup and constructs the long-lived token verifier/key cache.
@@ -49,7 +55,8 @@ func DiscoverOIDCProvider(ctx context.Context, cfg OIDCConfig) (*OIDCProvider, e
 			RedirectURL:  cfg.RedirectURL,
 			Scopes:       []string{oidc.ScopeOpenID, oidc.ScopeProfile, oidc.ScopeEmail},
 		},
-		verifier: provider.Verifier(&oidc.Config{ClientID: cfg.ClientID}),
+		verifier:      provider.Verifier(&oidc.Config{ClientID: cfg.ClientID}),
+		gameNickClaim: cfg.GameNickClaim,
 	}, nil
 }
 
@@ -77,19 +84,39 @@ func (p *OIDCProvider) Exchange(ctx context.Context, code, verifier, nonce strin
 	if subtle.ConstantTimeCompare([]byte(idToken.Nonce), []byte(nonce)) != 1 {
 		return Profile{}, errors.New("ID token nonce does not match login flow")
 	}
-	var claims struct {
-		Name              string `json:"name"`
-		PreferredUsername string `json:"preferred_username"`
-		Email             string `json:"email"`
-	}
+	var claims map[string]any
 	if err := idToken.Claims(&claims); err != nil {
 		return Profile{}, fmt.Errorf("decode ID token claims: %w", err)
 	}
 	return Profile{
-		Provider:          p.issuer,
-		Subject:           strings.TrimSpace(idToken.Subject),
-		Name:              claims.Name,
-		PreferredUsername: claims.PreferredUsername,
-		Email:             claims.Email,
+		ProviderKind:       "oidc",
+		ProviderKey:        p.issuer,
+		Subject:            strings.TrimSpace(idToken.Subject),
+		Name:               stringClaim(claims, "name"),
+		PreferredUsername:  stringClaim(claims, "preferred_username"),
+		Email:              stringClaim(claims, "email"),
+		GameNickSuggestion: oidcGameNickSuggestion(claims, p.gameNickClaim),
 	}, nil
+}
+
+func oidcGameNickSuggestion(claims map[string]any, customClaim string) string {
+	for _, claim := range []string{strings.TrimSpace(customClaim), "preferred_username", "name"} {
+		if claim == "" {
+			continue
+		}
+		candidate, ok := claims[claim].(string)
+		if !ok {
+			continue
+		}
+		validated, err := user.ValidateGameNick(candidate)
+		if err == nil {
+			return validated
+		}
+	}
+	return ""
+}
+
+func stringClaim(claims map[string]any, name string) string {
+	value, _ := claims[name].(string)
+	return value
 }

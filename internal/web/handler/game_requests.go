@@ -560,7 +560,7 @@ func (h *GameRequests) renderError(w http.ResponseWriter, r *http.Request) {
 
 func requestNavigation(r *http.Request) components.NavigationState {
 	account, _ := webmiddleware.CurrentUser(r.Context())
-	return components.NavigationState{Viewer: &components.Viewer{ID: account.ID, DisplayName: account.DisplayName, Role: string(account.Role)}, Section: "game-requests"}
+	return components.NavigationState{Viewer: &components.Viewer{ID: account.ID, GameNick: account.GameNick, Role: string(account.Role)}, Section: "game-requests"}
 }
 
 func gameRequestErrorStatus(err error) int {
