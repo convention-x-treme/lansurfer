@@ -424,6 +424,22 @@
     gap: 0;
   }
 
+  /* A last free place borders the hero the way it borders the list row, so the
+     detail page a player lands on carries the scarcity the row promised. */
+  .detail-hero-last {
+    border-color: color-mix(in srgb, var(--brand-sunset) 70%, var(--border-raised));
+  }
+
+  /* Screen title per the type scale in docs/BRANDING.md: the Game names the
+     page, so it is set larger here than the top bar's own title. */
+  .detail-title {
+    min-width: 0;
+    font-size: 1.875rem;
+    font-weight: 900;
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+  }
+
   .detail-card-accent {
     border-color: color-mix(in srgb, var(--color-warning) 40%, var(--border-raised));
   }
@@ -814,7 +830,8 @@
   /* Portrait box art at the ratio the covers are published in, so the tile
      never letterboxes and never crops the title band out of the image. */
   .request-cover,
-  .trending-cover {
+  .trending-cover,
+  .detail-cover {
     position: relative;
     display: grid;
     width: 6rem;
@@ -825,6 +842,10 @@
     border: 1px solid var(--border-raised);
     border-radius: var(--radius-field);
     background: color-mix(in srgb, var(--color-primary) 12%, var(--color-base-300));
+  }
+
+  .detail-cover {
+    width: 4.5rem;
   }
 
   /* Out of flow, so a cover that has not loaded yet cannot resize the row
@@ -1354,6 +1375,12 @@ textarea::placeholder {
 
   .request-row-title {
     font-size: 1rem;
+  }
+
+  /* The screen title drops to the top bar's size rather than setting three
+     lines of 30px black type across a phone. */
+  .detail-title {
+    font-size: 1.5rem;
   }
 
   .request-search {

@@ -347,10 +347,10 @@ func TestTrendingRailRendersRankedCoversWithAccessibleNames(t *testing.T) {
 	}
 }
 
-// The detail hero renders the same shared GameIdentity presentation as
-// /games and the list rows, so a materialized Game's cover and
-// type/platform/release metadata show up at the top of its detail page too.
-func TestGameRequestDetailContentRendersGameIdentityWithCoverAndMetadata(t *testing.T) {
+// The detail page leads with the Game's portrait cover and names it as the
+// screen title, and keeps the type/platform/release metadata that
+// disambiguates same-name Games in the rail's Game panel.
+func TestGameRequestDetailContentRendersCoverAndMetadata(t *testing.T) {
 	release := time.Date(2002, time.July, 3, 0, 0, 0, 0, time.UTC)
 	request := requestquery.Request{
 		ID: "request-1",
@@ -366,7 +366,8 @@ func TestGameRequestDetailContentRendersGameIdentityWithCoverAndMetadata(t *test
 	}
 	body := rendered.String()
 	for _, want := range []string{
-		"https://images.igdb.com/igdb/image/upload/t_cover_small/co1abc.jpg",
+		"https://images.igdb.com/igdb/image/upload/t_cover_big/co1abc.jpg",
+		`<h1 class="detail-title">Warcraft III</h1>`,
 		"Main Game",
 		"PC (Microsoft Windows)",
 		"2002",
@@ -374,6 +375,35 @@ func TestGameRequestDetailContentRendersGameIdentityWithCoverAndMetadata(t *test
 		if !strings.Contains(body, want) {
 			t.Errorf("detail does not contain %q: %s", want, body)
 		}
+	}
+}
+
+// A last free place borders the hero and names itself as a chip, the same
+// scarcity signal the list row the player came from carries.
+func TestGameRequestDetailContentMarksLastPlace(t *testing.T) {
+	limit := int32(4)
+	request := requestquery.Request{
+		ID: "request-1", Game: game.GamePresentation{Name: "Warcraft III"},
+		CreatorID: "host-1", Status: gamerequest.StatusOpen, MemberCount: 3, MaxPlayers: &limit,
+	}
+	var rendered bytes.Buffer
+	if err := GameRequestDetailContent(request, "host-1", false).Render(context.Background(), &rendered); err != nil {
+		t.Fatalf("render detail: %v", err)
+	}
+	body := rendered.String()
+	for _, want := range []string{"detail-hero detail-hero-last", `<span class="status-chip status-chip-last">Last place</span>`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("last-place detail does not contain %q: %s", want, body)
+		}
+	}
+
+	request.MemberCount = 1
+	rendered.Reset()
+	if err := GameRequestDetailContent(request, "host-1", false).Render(context.Background(), &rendered); err != nil {
+		t.Fatalf("render detail: %v", err)
+	}
+	if body := rendered.String(); strings.Contains(body, "detail-hero-last") || strings.Contains(body, "Last place") {
+		t.Errorf("request with two places left is marked as the last place: %s", body)
 	}
 }
 

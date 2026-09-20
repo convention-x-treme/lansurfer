@@ -3,7 +3,7 @@
 Audit date: 2026-09-16. Branch: `feat/adopt-design-kit`, at commit `5f18dfe`.
 Remediation: 2026-09-17, branch `feat/impeccable-recommendations`.
 
-This document records the presentation defects found in LANsurfer's dark theme and the remediation derived from them. It is a Track G working document, not a design authority: [`BRANDING.md`](BRANDING.md) and [`docs/ui-kit`](ui-kit/README.md) remain the joint design authority, and this audit only measures the implementation against them. **Every finding below has been fixed and the remediation backlog is empty.** The document is kept until a fresh audit replaces its score; it is retired once that audit is recorded.
+This document records the presentation defects found in LANsurfer's dark theme and the remediation derived from them. It is a Track G working document, not a design authority: [`BRANDING.md`](BRANDING.md) and [`docs/ui-kit`](ui-kit/README.md) remain the joint design authority, and this audit only measures the implementation against them. **Every finding below was fixed and the remediation backlog is empty; finding 9 has since been partly reopened by the kit, as recorded under it.** The document is kept until a fresh audit replaces its score; it is retired once that audit is recorded.
 
 ## Method
 
@@ -60,6 +60,7 @@ Each entry keeps its original measurement and records what replaced it. Ratios i
    **Resolved.** Both counter helpers treat any non-open status as muted.
 9. **Sunset inflation on the detail view.** Card border, counter, chip, Join button, and the "Last place open" row were all Sunset.
    **Resolved.** The hero's Sunset border, the duplicate "Last place" chip, the row's Sunset rule, and the row label's Sunset ink are gone. Scarcity now reads on the counter, the urgent Join action, and the empty-place marker.
+   **Reopened by the kit, 2026-09-20.** `UI-Kit-Request-Detail` and `UI-Kit-Game-Requests-v2` both put the Sunset border and the "Last place" chip back, so the list row and the detail hero now carry them again and state scarcity the same way. The next audit has to measure whether that is one signal read twice or the inflation this finding named.
 10. **Monospace beyond its job.** Running text, navigation, and controls were set in JetBrains Mono.
     **Resolved.** "Log out", the viewer role, "All Game Requests →", "followed"/"not followed", "New request", "joins update live", "players", the composer's help sentence, the login divider, "Coming soon", and the operator attribution are Schibsted Grotesk. Mono is kept for counts, times, nicknames, slugs, and tags.
 11. **The sticky mobile header ghosted.** 94% Deep Ocean with no `backdrop-filter`.
