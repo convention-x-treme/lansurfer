@@ -28,6 +28,24 @@ func TestCatalogValidation(t *testing.T) {
 	}
 }
 
+func TestCatalogReconciliationValidation(t *testing.T) {
+	repository := &recordingRepository{}
+	service := NewService(repository)
+
+	if _, err := service.SearchIGDB(t.Context(), "  quake  "); err != nil || repository.search != "quake" {
+		t.Fatalf("SearchIGDB() search = %q, error = %v", repository.search, err)
+	}
+	if err := service.LinkIGDB(t.Context(), "game-1", "0100"); err != nil {
+		t.Fatalf("LinkIGDB() error = %v", err)
+	}
+	if repository.externalID != "100" {
+		t.Fatalf("LinkIGDB() external ID = %q, want canonical 100", repository.externalID)
+	}
+	if err := service.Merge(t.Context(), "game-1", "game-1"); !errors.Is(err, ErrSameGame) {
+		t.Fatalf("same-game merge error = %v, want ErrSameGame", err)
+	}
+}
+
 func TestSubscriptionSearchValidationAndWrites(t *testing.T) {
 	repository := &recordingSubscriptionRepository{}
 	service := NewSubscriptionService(repository)
@@ -52,7 +70,7 @@ func TestSubscriptionSearchValidationAndWrites(t *testing.T) {
 	}
 }
 
-type recordingRepository struct{ createdSlug, alias string }
+type recordingRepository struct{ createdSlug, alias, search, externalID string }
 
 func (*recordingRepository) List(context.Context, string) ([]Game, error)       { return nil, nil }
 func (*recordingRepository) ActiveExists(context.Context, string) (bool, error) { return true, nil }
@@ -69,6 +87,17 @@ func (r *recordingRepository) AddAlias(_ context.Context, _, value string) (Alia
 	return Alias{Value: value}, nil
 }
 func (*recordingRepository) RemoveAlias(context.Context, string, string) error { return nil }
+func (r *recordingRepository) SearchIGDB(_ context.Context, search string) ([]AdminProviderGame, error) {
+	r.search = search
+	return nil, nil
+}
+func (r *recordingRepository) LinkIGDB(_ context.Context, _ string, reference ProviderReference) error {
+	r.externalID = reference.ExternalID
+	return nil
+}
+func (*recordingRepository) UnlinkIGDB(context.Context, string) error    { return nil }
+func (*recordingRepository) Merge(context.Context, string, string) error { return nil }
+func (*recordingRepository) Delete(context.Context, string) error        { return nil }
 
 type recordingSubscriptionRepository struct{ search, followed, unfollowed string }
 

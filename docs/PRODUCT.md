@@ -249,6 +249,15 @@ Concurrent activation of the same provider record must converge on one local Gam
 
 Once materialized, the local Game remains authoritative and usable even if IGDB is later disabled, unavailable, or changes its metadata.
 
+Global administrators may explicitly reconcile the authoritative local catalog:
+
+- link an existing local Game to a record from the active synchronized IGDB catalog without replacing its local ID, name, slug, aliases, follows, or history
+- unlink an incorrect IGDB identity and enrichment snapshot without deleting the local Game or its relationships
+- merge an explicit source Game into an explicit target Game, keeping the target's local identity while moving Game Requests, follows, aliases, and a non-conflicting IGDB identity
+- permanently delete only Games with no Game Requests or follows; deactivation remains the normal lifecycle action for Games with history
+
+LANsurfer never chooses a duplicate automatically by name or silently discards one of two conflicting IGDB identities during a merge.
+
 If an IGDB record disappears during synchronization:
 
 - remove the provider-index record when no authoritative local Game references it

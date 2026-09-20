@@ -380,6 +380,122 @@ func TestAdminGameSearchRendersAliasMatch(t *testing.T) {
 	}
 }
 
+func TestAdminGameCatalogShowsIdentityAndDeletionGuards(t *testing.T) {
+	games := &routerGames{items: []game.Game{
+		{ID: "linked", Name: "Linked Game", Slug: "linked-game", Active: true, IGDBExternalID: "100", IGDBEnriched: true, GameRequestCount: 2},
+		{ID: "followed", Name: "Followed Game", Slug: "followed-game", Active: true, SubscriptionCount: 1},
+		{ID: "unused", Name: "Unused Game", Slug: "unused-game", Active: false},
+	}}
+	request := httptest.NewRequest(http.MethodGet, "/admin/games", nil)
+	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	response := httptest.NewRecorder()
+
+	adminTestRouter(games).ServeHTTP(response, request)
+
+	body := response.Body.String()
+	for _, want := range []string{
+		"IGDB #100", "Enrichment snapshot available", "Manage IGDB link",
+		"This game has Game Requests and cannot be deleted", "This game is followed by users",
+		"Permanently delete Unused Game?",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("body does not contain %q", want)
+		}
+	}
+}
+
+func TestAdminIGDBLinkSearchGuidesExistingMappingToMerge(t *testing.T) {
+	release := time.Date(2024, time.January, 1, 0, 0, 0, 0, time.UTC)
+	games := &routerGames{
+		items: []game.Game{
+			{ID: "target", Name: "Local Game", Slug: "local-game"},
+			{ID: "source", Name: "IGDB Game", Slug: "igdb-game", IGDBExternalID: "100"},
+		},
+		igdbItems: []game.AdminProviderGame{{
+			ExternalID: "100", Name: "Provider Name", GameType: "Main Game",
+			FirstReleaseDate: &release, CoverImageID: "co-admin",
+			LinkedGameID: "source", LinkedGameName: "IGDB Game",
+		}},
+	}
+	request := httptest.NewRequest(http.MethodGet, "/admin/games/target/igdb?q=provider", nil)
+	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	response := httptest.NewRecorder()
+
+	adminTestRouter(games).ServeHTTP(response, request)
+
+	body := response.Body.String()
+	if response.Code != http.StatusOK || games.igdbSearch != "provider" {
+		t.Fatalf("status/search = %d, %q", response.Code, games.igdbSearch)
+	}
+	for _, want := range []string{
+		"Provider Name", "2024", "co-admin.jpg", "Linked to IGDB Game", "/admin/games/target/merge?source=source",
+		"grid-cols-[auto_minmax(0,1fr)_auto]", "aspect-[3/4]", "max-w-[100px]", "break-words",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("body does not contain %q", want)
+		}
+	}
+}
+
+func TestAdminIGDBLinkConflictRedirectsToMerge(t *testing.T) {
+	games := &routerGames{
+		items:   []game.Game{{ID: "target", Name: "Local Game", Slug: "local-game"}},
+		linkErr: &game.IGDBLinkConflict{GameID: "source", GameName: "IGDB Game"},
+	}
+	form := url.Values{"external_id": {"100"}}
+	request := httptest.NewRequest(http.MethodPost, "/admin/games/target/igdb", strings.NewReader(form.Encode()))
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	addCSRF(request)
+	response := httptest.NewRecorder()
+
+	adminTestRouter(games).ServeHTTP(response, request)
+
+	want := "/admin/games/target/merge?source=source&notice=igdb-link-conflict"
+	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != want {
+		t.Fatalf("status/location = %d, %q", response.Code, response.Header().Get("Location"))
+	}
+}
+
+func TestAdminMergeKeepsCurrentGameAsTarget(t *testing.T) {
+	games := &routerGames{items: []game.Game{
+		{ID: "target", Name: "Target", Slug: "target"},
+		{ID: "source", Name: "Source", Slug: "source"},
+	}}
+	form := url.Values{"source_id": {"source"}}
+	request := httptest.NewRequest(http.MethodPost, "/admin/games/target/merge", strings.NewReader(form.Encode()))
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	addCSRF(request)
+	response := httptest.NewRecorder()
+
+	adminTestRouter(games).ServeHTTP(response, request)
+
+	if games.mergedSource != "source" || games.mergedTarget != "target" {
+		t.Fatalf("merge source/target = %q/%q", games.mergedSource, games.mergedTarget)
+	}
+	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/admin/games?notice=game-merged" {
+		t.Fatalf("status/location = %d, %q", response.Code, response.Header().Get("Location"))
+	}
+}
+
+func TestAdminDeleteRechecksUsageGuard(t *testing.T) {
+	games := &routerGames{
+		items:     []game.Game{{ID: "used", Name: "Used", Slug: "used", GameRequestCount: 1}},
+		deleteErr: game.ErrGameHasRequests,
+	}
+	request := httptest.NewRequest(http.MethodPost, "/admin/games/used/delete", nil)
+	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	addCSRF(request)
+	response := httptest.NewRecorder()
+
+	adminTestRouter(games).ServeHTTP(response, request)
+
+	if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), "cannot be deleted") {
+		t.Fatalf("status/body = %d, %q", response.Code, response.Body.String())
+	}
+}
+
 func TestAdminIGDBRoutesRequireAdmin(t *testing.T) {
 	viewer := &routerAuthentication{account: user.User{GameNick: "Player", Role: user.RoleUser}}
 	dependencies := RouterDependencies{
@@ -1089,8 +1205,19 @@ func (r *routerIdentities) ListByUser(context.Context, string) ([]auth.Identity,
 }
 
 type routerGames struct {
-	items  []game.Game
-	search string
+	items          []game.Game
+	igdbItems      []game.AdminProviderGame
+	search         string
+	igdbSearch     string
+	linkedGame     string
+	linkedExternal string
+	unlinkedGame   string
+	mergedSource   string
+	mergedTarget   string
+	deletedGame    string
+	linkErr        error
+	mergeErr       error
+	deleteErr      error
 }
 
 func (r *routerGames) List(_ context.Context, search string) ([]game.Game, error) {
@@ -1108,6 +1235,26 @@ func (*routerGames) AddAlias(context.Context, string, string) (game.Alias, error
 	return game.Alias{}, nil
 }
 func (*routerGames) RemoveAlias(context.Context, string, string) error { return nil }
+func (r *routerGames) SearchIGDB(_ context.Context, search string) ([]game.AdminProviderGame, error) {
+	r.igdbSearch = search
+	return r.igdbItems, nil
+}
+func (r *routerGames) LinkIGDB(_ context.Context, gameID, externalID string) error {
+	r.linkedGame, r.linkedExternal = gameID, externalID
+	return r.linkErr
+}
+func (r *routerGames) UnlinkIGDB(_ context.Context, gameID string) error {
+	r.unlinkedGame = gameID
+	return nil
+}
+func (r *routerGames) Merge(_ context.Context, sourceID, targetID string) error {
+	r.mergedSource, r.mergedTarget = sourceID, targetID
+	return r.mergeErr
+}
+func (r *routerGames) Delete(_ context.Context, gameID string) error {
+	r.deletedGame = gameID
+	return r.deleteErr
+}
 
 type routerProviderSync struct {
 	status       game.ProviderStatus

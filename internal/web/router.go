@@ -196,6 +196,12 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 				admin.Post("/games/{gameID}/active", administrationHandler.SetGameActive)
 				admin.Post("/games/{gameID}/aliases", administrationHandler.AddGameAlias)
 				admin.Post("/games/{gameID}/aliases/{aliasID}/remove", administrationHandler.RemoveGameAlias)
+				admin.Get("/games/{gameID}/igdb", administrationHandler.GameIGDB)
+				admin.Post("/games/{gameID}/igdb", administrationHandler.LinkGameIGDB)
+				admin.Post("/games/{gameID}/igdb/unlink", administrationHandler.UnlinkGameIGDB)
+				admin.Get("/games/{gameID}/merge", administrationHandler.MergeGamePage)
+				admin.Post("/games/{gameID}/merge", administrationHandler.MergeGame)
+				admin.Post("/games/{gameID}/delete", administrationHandler.DeleteGame)
 				if dependencies.ProviderSync != nil {
 					admin.Get("/igdb", administrationHandler.IGDB)
 					admin.Post("/igdb/sync", administrationHandler.SyncIGDB)

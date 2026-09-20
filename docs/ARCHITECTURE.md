@@ -545,6 +545,12 @@ Searching/viewing a provider result is read-only. Following it or creating a Gam
 
 Never merge by name. Once materialized, local Games remain authoritative and usable if the provider is disabled, unavailable, changed, or later loses the source record.
 
+Administrator reconciliation stays inside the `game` module. Linking reloads the selected record from the active provider generation inside the write transaction; browser-submitted provider metadata is never persisted. Unlinking removes the IGDB mapping and enrichment snapshot together while leaving the local Game and its relationships untouched.
+
+Merging takes explicit source and target IDs, locks both Game rows in stable order, and completes in one transaction. The target keeps its ID, name, slug, and active state. Game Requests are reassigned, follows are copied with `(user_id, game_id)` conflict deduplication, aliases are copied with the existing case-insensitive per-Game uniqueness rule, and a single source IGDB mapping/enrichment snapshot moves to the target. If both Games have IGDB mappings, the transaction stops before moving anything; an administrator must explicitly unlink the incorrect identity first. The source Game is deleted only after every transfer succeeds.
+
+Permanent deletion locks and rechecks the Game in the transaction. It is rejected while Game Requests or follows exist. The `game_requests.game_id` foreign key remains `ON DELETE RESTRICT`; aliases, external identities, and enrichment may cascade only after those business-reference guards pass.
+
 Unmaterialized discovery reads presentation metadata from the active provider generation. Once materialized, player-facing reads use the authoritative local Game plus a local last-known-good IGDB enrichment snapshot (`game_igdb_enrichment`). Successful provider syncs refresh only non-empty enrichment fields; provider disappearance or disablement does not remove the snapshot.
 
 If a synchronized provider record disappears:
