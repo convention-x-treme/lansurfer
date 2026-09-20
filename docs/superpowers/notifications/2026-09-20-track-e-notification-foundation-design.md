@@ -64,6 +64,10 @@ The interactive design tree is being resolved with the user in rounds. Only deci
 - **Initial baseline:** on first E1 initialization, all already-visible committed `origin=live` activity rows are durably materialized as baseline/ignored work with no deliveries. Rows that become visible after that initialization are normal work. Do not use a timestamp or sequence cutoff.
 - **Work materialization:** `notification_work` is created asynchronously by E1 from `game_request_activity`; Track A does not write notification tables inside Game Request transactions.
 - The durable uniqueness between activity and work must make repeated discovery harmless and prevent duplicate work rows for the same activity.
+- **Transport-independent processing:** E1 keeps consuming/materializing work even when no transport is configured or no eligible targets exist. Such work completes with zero deliveries; enabling a transport later does not replay old activity.
+- **Claiming/recovery:** due deliveries are claimed through PostgreSQL with a durable lease (using row locking such as `FOR UPDATE SKIP LOCKED` or equivalent). A crashed/abandoned claim becomes eligible again after the lease expires.
+- **Wake-up:** E1 uses simple periodic PostgreSQL polling for new/future-due work. `LISTEN/NOTIFY` is not required for 1.0.
+- **Retry exhaustion model:** automatic retry uses a fixed maximum attempt count. After the cap the delivery becomes `exhausted`; an authorized manual retry explicitly re-opens it for a new retry round. The exact attempt count remains to be fixed.
 
 ### Notification coverage
 
@@ -82,11 +86,11 @@ The exact personal-notification behavior for `closed` and `cancelled`, and the e
 
 ### Open decision branches
 
-- claiming/concurrency/crash recovery;
-- retry/failure state machine details;
+- exact lease duration and polling cadence;
+- exact automatic retry attempt count/backoff schedule;
+- provider-result classification details;
 - stale-update semantics;
 - manual retry and diagnostics;
-- worker wake-up/polling strategy;
 - retention/cleanup requirements;
 - transport-facing interface.
 
