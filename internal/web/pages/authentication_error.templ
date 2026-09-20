@@ -7,12 +7,9 @@ import (
 )
 
 // providerLoginHref maps a configured provider kind to its login start
-// route. OIDC and Discord are LANsurfer's only two stable-1.0 adapters.
+// route, matching onboarding.go's resolveOptions.
 func providerLoginHref(kind string) string {
-	if kind == "discord" {
-		return "/auth/discord"
-	}
-	return "/auth/oidc"
+	return "/auth/" + kind
 }
 
 templ Login(brand branding.Brand, providers []auth.ProviderAvailability) {

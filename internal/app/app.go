@@ -50,7 +50,8 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 
 	userService := user.NewService(userpostgres.NewStore(pool))
 	sessionService := auth.NewSessionService(authpostgres.NewSessionStore(pool), userService)
-	flowService := auth.NewFlowService(authpostgres.NewFlowStore(pool))
+	flowStore := authpostgres.NewFlowStore(pool)
+	flowService := auth.NewFlowService(flowStore)
 	identityStore := authpostgres.NewIdentityStore(pool)
 	resolutionService := auth.NewResolutionService(
 		identityStore, flowService, sessionService, userService, authpostgres.NewPendingIdentityAttacher(pool),
@@ -124,6 +125,7 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		serverErrors <- server.ListenAndServe()
 	}()
 	go runDailyIGDBSync(ctx, igdbSyncService, igdbSyncInterval)
+	go runPeriodicFlowCleanup(ctx, flowStore, authFlowCleanupInterval, logger)
 	// Registered after pool.Close() above so it runs first on the way out:
 	// an in-flight sync's transaction must finish (or be abandoned within the
 	// bound) before the pool it depends on is closed.

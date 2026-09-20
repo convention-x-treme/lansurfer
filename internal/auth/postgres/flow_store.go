@@ -26,9 +26,6 @@ func NewFlowStore(pool *pgxpool.Pool) *FlowStore {
 func NewFlowStoreDB(db sqlcgen.DBTX) *FlowStore { return &FlowStore{queries: sqlcgen.New(db)} }
 
 func (s *FlowStore) CreateOAuth(ctx context.Context, flow auth.OAuthFlow) (auth.OAuthFlow, error) {
-	if err := s.cleanup(ctx, time.Now()); err != nil {
-		return auth.OAuthFlow{}, err
-	}
 	initiatingUserID, err := optionalUUID(flow.InitiatingUserID)
 	if err != nil {
 		return auth.OAuthFlow{}, fmt.Errorf("parse initiating user ID: %w", err)
@@ -144,9 +141,6 @@ func (s *FlowStore) oauthFailure(ctx context.Context, callback auth.OAuthCallbac
 }
 
 func (s *FlowStore) CreatePending(ctx context.Context, pending auth.PendingIdentity) (auth.PendingIdentity, error) {
-	if err := s.cleanup(ctx, time.Now()); err != nil {
-		return auth.PendingIdentity{}, err
-	}
 	initiatingUserID, err := optionalUUID(pending.InitiatingUserID)
 	if err != nil {
 		return auth.PendingIdentity{}, fmt.Errorf("parse initiating user ID: %w", err)
@@ -210,7 +204,11 @@ func (s *FlowStore) ConsumePending(ctx context.Context, id string, browserHash [
 	return err
 }
 
-func (s *FlowStore) cleanup(ctx context.Context, now time.Time) error {
+// CleanupExpired deletes expired auth_flows rows. It is meant to run on a
+// periodic schedule (see app.runPeriodicFlowCleanup), not inline on every
+// flow creation: the hot login/link/onboarding path should cost one write,
+// not two.
+func (s *FlowStore) CleanupExpired(ctx context.Context, now time.Time) error {
 	if err := s.queries.DeleteExpiredAuthFlows(ctx, pgtype.Timestamptz{Time: now, Valid: true}); err != nil {
 		return fmt.Errorf("clean expired auth flows: %w", err)
 	}
@@ -237,6 +235,12 @@ func hashArray(value []byte) [sha256.Size]byte {
 	return result
 }
 
+// oauthFromCreate is the one place that builds an auth.OAuthFlow from a flow
+// row. ConsumeOAuthFlowRow and ConsumeProviderCallbackRow are converted to
+// CreateOAuthFlowRow rather than duplicated into their own field-by-field
+// literals: Go only allows that conversion between structurally identical
+// types, so if any of the three underlying queries' column lists ever drift
+// apart, this fails to compile instead of silently mismapping a field.
 func oauthFromCreate(row sqlcgen.CreateOAuthFlowRow) auth.OAuthFlow {
 	return auth.OAuthFlow{ID: row.ID, Operation: auth.FlowOperation(row.Operation), ProviderKind: row.ProviderKind,
 		ProviderKey: row.ProviderKey, InitiatingUserID: uuidString(row.InitiatingUserID), ParentFlowID: uuidString(row.ParentFlowID),
@@ -245,17 +249,11 @@ func oauthFromCreate(row sqlcgen.CreateOAuthFlowRow) auth.OAuthFlow {
 }
 
 func oauthFromConsumed(row sqlcgen.ConsumeOAuthFlowRow) auth.OAuthFlow {
-	return auth.OAuthFlow{ID: row.ID, Operation: auth.FlowOperation(row.Operation), ProviderKind: row.ProviderKind,
-		ProviderKey: row.ProviderKey, InitiatingUserID: uuidString(row.InitiatingUserID), ParentFlowID: uuidString(row.ParentFlowID),
-		StateHash: hashArray(row.StateHash), BrowserBindingHash: hashArray(row.BrowserBindingHash),
-		Nonce: row.Nonce.String, PKCEVerifier: row.PkceVerifier.String, ExpiresAt: row.ExpiresAt.Time}
+	return oauthFromCreate(sqlcgen.CreateOAuthFlowRow(row))
 }
 
 func oauthFromProviderCallback(row sqlcgen.ConsumeProviderCallbackRow) auth.OAuthFlow {
-	return auth.OAuthFlow{ID: row.ID, Operation: auth.FlowOperation(row.Operation), ProviderKind: row.ProviderKind,
-		ProviderKey: row.ProviderKey, InitiatingUserID: uuidString(row.InitiatingUserID), ParentFlowID: uuidString(row.ParentFlowID),
-		StateHash: hashArray(row.StateHash), BrowserBindingHash: hashArray(row.BrowserBindingHash),
-		Nonce: row.Nonce.String, PKCEVerifier: row.PkceVerifier.String, ExpiresAt: row.ExpiresAt.Time}
+	return oauthFromCreate(sqlcgen.CreateOAuthFlowRow(row))
 }
 
 func pendingFromCreate(row sqlcgen.CreatePendingIdentityRow) auth.PendingIdentity {
