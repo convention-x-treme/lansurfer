@@ -732,6 +732,150 @@ func AdminError(brand branding.Brand, navigation components.NavigationState) tem
 	})
 }
 
+// PWADiagnostics carries the server-known facts the /admin/pwa page renders
+// unconditionally. Browser-only facts (secure context, registration state,
+// controller, last error) are filled in by admin-pwa.ts and read "Not
+// available without JavaScript" until then.
+type PWADiagnostics struct {
+	InstanceName     string
+	BaseURL          string
+	ManifestURL      string
+	ServiceWorkerURL string
+	SecureContext    bool
+}
+
+func AdminPWA(brand branding.Brand, navigation components.NavigationState, diagnostics PWADiagnostics) templ.Component {
+	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
+			return templ_7745c5c3_CtxErr
+		}
+		templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+		if !templ_7745c5c3_IsBuffer {
+			defer func() {
+				templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err == nil {
+					templ_7745c5c3_Err = templ_7745c5c3_BufErr
+				}
+			}()
+		}
+		ctx = templ.InitializeContext(ctx)
+		templ_7745c5c3_Var32 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var32 == nil {
+			templ_7745c5c3_Var32 = templ.NopComponent
+		}
+		ctx = templ.ClearChildren(ctx)
+		templ_7745c5c3_Var33 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+			templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+			templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+			if !templ_7745c5c3_IsBuffer {
+				defer func() {
+					templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+					if templ_7745c5c3_Err == nil {
+						templ_7745c5c3_Err = templ_7745c5c3_BufErr
+					}
+				}()
+			}
+			ctx = templ.InitializeContext(ctx)
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 61, "<header class=\"app-topbar\"><h1 class=\"app-title\">PWA diagnostics</h1><a class=\"btn btn-quiet btn-sm\" href=\"/admin/games\">Manage games</a></header><div class=\"content-page\"><p class=\"mb-5 max-w-2xl text-sm text-base-content/70\">Read-only facts about this installation's manifest, service worker, and secure-context status. Nothing here is stored or shown to players.</p><section class=\"detail-card\"><h2 class=\"text-[1.0625rem] font-semibold\">Server</h2><dl class=\"mt-2 grid gap-4 sm:grid-cols-2\"><div><dt class=\"text-sm text-base-content/60\">Instance name</dt><dd class=\"data-text\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var34 string
+			templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs(diagnostics.InstanceName)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 200, Col: 117}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var34))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 62, "</dd></div><div><dt class=\"text-sm text-base-content/60\">Base URL</dt><dd class=\"data-text\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var35 string
+			templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.JoinStringErrs(diagnostics.BaseURL)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 201, Col: 107}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var35))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 63, "</dd></div><div><dt class=\"text-sm text-base-content/60\">Manifest URL</dt><dd class=\"data-text\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var36 string
+			templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.JoinStringErrs(diagnostics.ManifestURL)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 202, Col: 115}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var36))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 64, "</dd></div><div><dt class=\"text-sm text-base-content/60\">Service worker URL</dt><dd class=\"data-text\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var37 string
+			templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.JoinStringErrs(diagnostics.ServiceWorkerURL)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 203, Col: 126}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var37))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 65, "</dd></div><div><dt class=\"text-sm text-base-content/60\">Expected secure context</dt><dd class=\"data-text\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var38 string
+			templ_7745c5c3_Var38, templ_7745c5c3_Err = templ.JoinStringErrs(secureContextLabel(diagnostics.SecureContext))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 204, Col: 148}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var38))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 66, "</dd></div></dl></section><section class=\"detail-card mt-4\" data-pwa-diagnostics><h2 class=\"text-[1.0625rem] font-semibold\">Browser</h2><dl class=\"mt-2 grid gap-4 sm:grid-cols-2\"><div><dt class=\"text-sm text-base-content/60\">Diagnostics ran</dt><dd class=\"data-text\" data-fact=\"diagnostics-ran\">No</dd></div><div><dt class=\"text-sm text-base-content/60\">window.isSecureContext</dt><dd class=\"data-text\" data-fact=\"secure-context\">Not available without JavaScript</dd></div><div><dt class=\"text-sm text-base-content/60\">Service worker supported</dt><dd class=\"data-text\" data-fact=\"supported\">Not available without JavaScript</dd></div><div><dt class=\"text-sm text-base-content/60\">Registration</dt><dd class=\"data-text\" data-fact=\"registration\">Not available without JavaScript</dd></div><div><dt class=\"text-sm text-base-content/60\">Controller</dt><dd class=\"data-text\" data-fact=\"controller\">Not available without JavaScript</dd></div><div><dt class=\"text-sm text-base-content/60\">Last registration error</dt><dd class=\"data-text\" data-fact=\"error\">Not available without JavaScript</dd></div></dl></section></div><script src=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var39 string
+			templ_7745c5c3_Var39, templ_7745c5c3_Err = templ.ResolveAttributeValue(brand.Assets.AdminPWADiagnostics)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 219, Col: 48}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var39)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 67, "\" defer></script>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			return nil
+		})
+		templ_7745c5c3_Err = components.Layout(brand, "PWA Diagnostics", navigation).Render(templ.WithChildren(ctx, templ_7745c5c3_Var33), templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		return nil
+	})
+}
+
+func secureContextLabel(secure bool) string {
+	if secure {
+		return "Yes"
+	}
+	return "No (HTTPS, or a loopback/localhost origin, is required for PWA installation and Web Push)"
+}
+
 func igdbTimestamp(value *time.Time) string {
 	if value == nil {
 		return "Never"
