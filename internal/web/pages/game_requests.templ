@@ -31,7 +31,7 @@ templ GameRequestList(brand branding.Brand, navigation components.NavigationStat
 	@components.Layout(brand, "Game Requests", navigationWithCount(navigation, openRequests)) {
 		<header class="app-topbar">
 			<div class="min-w-0">
-				<h1 class="app-title">Game Requests</h1>
+				<h1 class="app-title sr-only">Game Requests</h1>
 				@RequestStats(requests, false)
 			</div>
 			<a class="btn btn-primary btn-sm" href="/game-requests/new">Create Game Request</a>
@@ -89,7 +89,7 @@ templ RequestFilters(filter requestquery.Filter) {
 // an out-of-band swap through the id of the element carrying the attribute, so
 // the attribute belongs on this element rather than on a wrapper around it.
 templ RequestStats(requests []requestquery.Request, oob bool) {
-	<p id="request-stats" class="mt-1 text-sm text-base-content/70" { outOfBand(oob)... }><span class="data-text count-open font-bold">{ fmt.Sprint(playersInRequests(requests)) }</span>{ playersInRequestsLabel(requests) }<span class="data-text">{ updatedLabel() }</span></p>
+	<p id="request-stats" class="text-sm text-base-content/70" { outOfBand(oob)... }><span class="data-text count-open font-bold">{ fmt.Sprint(playersInRequests(requests)) }</span>{ playersInRequestsLabel(requests) }<span class="data-text">{ updatedLabel() }</span></p>
 }
 
 // TrendingSection ranks games from Game Request activity inside the window the

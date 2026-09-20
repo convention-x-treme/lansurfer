@@ -53,7 +53,7 @@ func GameCatalog(brand branding.Brand, navigation components.NavigationState, pa
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<header class=\"app-topbar\"><h1 class=\"app-title\">Games</h1><a class=\"btn btn-quiet btn-sm\" href=\"/games/mine\">My Games</a></header><div class=\"content-page\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<header class=\"app-topbar\"><h1 class=\"app-title sr-only\">Games</h1><a class=\"btn btn-quiet btn-sm ml-auto\" href=\"/games/mine\">My Games</a></header><div class=\"content-page\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

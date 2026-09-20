@@ -15,8 +15,8 @@ import (
 templ GameCatalog(brand branding.Brand, navigation components.NavigationState, page game.DiscoveryPage, search, message string) {
 	@components.Layout(brand, "Games", navigation) {
 		<header class="app-topbar">
-			<h1 class="app-title">Games</h1>
-			<a class="btn btn-quiet btn-sm" href="/games/mine">My Games</a>
+			<h1 class="app-title sr-only">Games</h1>
+			<a class="btn btn-quiet btn-sm ml-auto" href="/games/mine">My Games</a>
 		</header>
 		<div class="content-page">
 			@GameSearchForm(search)
