@@ -75,12 +75,19 @@ Deliver one synchronized Discord message per Game Request to at most one adminis
 - Editing a webhook message must send an explicit empty `allowed_mentions` again; Discord does not inherit the original create request's mention policy for later edits.
 - The webhook-token API can read/modify/delete the webhook and read/edit/delete messages created by that same webhook token without introducing a bot/gateway integration.
 
+
+## Settled decisions
+
+- **Credential independence:** Discord login keeps the existing `LANSURFER_DISCORD_CLIENT_ID` / `LANSURFER_DISCORD_CLIENT_SECRET` configuration. Discord delivery gets separate operator credentials, e.g. `LANSURFER_DISCORD_WEBHOOK_CLIENT_ID` / `LANSURFER_DISCORD_WEBHOOK_CLIENT_SECRET`. Operators may point both integrations at the same Discord application, but neither feature implicitly enables the other.
+- **Setup-flow security:** Discord-destination setup starts only from an authenticated global administrator through a CSRF-protected POST. Persist a short-lived, one-use OAuth state bound to the initiating administrator, browser/session, and the explicit Discord-destination configuration operation. The callback validates that binding. The flow never creates or links a Discord authentication identity.
+- **Destination replacement:** an existing destination remains active while a replacement OAuth flow is in progress. After a successful callback and durable storage of the new destination, atomically switch LANsurfer to the new destination, then best-effort delete the old remote webhook. Cleanup failure does not roll back the successful replacement but must remain diagnosable to administrators.
+- **Disconnect:** disconnect immediately removes/deactivates the local destination and suppresses still-pending deliveries tied to that destination. LANsurfer best-effort deletes the remote webhook. Existing Discord messages remain in the channel. Reconnect creates a new destination and never replays historical work.
+- **Scopes and metadata:** request only `webhook.incoming` for notification delivery. Do not request `identify`, `guilds`, bot permissions, or Gateway access merely to improve display labels. Persist only the non-sensitive destination metadata returned by the webhook flow that is useful for identification/diagnosis (such as webhook ID, guild ID, channel ID, and webhook name when available) alongside encrypted secrets.
+
 ## Design questions to settle
 
-- operator credential/config independence between Discord login and Discord delivery;
-- OAuth start/callback state and redirect-route ownership;
-- destination replacement/disconnect behavior;
-- persisted destination metadata versus encrypted secrets;
+- whether OAuth access/refresh tokens are retained after successful webhook setup;
+- exact persisted destination fields and secret-encryption representation;
 - exact create/edit state model and stale-update protection;
 - behavior when a Game Request changes before its Discord create succeeds;
 - behavior when the webhook or Discord message is removed externally;
