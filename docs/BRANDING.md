@@ -130,6 +130,16 @@ Further rules:
 
 Bundle the variable webfonts with the application and serve them from embedded assets: Schibsted Grotesk upright and italic, plus JetBrains Mono. Runtime font CDNs are not allowed, and neither are Google Fonts stylesheet links. Provide system sans-serif and monospace fallbacks so content remains usable while fonts load or if they fail. Ship each font's license beside the asset.
 
+## Icons
+
+Phosphor Icons is the approved icon library for LANsurfer through 1.0. It is an icon font, not a UI component framework; the technology boundaries in [ARCHITECTURE.md](ARCHITECTURE.md) are unchanged by it.
+
+- **Weights.** Regular is the default weight for every icon. Fill is reserved for emphasized state, such as followed or selected. Do not mix weights decoratively within one component, and do not use other weights (Bold, Thin, Light, Duotone).
+- **Delivery.** Icons ship as a bundled webfont plus its stylesheet, copied into the embedded assets exactly like the Schibsted Grotesk and JetBrains Mono webfonts. There is no runtime icon CDN, no remote icon URL, and no per-icon JavaScript. Ship Phosphor's MIT license beside the asset, as with the fonts.
+- **Color.** Icons inherit `currentColor` and never introduce a colour of their own. The one-job-per-colour rules above govern them like text: a Coral icon means destruction, Golden Hour means time and stewardship.
+- **Size and alignment.** Size icons in `em` relative to the adjacent text so they scale with the UI scale table, and keep the optical box aligned with the line height.
+- **Accessibility.** Decorative icons are `aria-hidden="true"` and never carry meaning alone. An icon-only control always provides an accessible name. Icons follow the same rule as colour: never the sole carrier of state.
+
 ## LANsurfer logo and lockup
 
 Set the wordmark in Schibsted Grotesk italic: 900 for `LAN`, 600 for `surfer`, tracking −0.03em. This is the only italic in the system. Use it with the canonical tagline for the LANsurfer lockup. No production signet has been approved. Until one exists:

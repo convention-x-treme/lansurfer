@@ -60,6 +60,7 @@ This document records both the implemented prototype baseline and the approved 1
 - HTMX
 - Tailwind CSS
 - DaisyUI
+- Phosphor Icons (Regular + Fill webfonts)
 - TypeScript for limited browser-specific behavior
 - esbuild
 - `go:embed`
@@ -573,6 +574,7 @@ IGDB covers are the only approved remote content exception. Allow images only fr
 ## 18. Frontend Architecture
 
 `templ` renders full pages and HTMX fragments. DaisyUI provides the stable base component vocabulary; Tailwind handles layout/local variations. Avoid another UI framework.
+Icons are the Phosphor webfonts (Regular default, Fill for emphasized state), consumed as plain CSS classes in templ markup with `currentColor`; TypeScript does not manage icons.
 
 TypeScript handles only browser-specific progressive enhancement such as SSE connection handling, toast/dialog helpers, installability/service-worker registration, and Web Push permission/subscription behavior. Do not implement domain decisions in TypeScript.
 
@@ -585,6 +587,7 @@ When Tracks D and E both need browser changes, Track D owns the service-worker s
 Build frontend assets during development/CI. Production artifacts are embedded using `go:embed`.
 
 The deployed application should not require Node.js, package managers, Tailwind CLI, templ CLI, or esbuild at runtime.
+Icon webfonts and their stylesheet are bundled and embedded like the fonts through `scripts/prepare-assets.mjs`; there is no runtime icon CDN and no CSP change — the IGDB cover host stays the only remote-content exception.
 
 ---
 
