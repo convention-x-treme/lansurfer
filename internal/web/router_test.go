@@ -1253,3 +1253,55 @@ func TestDuplicateJoinReportsRecoverableConflict(t *testing.T) {
 		t.Errorf("duplicate join notice cannot be dismissed: %s", body)
 	}
 }
+
+// The instance label is the minimum instance identity, not a second wordmark.
+// The component renders it only for a configured name, but NewRouter used to
+// resolve an unset LANSURFER_INSTANCE_NAME to the brand name before handing it
+// to the middleware, so every signed-in screen rendered "LANsurfer" twice by
+// default. The condition is only observable through the router, which is why
+// this test lives here rather than beside the component.
+func TestInstanceLabelRendersOnlyForAConfiguredInstanceName(t *testing.T) {
+	tests := map[string]struct {
+		configured string
+		wantLabel  bool
+	}{
+		"unset":                        {configured: "", wantLabel: false},
+		"configured":                   {configured: "Camp Nova", wantLabel: true},
+		"configured as the brand name": {configured: "LANsurfer", wantLabel: true},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			viewer := &routerAuthentication{account: user.User{ID: "user-1", GameNick: "Ada Player", Role: user.RoleUser}}
+			router := NewRouter(RouterDependencies{
+				Ready:          func(context.Context) error { return nil },
+				Authentication: viewer,
+				Sessions:       viewer,
+				GameRequests:   &routerGameRequests{},
+				RequestQueries: &routerGameRequestQueries{},
+				Discovery:      &routerDiscovery{},
+				InstanceName:   test.configured,
+			})
+
+			request := httptest.NewRequest(http.MethodGet, "/game-requests", nil)
+			request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, request)
+
+			if response.Code != http.StatusOK {
+				t.Fatalf("status = %d", response.Code)
+			}
+			body := response.Body.String()
+			if got := strings.Contains(body, "data-instance-name"); got != test.wantLabel {
+				t.Errorf("instance label rendered = %v, want %v", got, test.wantLabel)
+			}
+			if test.wantLabel && !strings.Contains(body, test.configured) {
+				t.Errorf("configured instance name %q is missing from the page", test.configured)
+			}
+			// The title keeps its fallback either way, so an unconfigured
+			// instance still reads as "<page> · LANsurfer".
+			if !strings.Contains(body, "<title>Game Requests · ") {
+				t.Errorf("page title is missing its instance name: %s", body)
+			}
+		})
+	}
+}

@@ -88,9 +88,13 @@ type RouterDependencies struct {
 // NewRouter constructs the HTTP router.
 func NewRouter(dependencies RouterDependencies) http.Handler {
 	brand := branding.Default()
-	instanceName := dependencies.InstanceName
-	if instanceName == "" {
-		instanceName = brand.Name
+	// resolvedInstanceName is what a surface renders when it always needs a
+	// name (the manifest, the administration diagnostics). The layouts need
+	// the opposite: whether one was configured at all, which is why the
+	// middleware below carries the raw value rather than this fallback.
+	resolvedInstanceName := dependencies.InstanceName
+	if resolvedInstanceName == "" {
+		resolvedInstanceName = brand.Name
 	}
 	authenticationHandler := handler.NewAuthentication(dependencies.Authentication, dependencies.Sessions, brand, dependencies.SecureCookies)
 	onboardingHandler := handler.NewOnboarding(
@@ -101,7 +105,7 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 	accountHandler := handler.NewAccount(dependencies.Identities, dependencies.IdentityUnlinker, dependencies.GameNickClaims, dependencies.Authentication, navigation, brand)
 	administrationHandler := handler.NewAdministration(
 		dependencies.Games, dependencies.ProviderSync, navigation, brand,
-		instanceName, dependencies.BaseURL, SecureContextStatus(dependencies.BaseURL),
+		resolvedInstanceName, dependencies.BaseURL, SecureContextStatus(dependencies.BaseURL),
 	)
 	gamesHandler := handler.NewGames(dependencies.Discovery, navigation, brand)
 	gameRequestsHandler := handler.NewGameRequests(dependencies.GameRequests, dependencies.RequestQueries, dependencies.GameResolver, dependencies.Discovery, navigation, brand)
@@ -117,10 +121,13 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 	router.Use(webmiddleware.SecurityHeaders(dependencies.SecureCookies))
 	router.Use(webmiddleware.CSRF(dependencies.SecureCookies))
 	router.Use(webmiddleware.Theme)
-	router.Use(webmiddleware.Instance(instanceName))
+	// The raw configured value, not the brand fallback: an unset instance must
+	// reach the layouts as empty, or the secondary instance label renders the
+	// brand name a second time beside the wordmark on every screen.
+	router.Use(webmiddleware.Instance(dependencies.InstanceName))
 
 	router.Handle("/assets/*", http.StripPrefix("/assets/", assets.Handler()))
-	manifest := manifestHandler(brand, instanceName)
+	manifest := manifestHandler(brand, resolvedInstanceName)
 	router.Get("/manifest.webmanifest", manifest)
 	router.Head("/manifest.webmanifest", manifest)
 	serviceWorker, err := serviceWorkerHandler()
