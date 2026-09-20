@@ -31,9 +31,10 @@ func (r *blockingWorkerRepository) RecordSuccess(context.Context, int64) error {
 func (r *blockingWorkerRepository) RecordRetry(context.Context, int64, time.Time, string) error {
 	return nil
 }
-func (r *blockingWorkerRepository) RecordExhausted(context.Context, int64, string) error { return nil }
-func (r *blockingWorkerRepository) RecordPermanent(context.Context, int64, string) error { return nil }
-func (r *blockingWorkerRepository) RecordUncertain(context.Context, int64, string) error { return nil }
+func (r *blockingWorkerRepository) RecordExhausted(context.Context, int64, string) error  { return nil }
+func (r *blockingWorkerRepository) RecordPermanent(context.Context, int64, string) error  { return nil }
+func (r *blockingWorkerRepository) RecordSuppressed(context.Context, int64, string) error { return nil }
+func (r *blockingWorkerRepository) RecordUncertain(context.Context, int64, string) error  { return nil }
 
 func TestWorkerWaitBlocksUntilRunReturnsAfterShutdown(t *testing.T) {
 	repo := &blockingWorkerRepository{unblock: make(chan struct{})}

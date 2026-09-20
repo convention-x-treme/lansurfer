@@ -131,6 +131,23 @@ func (w *Worker) processOne(ctx context.Context, delivery ClaimedDelivery) {
 		})
 		return
 	}
+
+	// Eligibility is re-checked before every send, including retries: a
+	// target materialized as eligible can become ineligible later (a
+	// subscription removed, a user leaving the request), and old work must
+	// never be sent to a target it no longer applies to. Suppression is
+	// worker policy computed from a fresh Targets() call, not something the
+	// transport reports from Send.
+	targets, err := transport.Targets(ctx, delivery.Activity)
+	if err != nil {
+		w.logger.Error("recheck transport eligibility", "transport", transport.Name(), "error", err)
+	} else if !containsTarget(targets, delivery.Target) {
+		if recordErr := w.repo.RecordSuppressed(ctx, delivery.DeliveryID, ErrNoLongerEligible.Error()); recordErr != nil && ctx.Err() == nil {
+			w.logger.Error("record notification delivery suppressed", "delivery_id", delivery.DeliveryID, "error", recordErr)
+		}
+		return
+	}
+
 	sendCtx, cancel := context.WithTimeout(ctx, w.sendTimeout)
 	result := transport.Send(sendCtx, delivery.Activity, delivery.Target)
 	cancel()

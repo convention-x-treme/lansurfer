@@ -77,12 +77,13 @@ type Transport interface {
 type DeliveryStatus string
 
 const (
-	StatusPending   DeliveryStatus = "pending"
-	StatusClaimed   DeliveryStatus = "claimed"
-	StatusSucceeded DeliveryStatus = "succeeded"
-	StatusPermanent DeliveryStatus = "permanent"
-	StatusExhausted DeliveryStatus = "exhausted"
-	StatusUncertain DeliveryStatus = "uncertain"
+	StatusPending    DeliveryStatus = "pending"
+	StatusClaimed    DeliveryStatus = "claimed"
+	StatusSucceeded  DeliveryStatus = "succeeded"
+	StatusPermanent  DeliveryStatus = "permanent"
+	StatusExhausted  DeliveryStatus = "exhausted"
+	StatusUncertain  DeliveryStatus = "uncertain"
+	StatusSuppressed DeliveryStatus = "suppressed"
 )
 
 // ClaimedDelivery is one delivery row the Worker has just claimed, together
@@ -140,6 +141,7 @@ type WorkerRepository interface {
 	RecordExhausted(ctx context.Context, deliveryID int64, lastError string) error
 	RecordPermanent(ctx context.Context, deliveryID int64, lastError string) error
 	RecordUncertain(ctx context.Context, deliveryID int64, lastError string) error
+	RecordSuppressed(ctx context.Context, deliveryID int64, reason string) error
 }
 
 // DiagnosticsRepository is the durable state Service needs for authorized

@@ -206,6 +206,15 @@ func (s *Store) RecordUncertain(ctx context.Context, deliveryID int64, lastError
 	return nil
 }
 
+func (s *Store) RecordSuppressed(ctx context.Context, deliveryID int64, reason string) error {
+	if err := s.queries.RecordDeliverySuppressed(ctx, sqlcgen.RecordDeliverySuppressedParams{
+		ID: deliveryID, LastError: nullableText(reason),
+	}); err != nil {
+		return fmt.Errorf("record delivery suppressed: %w", err)
+	}
+	return nil
+}
+
 // ListProblemDeliveries returns every delivery in a terminal problem state
 // (exhausted, permanent, or uncertain), most recently updated first, for
 // authorized diagnostics.

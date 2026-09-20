@@ -232,7 +232,7 @@ SELECT d.id, d.transport, d.target_key, d.status, d.attempt_count, d.last_error,
        w.kind, w.occurred_at
 FROM notification_delivery d
 JOIN notification_work w ON w.id = d.work_id
-WHERE d.status IN ('exhausted', 'permanent', 'uncertain')
+WHERE d.status IN ('exhausted', 'permanent', 'uncertain', 'suppressed')
 ORDER BY d.updated_at DESC
 `
 
@@ -356,6 +356,22 @@ WHERE id = $1
 
 func (q *Queries) RecordDeliverySuccess(ctx context.Context, id int64) error {
 	_, err := q.db.Exec(ctx, recordDeliverySuccess, id)
+	return err
+}
+
+const recordDeliverySuppressed = `-- name: RecordDeliverySuppressed :exec
+UPDATE notification_delivery
+SET status = 'suppressed', claimed_until = NULL, last_error = $1, updated_at = now()
+WHERE id = $2
+`
+
+type RecordDeliverySuppressedParams struct {
+	LastError pgtype.Text
+	ID        int64
+}
+
+func (q *Queries) RecordDeliverySuppressed(ctx context.Context, arg RecordDeliverySuppressedParams) error {
+	_, err := q.db.Exec(ctx, recordDeliverySuppressed, arg.LastError, arg.ID)
 	return err
 }
 

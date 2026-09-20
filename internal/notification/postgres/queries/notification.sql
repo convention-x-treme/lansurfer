@@ -83,13 +83,18 @@ UPDATE notification_delivery
 SET status = 'uncertain', claimed_until = NULL, last_error = sqlc.narg(last_error), updated_at = now()
 WHERE id = sqlc.arg(id);
 
+-- name: RecordDeliverySuppressed :exec
+UPDATE notification_delivery
+SET status = 'suppressed', claimed_until = NULL, last_error = sqlc.narg(last_error), updated_at = now()
+WHERE id = sqlc.arg(id);
+
 -- name: ListProblemDeliveries :many
 SELECT d.id, d.transport, d.target_key, d.status, d.attempt_count, d.last_error, d.updated_at,
        w.activity_sequence, w.game_request_id::text AS game_request_id, w.actor_id::text AS actor_id,
        w.kind, w.occurred_at
 FROM notification_delivery d
 JOIN notification_work w ON w.id = d.work_id
-WHERE d.status IN ('exhausted', 'permanent', 'uncertain')
+WHERE d.status IN ('exhausted', 'permanent', 'uncertain', 'suppressed')
 ORDER BY d.updated_at DESC;
 
 -- name: GetDeliveryDetail :one

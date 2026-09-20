@@ -579,6 +579,69 @@ func TestNotificationPermanentFailureIsTerminal(t *testing.T) {
 	}
 }
 
+// TestNotificationSuppressesDeliveryWhenTargetBecomesIneligibleBeforeSend
+// proves the eligibility recheck the worker performs before every send: a
+// delivery materialized when a target was eligible must not be sent once
+// that target stops being eligible, and must be marked `suppressed` rather
+// than attempted, retried, or silently dropped.
+func TestNotificationSuppressesDeliveryWhenTargetBecomesIneligibleBeforeSend(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+	fixture := newNotificationFixture(t, pool)
+	store := notificationpostgres.NewStore(pool)
+	if err := store.InitializeBaseline(t.Context()); err != nil {
+		t.Fatalf("InitializeBaseline() error = %v", err)
+	}
+	created, err := fixture.requests.Create(t.Context(), fixture.host.ID, fixture.gameID, nil, time.Now().Add(time.Hour), "Becomes ineligible")
+	if err != nil {
+		t.Fatalf("create game request: %v", err)
+	}
+	transport := newFakeTransport("test", []notification.Target{{Transport: "test", Key: "target-1"}})
+	activities, err := store.DiscoverActivity(t.Context(), 10)
+	if err != nil || len(activities) != 1 {
+		t.Fatalf("DiscoverActivity() = %#v, %v", activities, err)
+	}
+	materializeOneActivityWithTransport(t, store, activities[0], transport)
+
+	// The target was eligible at materialization time; simulate it becoming
+	// ineligible before the worker gets to send (e.g. a subscription removed,
+	// a user leaving the request) by having the transport's next Targets()
+	// call return an empty set.
+	transport.targets = nil
+
+	worker := newTestWorker(store, []notification.Transport{transport})
+	worker.Tick(t.Context())
+	worker.Tick(t.Context()) // a suppressed delivery must never be reclaimed
+
+	var status string
+	var lastError string
+	if err := pool.QueryRow(t.Context(),
+		"SELECT status, last_error FROM notification_delivery d JOIN notification_work w ON w.id = d.work_id WHERE w.game_request_id = $1",
+		created.ID,
+	).Scan(&status, &lastError); err != nil {
+		t.Fatalf("read delivery status: %v", err)
+	}
+	if status != "suppressed" {
+		t.Fatalf("delivery status = %q, want %q", status, "suppressed")
+	}
+	if lastError == "" {
+		t.Fatal("suppressed delivery has no reason recorded")
+	}
+	if len(transport.sendCalls) != 0 {
+		t.Fatalf("Send() was called %d times, want 0 (an ineligible target must never be sent to)", len(transport.sendCalls))
+	}
+
+	problems, err := store.ListProblemDeliveries(t.Context())
+	if err != nil {
+		t.Fatalf("ListProblemDeliveries() error = %v", err)
+	}
+	if len(problems) != 1 || problems[0].Status != notification.StatusSuppressed {
+		t.Fatalf("ListProblemDeliveries() = %#v, want exactly one suppressed entry", problems)
+	}
+}
+
 func TestNotificationUncertainOutcomeRequiresManualRetryAndIsNeverAutomaticallyRetried(t *testing.T) {
 	pool := newTestPool(t)
 	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
