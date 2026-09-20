@@ -106,7 +106,7 @@ func normalizeProfile(profile Profile) Profile {
 }
 
 func validateProfile(profile Profile) error {
-	if profile.ProviderKind == "" || (profile.ProviderKind != "oidc" && profile.ProviderKind != "discord") ||
+	if profile.ProviderKind == "" || (profile.ProviderKind != "oidc" && profile.ProviderKind != "discord" && profile.ProviderKind != "twitch") ||
 		profile.ProviderKey == "" || len(profile.ProviderKey) > maxProviderLength ||
 		profile.Subject == "" || len(profile.Subject) > maxSubjectLength {
 		return ErrInvalidProfile

@@ -2,8 +2,31 @@ package auth
 
 import (
 	"context"
+	"reflect"
 	"testing"
 )
+
+func TestOAuthServiceListsTwitchAfterExistingProviders(t *testing.T) {
+	service := NewOAuthService([]ConfiguredProvider{
+		{Adapter: &stubOAuthProvider{kind: "twitch", key: "twitch"}},
+		{Adapter: &stubOAuthProvider{kind: "discord", key: "discord"}},
+		{Adapter: &stubOAuthProvider{kind: "oidc", key: "issuer"}},
+	}, &stubOAuthFlows{}, &stubIdentityResolver{})
+	want := []ProviderAvailability{
+		{Kind: "oidc", DisplayName: "oidc"},
+		{Kind: "discord", DisplayName: "discord"},
+		{Kind: "twitch", DisplayName: "twitch"},
+	}
+	if got := service.Providers(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("Providers() = %#v, want %#v", got, want)
+	}
+}
+
+func TestValidateProfileAcceptsTwitch(t *testing.T) {
+	if err := validateProfile(Profile{ProviderKind: "twitch", ProviderKey: "twitch", Subject: "123"}); err != nil {
+		t.Fatalf("validateProfile() error = %v", err)
+	}
+}
 
 func TestOAuthServicePersistsFlowBeforeAuthorizationRedirect(t *testing.T) {
 	provider := &stubOAuthProvider{kind: "discord", key: "discord", authorizationURL: "https://discord.example/authorize"}

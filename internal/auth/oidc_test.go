@@ -38,6 +38,39 @@ func TestOIDCAuthorizationURLIncludesStateNonceAndPKCE(t *testing.T) {
 	}
 }
 
+func TestTwitchAuthorizationURLRequestsOnlyOpenIDAndUsername(t *testing.T) {
+	provider := &OIDCProvider{
+		providerKind: "twitch",
+		providerKey:  "twitch",
+		oauth: oauth2.Config{
+			ClientID: "lansurfer", RedirectURL: "https://lan.example/auth/twitch/callback",
+			Endpoint: oauth2.Endpoint{AuthURL: "https://id.twitch.tv/oauth2/authorize"},
+			Scopes:   []string{"openid"},
+		},
+		authorizationOptions: []oauth2.AuthCodeOption{twitchUsernameClaims()},
+	}
+	parsed, err := url.Parse(provider.AuthorizationURL("state", "nonce", "verifier"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	query := parsed.Query()
+	if query.Get("scope") != "openid" || strings.Contains(query.Get("scope"), "email") ||
+		!strings.Contains(query.Get("claims"), "preferred_username") {
+		t.Fatalf("authorization query = %v", query)
+	}
+}
+
+func TestOIDCProfileMapsTwitchUsernameWithoutEmail(t *testing.T) {
+	provider := &OIDCProvider{providerKind: "twitch", providerKey: "twitch", usePreferredUsernameAsName: true}
+	profile := provider.profileFromClaims(" twitch-subject ", map[string]any{
+		"preferred_username": " NightOtter ", "email": "private@example.test",
+	})
+	if profile.ProviderKind != "twitch" || profile.ProviderKey != "twitch" || profile.Subject != "twitch-subject" ||
+		profile.Name != "NightOtter" || profile.PreferredUsername != "NightOtter" || profile.GameNickSuggestion != "NightOtter" || profile.Email != "" {
+		t.Fatalf("Profile = %#v", profile)
+	}
+}
+
 func TestOIDCGameNickSuggestionUsesConfiguredClaimThenFallbacks(t *testing.T) {
 	tests := []struct {
 		name        string
