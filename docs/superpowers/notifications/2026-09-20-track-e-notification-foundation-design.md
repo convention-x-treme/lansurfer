@@ -75,6 +75,7 @@ The interactive design tree is being resolved with the user in rounds. Only deci
 - **Uncertain retry UX:** `uncertain` requires an explicit administrator action that warns of possible duplicate external effect (semantically “retry despite possible duplicate”); it is not presented as the same action as an ordinary exhausted/permanent retry.
 - **Retention:** 1.0 performs no automatic cleanup of notification work/delivery history. This technical diagnostic history is not a user-facing notification inbox.
 - **Stale Discord boundary:** E1 persists the activity/work identity and state needed to reason about ordering, but E3 owns Discord-specific stale-update/supersession policy. Web Push deliveries are not generically coalesced or ordered through a transport-neutral stream abstraction.
+- **Suppressed delivery state:** `suppressed` is a general terminal E1 delivery state meaning an originally materialized delivery is intentionally not sent because current eligibility no longer permits it. It is not a provider failure, is not automatically retried, and is retained for diagnostics. Transports may use this state when a target/user/destination becomes ineligible after materialization.
 
 ### Notification coverage
 
@@ -85,18 +86,16 @@ Settled personal-notification rules so far:
 - **Actor exclusion:** the user whose action produced the activity never receives a personal notification for that same activity.
 - **`created`:** notify eligible users for the Game according to their Web Push audience preference; never notify the creator.
 - **`joined`:** notify the Game Request participants, excluding the joining actor.
-- **`left`:** notify the remaining Game Request participants, excluding the leaving actor.
+- **`left`:** notify current Game Request participants, excluding the leaving actor.
+- **`closed`:** notify current Game Request participants, excluding the actor.
+- **`cancelled`:** notify current Game Request participants, excluding the actor.
+- **Lifecycle snapshot:** resolve current participant eligibility at delivery time; delayed/retried sends may suppress recipients who are no longer eligible, but old work never gains newly eligible recipients.
 - **Discord:** one message is created per Game Request and the same message is edited as request state changes; its current status and capacity/free-place summary are synchronized from later activity.
 - E1 consumes the durable live activity stream independently of whether every transport emits a delivery for every activity kind.
 
-The exact personal-notification behavior for `closed` and `cancelled`, and the exact participant snapshot used for recipient resolution, remain open E2 design decisions.
+### Implementation details intentionally delegated
 
-### Open decision branches
-
-- provider-result classification details;
-- exact transport-facing interface and delivery outcome vocabulary.
-
-These are intentionally unresolved until the interactive design rounds settle them.
+The remaining choices are implementation-level naming and mechanics that do not change the settled contract, such as exact Go method/type names and exact SQL column/index names. They are not open product/architecture decisions.
 
 ## Acceptance direction
 
