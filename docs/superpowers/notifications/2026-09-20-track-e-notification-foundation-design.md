@@ -67,7 +67,14 @@ The interactive design tree is being resolved with the user in rounds. Only deci
 - **Transport-independent processing:** E1 keeps consuming/materializing work even when no transport is configured or no eligible targets exist. Such work completes with zero deliveries; enabling a transport later does not replay old activity.
 - **Claiming/recovery:** due deliveries are claimed through PostgreSQL with a durable lease (using row locking such as `FOR UPDATE SKIP LOCKED` or equivalent). A crashed/abandoned claim becomes eligible again after the lease expires.
 - **Wake-up:** E1 uses simple periodic PostgreSQL polling for new/future-due work. `LISTEN/NOTIFY` is not required for 1.0.
-- **Retry exhaustion model:** automatic retry uses a fixed maximum attempt count. After the cap the delivery becomes `exhausted`; an authorized manual retry explicitly re-opens it for a new retry round. The exact attempt count remains to be fixed.
+- **Retry exhaustion model:** automatic retry uses at most 6 total attempts per retry round. After the cap the delivery becomes `exhausted`; an authorized manual retry explicitly re-opens it for a new retry round.
+- **Retry schedule:** use capped exponential backoff with jitter, starting approximately `5s -> 30s -> 2m -> 5m -> 5m` between the six total attempts. No individual automatic wait exceeds 5 minutes. HTTP 429 honors `Retry-After`, but the automatic wait remains capped at 5 minutes for the 1.0 LAN use case.
+- **Polling/lease defaults:** poll PostgreSQL approximately every 2 seconds; claims use a 60-second durable lease. Provider/network requests must have a shorter bounded timeout so the lease is crash recovery, not a transport timeout.
+- **Diagnostics/authorization:** delivery diagnostics and manual retry are administrator-only and reuse the existing global admin authorization path (`RequireAdmin`); no new role model is introduced.
+- **Manual retry:** manual retry re-checks present-day transport eligibility before reopening delivery and grants a fresh automatic retry budget.
+- **Uncertain retry UX:** `uncertain` requires an explicit administrator action that warns of possible duplicate external effect (semantically “retry despite possible duplicate”); it is not presented as the same action as an ordinary exhausted/permanent retry.
+- **Retention:** 1.0 performs no automatic cleanup of notification work/delivery history. This technical diagnostic history is not a user-facing notification inbox.
+- **Stale Discord boundary:** E1 persists the activity/work identity and state needed to reason about ordering, but E3 owns Discord-specific stale-update/supersession policy. Web Push deliveries are not generically coalesced or ordered through a transport-neutral stream abstraction.
 
 ### Notification coverage
 
@@ -86,13 +93,8 @@ The exact personal-notification behavior for `closed` and `cancelled`, and the e
 
 ### Open decision branches
 
-- exact lease duration and polling cadence;
-- exact automatic retry attempt count/backoff schedule;
 - provider-result classification details;
-- stale-update semantics;
-- manual retry and diagnostics;
-- retention/cleanup requirements;
-- transport-facing interface.
+- exact transport-facing interface and delivery outcome vocabulary.
 
 These are intentionally unresolved until the interactive design rounds settle them.
 
