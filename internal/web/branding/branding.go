@@ -47,6 +47,25 @@ type Assets struct {
 	PrimaryFont       string
 	PrimaryFontItalic string
 	DataFont          string
+	Icons             Icons
+	// AdminPWADiagnostics is the progressive-enhancement script for the
+	// read-only /admin/pwa page. It is not part of the always-loaded Script.
+	AdminPWADiagnostics string
+}
+
+// Icons contains the public paths for the bundled application-icon
+// renditions the manifest and HTML head reference. These are fixed bundled
+// assets, not instance-configurable state: see
+// docs/superpowers/pwa/2026-09-20-track-d-instance-pwa-design.md for the
+// temporary-artwork provenance and generation method.
+type Icons struct {
+	Any192        string
+	Any512        string
+	Maskable512   string
+	AppleTouch180 string
+	Favicon16     string
+	Favicon32     string
+	FaviconICO    string
 }
 
 // Default returns the fixed LANsurfer brand.
@@ -76,6 +95,16 @@ func Default() Brand {
 			PrimaryFont:       "/assets/fonts/schibsted-grotesk-latin-wght-normal.woff2",
 			PrimaryFontItalic: "/assets/fonts/schibsted-grotesk-latin-wght-italic.woff2",
 			DataFont:          "/assets/fonts/jetbrains-mono-latin-wght-normal.woff2",
+			Icons: Icons{
+				Any192:        "/assets/images/icons/icon-192.png",
+				Any512:        "/assets/images/icons/icon-512.png",
+				Maskable512:   "/assets/images/icons/icon-512-maskable.png",
+				AppleTouch180: "/assets/images/icons/apple-touch-icon-180.png",
+				Favicon16:     "/assets/images/icons/favicon-16.png",
+				Favicon32:     "/assets/images/icons/favicon-32.png",
+				FaviconICO:    "/assets/images/icons/favicon.ico",
+			},
+			AdminPWADiagnostics: "/assets/admin-pwa.js",
 		},
 	}
 }
