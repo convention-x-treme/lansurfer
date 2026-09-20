@@ -16,7 +16,7 @@ func TestAuthenticationAddsCurrentUser(t *testing.T) {
 		if token != "opaque-token" {
 			t.Fatalf("token = %q", token)
 		}
-		return user.User{ID: "user-1", DisplayName: "Player"}, nil
+		return user.User{ID: "user-1", GameNick: "Player"}, nil
 	})
 	handler := Authentication(authenticator, true)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		account, ok := CurrentUser(r.Context())

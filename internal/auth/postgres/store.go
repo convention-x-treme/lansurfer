@@ -25,15 +25,19 @@ type SessionStore struct {
 }
 
 func NewIdentityStore(pool *pgxpool.Pool) *IdentityStore {
-	return &IdentityStore{queries: sqlcgen.New(pool)}
+	return NewIdentityStoreDB(pool)
+}
+
+func NewIdentityStoreDB(db sqlcgen.DBTX) *IdentityStore {
+	return &IdentityStore{queries: sqlcgen.New(db)}
 }
 
 func NewSessionStore(pool *pgxpool.Pool) *SessionStore {
 	return &SessionStore{queries: sqlcgen.New(pool)}
 }
 
-func (s *IdentityStore) ByProviderSubject(ctx context.Context, provider, subject string) (auth.Identity, error) {
-	row, err := s.queries.GetIdentity(ctx, sqlcgen.GetIdentityParams{Provider: provider, Subject: subject})
+func (s *IdentityStore) ByProviderSubject(ctx context.Context, providerKind, providerKey, subject string) (auth.Identity, error) {
+	row, err := s.queries.GetIdentity(ctx, sqlcgen.GetIdentityParams{ProviderKind: providerKind, ProviderKey: providerKey, Subject: subject})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return auth.Identity{}, auth.ErrIdentityNotFound
 	}
@@ -43,17 +47,34 @@ func (s *IdentityStore) ByProviderSubject(ctx context.Context, provider, subject
 	return identityFromGetRow(row), nil
 }
 
+func (s *IdentityStore) ListByUser(ctx context.Context, userID string) ([]auth.Identity, error) {
+	databaseID, err := parseUUID(userID)
+	if err != nil {
+		return nil, fmt.Errorf("parse identity user ID: %w", err)
+	}
+	rows, err := s.queries.ListIdentitiesByUser(ctx, databaseID)
+	if err != nil {
+		return nil, fmt.Errorf("list identities: %w", err)
+	}
+	identities := make([]auth.Identity, 0, len(rows))
+	for _, row := range rows {
+		identities = append(identities, auth.Identity{ID: row.ID, UserID: row.UserID, ProviderKind: row.ProviderKind, ProviderKey: row.ProviderKey, Subject: row.Subject, DisplayName: row.DisplayName.String, Email: row.Email.String, CreatedAt: row.CreatedAt.Time})
+	}
+	return identities, nil
+}
+
 func (s *IdentityStore) Create(ctx context.Context, identity auth.Identity) (auth.Identity, error) {
 	userID, err := parseUUID(identity.UserID)
 	if err != nil {
 		return auth.Identity{}, fmt.Errorf("parse identity user ID: %w", err)
 	}
 	row, err := s.queries.CreateIdentity(ctx, sqlcgen.CreateIdentityParams{
-		UserID:      userID,
-		Provider:    identity.Provider,
-		Subject:     identity.Subject,
-		DisplayName: nullableText(identity.DisplayName),
-		Email:       nullableText(identity.Email),
+		UserID:       userID,
+		ProviderKind: identity.ProviderKind,
+		ProviderKey:  identity.ProviderKey,
+		Subject:      identity.Subject,
+		DisplayName:  nullableText(identity.DisplayName),
+		Email:        nullableText(identity.Email),
 	})
 	if isUniqueViolation(err) {
 		return auth.Identity{}, auth.ErrIdentityExists
@@ -62,24 +83,45 @@ func (s *IdentityStore) Create(ctx context.Context, identity auth.Identity) (aut
 		return auth.Identity{}, fmt.Errorf("create identity: %w", err)
 	}
 	return auth.Identity{
-		ID:          row.ID,
-		UserID:      row.UserID,
-		Provider:    row.Provider,
-		Subject:     row.Subject,
-		DisplayName: row.DisplayName.String,
-		Email:       row.Email.String,
-		CreatedAt:   row.CreatedAt.Time,
+		ID:           row.ID,
+		UserID:       row.UserID,
+		ProviderKind: row.ProviderKind,
+		ProviderKey:  row.ProviderKey,
+		Subject:      row.Subject,
+		DisplayName:  row.DisplayName.String,
+		Email:        row.Email.String,
+		CreatedAt:    row.CreatedAt.Time,
 	}, nil
 }
 
-func (s *IdentityStore) UpdateMetadata(ctx context.Context, provider, subject, displayName, email string) error {
+func (s *IdentityStore) UpdateMetadata(ctx context.Context, providerKind, providerKey, subject, displayName, email string) error {
 	if err := s.queries.UpdateIdentityMetadata(ctx, sqlcgen.UpdateIdentityMetadataParams{
-		Provider:    provider,
-		Subject:     subject,
-		DisplayName: nullableText(displayName),
-		Email:       nullableText(email),
+		ProviderKind: providerKind,
+		ProviderKey:  providerKey,
+		Subject:      subject,
+		DisplayName:  nullableText(displayName),
+		Email:        nullableText(email),
 	}); err != nil {
 		return fmt.Errorf("update identity metadata: %w", err)
+	}
+	return nil
+}
+
+func (s *IdentityStore) Unlink(ctx context.Context, userID, identityID string) error {
+	databaseUserID, err := parseUUID(userID)
+	if err != nil {
+		return auth.ErrIdentityNotFound
+	}
+	databaseIdentityID, err := parseUUID(identityID)
+	if err != nil {
+		return auth.ErrIdentityNotFound
+	}
+	deleted, err := s.queries.DeleteIdentityUnlessLast(ctx, sqlcgen.DeleteIdentityUnlessLastParams{ID: databaseIdentityID, UserID: databaseUserID})
+	if err != nil {
+		return fmt.Errorf("unlink identity: %w", err)
+	}
+	if deleted == 0 {
+		return auth.ErrIdentityNotFound
 	}
 	return nil
 }
@@ -128,13 +170,14 @@ func (s *SessionStore) Delete(ctx context.Context, idHash [sha256.Size]byte) err
 
 func identityFromGetRow(row sqlcgen.GetIdentityRow) auth.Identity {
 	return auth.Identity{
-		ID:          row.ID,
-		UserID:      row.UserID,
-		Provider:    row.Provider,
-		Subject:     row.Subject,
-		DisplayName: row.DisplayName.String,
-		Email:       row.Email.String,
-		CreatedAt:   row.CreatedAt.Time,
+		ID:           row.ID,
+		UserID:       row.UserID,
+		ProviderKind: row.ProviderKind,
+		ProviderKey:  row.ProviderKey,
+		Subject:      row.Subject,
+		DisplayName:  row.DisplayName.String,
+		Email:        row.Email.String,
+		CreatedAt:    row.CreatedAt.Time,
 	}
 }
 

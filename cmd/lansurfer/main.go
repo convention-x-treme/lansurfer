@@ -51,11 +51,11 @@ func run(ctx context.Context, arguments []string, logger *slog.Logger, output io
 			_, err = fmt.Fprintln(output, "No local users found. Log in once before promoting an account.")
 			return err
 		}
-		if _, err := fmt.Fprintln(output, "USER ID\tROLE\tDISPLAY NAME"); err != nil {
+		if _, err := fmt.Fprintln(output, "USER ID\tROLE\tGAME NICK"); err != nil {
 			return err
 		}
 		for _, account := range accounts {
-			if _, err := fmt.Fprintf(output, "%s\t%s\t%s\n", account.ID, account.Role, account.DisplayName); err != nil {
+			if _, err := fmt.Fprintf(output, "%s\t%s\t%s\n", account.ID, account.Role, account.GameNick); err != nil {
 				return err
 			}
 		}
@@ -75,7 +75,7 @@ func run(ctx context.Context, arguments []string, logger *slog.Logger, output io
 		if err != nil {
 			return err
 		}
-		_, err = fmt.Fprintf(output, "Promoted %s (%s) to admin.\n", account.DisplayName, account.ID)
+		_, err = fmt.Fprintf(output, "Promoted %s (%s) to admin.\n", account.GameNick, account.ID)
 		return err
 	}
 

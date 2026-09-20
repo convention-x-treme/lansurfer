@@ -49,26 +49,40 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	}
 
 	userService := user.NewService(userpostgres.NewStore(pool))
-	var oidcProvider auth.Provider
+	sessionService := auth.NewSessionService(authpostgres.NewSessionStore(pool), userService)
+	flowStore := authpostgres.NewFlowStore(pool)
+	flowService := auth.NewFlowService(flowStore)
+	identityStore := authpostgres.NewIdentityStore(pool)
+	resolutionService := auth.NewResolutionService(
+		identityStore, flowService, sessionService, userService, authpostgres.NewPendingIdentityAttacher(pool),
+	)
+	accountRegistration := NewAccountRegistration(pool, sessionService)
+
+	var providers []auth.ConfiguredProvider
 	if cfg.OIDC != nil {
 		discoveryCtx, cancelDiscovery := context.WithTimeout(ctx, oidcDiscoveryTimeout)
-		oidcProvider, err = auth.DiscoverOIDCProvider(discoveryCtx, auth.OIDCConfig{
-			IssuerURL:    cfg.OIDC.Issuer,
-			ClientID:     cfg.OIDC.ClientID,
-			ClientSecret: cfg.OIDC.ClientSecret,
-			RedirectURL:  cfg.BaseURL + "/auth/callback",
+		oidcProvider, discoverErr := auth.DiscoverOIDCProvider(discoveryCtx, auth.OIDCConfig{
+			IssuerURL:     cfg.OIDC.Issuer,
+			ClientID:      cfg.OIDC.ClientID,
+			ClientSecret:  cfg.OIDC.ClientSecret,
+			RedirectURL:   cfg.BaseURL + "/auth/callback",
+			GameNickClaim: cfg.OIDC.GameNickClaim,
 		})
 		cancelDiscovery()
-		if err != nil {
-			return fmt.Errorf("initialize OIDC: %w", err)
+		if discoverErr != nil {
+			return fmt.Errorf("initialize OIDC: %w", discoverErr)
 		}
+		providers = append(providers, auth.ConfiguredProvider{DisplayName: cfg.OIDC.DisplayName, Adapter: oidcProvider})
 	}
-	authService := auth.NewService(
-		oidcProvider,
-		authpostgres.NewIdentityStore(pool),
-		authpostgres.NewSessionStore(pool),
-		userService,
-	)
+	if cfg.Discord != nil {
+		discordProvider := auth.NewDiscordProvider(auth.DiscordConfig{
+			ClientID: cfg.Discord.ClientID, ClientSecret: cfg.Discord.ClientSecret,
+			RedirectURL: cfg.BaseURL + "/auth/discord/callback",
+		})
+		providers = append(providers, auth.ConfiguredProvider{DisplayName: "Discord", Adapter: discordProvider})
+	}
+	oauthService := auth.NewOAuthService(providers, flowService, resolutionService)
+
 	gameStore := gamepostgres.NewStore(pool)
 	gameService := game.NewService(gameStore)
 	realtime := sse.NewBroker()
@@ -80,18 +94,24 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	server := &http.Server{
 		Addr: cfg.ListenAddr,
 		Handler: web.NewRouter(web.RouterDependencies{
-			Ready:          postgres.ReadyCheck(pool),
-			Authentication: authService,
-			Games:          gameService,
-			Discovery:      gameDiscovery,
-			GameResolver:   gameDiscovery,
-			GameRequests:   gameRequests,
-			RequestQueries: gameRequestQueries,
-			Realtime:       realtime,
-			ProviderSync:   igdbSyncService,
-			SecureCookies:  strings.HasPrefix(cfg.BaseURL, "https://"),
-			Logger:         logger,
-			TrustedProxies: cfg.TrustedProxies,
+			Ready:               postgres.ReadyCheck(pool),
+			Authentication:      oauthService,
+			Sessions:            sessionService,
+			PendingIdentities:   flowService,
+			AccountRegistration: accountRegistration,
+			GameNickClaims:      userService,
+			Identities:          identityStore,
+			IdentityUnlinker:    identityStore,
+			Games:               gameService,
+			Discovery:           gameDiscovery,
+			GameResolver:        gameDiscovery,
+			GameRequests:        gameRequests,
+			RequestQueries:      gameRequestQueries,
+			Realtime:            realtime,
+			ProviderSync:        igdbSyncService,
+			SecureCookies:       strings.HasPrefix(cfg.BaseURL, "https://"),
+			Logger:              logger,
+			TrustedProxies:      cfg.TrustedProxies,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
@@ -105,6 +125,7 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		serverErrors <- server.ListenAndServe()
 	}()
 	go runDailyIGDBSync(ctx, igdbSyncService, igdbSyncInterval)
+	go runPeriodicFlowCleanup(ctx, flowStore, authFlowCleanupInterval, logger)
 	// Registered after pool.Close() above so it runs first on the way out:
 	// an in-flight sync's transaction must finish (or be abandoned within the
 	// bound) before the pool it depends on is closed.

@@ -60,21 +60,22 @@ func TestAuthenticationPersistence(t *testing.T) {
 
 	identities := authpostgres.NewIdentityStore(pool)
 	identity, err := identities.Create(t.Context(), auth.Identity{
-		UserID:      account.ID,
-		Provider:    "https://identity.example/realms/lan",
-		Subject:     "subject-1",
-		DisplayName: "Identity Name",
-		Email:       "player@example.test",
+		UserID:       account.ID,
+		ProviderKind: "oidc",
+		ProviderKey:  "https://identity.example/realms/lan",
+		Subject:      "subject-1",
+		DisplayName:  "Identity Name",
+		Email:        "player@example.test",
 	})
 	if err != nil {
 		t.Fatalf("create identity: %v", err)
 	}
-	found, err := identities.ByProviderSubject(t.Context(), identity.Provider, identity.Subject)
+	found, err := identities.ByProviderSubject(t.Context(), identity.ProviderKind, identity.ProviderKey, identity.Subject)
 	if err != nil || found.UserID != account.ID || found.Email != identity.Email {
 		t.Fatalf("find identity = %#v, %v", found, err)
 	}
 	if _, err := identities.Create(t.Context(), auth.Identity{
-		UserID: account.ID, Provider: identity.Provider, Subject: identity.Subject,
+		UserID: account.ID, ProviderKind: identity.ProviderKind, ProviderKey: identity.ProviderKey, Subject: identity.Subject,
 	}); !errors.Is(err, auth.ErrIdentityExists) {
 		t.Fatalf("duplicate identity error = %v, want ErrIdentityExists", err)
 	}
@@ -106,6 +107,188 @@ func TestAuthenticationPersistence(t *testing.T) {
 	}
 	if _, err := sessions.Resolve(t.Context(), expiredHash); !errors.Is(err, auth.ErrSessionNotFound) {
 		t.Fatalf("resolve expired session error = %v, want ErrSessionNotFound", err)
+	}
+}
+
+// A Game Nick rename claims the new spelling under the same case-insensitive
+// uniqueness invariant as the initial claim, and immediately frees the old
+// one for any other player — a pure rename does not reserve history.
+func TestGameNickRenameEnforcesUniquenessAndFreesOldNick(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+	users := user.NewService(userpostgres.NewStore(pool))
+
+	renamer, err := users.Register(t.Context(), "NightOtter")
+	if err != nil {
+		t.Fatalf("register renamer: %v", err)
+	}
+	other, err := users.Register(t.Context(), "OtherPlayer")
+	if err != nil {
+		t.Fatalf("register other player: %v", err)
+	}
+
+	if _, err := users.RenameGameNick(t.Context(), other.ID, "nightotter"); !errors.Is(err, user.ErrGameNickTaken) {
+		t.Fatalf("case-insensitive collision error = %v, want ErrGameNickTaken", err)
+	}
+
+	renamed, err := users.RenameGameNick(t.Context(), renamer.ID, "DaytimeOtter")
+	if err != nil {
+		t.Fatalf("rename: %v", err)
+	}
+	if renamed.GameNick != "DaytimeOtter" {
+		t.Fatalf("renamed.GameNick = %q, want DaytimeOtter", renamed.GameNick)
+	}
+
+	// The old nick, exact case, must be immediately reusable by anyone.
+	reclaimed, err := users.RenameGameNick(t.Context(), other.ID, "NightOtter")
+	if err != nil {
+		t.Fatalf("reclaim freed nick: %v", err)
+	}
+	if reclaimed.GameNick != "NightOtter" {
+		t.Fatalf("reclaimed.GameNick = %q, want NightOtter", reclaimed.GameNick)
+	}
+}
+
+func TestPersistentAuthenticationFlows(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+
+	flows := authpostgres.NewFlowStore(pool)
+	service := auth.NewFlowService(flows)
+	issuer := "https://identity.example/realms/lan"
+	first, err := service.CreateOAuth(t.Context(), auth.OAuthFlowInput{
+		State: "state-1", BrowserBinding: "same-browser", ProviderKind: "oidc", ProviderKey: issuer,
+		Operation: auth.FlowLogin, Nonce: "nonce-1", PKCEVerifier: "verifier-1",
+	})
+	if err != nil {
+		t.Fatalf("create first flow: %v", err)
+	}
+	second, err := service.CreateOAuth(t.Context(), auth.OAuthFlowInput{
+		State: "state-2", BrowserBinding: "same-browser", ProviderKind: "oidc", ProviderKey: issuer,
+		Operation: auth.FlowLogin, Nonce: "nonce-2", PKCEVerifier: "verifier-2",
+	})
+	if err != nil || first.ID == second.ID {
+		t.Fatalf("create parallel flow = %#v, %v", second, err)
+	}
+
+	callback := auth.OAuthCallback{State: "state-1", BrowserBinding: "same-browser", ProviderKind: "oidc", ProviderKey: issuer, Operation: auth.FlowLogin}
+	wrong := callback
+	wrong.BrowserBinding = "other-browser"
+	if _, err := service.ConsumeOAuth(t.Context(), wrong); !errors.Is(err, auth.ErrFlowBrowser) {
+		t.Fatalf("wrong browser error = %v", err)
+	}
+	wrong = callback
+	wrong.ProviderKey = "https://other.example"
+	if _, err := service.ConsumeOAuth(t.Context(), wrong); !errors.Is(err, auth.ErrFlowProvider) {
+		t.Fatalf("wrong provider error = %v", err)
+	}
+	wrong = callback
+	wrong.Operation = auth.FlowResolution
+	if _, err := service.ConsumeOAuth(t.Context(), wrong); !errors.Is(err, auth.ErrFlowOperation) {
+		t.Fatalf("wrong operation error = %v", err)
+	}
+	consumed, err := service.ConsumeOAuth(t.Context(), callback)
+	if err != nil || consumed.Nonce != "nonce-1" || consumed.PKCEVerifier != "verifier-1" {
+		t.Fatalf("consume flow = %#v, %v", consumed, err)
+	}
+	var retainedProtocolSecrets int
+	if err := pool.QueryRow(t.Context(), `
+		SELECT count(*) FROM auth_flows
+		WHERE id = $1 AND (nonce IS NOT NULL OR pkce_verifier IS NOT NULL)
+	`, consumed.ID).Scan(&retainedProtocolSecrets); err != nil {
+		t.Fatalf("inspect consumed flow secrets: %v", err)
+	}
+	if retainedProtocolSecrets != 0 {
+		t.Fatal("consumed OAuth flow retained nonce or PKCE verifier")
+	}
+	if _, err := service.ConsumeOAuth(t.Context(), callback); !errors.Is(err, auth.ErrFlowConsumed) {
+		t.Fatalf("replay error = %v", err)
+	}
+
+	var firstUserID, secondUserID string
+	if err := pool.QueryRow(t.Context(), `INSERT INTO users (game_nick) VALUES ('FlowOwner') RETURNING id::text`).Scan(&firstUserID); err != nil {
+		t.Fatalf("create first link user: %v", err)
+	}
+	if err := pool.QueryRow(t.Context(), `INSERT INTO users (game_nick) VALUES ('OtherOwner') RETURNING id::text`).Scan(&secondUserID); err != nil {
+		t.Fatalf("create second link user: %v", err)
+	}
+	if _, err := service.CreateOAuth(t.Context(), auth.OAuthFlowInput{
+		State: "link-state", BrowserBinding: "same-browser", ProviderKind: "discord", ProviderKey: "discord",
+		Operation: auth.FlowLink, InitiatingUserID: firstUserID, Nonce: "nonce", PKCEVerifier: "verifier",
+	}); err != nil {
+		t.Fatalf("create link flow: %v", err)
+	}
+	linkCallback := auth.OAuthCallback{
+		State: "link-state", BrowserBinding: "same-browser", ProviderKind: "discord", ProviderKey: "discord",
+		Operation: auth.FlowLink, InitiatingUserID: secondUserID,
+	}
+	if _, err := service.ConsumeOAuth(t.Context(), linkCallback); !errors.Is(err, auth.ErrFlowInitiatingUser) {
+		t.Fatalf("wrong initiating user error = %v", err)
+	}
+	linkCallback.InitiatingUserID = firstUserID
+	if _, err := service.ConsumeOAuth(t.Context(), linkCallback); err != nil {
+		t.Fatalf("consume correctly bound link flow: %v", err)
+	}
+
+	if _, err := service.CreateOAuth(t.Context(), auth.OAuthFlowInput{
+		State: "racing-state", BrowserBinding: "same-browser", ProviderKind: "oidc", ProviderKey: issuer,
+		Operation: auth.FlowLogin, Nonce: "nonce", PKCEVerifier: "verifier",
+	}); err != nil {
+		t.Fatalf("create racing flow: %v", err)
+	}
+	racingCallback := auth.OAuthCallback{
+		State: "racing-state", BrowserBinding: "same-browser", ProviderKind: "oidc", ProviderKey: issuer, Operation: auth.FlowLogin,
+	}
+	results := runConcurrently(
+		func() error { _, err := service.ConsumeOAuth(t.Context(), racingCallback); return err },
+		func() error { _, err := service.ConsumeOAuth(t.Context(), racingCallback); return err },
+	)
+	assertOneWinner(t, "OAuth callback", results, auth.ErrFlowConsumed)
+
+	stateHash := sha256.Sum256([]byte("expired-state"))
+	browserHash := sha256.Sum256([]byte("same-browser"))
+	if _, err := flows.CreateOAuth(t.Context(), auth.OAuthFlow{
+		StateHash: stateHash, BrowserBindingHash: browserHash, ProviderKind: "oidc", ProviderKey: issuer,
+		Operation: auth.FlowLogin, Nonce: "nonce", PKCEVerifier: "verifier", ExpiresAt: time.Now().Add(time.Minute),
+	}); err != nil {
+		t.Fatalf("create expired flow: %v", err)
+	}
+	if _, err := pool.Exec(t.Context(), `
+		UPDATE auth_flows SET created_at = now() - interval '2 minutes', expires_at = now() - interval '1 minute'
+		WHERE state_hash = $1
+	`, stateHash[:]); err != nil {
+		t.Fatalf("expire flow fixture: %v", err)
+	}
+	if _, err := service.ConsumeOAuth(t.Context(), auth.OAuthCallback{
+		State: "expired-state", BrowserBinding: "same-browser", ProviderKind: "oidc", ProviderKey: issuer, Operation: auth.FlowLogin,
+	}); !errors.Is(err, auth.ErrFlowExpired) {
+		t.Fatalf("expired flow error = %v", err)
+	}
+
+	pending, err := service.CreatePending(t.Context(), auth.PendingIdentityInput{
+		BrowserBinding: "same-browser", ProviderKind: "discord", ProviderKey: "discord", Subject: "1234",
+		Operation: auth.FlowLogin, DisplayName: "Alice Example", GameNickSuggestion: "NightOtter",
+	})
+	if err != nil {
+		t.Fatalf("create pending identity: %v", err)
+	}
+	for range 2 {
+		if _, err := service.Pending(t.Context(), pending.ID, "same-browser"); err != nil {
+			t.Fatalf("non-consuming pending lookup: %v", err)
+		}
+	}
+	if _, err := service.Pending(t.Context(), pending.ID, "other-browser"); !errors.Is(err, auth.ErrFlowBrowser) {
+		t.Fatalf("pending wrong browser error = %v", err)
+	}
+	if err := service.ConsumePending(t.Context(), pending.ID, "same-browser"); err != nil {
+		t.Fatalf("consume pending identity: %v", err)
+	}
+	if _, err := service.Pending(t.Context(), pending.ID, "same-browser"); !errors.Is(err, auth.ErrFlowConsumed) {
+		t.Fatalf("consumed pending error = %v", err)
 	}
 }
 
@@ -2748,8 +2931,8 @@ func TestMigrateAndReadyCheck(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get migration version: %v", err)
 	}
-	if version != 8 {
-		t.Errorf("migration version = %d, want 8", version)
+	if version != 9 {
+		t.Errorf("migration version = %d, want 9", version)
 	}
 
 	if err := migrateFS(t.Context(), pool, migrationFS, logger); err != nil {
@@ -3153,6 +3336,112 @@ func TestForwardMigrationPreservesPrototypeGameRequests(t *testing.T) {
 	})
 }
 
+// TestForwardMigrationIntroducesGameNickAndAuthFlows protects the populated
+// prototype upgrade: existing sessions and issuer namespaces must survive,
+// while the former public display name is deliberately not carried forward.
+func TestForwardMigrationIntroducesGameNickAndAuthFlows(t *testing.T) {
+	pool := newTestPool(t)
+	migrationFS := productionMigrationFS(t)
+	migrateToVersion(t, pool, migrationFS, 8)
+
+	var userID string
+	if err := pool.QueryRow(t.Context(), `
+		INSERT INTO users (display_name) VALUES ('Alice Example') RETURNING id::text
+	`).Scan(&userID); err != nil {
+		t.Fatalf("insert prototype user: %v", err)
+	}
+	issuer := "https://identity.example/realms/lan"
+	if _, err := pool.Exec(t.Context(), `
+		INSERT INTO user_identities (user_id, provider, subject, display_name, email)
+		VALUES ($1, $2, 'subject-1', 'Alice Example', 'alice@example.test')
+	`, userID, issuer); err != nil {
+		t.Fatalf("insert prototype identity: %v", err)
+	}
+	sessionHash := sha256.Sum256([]byte("pre-track-b-session"))
+	if _, err := pool.Exec(t.Context(), `
+		INSERT INTO auth_sessions (id_hash, user_id, expires_at)
+		VALUES ($1, $2, now() + interval '1 day')
+	`, sessionHash[:], userID); err != nil {
+		t.Fatalf("insert prototype session: %v", err)
+	}
+
+	if err := migrateFS(t.Context(), pool, migrationFS, testLogger()); err != nil {
+		t.Fatalf("migrate to Track B schema: %v", err)
+	}
+
+	var gameNick *string
+	if err := pool.QueryRow(t.Context(), `SELECT game_nick FROM users WHERE id = $1`, userID).Scan(&gameNick); err != nil {
+		t.Fatalf("read upgraded game nick: %v", err)
+	}
+	if gameNick != nil {
+		t.Fatalf("upgraded game nick = %q, want NULL", *gameNick)
+	}
+	var displayNameColumns int
+	if err := pool.QueryRow(t.Context(), `
+		SELECT count(*) FROM information_schema.columns
+		WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'display_name'
+	`).Scan(&displayNameColumns); err != nil {
+		t.Fatalf("inspect users columns: %v", err)
+	}
+	if displayNameColumns != 0 {
+		t.Fatal("users.display_name remains after migration")
+	}
+
+	var providerKind, providerKey, subject string
+	if err := pool.QueryRow(t.Context(), `
+		SELECT provider_kind, provider_key, subject FROM user_identities WHERE user_id = $1
+	`, userID).Scan(&providerKind, &providerKey, &subject); err != nil {
+		t.Fatalf("read upgraded identity: %v", err)
+	}
+	if providerKind != "oidc" || providerKey != issuer || subject != "subject-1" {
+		t.Fatalf("upgraded identity = (%q, %q, %q)", providerKind, providerKey, subject)
+	}
+	var sessionUserID string
+	if err := pool.QueryRow(t.Context(), `
+		SELECT user_id::text FROM auth_sessions WHERE id_hash = $1 AND expires_at > now()
+	`, sessionHash[:]).Scan(&sessionUserID); err != nil {
+		t.Fatalf("resolve upgraded session: %v", err)
+	}
+	if sessionUserID != userID {
+		t.Fatalf("upgraded session user = %q, want %q", sessionUserID, userID)
+	}
+
+	if _, err := pool.Exec(t.Context(), `INSERT INTO users (game_nick) VALUES ('NightOtter')`); err != nil {
+		t.Fatalf("insert game nick: %v", err)
+	}
+	if _, err := pool.Exec(t.Context(), `INSERT INTO users (game_nick) VALUES ('nightotter')`); err == nil {
+		t.Fatal("case-insensitive duplicate game nick unexpectedly succeeded")
+	}
+
+	browserHash := sha256.Sum256([]byte("browser-binding"))
+	stateHash := sha256.Sum256([]byte("oauth-state"))
+	var flowID string
+	if err := pool.QueryRow(t.Context(), `
+		INSERT INTO auth_flows (
+			phase, operation, provider_kind, provider_key, state_hash, browser_binding_hash,
+			nonce, pkce_verifier, expires_at
+		) VALUES ('oauth', 'login', 'oidc', $1, $2, $3, 'nonce', 'verifier', now() + interval '10 minutes')
+		RETURNING id::text
+	`, issuer, stateHash[:], browserHash[:]).Scan(&flowID); err != nil {
+		t.Fatalf("create oauth flow: %v", err)
+	}
+	var consumed string
+	if err := pool.QueryRow(t.Context(), `
+		UPDATE auth_flows SET consumed_at = now(), nonce = NULL, pkce_verifier = NULL
+		WHERE id = $1 AND consumed_at IS NULL AND expires_at > now()
+		RETURNING id::text
+	`, flowID).Scan(&consumed); err != nil || consumed != flowID {
+		t.Fatalf("consume oauth flow = %q, %v", consumed, err)
+	}
+	if err := pool.QueryRow(t.Context(), `
+		UPDATE auth_flows SET consumed_at = now(), nonce = NULL, pkce_verifier = NULL
+		WHERE id = $1 AND consumed_at IS NULL AND expires_at > now()
+		RETURNING id::text
+	`, flowID).Scan(&consumed); !errors.Is(err, pgx.ErrNoRows) {
+		t.Fatalf("replay flow error = %v, want no rows", err)
+	}
+}
+
 type prototypeFixture struct {
 	eventID, creatorID, joinerID, openID, closedID string
 	createdAt, joinedAt, updatedAt                 time.Time
@@ -3161,6 +3450,10 @@ type prototypeFixture struct {
 // migrateToPrototypeSchema stops at version 5, the last schema in which a Game
 // Request still belongs to an Event.
 func migrateToPrototypeSchema(t *testing.T, pool *pgxpool.Pool, migrationFS fs.FS) {
+	migrateToVersion(t, pool, migrationFS, 5)
+}
+
+func migrateToVersion(t *testing.T, pool *pgxpool.Pool, migrationFS fs.FS, version int64) {
 	t.Helper()
 
 	database := stdlib.OpenDBFromPool(pool)
@@ -3169,8 +3462,8 @@ func migrateToPrototypeSchema(t *testing.T, pool *pgxpool.Pool, migrationFS fs.F
 	if err != nil {
 		t.Fatalf("create goose provider: %v", err)
 	}
-	if _, err := provider.UpTo(t.Context(), 5); err != nil {
-		t.Fatalf("migrate to the prototype schema: %v", err)
+	if _, err := provider.UpTo(t.Context(), version); err != nil {
+		t.Fatalf("migrate to schema version %d: %v", version, err)
 	}
 }
 
@@ -3344,7 +3637,7 @@ func TestGameRequestActivityDiscoveryAndTrending(t *testing.T) {
 	if detail.MemberCount != 1 {
 		t.Fatalf("member count after leave = %d, want 1", detail.MemberCount)
 	}
-	if detail.Activity[1].ActorName != "Activity Guest" || detail.Activity[1].ActorID != guest.ID {
+	if detail.Activity[1].ActorGameNick != "Activity Guest" || detail.Activity[1].ActorID != guest.ID {
 		t.Fatalf("leave entry = %#v", detail.Activity[1])
 	}
 
