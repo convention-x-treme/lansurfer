@@ -3,6 +3,7 @@ package assets
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -43,6 +44,21 @@ func TestHandlerServesCacheValidatedAssets(t *testing.T) {
 				t.Fatalf("revalidation status = %d, want %d", revalidation.Code, http.StatusNotModified)
 			}
 		})
+	}
+}
+
+func TestServiceWorkerScriptReadsCompiledBundle(t *testing.T) {
+	body, err := ServiceWorkerScript()
+	if err != nil {
+		t.Fatalf("ServiceWorkerScript() error = %v", err)
+	}
+	if len(body) == 0 {
+		t.Fatal("ServiceWorkerScript() returned an empty script")
+	}
+	for _, want := range []string{"install", "activate"} {
+		if !strings.Contains(string(body), want) {
+			t.Errorf("compiled service worker missing %q", want)
+		}
 	}
 }
 

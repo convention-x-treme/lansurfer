@@ -5,8 +5,10 @@
     "prepare:assets": "node scripts/prepare-assets.mjs",
     "build:css": "tailwindcss -i web/src/brand.generated.css -o internal/web/assets/dist/app.css --minify",
     "build:js": "esbuild web/src/app.ts --bundle --minify --target=es2022 --outfile=internal/web/assets/dist/app.js",
-    "typecheck": "tsc --noEmit",
-    "build": "npm run prepare:assets && npm run build:css && npm run build:js && npm run typecheck"
+    "build:js:sw": "esbuild web/src/service-worker.ts --bundle --minify --target=es2022 --outfile=internal/web/assets/dist/service-worker.js",
+    "build:js:admin-pwa": "esbuild web/src/admin-pwa.ts --bundle --minify --target=es2022 --outfile=internal/web/assets/dist/admin-pwa.js",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.worker.json",
+    "build": "npm run prepare:assets && npm run build:css && npm run build:js && npm run build:js:sw && npm run build:js:admin-pwa && npm run typecheck"
   },
   "dependencies": {
     "htmx.org": "2.0.10"

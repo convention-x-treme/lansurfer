@@ -12,13 +12,15 @@ import (
 )
 
 const (
-	csrfCookieName = "lansurfer_csrf"
-	csrfFormField  = "csrf_token"
-	csrfHeaderName = "X-CSRF-Token"
-	csrfTokenBytes = 32
-	maxFormBytes   = 64 << 10
-	csrfLifetime   = 7 * 24 * time.Hour
-	realtimePath   = "/events/game-requests"
+	csrfCookieName  = "lansurfer_csrf"
+	csrfFormField   = "csrf_token"
+	csrfHeaderName  = "X-CSRF-Token"
+	csrfTokenBytes  = 32
+	maxFormBytes    = 64 << 10
+	csrfLifetime    = 7 * 24 * time.Hour
+	realtimePath    = "/events/game-requests"
+	manifestPath    = "/manifest.webmanifest"
+	serviceWorkerJS = "/service-worker.js"
 )
 
 type csrfTokenKey struct{}
@@ -29,7 +31,7 @@ func SecurityHeaders(secure bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			headers := w.Header()
-			headers.Set("Content-Security-Policy", "default-src 'self'; base-uri 'none'; connect-src 'self'; font-src 'self'; form-action 'self'; frame-ancestors 'none'; img-src 'self' data: https://images.igdb.com; object-src 'none'; script-src 'self'; style-src 'self'")
+			headers.Set("Content-Security-Policy", "default-src 'self'; base-uri 'none'; connect-src 'self'; font-src 'self'; form-action 'self'; frame-ancestors 'none'; img-src 'self' data: https://images.igdb.com; manifest-src 'self'; object-src 'none'; script-src 'self'; style-src 'self'; worker-src 'self'")
 			headers.Set("Permissions-Policy", "camera=(), geolocation=(), microphone=()")
 			headers.Set("Referrer-Policy", "no-referrer")
 			headers.Set("X-Content-Type-Options", "nosniff")
@@ -108,7 +110,7 @@ func issuesCSRFToken(path string) bool {
 
 func csrfExempt(path string) bool {
 	return strings.HasPrefix(path, "/assets/") || path == "/healthz" || path == "/readyz" ||
-		path == realtimePath
+		path == realtimePath || path == manifestPath || path == serviceWorkerJS
 }
 
 func newCSRFToken() (string, error) {
