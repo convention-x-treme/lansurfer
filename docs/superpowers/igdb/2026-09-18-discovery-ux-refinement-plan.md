@@ -1,5 +1,7 @@
 # IGDB Discovery UX Refinement Implementation Plan
 
+> **Historical execution record:** Track C merged via PR #36. This checklist is not current delivery status and must not override PRODUCT, ARCHITECTURE, ROADMAP, or AGENTS.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make IGDB-backed Game discovery feel like one coherent LANsurfer catalog by keeping materialization invisible, retaining last-known-good IGDB enrichment on local Games, and using the same discovery flow in `/games` and the Game Request composer.
