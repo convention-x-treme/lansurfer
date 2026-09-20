@@ -28,6 +28,7 @@ type GameRequestCommands interface {
 	Leave(context.Context, string, string) error
 	Close(context.Context, string, string) error
 	Cancel(context.Context, string, string) error
+	RecordView(context.Context, string, string) error
 }
 
 type GameRequestQueries interface {
@@ -68,16 +69,20 @@ type GameRequestDiscovery interface {
 const gameCatalogUnavailableMessage = "This game is no longer available from the game catalog. Choose another game."
 
 type GameRequests struct {
-	commands  GameRequestCommands
-	queries   GameRequestQueries
-	resolver  GameResolver
-	discovery GameRequestDiscovery
-	brand     branding.Brand
-	now       func() time.Time
+	commands   GameRequestCommands
+	queries    GameRequestQueries
+	resolver   GameResolver
+	discovery  GameRequestDiscovery
+	navigation *Navigation
+	brand      branding.Brand
+	now        func() time.Time
 }
 
-func NewGameRequests(commands GameRequestCommands, queries GameRequestQueries, resolver GameResolver, discovery GameRequestDiscovery, brand branding.Brand) *GameRequests {
-	return &GameRequests{commands: commands, queries: queries, resolver: resolver, discovery: discovery, brand: brand, now: time.Now}
+func NewGameRequests(commands GameRequestCommands, queries GameRequestQueries, resolver GameResolver, discovery GameRequestDiscovery, navigation *Navigation, brand branding.Brand) *GameRequests {
+	return &GameRequests{
+		commands: commands, queries: queries, resolver: resolver,
+		discovery: discovery, navigation: navigation, brand: brand, now: time.Now,
+	}
 }
 
 func (h *GameRequests) List(w http.ResponseWriter, r *http.Request) {
@@ -99,7 +104,7 @@ func (h *GameRequests) List(w http.ResponseWriter, r *http.Request) {
 // renderList answers a filter submission with the list alone and a full page
 // load with the whole screen, so filtering stays server-rendered either way.
 func (h *GameRequests) renderList(w http.ResponseWriter, r *http.Request, status int, requests []requestquery.Request, filter requestquery.Filter, message string) {
-	navigation := requestNavigation(r)
+	navigation := h.navigationFor(r)
 	if r.Header.Get("HX-Request") == "true" {
 		// The fragment carries the message too, or a rejected search would
 		// swap in an empty list with nothing explaining why.
@@ -136,7 +141,7 @@ func (h *GameRequests) RefreshList(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "refresh game requests", http.StatusInternalServerError)
 		return
 	}
-	navigation := requestNavigation(r)
+	navigation := h.navigationFor(r)
 	render(w, r, http.StatusOK, pages.GameRequestListContent(h.brand, requests, filter, navigation.Viewer, r.URL.Query().Get("highlight"), true, trending, ""))
 }
 
@@ -170,7 +175,7 @@ func (h *GameRequests) New(w http.ResponseWriter, r *http.Request) {
 			h.renderError(w, r)
 			return
 		}
-		render(w, r, http.StatusOK, pages.NewGameRequest(h.brand, requestNavigation(r), page, nil, false, search, form, ""))
+		render(w, r, http.StatusOK, pages.NewGameRequest(h.brand, h.navigationFor(r), page, nil, false, search, form, ""))
 		return
 	}
 
@@ -187,11 +192,11 @@ func (h *GameRequests) New(w http.ResponseWriter, r *http.Request) {
 			h.renderError(w, r)
 			return
 		}
-		render(w, r, http.StatusUnprocessableEntity, pages.NewGameRequest(h.brand, requestNavigation(r), page, nil, false, "", form, gameCatalogUnavailableMessage))
+		render(w, r, http.StatusUnprocessableEntity, pages.NewGameRequest(h.brand, h.navigationFor(r), page, nil, false, "", form, gameCatalogUnavailableMessage))
 		return
 	}
 	populateSelectionForm(&form, item)
-	render(w, r, http.StatusOK, pages.NewGameRequest(h.brand, requestNavigation(r), game.DiscoveryPage{}, &item, true, "", form, ""))
+	render(w, r, http.StatusOK, pages.NewGameRequest(h.brand, h.navigationFor(r), game.DiscoveryPage{}, &item, true, "", form, ""))
 }
 
 // Discovery is the composer's live-search fragment (used by the "Change
@@ -210,7 +215,7 @@ func (h *GameRequests) Discovery(w http.ResponseWriter, r *http.Request) {
 		h.renderError(w, r)
 		return
 	}
-	render(w, r, http.StatusOK, pages.GameRequestDiscovery(page, search, true, requestNavigation(r).Viewer, pages.GameRequestForm{}))
+	render(w, r, http.StatusOK, pages.GameRequestDiscovery(page, search, true, h.navigationFor(r).Viewer, pages.GameRequestForm{}))
 }
 
 // Selection is the composer's read-only reselection endpoint (Task 7 Step
@@ -326,7 +331,7 @@ func (h *GameRequests) renderComposerError(w http.ResponseWriter, r *http.Reques
 			return
 		}
 	}
-	render(w, r, status, pages.NewGameRequest(h.brand, requestNavigation(r), page, selected, true, "", form, message))
+	render(w, r, status, pages.NewGameRequest(h.brand, h.navigationFor(r), page, selected, true, "", form, message))
 }
 
 // gameSelectionFromValues parses the composer's identity fields (shared by
@@ -399,7 +404,14 @@ func (h *GameRequests) View(w http.ResponseWriter, r *http.Request) {
 		h.renderError(w, r)
 		return
 	}
-	render(w, r, http.StatusOK, pages.GameRequestDetail(h.brand, requestNavigation(r), request, account.ID, "", notice(r)))
+	// Recorded before the navigation is built, so the request the viewer is
+	// reading is already the newest entry in their own "Recently viewed" list
+	// rather than appearing one navigation later. A failure here costs the
+	// viewer a history entry, never the page they asked for.
+	if err := h.commands.RecordView(r.Context(), request.ID, account.ID); err != nil {
+		webmiddleware.LogError(r, "record Game Request view", err)
+	}
+	render(w, r, http.StatusOK, pages.GameRequestDetail(h.brand, h.navigationFor(r), request, account.ID, "", notice(r)))
 }
 
 func (h *GameRequests) RefreshView(w http.ResponseWriter, r *http.Request) {
@@ -480,7 +492,7 @@ func (h *GameRequests) renderChangeError(w http.ResponseWriter, r *http.Request,
 		h.renderError(w, r)
 		return
 	}
-	render(w, r, status, pages.GameRequestDetail(h.brand, requestNavigation(r), request, viewerID, gameRequestMessage(cause), ""))
+	render(w, r, status, pages.GameRequestDetail(h.brand, h.navigationFor(r), request, viewerID, gameRequestMessage(cause), ""))
 }
 
 func (h *GameRequests) parseCreateForm(r *http.Request) (pages.GameRequestForm, *int32, time.Time, error) {
@@ -555,12 +567,11 @@ func (h *GameRequests) redirect(w http.ResponseWriter, r *http.Request, target s
 }
 
 func (h *GameRequests) renderError(w http.ResponseWriter, r *http.Request) {
-	render(w, r, http.StatusInternalServerError, pages.GameRequestError(h.brand, requestNavigation(r)))
+	render(w, r, http.StatusInternalServerError, pages.GameRequestError(h.brand, h.navigationFor(r)))
 }
 
-func requestNavigation(r *http.Request) components.NavigationState {
-	account, _ := webmiddleware.CurrentUser(r.Context())
-	return components.NavigationState{Viewer: &components.Viewer{ID: account.ID, GameNick: account.GameNick, Role: string(account.Role)}, Section: "game-requests"}
+func (h *GameRequests) navigationFor(r *http.Request) components.NavigationState {
+	return h.navigation.For(r, "game-requests")
 }
 
 func gameRequestErrorStatus(err error) int {

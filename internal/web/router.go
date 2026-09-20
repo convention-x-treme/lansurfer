@@ -66,10 +66,17 @@ type RouterDependencies struct {
 	GameResolver        handler.GameResolver
 	GameRequests        handler.GameRequestCommands
 	RequestQueries      handler.GameRequestQueries
-	Realtime            handler.GameRequestEvents
-	SecureCookies       bool
-	Logger              *slog.Logger
-	TrustedProxies      []netip.Prefix
+	// NavigationQueries and NavigationCatalog back the shared sidebar every
+	// authenticated screen renders. The same concrete read model and
+	// discovery service behind RequestQueries/Discovery satisfy them; saying
+	// so is this composition root's job, not a reason to widen either
+	// handler's own narrower interface.
+	NavigationQueries handler.NavigationQueries
+	NavigationCatalog handler.NavigationCatalog
+	Realtime          handler.GameRequestEvents
+	SecureCookies     bool
+	Logger            *slog.Logger
+	TrustedProxies    []netip.Prefix
 	// InstanceName is the raw, already-trimmed config.Config.InstanceName
 	// value. Empty means unset; NewRouter resolves the display fallback.
 	InstanceName string
@@ -90,13 +97,14 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 		dependencies.PendingIdentities, dependencies.AccountRegistration, dependencies.GameNickClaims,
 		dependencies.Identities, dependencies.Authentication, brand, dependencies.SecureCookies,
 	)
-	accountHandler := handler.NewAccount(dependencies.Identities, dependencies.IdentityUnlinker, dependencies.GameNickClaims, dependencies.Authentication, brand)
+	navigation := handler.NewNavigation(dependencies.NavigationQueries, dependencies.NavigationCatalog)
+	accountHandler := handler.NewAccount(dependencies.Identities, dependencies.IdentityUnlinker, dependencies.GameNickClaims, dependencies.Authentication, navigation, brand)
 	administrationHandler := handler.NewAdministration(
-		dependencies.Games, dependencies.ProviderSync, brand,
+		dependencies.Games, dependencies.ProviderSync, navigation, brand,
 		instanceName, dependencies.BaseURL, SecureContextStatus(dependencies.BaseURL),
 	)
-	gamesHandler := handler.NewGames(dependencies.Discovery, brand)
-	gameRequestsHandler := handler.NewGameRequests(dependencies.GameRequests, dependencies.RequestQueries, dependencies.GameResolver, dependencies.Discovery, brand)
+	gamesHandler := handler.NewGames(dependencies.Discovery, navigation, brand)
+	gameRequestsHandler := handler.NewGameRequests(dependencies.GameRequests, dependencies.RequestQueries, dependencies.GameResolver, dependencies.Discovery, navigation, brand)
 	realtimeHandler := handler.NewRealtime(dependencies.Realtime)
 	router := chi.NewRouter()
 	router.Use(middleware.RequestID)

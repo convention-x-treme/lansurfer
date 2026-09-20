@@ -104,6 +104,14 @@ func (f *fakeSubscriptions) MyGames(context.Context, string) ([]SubscriptionGame
 	return f.myGames, nil
 }
 
+func (f *fakeSubscriptions) CountCatalog(context.Context) (int64, error) {
+	return int64(len(f.browse)), nil
+}
+
+func (f *fakeSubscriptions) CountFollowed(context.Context, string) (int64, error) {
+	return int64(len(f.myGames)), nil
+}
+
 func (f *fakeSubscriptions) Follow(_ context.Context, userID, gameID string) error {
 	f.followedUser, f.followedGame = userID, gameID
 	return f.followErr

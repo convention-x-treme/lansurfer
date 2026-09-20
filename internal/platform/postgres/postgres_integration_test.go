@@ -2931,8 +2931,8 @@ func TestMigrateAndReadyCheck(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get migration version: %v", err)
 	}
-	if version != 9 {
-		t.Errorf("migration version = %d, want 9", version)
+	if version != 10 {
+		t.Errorf("migration version = %d, want 10", version)
 	}
 
 	if err := migrateFS(t.Context(), pool, migrationFS, logger); err != nil {
@@ -3960,5 +3960,149 @@ func TestGameRequestActivityKeepsHistoryAcrossRejoin(t *testing.T) {
 	// The rejoin is a new entry rather than the old one resurfacing.
 	if detail.Activity[0].OccurredAt.Before(detail.Activity[1].OccurredAt) {
 		t.Fatalf("rejoin entry is older than the leave it followed: %#v", detail.Activity[:2])
+	}
+}
+
+// The navigation's sidebar reads three things PostgreSQL has to get right:
+// reading history is per-viewer and deduplicated by request, the counts state
+// the active catalog rather than every row ever written, and a deleted Game
+// Request takes its view rows with it instead of leaving the sidebar pointing
+// at a request that no longer exists.
+func TestNavigationReadingHistoryAndCountsPersistence(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+
+	users := user.NewService(userpostgres.NewStore(pool))
+	reader, err := users.Register(t.Context(), "History Reader")
+	if err != nil {
+		t.Fatalf("register reader: %v", err)
+	}
+	other, err := users.Register(t.Context(), "Other Player")
+	if err != nil {
+		t.Fatalf("register other player: %v", err)
+	}
+
+	gameStore := gamepostgres.NewStore(pool)
+	catalog := game.NewService(gameStore)
+	subscriptions := game.NewSubscriptionService(gameStore)
+	warcraft, err := catalog.Create(t.Context(), "Warcraft III", "warcraft-3")
+	if err != nil {
+		t.Fatalf("create game: %v", err)
+	}
+	quake, err := catalog.Create(t.Context(), "Quake III Arena", "quake-3-arena")
+	if err != nil {
+		t.Fatalf("create second game: %v", err)
+	}
+	retired, err := catalog.Create(t.Context(), "Retired Game", "retired-game")
+	if err != nil {
+		t.Fatalf("create third game: %v", err)
+	}
+
+	requests := gamerequest.NewService(gamerequestpostgres.NewStore(pool), catalog, nil)
+	queries := gamerequestquery.NewStore(pool)
+
+	first, err := requests.Create(t.Context(), reader.ID, warcraft.ID, nil, time.Now().Add(time.Hour), "")
+	if err != nil {
+		t.Fatalf("create first request: %v", err)
+	}
+	second, err := requests.Create(t.Context(), reader.ID, quake.ID, nil, time.Now().Add(2*time.Hour), "")
+	if err != nil {
+		t.Fatalf("create second request: %v", err)
+	}
+
+	// Re-reading a request moves it back to the top rather than appending a
+	// second entry, so the list stays a set of distinct requests.
+	for _, view := range []struct{ requestID, userID string }{
+		{second.ID, reader.ID},
+		{first.ID, reader.ID},
+		{second.ID, reader.ID},
+		{first.ID, other.ID},
+	} {
+		if err := requests.RecordView(t.Context(), view.requestID, view.userID); err != nil {
+			t.Fatalf("record view: %v", err)
+		}
+	}
+
+	history, err := queries.RecentlyViewed(t.Context(), reader.ID)
+	if err != nil {
+		t.Fatalf("recently viewed: %v", err)
+	}
+	if len(history) != 2 {
+		t.Fatalf("recently viewed = %#v, want 2 distinct requests", history)
+	}
+	if history[0].ID != second.ID || history[1].ID != first.ID {
+		t.Fatalf("recently viewed order = %q, %q, want newest view first", history[0].ID, history[1].ID)
+	}
+	if history[0].GameName != "Quake III Arena" || history[0].Status != gamerequest.StatusOpen {
+		t.Fatalf("recently viewed entry = %#v", history[0])
+	}
+
+	// History is private: one player's reading never appears in another's.
+	otherHistory, err := queries.RecentlyViewed(t.Context(), other.ID)
+	if err != nil || len(otherHistory) != 1 || otherHistory[0].ID != first.ID {
+		t.Fatalf("other player history = %#v, %v", otherHistory, err)
+	}
+
+	// A closed request stays in history: it is still what the player read.
+	if err := requests.Close(t.Context(), first.ID, reader.ID); err != nil {
+		t.Fatalf("close request: %v", err)
+	}
+	history, err = queries.RecentlyViewed(t.Context(), reader.ID)
+	if err != nil || len(history) != 2 {
+		t.Fatalf("history after close = %#v, %v", history, err)
+	}
+	if history[1].ID != first.ID || history[1].Status != gamerequest.StatusClosed {
+		t.Fatalf("closed history entry = %#v", history[1])
+	}
+
+	if err := subscriptions.Follow(t.Context(), reader.ID, warcraft.ID); err != nil {
+		t.Fatalf("follow game: %v", err)
+	}
+	total, err := subscriptions.CountCatalog(t.Context())
+	if err != nil || total != 3 {
+		t.Fatalf("catalog count = %d, %v, want 3", total, err)
+	}
+	followed, err := subscriptions.CountFollowed(t.Context(), reader.ID)
+	if err != nil || followed != 1 {
+		t.Fatalf("followed count = %d, %v, want 1", followed, err)
+	}
+	if followed, err := subscriptions.CountFollowed(t.Context(), other.ID); err != nil || followed != 0 {
+		t.Fatalf("other player followed count = %d, %v, want 0", followed, err)
+	}
+
+	// Both counts state the active catalog, matching what Games and My Games
+	// themselves list: deactivating a Game removes it from both.
+	if err := subscriptions.Follow(t.Context(), reader.ID, retired.ID); err != nil {
+		t.Fatalf("follow third game: %v", err)
+	}
+	if err := catalog.SetActive(t.Context(), retired.ID, false); err != nil {
+		t.Fatalf("deactivate game: %v", err)
+	}
+	if total, err := subscriptions.CountCatalog(t.Context()); err != nil || total != 2 {
+		t.Fatalf("catalog count after deactivation = %d, %v, want 2", total, err)
+	}
+	if followed, err := subscriptions.CountFollowed(t.Context(), reader.ID); err != nil || followed != 1 {
+		t.Fatalf("followed count after deactivation = %d, %v, want 1", followed, err)
+	}
+
+	// Views belong to their Game Request: deleting one must not leave the
+	// sidebar linking to a request that is gone.
+	if _, err := pool.Exec(t.Context(), "DELETE FROM game_request_activity WHERE game_request_id = $1", second.ID); err != nil {
+		t.Fatalf("delete activity: %v", err)
+	}
+	if _, err := pool.Exec(t.Context(), "DELETE FROM game_requests WHERE id = $1", second.ID); err != nil {
+		t.Fatalf("delete request: %v", err)
+	}
+	history, err = queries.RecentlyViewed(t.Context(), reader.ID)
+	if err != nil || len(history) != 1 || history[0].ID != first.ID {
+		t.Fatalf("history after request deletion = %#v, %v", history, err)
+	}
+
+	// A view of a request that does not exist is rejected by the foreign key
+	// rather than silently stored.
+	if err := requests.RecordView(t.Context(), second.ID, reader.ID); !errors.Is(err, gamerequest.ErrNotFound) {
+		t.Fatalf("record view of deleted request = %v, want ErrNotFound", err)
 	}
 }

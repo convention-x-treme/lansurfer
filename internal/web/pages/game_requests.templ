@@ -5,7 +5,6 @@ import (
 	"net/url"
 	"strings"
 	"time"
-	"unicode"
 
 	"github.com/convention-x-treme/lansurfer/internal/game"
 	"github.com/convention-x-treme/lansurfer/internal/gamerequest"
@@ -190,7 +189,7 @@ templ GameRequestRow(request requestquery.Request, viewerID, highlightedID strin
 			}
 		</a>
 		<span class={ playerCountClass(request) } aria-label={ playerCountAccessible(request) }>{ playerCount(request) }</span>
-		<time class={ startTimeClass(request.StartsAt) } datetime={ request.StartsAt.Format(time.RFC3339) }>{ startLabel(request.StartsAt) }</time>
+		<time class={ startTimeClass(request.StartsAt) } datetime={ request.StartsAt.Format(time.RFC3339) }>{ components.StartLabel(request.StartsAt) }</time>
 		<div class="request-row-action">
 			if request.Status != gamerequest.StatusOpen {
 				<span class="action-static">{ requestActionLabel(request) }</span>
@@ -760,25 +759,11 @@ func startTimeClass(time.Time) string {
 	return "data-text text-xs text-base-content/70"
 }
 
-func startLabel(startsAt time.Time) string {
-	remaining := time.Until(startsAt)
-	if remaining <= 2*time.Minute {
-		return "now"
-	}
-	if remaining < time.Hour {
-		return fmt.Sprintf("in %d min", max(1, int(remaining.Round(time.Minute)/time.Minute)))
-	}
-	if remaining < 24*time.Hour {
-		return fmt.Sprintf("in %d h", max(1, int(remaining.Round(time.Hour)/time.Hour)))
-	}
-	return startsAt.Local().Format("Jan 2")
-}
-
 func startLongLabel(startsAt time.Time) string {
 	if startsAt.Before(time.Now().Add(2 * time.Minute)) {
 		return "starts now"
 	}
-	return "starts " + startLabel(startsAt)
+	return "starts " + components.StartLabel(startsAt)
 }
 
 // An unknown time is not rendered at all; an em dash in its place is a
@@ -795,54 +780,6 @@ func outOfBand(oob bool) templ.Attributes {
 		return templ.Attributes{"hx-swap-oob": "true"}
 	}
 	return nil
-}
-
-func gameAbbreviation(name string) string {
-	words := strings.Fields(name)
-	if len(words) == 0 {
-		return "?"
-	}
-	if len(words) == 1 {
-		runes := []rune(words[0])
-		if len(runes) > 3 {
-			runes = runes[:3]
-		}
-		return strings.ToUpper(string(runes))
-	}
-	result := make([]rune, 0, 3)
-	for _, word := range words {
-		if roman := romanDigit(word); roman != 0 {
-			result = append(result, roman)
-		} else {
-			for _, value := range word {
-				if unicode.IsLetter(value) || unicode.IsDigit(value) {
-					result = append(result, unicode.ToUpper(value))
-					break
-				}
-			}
-		}
-		if len(result) == 3 {
-			break
-		}
-	}
-	return string(result)
-}
-
-func romanDigit(word string) rune {
-	switch strings.ToUpper(strings.TrimSpace(word)) {
-	case "I":
-		return '1'
-	case "II":
-		return '2'
-	case "III":
-		return '3'
-	case "IV":
-		return '4'
-	case "V":
-		return '5'
-	default:
-		return 0
-	}
 }
 
 // navigationWithCount carries how many Game Requests are open on the whole

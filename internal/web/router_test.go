@@ -1113,6 +1113,8 @@ func (r *routerGameRequests) Leave(_ context.Context, requestID, userID string) 
 	r.left = requestID + "/" + userID
 	return nil
 }
+func (*routerGameRequests) RecordView(context.Context, string, string) error { return nil }
+
 func (r *routerGameRequests) Close(_ context.Context, requestID, userID string) error {
 	r.closed = requestID + "/" + userID
 	return nil

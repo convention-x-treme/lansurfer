@@ -23,6 +23,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -47,14 +48,16 @@ func main() {
 	mux := http.NewServeMux()
 	mux.Handle("/__test__/", state.controlPlane())
 	mux.Handle("/", web.NewRouter(web.RouterDependencies{
-		Ready:          func(context.Context) error { return nil },
-		Authentication: state,
-		Sessions:       state,
-		Discovery:      state,
-		GameRequests:   state,
-		RequestQueries: state,
-		Realtime:       state,
-		Logger:         slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn})),
+		Ready:             func(context.Context) error { return nil },
+		Authentication:    state,
+		Sessions:          state,
+		Discovery:         state,
+		GameRequests:      state,
+		RequestQueries:    state,
+		NavigationQueries: state,
+		NavigationCatalog: state,
+		Realtime:          state,
+		Logger:            slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn})),
 	}))
 
 	server := &http.Server{Addr: *address, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
@@ -76,6 +79,7 @@ type fixture struct {
 	requests map[string]*fixtureRequest
 	order    []string
 	next     int
+	viewed   []requestquery.RecentRequest
 
 	// creates counts every Game Request that the server actually created. The
 	// original defect behind issue #15 was six rapid clicks producing five
@@ -325,6 +329,49 @@ func (f *fixture) CountOpen(context.Context) (int64, error) {
 	var total int64
 	for _, entry := range f.requests {
 		if entry.request.Status == gamerequest.StatusOpen {
+			total++
+		}
+	}
+	return total, nil
+}
+
+// RecordView and RecentlyViewed keep the sidebar's reading history in memory.
+// Browser tests assert interaction behavior, not history ranking, so this is
+// just enough to let the navigation render the same shape as production.
+func (f *fixture) RecordView(_ context.Context, requestID, _ string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	entry, ok := f.requests[requestID]
+	if !ok {
+		return gamerequest.ErrNotFound
+	}
+	f.viewed = append([]requestquery.RecentRequest{{
+		ID: requestID, GameName: entry.request.Game.Name,
+		Status: entry.request.Status, ViewedAt: time.Now(),
+	}}, f.viewed...)
+	return nil
+}
+
+func (f *fixture) RecentlyViewed(_ context.Context, _ string) ([]requestquery.RecentRequest, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.viewed), nil
+}
+
+// CountCatalog and CountFollowed state the navigation's Games/My Games totals
+// over the fixture's own seeded catalog.
+func (f *fixture) CountCatalog(context.Context) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return int64(len(f.requests)), nil
+}
+
+func (f *fixture) CountFollowed(context.Context, string) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var total int64
+	for _, entry := range f.requests {
+		if entry.followed {
 			total++
 		}
 	}

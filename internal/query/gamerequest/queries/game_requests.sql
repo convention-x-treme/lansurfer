@@ -100,3 +100,18 @@ LIMIT sqlc.arg(result_limit);
 -- affected by the viewer's discovery filters.
 -- name: CountOpenGameRequests :one
 SELECT count(*) FROM game_requests WHERE status = 'open';
+
+-- ListRecentlyViewedGameRequests backs the navigation's "Recently viewed"
+-- list. It is per-viewer reading history, so it deliberately ignores status:
+-- a request the player closed or cancelled is still the one they just read.
+-- name: ListRecentlyViewedGameRequests :many
+SELECT gr.id::text AS request_id,
+       g.name AS game_name,
+       gr.status,
+       v.viewed_at
+FROM game_request_views v
+JOIN game_requests gr ON gr.id = v.game_request_id
+JOIN games g ON g.id = gr.game_id
+WHERE v.user_id = sqlc.arg(viewer_id)::uuid
+ORDER BY v.viewed_at DESC, gr.id
+LIMIT sqlc.arg(result_limit);

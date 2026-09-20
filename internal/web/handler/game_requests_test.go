@@ -13,6 +13,7 @@ import (
 	"github.com/convention-x-treme/lansurfer/internal/game"
 	"github.com/convention-x-treme/lansurfer/internal/gamerequest"
 	requestquery "github.com/convention-x-treme/lansurfer/internal/query/gamerequest"
+	"github.com/convention-x-treme/lansurfer/internal/user"
 	"github.com/convention-x-treme/lansurfer/internal/web/branding"
 )
 
@@ -21,6 +22,9 @@ type fakeGameRequestCommands struct {
 	createGameID string
 	created      gamerequest.GameRequest
 	createErr    error
+
+	viewed        []string
+	recordViewErr error
 }
 
 func (f *fakeGameRequestCommands) Create(_ context.Context, _, gameID string, _ *int32, _ time.Time, _ string) (gamerequest.GameRequest, error) {
@@ -35,19 +39,28 @@ func (f *fakeGameRequestCommands) Join(context.Context, string, string) error   
 func (f *fakeGameRequestCommands) Leave(context.Context, string, string) error  { return nil }
 func (f *fakeGameRequestCommands) Close(context.Context, string, string) error  { return nil }
 func (f *fakeGameRequestCommands) Cancel(context.Context, string, string) error { return nil }
+func (f *fakeGameRequestCommands) RecordView(_ context.Context, requestID, userID string) error {
+	f.viewed = append(f.viewed, requestID+"/"+userID)
+	return f.recordViewErr
+}
 
-type fakeGameRequestQueries struct{}
+type fakeGameRequestQueries struct {
+	request requestquery.Request
+}
 
 func (fakeGameRequestQueries) ListActive(context.Context, string, requestquery.Filter) ([]requestquery.Request, error) {
 	return nil, nil
 }
-func (fakeGameRequestQueries) ByID(context.Context, string, string) (requestquery.Request, error) {
-	return requestquery.Request{}, nil
+func (f fakeGameRequestQueries) ByID(context.Context, string, string) (requestquery.Request, error) {
+	return f.request, nil
 }
 func (fakeGameRequestQueries) Trending(context.Context) ([]requestquery.TrendingGame, error) {
 	return nil, nil
 }
 func (fakeGameRequestQueries) CountOpen(context.Context) (int64, error) { return 0, nil }
+func (fakeGameRequestQueries) RecentlyViewed(context.Context, string) ([]requestquery.RecentRequest, error) {
+	return nil, nil
+}
 
 type fakeGameResolver struct {
 	calls int
@@ -103,7 +116,7 @@ func (f *fakeGameRequestDiscovery) Select(_ context.Context, userID string, sele
 func TestCreateGameRequestResolvesProviderReference(t *testing.T) {
 	commands := &fakeGameRequestCommands{created: gamerequest.GameRequest{ID: "request-1"}}
 	resolver := &fakeGameResolver{game: game.Game{ID: "local-1", Name: "Provider Game", Slug: "provider-game"}}
-	handler := NewGameRequests(commands, fakeGameRequestQueries{}, resolver, &fakeGameRequestDiscovery{}, branding.Default())
+	handler := NewGameRequests(commands, fakeGameRequestQueries{}, resolver, &fakeGameRequestDiscovery{}, nil, branding.Default())
 
 	form := url.Values{
 		"provider":    {"igdb"},
@@ -131,7 +144,7 @@ func TestCreateGameRequestResolvesProviderReference(t *testing.T) {
 func TestCreateGameRequestSkipsResolutionOnValidationFailure(t *testing.T) {
 	commands := &fakeGameRequestCommands{}
 	resolver := &fakeGameResolver{game: game.Game{ID: "local-1"}}
-	handler := NewGameRequests(commands, fakeGameRequestQueries{}, resolver, &fakeGameRequestDiscovery{}, branding.Default())
+	handler := NewGameRequests(commands, fakeGameRequestQueries{}, resolver, &fakeGameRequestDiscovery{}, nil, branding.Default())
 
 	form := url.Values{
 		"provider":    {"igdb"},
@@ -158,7 +171,7 @@ func TestCreateGameRequestSkipsResolutionOnValidationFailure(t *testing.T) {
 func TestCreateGameRequestSkipsResolutionOnDescriptionTooLong(t *testing.T) {
 	commands := &fakeGameRequestCommands{}
 	resolver := &fakeGameResolver{game: game.Game{ID: "local-1"}}
-	handler := NewGameRequests(commands, fakeGameRequestQueries{}, resolver, &fakeGameRequestDiscovery{}, branding.Default())
+	handler := NewGameRequests(commands, fakeGameRequestQueries{}, resolver, &fakeGameRequestDiscovery{}, nil, branding.Default())
 
 	form := url.Values{
 		"provider":    {"igdb"},
@@ -186,7 +199,7 @@ func TestCreateGameRequestSkipsResolutionOnDescriptionTooLong(t *testing.T) {
 func TestCreateGameRequestWithLocalGameIDDoesNotResolve(t *testing.T) {
 	commands := &fakeGameRequestCommands{created: gamerequest.GameRequest{ID: "request-2"}}
 	resolver := &fakeGameResolver{game: game.Game{ID: "local-1"}}
-	handler := NewGameRequests(commands, fakeGameRequestQueries{}, resolver, &fakeGameRequestDiscovery{}, branding.Default())
+	handler := NewGameRequests(commands, fakeGameRequestQueries{}, resolver, &fakeGameRequestDiscovery{}, nil, branding.Default())
 
 	form := url.Values{"game_id": {"game-1"}, "max_players": {"4"}}
 	request := httptest.NewRequest(http.MethodPost, "/game-requests", strings.NewReader(form.Encode()))
@@ -210,7 +223,7 @@ func TestCreateGameRequestWithLocalGameIDDoesNotResolve(t *testing.T) {
 func TestNewGameRequestUsesDiscoveryWithoutMaterializing(t *testing.T) {
 	discovery := &fakeGameRequestDiscovery{}
 	resolver := &fakeGameResolver{}
-	handler := NewGameRequests(&fakeGameRequestCommands{}, fakeGameRequestQueries{}, resolver, discovery, branding.Default())
+	handler := NewGameRequests(&fakeGameRequestCommands{}, fakeGameRequestQueries{}, resolver, discovery, nil, branding.Default())
 
 	request := httptest.NewRequest(http.MethodGet, "/game-requests/new?q=war", nil)
 	response := httptest.NewRecorder()
@@ -238,7 +251,7 @@ func TestNewGameRequestNoJSSelectionPreservesRequestDetails(t *testing.T) {
 	discovery := &fakeGameRequestDiscovery{selectItem: game.DiscoveryItem{
 		LocalGameID: "local-2", GamePresentation: game.GamePresentation{Name: "Age of Empires"}, Materialized: true,
 	}}
-	handler := NewGameRequests(&fakeGameRequestCommands{}, fakeGameRequestQueries{}, &fakeGameResolver{}, discovery, branding.Default())
+	handler := NewGameRequests(&fakeGameRequestCommands{}, fakeGameRequestQueries{}, &fakeGameResolver{}, discovery, nil, branding.Default())
 
 	request := httptest.NewRequest(http.MethodGet, "/game-requests/new?game_id=local-2&max_players=4&start_preset=custom&start_date=2027-05-01&start_time=18%3A00&timezone_offset=-120&description=LAN+night", nil)
 	response := httptest.NewRecorder()
@@ -257,7 +270,7 @@ func TestNewGameRequestNoJSSelectionPreservesRequestDetails(t *testing.T) {
 // to discovery.Browse and renders the shared discovery fragment.
 func TestGameRequestDiscoveryFragmentUsesSameSearchModel(t *testing.T) {
 	discovery := &fakeGameRequestDiscovery{}
-	handler := NewGameRequests(&fakeGameRequestCommands{}, fakeGameRequestQueries{}, &fakeGameResolver{}, discovery, branding.Default())
+	handler := NewGameRequests(&fakeGameRequestCommands{}, fakeGameRequestQueries{}, &fakeGameResolver{}, discovery, nil, branding.Default())
 
 	request := httptest.NewRequest(http.MethodGet, "/game-requests/new/discovery?q=war", nil)
 	request.Header.Set("HX-Request", "true")
@@ -286,7 +299,7 @@ func TestGameRequestSelectionIsReadOnly(t *testing.T) {
 		GamePresentation: game.GamePresentation{Name: "Provider Game"},
 	}}
 	resolver := &fakeGameResolver{}
-	handler := NewGameRequests(&fakeGameRequestCommands{}, fakeGameRequestQueries{}, resolver, discovery, branding.Default())
+	handler := NewGameRequests(&fakeGameRequestCommands{}, fakeGameRequestQueries{}, resolver, discovery, nil, branding.Default())
 
 	request := httptest.NewRequest(http.MethodGet, "/game-requests/new/selection?provider=igdb&external_id=100", nil)
 	request.Header.Set("HX-Request", "true")
@@ -318,7 +331,7 @@ func TestGameRequestSelectionAcceptsLocalGameID(t *testing.T) {
 	discovery := &fakeGameRequestDiscovery{selectItem: game.DiscoveryItem{
 		LocalGameID: "local-1", GamePresentation: game.GamePresentation{Name: "Local Game"}, Materialized: true,
 	}}
-	handler := NewGameRequests(&fakeGameRequestCommands{}, fakeGameRequestQueries{}, &fakeGameResolver{}, discovery, branding.Default())
+	handler := NewGameRequests(&fakeGameRequestCommands{}, fakeGameRequestQueries{}, &fakeGameResolver{}, discovery, nil, branding.Default())
 
 	request := httptest.NewRequest(http.MethodGet, "/game-requests/new/selection?game_id=local-1", nil)
 	request.Header.Set("HX-Request", "true")
@@ -344,7 +357,7 @@ func TestCreateGameRequestProviderMissingPreservesFormAndAsksForAnotherGame(t *t
 	commands := &fakeGameRequestCommands{}
 	resolver := &fakeGameResolver{err: game.ErrProviderRecordNotFound}
 	discovery := &fakeGameRequestDiscovery{}
-	handler := NewGameRequests(commands, fakeGameRequestQueries{}, resolver, discovery, branding.Default())
+	handler := NewGameRequests(commands, fakeGameRequestQueries{}, resolver, discovery, nil, branding.Default())
 
 	form := url.Values{
 		"provider": {"igdb"}, "external_id": {"100"},
@@ -390,7 +403,7 @@ func TestCreateGameRequestKeepsMaterializedGameWhenCommandFails(t *testing.T) {
 	discovery := &fakeGameRequestDiscovery{selectItem: game.DiscoveryItem{
 		LocalGameID: "local-1", GamePresentation: game.GamePresentation{Name: "Provider Game"}, Materialized: true,
 	}}
-	handler := NewGameRequests(commands, fakeGameRequestQueries{}, resolver, discovery, branding.Default())
+	handler := NewGameRequests(commands, fakeGameRequestQueries{}, resolver, discovery, nil, branding.Default())
 
 	form := url.Values{
 		"provider": {"igdb"}, "external_id": {"100"},
@@ -494,5 +507,50 @@ func TestGameRequestErrorStatus(t *testing.T) {
 		if got := gameRequestErrorStatus(test.err); got != test.want {
 			t.Errorf("gameRequestErrorStatus(%v) = %d, want %d", test.err, got, test.want)
 		}
+	}
+}
+
+// Opening a Game Request is what puts it in the viewer's own "Recently viewed"
+// list, so the detail view has to record the visit. A failure to record must
+// not cost the viewer the page they actually asked for.
+func TestViewRecordsTheVisitAndStillRendersWhenRecordingFails(t *testing.T) {
+	tests := map[string]error{"recorded": nil, "recording failed": errors.New("database unavailable")}
+	for name, recordErr := range tests {
+		t.Run(name, func(t *testing.T) {
+			commands := &fakeGameRequestCommands{recordViewErr: recordErr}
+			queries := fakeGameRequestQueries{request: requestquery.Request{
+				ID: "request-1", Game: game.GamePresentation{Name: "Warcraft III"}, Status: gamerequest.StatusOpen,
+			}}
+			handler := NewGameRequests(commands, queries, &fakeGameResolver{}, &fakeGameRequestDiscovery{}, nil, branding.Default())
+
+			request := withCurrentUser(httptest.NewRequest(http.MethodGet, "/game-requests/request-1", nil), user.User{ID: "user-1", GameNick: "Ada"})
+			response := httptest.NewRecorder()
+			handler.View(response, request)
+
+			if response.Code != http.StatusOK {
+				t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+			}
+			if len(commands.viewed) != 1 || commands.viewed[0] != "request-1/user-1" {
+				t.Fatalf("recorded views = %#v, want the viewed request and viewer", commands.viewed)
+			}
+		})
+	}
+}
+
+// Refreshing the detail fragment over HTMX is the realtime stream redrawing
+// the page the viewer is already on, not a new visit, so it must not reorder
+// their history.
+func TestRefreshViewDoesNotRecordAVisit(t *testing.T) {
+	commands := &fakeGameRequestCommands{}
+	queries := fakeGameRequestQueries{request: requestquery.Request{
+		ID: "request-1", Game: game.GamePresentation{Name: "Warcraft III"}, Status: gamerequest.StatusOpen,
+	}}
+	handler := NewGameRequests(commands, queries, &fakeGameResolver{}, &fakeGameRequestDiscovery{}, nil, branding.Default())
+
+	request := withCurrentUser(httptest.NewRequest(http.MethodGet, "/game-requests/request-1/refresh", nil), user.User{ID: "user-1", GameNick: "Ada"})
+	handler.RefreshView(httptest.NewRecorder(), request)
+
+	if len(commands.viewed) != 0 {
+		t.Fatalf("recorded views = %#v, want none", commands.viewed)
 	}
 }

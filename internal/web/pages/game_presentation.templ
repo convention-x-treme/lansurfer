@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/convention-x-treme/lansurfer/internal/game"
+	"github.com/convention-x-treme/lansurfer/internal/web/components"
 )
 
 // GameIdentity is the shared player-facing rendering of one Game's name,
@@ -20,18 +21,18 @@ templ GameIdentity(p game.GamePresentation, compact bool) {
 	if compact {
 		if p.CoverImageID != "" {
 			<img class="h-[2.125rem] w-[2.125rem] flex-none rounded object-cover bg-base-300" src={ providerCoverURL(p.CoverImageID) } alt="" referrerpolicy="no-referrer" loading="lazy" data-cover-fallback="true"/>
-			<span class="game-abbreviation" aria-hidden="true" hidden>{ gameAbbreviation(p.Name) }</span>
+			<span class="game-abbreviation" aria-hidden="true" hidden>{ components.GameAbbreviation(p.Name) }</span>
 		} else {
-			<span class="game-abbreviation" aria-hidden="true">{ gameAbbreviation(p.Name) }</span>
+			<span class="game-abbreviation" aria-hidden="true">{ components.GameAbbreviation(p.Name) }</span>
 		}
 		<span class="min-w-0 truncate font-semibold">{ p.Name }</span>
 	} else {
 		<div class="flex items-center gap-3">
 			if p.CoverImageID != "" {
 				<img class="h-12 w-9 flex-none rounded object-cover bg-base-300" src={ providerCoverURL(p.CoverImageID) } alt="" referrerpolicy="no-referrer" loading="lazy" data-cover-fallback="true"/>
-				<span class="game-abbreviation" aria-hidden="true" hidden>{ gameAbbreviation(p.Name) }</span>
+				<span class="game-abbreviation" aria-hidden="true" hidden>{ components.GameAbbreviation(p.Name) }</span>
 			} else {
-				<span class="game-abbreviation" aria-hidden="true">{ gameAbbreviation(p.Name) }</span>
+				<span class="game-abbreviation" aria-hidden="true">{ components.GameAbbreviation(p.Name) }</span>
 			}
 			<span class="min-w-0">
 				<strong class="block truncate text-base font-semibold">{ p.Name }</strong>

@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/convention-x-treme/lansurfer/internal/game"
+	"github.com/convention-x-treme/lansurfer/internal/web/components"
 )
 
 // GameIdentity is the shared player-facing rendering of one Game's name,
@@ -54,7 +55,7 @@ func GameIdentity(p game.GamePresentation, compact bool) templ.Component {
 				var templ_7745c5c3_Var2 string
 				templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.ResolveAttributeValue(providerCoverURL(p.CoverImageID))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/game_presentation.templ`, Line: 22, Col: 123}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/game_presentation.templ`, Line: 23, Col: 123}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var2)
 				if templ_7745c5c3_Err != nil {
@@ -65,9 +66,9 @@ func GameIdentity(p game.GamePresentation, compact bool) templ.Component {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var3 string
-				templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(gameAbbreviation(p.Name))
+				templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(components.GameAbbreviation(p.Name))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/game_presentation.templ`, Line: 23, Col: 87}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/game_presentation.templ`, Line: 24, Col: 98}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 				if templ_7745c5c3_Err != nil {
@@ -83,9 +84,9 @@ func GameIdentity(p game.GamePresentation, compact bool) templ.Component {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var4 string
-				templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(gameAbbreviation(p.Name))
+				templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(components.GameAbbreviation(p.Name))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/game_presentation.templ`, Line: 25, Col: 80}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/game_presentation.templ`, Line: 26, Col: 91}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 				if templ_7745c5c3_Err != nil {
@@ -103,7 +104,7 @@ func GameIdentity(p game.GamePresentation, compact bool) templ.Component {
 			var templ_7745c5c3_Var5 string
 			templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(p.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/game_presentation.templ`, Line: 27, Col: 55}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/game_presentation.templ`, Line: 28, Col: 55}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 			if templ_7745c5c3_Err != nil {
@@ -126,7 +127,7 @@ func GameIdentity(p game.GamePresentation, compact bool) templ.Component {
 				var templ_7745c5c3_Var6 string
 				templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.ResolveAttributeValue(providerCoverURL(p.CoverImageID))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/game_presentation.templ`, Line: 31, Col: 107}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/game_presentation.templ`, Line: 32, Col: 107}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var6)
 				if templ_7745c5c3_Err != nil {
@@ -137,9 +138,9 @@ func GameIdentity(p game.GamePresentation, compact bool) templ.Component {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var7 string
-				templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(gameAbbreviation(p.Name))
+				templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(components.GameAbbreviation(p.Name))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/game_presentation.templ`, Line: 32, Col: 88}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/game_presentation.templ`, Line: 33, Col: 99}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 				if templ_7745c5c3_Err != nil {
@@ -155,9 +156,9 @@ func GameIdentity(p game.GamePresentation, compact bool) templ.Component {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var8 string
-				templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(gameAbbreviation(p.Name))
+				templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(components.GameAbbreviation(p.Name))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/game_presentation.templ`, Line: 34, Col: 81}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/game_presentation.templ`, Line: 35, Col: 92}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 				if templ_7745c5c3_Err != nil {
@@ -175,7 +176,7 @@ func GameIdentity(p game.GamePresentation, compact bool) templ.Component {
 			var templ_7745c5c3_Var9 string
 			templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(p.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/game_presentation.templ`, Line: 37, Col: 67}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/game_presentation.templ`, Line: 38, Col: 67}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 			if templ_7745c5c3_Err != nil {
@@ -188,7 +189,7 @@ func GameIdentity(p game.GamePresentation, compact bool) templ.Component {
 			var templ_7745c5c3_Var10 string
 			templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(presentationSecondary(p))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/game_presentation.templ`, Line: 38, Col: 98}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/game_presentation.templ`, Line: 39, Col: 98}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 			if templ_7745c5c3_Err != nil {

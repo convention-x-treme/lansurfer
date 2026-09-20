@@ -14,21 +14,6 @@ import (
 	"github.com/convention-x-treme/lansurfer/internal/web/components"
 )
 
-func TestGameAbbreviation(t *testing.T) {
-	tests := map[string]string{
-		"Counter-Strike 2": "C2",
-		"Warcraft III":     "W3",
-		"Trackmania":       "TRA",
-		"Age of Empires":   "AOE",
-		"":                 "?",
-	}
-	for input, want := range tests {
-		if got := gameAbbreviation(input); got != want {
-			t.Errorf("gameAbbreviation(%q) = %q, want %q", input, got, want)
-		}
-	}
-}
-
 func TestGameRequestRowLetsJoinedViewerLeaveFullRequest(t *testing.T) {
 	maxPlayers := int32(4)
 	request := requestquery.Request{

@@ -16,6 +16,7 @@ The leading source for colour and typography is the Claude Design project [LANsu
 | 1d | Composer and mobile drawer | `GET /game-requests/new`, `POST /game-requests` |
 | 1f | Game Request Detail | `GET /game-requests/{requestID}` |
 | 1e | Tokens, Buttons, Badges, Dimensions | — |
+| 1g | Navigation (sidebar, all signed-in screens) | — |
 
 ## Decisions Defined by the Kit
 
@@ -35,6 +36,9 @@ The leading source for colour and typography is the Claude Design project [LANsu
 - List search, the "My Games" toggle, and the "Free places" toggle are rendered now that Track A backs them with server-side discovery filters. Search applies while typing, debounced, and replaces the URL instead of pushing history; the submit button remains for the no-scripting path. "Load more" is still not rendered; it returns with server-side paging.
 - The rail ranks games as **Trending** over the rolling window Track A's read model states (`Trending · last 6 hours`), not as an unbounded "most requested" tally.
 - Player rows in the detail view are separated by rules inside the Players panel instead of being filled cards inside a card.
+- The navigation frame labels the Games sub-item "Followed". The implementation renders it as **My Games**, the term PRODUCT fixes for explicitly followed Games; only the frame's indentation and row metrics are adopted.
+- The navigation frame's "Games" counter is the active local catalog, not the synchronized IGDB provider index, which is a search surface rather than a catalog this installation can total.
+- "Your next games" and "Recently viewed" are implemented; the frame's uppercase mono eyebrows follow the sentence-case panel-heading deviation above.
 
 ## Open
 

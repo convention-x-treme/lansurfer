@@ -183,6 +183,18 @@ func (s *DiscoveryService) MyGames(ctx context.Context, userID string) ([]Subscr
 	return s.subscriptions.MyGames(ctx, userID)
 }
 
+// CountCatalog and CountFollowed state the navigation's Games/My Games
+// totals. CountCatalog covers the authoritative local catalog only: the
+// synchronized provider index is reachable through search, but it is not a
+// catalog this installation owns or can meaningfully total.
+func (s *DiscoveryService) CountCatalog(ctx context.Context) (int64, error) {
+	return s.subscriptions.CountCatalog(ctx)
+}
+
+func (s *DiscoveryService) CountFollowed(ctx context.Context, userID string) (int64, error) {
+	return s.subscriptions.CountFollowed(ctx, userID)
+}
+
 // FollowLocal follows an already-authoritative local Game by ID. Following
 // an unmaterialized provider result goes through Follow instead, which
 // materializes the Game first.

@@ -27,12 +27,13 @@ type GameDiscovery interface {
 }
 
 type Games struct {
-	discovery GameDiscovery
-	brand     branding.Brand
+	discovery  GameDiscovery
+	navigation *Navigation
+	brand      branding.Brand
 }
 
-func NewGames(discovery GameDiscovery, brand branding.Brand) *Games {
-	return &Games{discovery: discovery, brand: brand}
+func NewGames(discovery GameDiscovery, navigation *Navigation, brand branding.Brand) *Games {
+	return &Games{discovery: discovery, navigation: navigation, brand: brand}
 }
 
 func (h *Games) Browse(w http.ResponseWriter, r *http.Request) {
@@ -59,7 +60,7 @@ func (h *Games) MyGames(w http.ResponseWriter, r *http.Request) {
 		h.renderError(w, r)
 		return
 	}
-	render(w, r, http.StatusOK, pages.MyGames(h.brand, gameNavigation(r, "my-games"), items))
+	render(w, r, http.StatusOK, pages.MyGames(h.brand, h.navigationFor(r, "my-games"), items))
 }
 
 func (h *Games) Follow(w http.ResponseWriter, r *http.Request) {
@@ -103,7 +104,7 @@ func (h *Games) Unfollow(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Games) renderBrowse(w http.ResponseWriter, r *http.Request, status int, page game.DiscoveryPage, search, message string) {
-	navigation := gameNavigation(r, "games")
+	navigation := h.navigationFor(r, "games")
 	if r.Header.Get("HX-Request") == "true" {
 		render(w, r, status, pages.GameCatalogResults(page, search, message, navigation.Viewer))
 		return
@@ -141,15 +142,11 @@ func (h *Games) renderMutationError(w http.ResponseWriter, r *http.Request, caus
 }
 
 func (h *Games) renderError(w http.ResponseWriter, r *http.Request) {
-	render(w, r, http.StatusInternalServerError, pages.GameCatalogError(h.brand, gameNavigation(r, "games")))
+	render(w, r, http.StatusInternalServerError, pages.GameCatalogError(h.brand, h.navigationFor(r, "games")))
 }
 
-func gameNavigation(r *http.Request, section string) components.NavigationState {
-	account, _ := webmiddleware.CurrentUser(r.Context())
-	return components.NavigationState{
-		Viewer:  &components.Viewer{ID: account.ID, GameNick: account.GameNick, Role: string(account.Role)},
-		Section: section,
-	}
+func (h *Games) navigationFor(r *http.Request, section string) components.NavigationState {
+	return h.navigation.For(r, section)
 }
 
 func RequireAuthentication(next http.Handler) http.Handler {
