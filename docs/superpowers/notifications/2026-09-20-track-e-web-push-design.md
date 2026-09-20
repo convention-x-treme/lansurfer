@@ -89,6 +89,13 @@ Detailed E2 questions are intentionally blocked until E1 settles the shared dura
   - `closed`: “<Game> Game Request closed”
   - `cancelled`: “<Game> Game Request cancelled”
   The body primarily carries planned start time and minimum instance context; richer details stay behind the deep link.
+- **Settings surface:** expose Notification settings as a dedicated authenticated profile/account subpage (for example `/account/notifications`) and link it consistently from the existing profile/account UI rather than introducing a separate top-level navigation silo.
+- **Subscription row:** keep active subscription persistence intentionally small: stable row ID, user ID, human label, device identifier hash, globally unique endpoint fingerprint, encrypted endpoint/`p256dh`/`auth`, plus created/updated timestamps. Do not add soft-delete or duplicate delivery-history fields to the subscription row.
+- **Labels:** labels are trimmed, length-bounded human metadata and are not unique per user.
+- **Browser-device cookie:** use a long-lived Secure/HttpOnly/SameSite=Lax opaque device cookie of approximately 400 days, refreshed during authenticated use while the device remains known. Delete it on logout/device removal. If the browser cookie was cleared, silently re-associate a known endpoint only when it already belongs to the same user; cross-user reassignment remains exclusive to explicit Push enablement.
+- **Same-endpoint refresh:** if the endpoint fingerprint already belongs to the same user, update the existing subscription row in place and retain its stable ID. If it belongs to another user, transfer ownership atomically only inside the explicit enable flow.
+- **HTTP shape:** use a server-rendered notification settings page, normal same-origin POSTs for ordinary preferences/device removal, and a narrow authenticated same-origin POST carrying the browser-created PushSubscription. All mutations reuse the existing CSRF protection. Do not create a generic `/api` surface or SPA backend for Push.
+- **External browser revocation:** if an authenticated browser later reports Notification permission `denied` or no current `PushManager.getSubscription()` for the known current device, remove that device's active server-side subscription. Keep the global `web_push_enabled` preference unchanged.
 - This is an intentional extension beyond the current roadmap's creation-focused Web Push and identity-minimized wording and requires canonical documentation reconciliation before implementation merge.
 
 ### Open decision branches
