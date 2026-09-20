@@ -74,6 +74,9 @@ Deliver one synchronized Discord message per Game Request to at most one adminis
 - Discord webhook execution with `wait=true` returns the created Message object, which provides the message ID E3 must persist before later edits.
 - Editing a webhook message must send an explicit empty `allowed_mentions` again; Discord does not inherit the original create request's mention policy for later edits.
 - The webhook-token API can read/modify/delete the webhook and read/edit/delete messages created by that same webhook token without introducing a bot/gateway integration.
+- Discord currently distinguishes JSON error code `10015` (Unknown Webhook) from `10008` (Unknown Message), which lets the adapter separate broken-destination handling from single-message recovery.
+- Discord HTTP 429 responses provide `Retry-After` / `retry_after`; do not hard-code Discord rate-limit buckets or fixed quotas.
+- Discord explicitly advises clients not to continue using a webhook that returns 404, because repeated invalid requests can contribute to temporary restrictions.
 
 
 ## Settled decisions
