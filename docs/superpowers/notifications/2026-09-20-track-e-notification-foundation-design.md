@@ -34,6 +34,8 @@ Provide restart-safe PostgreSQL-backed notification work consumption and deliver
 - PostgreSQL remains the only required persistence/runtime coordination service.
 - Redis, message brokers, event sourcing, full CQRS, and a persistent in-app notification inbox are outside scope.
 - E2 and E3 depend on E1 but must not depend on each other.
+- The current durable activity kinds are exactly `created`, `joined`, `left`, `closed`, and `cancelled`.
+- Track E consumes live activity rows; transport-specific rules decide whether a consumed work item produces a concrete delivery.
 
 ## Scope boundary
 
@@ -51,14 +53,31 @@ The interactive design tree is being resolved with the user in rounds. Only deci
 - E1 should abstract only behavior proven common to the two approved transports.
 - E1 is implemented before E2; E3 follows independently later.
 - Track D service-worker integration is an E2 concern, not E1.
+- **Persistence model:** use two durable levels:
+  - one notification work record for each consumed deliverable `game_request_activity` row;
+  - zero or more concrete delivery records beneath that work item, one per external target that is actually eligible for that activity.
+  The work record is the consumer-side processing/accounting record; the delivery record owns transport/target status, attempts, retry schedule, and transport-specific external references where needed.
+- The work layer is not a second transactional outbox and does not replace `game_request_activity`; it is materialized only on the Track E consumer side.
+- **Uncertain external outcome:** persist a distinct `uncertain` delivery state when the adapter cannot determine whether the provider accepted the operation and safely retrying could duplicate an externally visible effect.
+- `uncertain` is not retried automatically. It is exposed for authorized diagnosis and explicit manual retry.
+- The transport adapter decides when an ambiguous result is safe/idempotent enough to remain normally retryable versus when it must be classified as `uncertain`.
+
+### Repository-defined notification coverage
+
+The canonical sources define different transport behavior:
+
+- **Web Push:** the audience language is explicitly about **new Game Requests**, and creator exclusion is explicitly defined for the creator's own newly created request. No canonical requirement currently says to send personal Web Push for `joined`, `left`, `closed`, or `cancelled`.
+- **Discord:** one message is created per Game Request and the same message is edited as the request changes. Its required rendered state includes current status and capacity/free-place summary, so later Game Request activity must be able to refresh that message.
+- E1 therefore consumes the durable live activity stream independently of whether every transport emits a delivery for every activity kind.
+
+The exact Discord-trigger mapping and confirmation that Web Push is creation-only are treated as transport design details, not E1 persistence semantics.
 
 ### Open decision branches
 
-- durable work/delivery persistence model;
 - first-start baseline mechanics;
 - work materialization/discovery timing;
 - claiming/concurrency/crash recovery;
-- retry/failure state machine;
+- retry/failure state machine details;
 - stale-update semantics;
 - manual retry and diagnostics;
 - worker wake-up/polling strategy;
@@ -77,4 +96,5 @@ The final design must make it possible to prove:
 - external failures cannot affect originating Game Request writes;
 - retry state survives restart;
 - duplicate/crash scenarios do not silently lose work;
+- ambiguous provider acceptance is not blindly duplicated;
 - E2 and E3 can consume E1 without transport-specific leakage into the foundation.
