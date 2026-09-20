@@ -1,6 +1,6 @@
 # Track E3 — Discord Delivery Design
 
-Status: Draft — interactive design in progress
+Status: Design complete — awaiting shared-understanding approval
 Date: 2026-09-20
 Tracking issue: #28
 Branch: docs/track-e-notifications-sdd
@@ -102,10 +102,8 @@ Deliver one synchronized Discord message per Game Request to at most one adminis
 - **Broken destination state:** retain safe destination metadata and the failure timestamp/reason for administrator diagnosis, but delete the unusable encrypted webhook credential blob. Stop creating new deliveries while broken. Reconnect replaces the broken destination with a newly authorized webhook. Explicit disconnect removes the remaining local destination metadata.
 - **Admin surface:** expose Discord delivery under the existing administrator area with at least `Not configured`, `Connected`, and `Broken` states; show only safe destination metadata and diagnostics, plus Connect/Reconnect/Disconnect and access to E1 delivery diagnostics. Do not add a separate send-test-message workflow in 1.0.
 
-## Design questions to settle
+## Implementation details intentionally delegated
 
-- exact persisted column/type names and OAuth redirect route naming;
-- exact administrator UI copy/layout;
-- exact automated/live Discord validation matrix.
+The E3 design frontier is closed. Remaining choices are implementation details that do not alter the settled product, security, or architecture contract, including exact SQL column/type names, exact Go type/function names, OAuth route naming, final administrator UI copy/layout, and the exact automated/live Discord validation matrix.
 
-No implementation plan is authorized by this draft until the interactive frontier is empty and shared understanding is explicitly approved.
+Those details must follow the repository's existing admin UI, OAuth security, configuration, logging, and test conventions. No E3 implementation plan is authorized until shared understanding is explicitly approved.
