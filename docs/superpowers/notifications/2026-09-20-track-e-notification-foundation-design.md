@@ -61,21 +61,27 @@ The interactive design tree is being resolved with the user in rounds. Only deci
 - **Uncertain external outcome:** persist a distinct `uncertain` delivery state when the adapter cannot determine whether the provider accepted the operation and safely retrying could duplicate an externally visible effect.
 - `uncertain` is not retried automatically. It is exposed for authorized diagnosis and explicit manual retry.
 - The transport adapter decides when an ambiguous result is safe/idempotent enough to remain normally retryable versus when it must be classified as `uncertain`.
+- **Initial baseline:** on first E1 initialization, all already-visible committed `origin=live` activity rows are durably materialized as baseline/ignored work with no deliveries. Rows that become visible after that initialization are normal work. Do not use a timestamp or sequence cutoff.
+- **Work materialization:** `notification_work` is created asynchronously by E1 from `game_request_activity`; Track A does not write notification tables inside Game Request transactions.
+- The durable uniqueness between activity and work must make repeated discovery harmless and prevent duplicate work rows for the same activity.
 
-### Repository-defined notification coverage
+### Notification coverage
 
-The canonical sources define different transport behavior:
+The canonical sources originally described Web Push mainly around new Game Requests. The interactive SDD intentionally extends the personal Web Push behavior for Track E and must therefore be reconciled back into the canonical product/roadmap documentation before merge.
 
-- **Web Push:** the audience language is explicitly about **new Game Requests**, and creator exclusion is explicitly defined for the creator's own newly created request. No canonical requirement currently says to send personal Web Push for `joined`, `left`, `closed`, or `cancelled`.
-- **Discord:** one message is created per Game Request and the same message is edited as the request changes. Its required rendered state includes current status and capacity/free-place summary, so later Game Request activity must be able to refresh that message.
-- E1 therefore consumes the durable live activity stream independently of whether every transport emits a delivery for every activity kind.
+Settled personal-notification rules so far:
 
-The exact Discord-trigger mapping and confirmation that Web Push is creation-only are treated as transport design details, not E1 persistence semantics.
+- **Actor exclusion:** the user whose action produced the activity never receives a personal notification for that same activity.
+- **`created`:** notify eligible users for the Game according to their Web Push audience preference; never notify the creator.
+- **`joined`:** notify the Game Request participants, excluding the joining actor.
+- **`left`:** notify the remaining Game Request participants, excluding the leaving actor.
+- **Discord:** one message is created per Game Request and the same message is edited as request state changes; its current status and capacity/free-place summary are synchronized from later activity.
+- E1 consumes the durable live activity stream independently of whether every transport emits a delivery for every activity kind.
+
+The exact personal-notification behavior for `closed` and `cancelled`, and the exact participant snapshot used for recipient resolution, remain open E2 design decisions.
 
 ### Open decision branches
 
-- first-start baseline mechanics;
-- work materialization/discovery timing;
 - claiming/concurrency/crash recovery;
 - retry/failure state machine details;
 - stale-update semantics;
