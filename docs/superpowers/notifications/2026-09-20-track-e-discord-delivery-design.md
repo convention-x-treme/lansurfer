@@ -83,15 +83,18 @@ Deliver one synchronized Discord message per Game Request to at most one adminis
 - **Destination replacement:** an existing destination remains active while a replacement OAuth flow is in progress. After a successful callback and durable storage of the new destination, atomically switch LANsurfer to the new destination, then best-effort delete the old remote webhook. Cleanup failure does not roll back the successful replacement but must remain diagnosable to administrators.
 - **Disconnect:** disconnect immediately removes/deactivates the local destination and suppresses still-pending deliveries tied to that destination. LANsurfer best-effort deletes the remote webhook. Existing Discord messages remain in the channel. Reconnect creates a new destination and never replays historical work.
 - **Scopes and metadata:** request only `webhook.incoming` for notification delivery. Do not request `identify`, `guilds`, bot permissions, or Gateway access merely to improve display labels. Persist only the non-sensitive destination metadata returned by the webhook flow that is useful for identification/diagnosis (such as webhook ID, guild ID, channel ID, and webhook name when available) alongside encrypted secrets.
+- **OAuth token retention:** after a successful `webhook.incoming` setup, do not persist the OAuth access token or refresh token. Persist only the webhook credentials needed for delivery plus non-sensitive destination metadata. Changing destination requires a new explicit authorization flow.
+- **Create from current state:** if the initial Discord create is delayed or retried after later Game Request activity occurred, render the then-current Game Request snapshot rather than replaying the original `created` snapshot. Older update work may be absorbed/superseded by the current synchronized state.
+- **Serialized external mutation:** allow at most one Discord create/edit mutation at a time for a given destination + Game Request. Persist the external message ID and the highest applied/request state version needed to prevent an older mutation from overwriting a newer synchronized representation.
+- **Supersession/coalescing:** multiple rapid activities may collapse into one edit to the latest current Game Request snapshot. Individual durable work/delivery records remain technically traceable; externally obsolete intermediate deliveries may finish as `superseded`.
+- **Message format:** use one compact Discord embed per Game Request. Include Game, planned start, current status, current players/capacity or free-place summary, creator Game Nick, short sanitized description, LANsurfer deep link, and minimal instance context. Do not include the full roster, activity history, or join/leave actor identities.
+- **Description handling:** treat user-authored request description as plain content, not as permission to control Discord presentation. Neutralize Discord formatting/control characters as needed, respect the existing LANsurfer description limit, do not allow user-controlled embed URLs/structure, and send an empty `allowed_mentions` on every create and edit.
+- **Deleted/broken webhook:** a definitive unknown/deleted-webhook result is permanent for the current destination. Mark the local destination broken/disconnected and stop creating new deliveries to it until an administrator explicitly reconnects. Reconnect never replays old work.
+- **Deleted message recovery:** if the webhook still exists but the stored Discord message no longer exists, clear/replace the stale message reference and create one new message from the current Game Request snapshot with `wait=true`. Do not replay historical intermediate activity.
 
 ## Design questions to settle
 
-- whether OAuth access/refresh tokens are retained after successful webhook setup;
 - exact persisted destination fields and secret-encryption representation;
-- exact create/edit state model and stale-update protection;
-- behavior when a Game Request changes before its Discord create succeeds;
-- behavior when the webhook or Discord message is removed externally;
-- message layout/content truncation/sanitization;
 - retry/result classification for create versus edit;
 - manual retry semantics for ambiguous create results;
 - admin diagnostics and destination health presentation;
