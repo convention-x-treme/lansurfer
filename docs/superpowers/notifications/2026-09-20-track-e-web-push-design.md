@@ -28,8 +28,8 @@ Deliver personal Web Push notifications for eligible Game Requests with explicit
   - all new Game Requests only through explicit opt-in.
 - A creator must never receive the creation push for their own Game Request.
 - Eligibility must be re-checked before delayed/retried sends.
-- Payload is limited to Game, planned time, deep link, and minimum instance context.
-- Creator identity, description, roster, and activity history are excluded from Web Push payloads.
+- Payload is limited to the versioned minimal notification contract: activity kind, Game, planned time, deep link, minimum instance context, and optional public actor Game Nick for `joined`/`left`.
+- Description, roster, provider identity data, and activity history are excluded from Web Push payloads. `closed`/`cancelled` remain actor-neutral.
 - Track D owns service-worker registration/lifecycle.
 - E2 extends the existing worker with `push` and `notificationclick`; it must not add a second service worker or registration path.
 - Track G owns visual presentation conventions for notification settings/status states.
