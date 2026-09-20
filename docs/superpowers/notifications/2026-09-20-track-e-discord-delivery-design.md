@@ -70,6 +70,10 @@ Deliver one synchronized Discord message per Game Request to at most one adminis
 - Existing global administrator authorization uses `RequireAdmin`.
 - The existing Account/Discord authentication flow must not be reused as evidence that the administrator's Discord identity is the public Game Request identity.
 - The data-encryption key is already part of the approved Track E architecture and is required for encrypted external credentials.
+- Discord's current `webhook.incoming` authorization-code flow returns the created webhook object in the token response, including webhook ID/token and guild/channel IDs; each authorization creates a new webhook.
+- Discord webhook execution with `wait=true` returns the created Message object, which provides the message ID E3 must persist before later edits.
+- Editing a webhook message must send an explicit empty `allowed_mentions` again; Discord does not inherit the original create request's mention policy for later edits.
+- The webhook-token API can read/modify/delete the webhook and read/edit/delete messages created by that same webhook token without introducing a bot/gateway integration.
 
 ## Design questions to settle
 
