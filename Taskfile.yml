@@ -41,6 +41,15 @@ tasks:
       - npx playwright install --with-deps chromium
       - npx playwright test
 
+  test:pwa:
+    desc: Run the focused PWA browser suite (service-worker registration/lifecycle)
+    # Same rationale as test:browser: the fixture embeds the compiled bundle,
+    # including service-worker.js, at compile time.
+    deps: [frontend:build]
+    cmds:
+      - npx playwright install --with-deps chromium
+      - npx playwright test --config=playwright.pwa.config.ts
+
   test:integration:
     desc: Run PostgreSQL integration tests in an isolated container
     cmds:
