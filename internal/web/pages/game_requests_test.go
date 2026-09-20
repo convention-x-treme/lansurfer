@@ -201,9 +201,9 @@ func TestRequestFiltersApplyWhileTyping(t *testing.T) {
 	}
 }
 
-// The list row shares GameIdentity's cover-or-abbreviation rendering with
-// /games (Task 6), so a Game materialized via IGDB shows its cover in the
-// row exactly as it does everywhere else, not the abbreviation tile.
+// The list row leads with the Game's cover at the size the cover row shows
+// it, so a Game materialized via IGDB shows its art rather than the
+// abbreviation tile.
 func TestGameRequestRowUsesCoverWhenAvailable(t *testing.T) {
 	request := requestquery.Request{
 		ID:     "request-1",
@@ -215,16 +215,16 @@ func TestGameRequestRowUsesCoverWhenAvailable(t *testing.T) {
 		t.Fatalf("render GameRequestRow: %v", err)
 	}
 	body := rendered.String()
-	if !strings.Contains(body, "https://images.igdb.com/igdb/image/upload/t_cover_small/co1abc.jpg") {
+	if !strings.Contains(body, "https://images.igdb.com/igdb/image/upload/t_cover_big/co1abc.jpg") {
 		t.Fatalf("row does not render the cover: %s", body)
 	}
-	if !strings.Contains(body, `class="game-abbreviation" aria-hidden="true" hidden>`) {
+	if !strings.Contains(body, `class="cover-art-fallback" aria-hidden="true" hidden>`) {
 		t.Errorf("row must render a hidden abbreviation fallback for the cover to fall back to on load failure: %s", body)
 	}
 }
 
 // A Game never materialized via IGDB has no cover, so the row must keep
-// falling back to the abbreviation tile exactly as before Task 6.
+// falling back to the abbreviation in the cover tile's place.
 func TestGameRequestRowFallsBackToAbbreviationWithoutCover(t *testing.T) {
 	request := requestquery.Request{
 		ID:     "request-1",
@@ -236,7 +236,7 @@ func TestGameRequestRowFallsBackToAbbreviationWithoutCover(t *testing.T) {
 		t.Fatalf("render GameRequestRow: %v", err)
 	}
 	body := rendered.String()
-	if !strings.Contains(body, `class="game-abbreviation"`) || !strings.Contains(body, ">W3<") {
+	if !strings.Contains(body, `class="cover-art-fallback"`) || !strings.Contains(body, ">W3<") {
 		t.Fatalf("row does not fall back to the abbreviation tile: %s", body)
 	}
 	if strings.Contains(body, "images.igdb.com") {
@@ -244,17 +244,106 @@ func TestGameRequestRowFallsBackToAbbreviationWithoutCover(t *testing.T) {
 	}
 }
 
-// Trending is a focused text-only read model over Game Request activity, not
-// a card grid; it must never grow a cover image, even though the Request
-// rows on the same page can now show one.
-func TestTrendingRemainsTextOnly(t *testing.T) {
-	trending := []requestquery.TrendingGame{{GameID: "game-1", GameName: "Warcraft III", ActivityCount: 4, RequestCount: 2}}
+// PRODUCT requires the list itself to carry Game, capacity, start time, short
+// description, and the Join action, so a player never has to open the detail
+// page to decide. The row states who is looking for what in one reading line.
+func TestGameRequestRowCarriesTheWholeDecision(t *testing.T) {
+	maxPlayers := int32(4)
+	request := requestquery.Request{
+		ID:              "request-1",
+		Game:            game.GamePresentation{Name: "Warcraft III"},
+		CreatorID:       "host-1",
+		CreatorGameNick: "Otter#1337",
+		Description:     "2v2 melee on Twisted Meadows, no mic needed.",
+		MaxPlayers:      &maxPlayers,
+		MemberCount:     2,
+		Status:          gamerequest.StatusOpen,
+	}
+	var rendered bytes.Buffer
+	if err := GameRequestRow(request, "viewer-1", "").Render(context.Background(), &rendered); err != nil {
+		t.Fatalf("render GameRequestRow: %v", err)
+	}
+	body := rendered.String()
+	for _, want := range []string{
+		"Otter#1337 is looking for Warcraft III",
+		"2v2 melee on Twisted Meadows, no mic needed.",
+		">2/4<",
+		">Join</button>",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("row does not contain %q: %s", want, body)
+		}
+	}
+}
+
+// A creator whose public Game Nick is not known falls back to the Game alone
+// rather than to a dangling sentence or an empty name.
+func TestGameRequestRowTitleFallsBackToTheGameWithoutANick(t *testing.T) {
+	request := requestquery.Request{
+		ID:     "request-1",
+		Game:   game.GamePresentation{Name: "Warcraft III"},
+		Status: gamerequest.StatusOpen,
+	}
+	var rendered bytes.Buffer
+	if err := GameRequestRow(request, "viewer-1", "").Render(context.Background(), &rendered); err != nil {
+		t.Fatalf("render GameRequestRow: %v", err)
+	}
+	body := rendered.String()
+	if !strings.Contains(body, `class="request-row-title">Warcraft III<`) {
+		t.Errorf("row title does not fall back to the Game name: %s", body)
+	}
+	if strings.Contains(body, "is looking for") {
+		t.Errorf("row title rendered a sentence without a creator name: %s", body)
+	}
+}
+
+// A request with no description simply has no description line: an empty
+// element would reserve the row height of a line that says nothing.
+func TestGameRequestRowOmitsAnEmptyDescription(t *testing.T) {
+	request := requestquery.Request{
+		ID:     "request-1",
+		Game:   game.GamePresentation{Name: "Warcraft III"},
+		Status: gamerequest.StatusOpen,
+	}
+	var rendered bytes.Buffer
+	if err := GameRequestRow(request, "viewer-1", "").Render(context.Background(), &rendered); err != nil {
+		t.Fatalf("render GameRequestRow: %v", err)
+	}
+	if body := rendered.String(); strings.Contains(body, "request-row-description") {
+		t.Errorf("row rendered an empty description line: %s", body)
+	}
+}
+
+// The Trending rail is a column of cover art, ranked by order. A cover-only
+// link has no text to name it, so each tile carries the game and its activity
+// counts as its accessible name, and the rail keeps stating its window.
+func TestTrendingRailRendersRankedCoversWithAccessibleNames(t *testing.T) {
+	trending := []requestquery.TrendingGame{
+		{GameID: "game-1", GameName: "Warcraft III", CoverImageID: "co1abc", ActivityCount: 4, RequestCount: 2},
+		{GameID: "game-2", GameName: "Quake III Arena", ActivityCount: 1, RequestCount: 1},
+	}
 	var rendered bytes.Buffer
 	if err := TrendingSection(trending, false).Render(context.Background(), &rendered); err != nil {
 		t.Fatalf("render TrendingSection: %v", err)
 	}
-	if body := rendered.String(); strings.Contains(body, "<img") {
-		t.Errorf("Trending must stay text-only: %s", body)
+	body := rendered.String()
+	for _, want := range []string{
+		"https://images.igdb.com/igdb/image/upload/t_cover_big/co1abc.jpg",
+		`aria-label="Warcraft III, 4 activity entries across 2 Game Requests"`,
+		`aria-label="Quake III Arena, 1 activity entry across 1 Game Request"`,
+		"last 6 hours",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("Trending rail does not contain %q: %s", want, body)
+		}
+	}
+	// The second entry has no cover, so it must fall back rather than request
+	// a cover URL built from an empty image ID.
+	if strings.Contains(body, "/t_cover_big/.jpg") {
+		t.Errorf("Trending rail requested a cover for a Game without one: %s", body)
+	}
+	if !strings.Contains(body, ">Q3A<") {
+		t.Errorf("Trending rail does not fall back to the abbreviation: %s", body)
 	}
 }
 

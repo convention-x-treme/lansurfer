@@ -122,6 +122,7 @@ type RecentRequest struct {
 type TrendingGame struct {
 	GameID        string
 	GameName      string
+	CoverImageID  string
 	ActivityCount int64
 	RequestCount  int64
 }
@@ -226,7 +227,7 @@ func (s *Store) Trending(ctx context.Context) ([]TrendingGame, error) {
 	result := make([]TrendingGame, 0, len(rows))
 	for _, row := range rows {
 		result = append(result, TrendingGame{
-			GameID: row.GameID, GameName: row.GameName,
+			GameID: row.GameID, GameName: row.GameName, CoverImageID: textValue(row.CoverImageID),
 			ActivityCount: row.ActivityCount, RequestCount: row.RequestCount,
 		})
 	}

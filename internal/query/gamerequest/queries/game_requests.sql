@@ -84,14 +84,16 @@ ORDER BY a.sequence DESC;
 -- from search queries or page views.
 -- name: TrendingGames :many
 SELECT g.id::text AS game_id, g.name AS game_name,
+       enrichment.cover_image_id,
        count(*) AS activity_count,
        count(DISTINCT a.game_request_id) AS request_count
 FROM game_request_activity a
 JOIN game_requests gr ON gr.id = a.game_request_id
 JOIN games g ON g.id = gr.game_id
+LEFT JOIN game_igdb_enrichment enrichment ON enrichment.game_id = g.id
 WHERE a.occurred_at >= sqlc.arg(since)
   AND a.kind IN ('created', 'joined')
-GROUP BY g.id, g.name
+GROUP BY g.id, g.name, enrichment.game_id
 ORDER BY count(*) DESC, count(DISTINCT a.game_request_id) DESC, lower(g.name), g.id
 LIMIT sqlc.arg(result_limit);
 

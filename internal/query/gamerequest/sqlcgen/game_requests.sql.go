@@ -351,14 +351,16 @@ func (q *Queries) ListRecentlyViewedGameRequests(ctx context.Context, arg ListRe
 
 const trendingGames = `-- name: TrendingGames :many
 SELECT g.id::text AS game_id, g.name AS game_name,
+       enrichment.cover_image_id,
        count(*) AS activity_count,
        count(DISTINCT a.game_request_id) AS request_count
 FROM game_request_activity a
 JOIN game_requests gr ON gr.id = a.game_request_id
 JOIN games g ON g.id = gr.game_id
+LEFT JOIN game_igdb_enrichment enrichment ON enrichment.game_id = g.id
 WHERE a.occurred_at >= $1
   AND a.kind IN ('created', 'joined')
-GROUP BY g.id, g.name
+GROUP BY g.id, g.name, enrichment.game_id
 ORDER BY count(*) DESC, count(DISTINCT a.game_request_id) DESC, lower(g.name), g.id
 LIMIT $2
 `
@@ -371,6 +373,7 @@ type TrendingGamesParams struct {
 type TrendingGamesRow struct {
 	GameID        string
 	GameName      string
+	CoverImageID  pgtype.Text
 	ActivityCount int64
 	RequestCount  int64
 }
@@ -390,6 +393,7 @@ func (q *Queries) TrendingGames(ctx context.Context, arg TrendingGamesParams) ([
 		if err := rows.Scan(
 			&i.GameID,
 			&i.GameName,
+			&i.CoverImageID,
 			&i.ActivityCount,
 			&i.RequestCount,
 		); err != nil {
