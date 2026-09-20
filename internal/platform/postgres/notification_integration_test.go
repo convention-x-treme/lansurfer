@@ -166,18 +166,22 @@ func TestNotificationDiscoveryHasNoGlobalSequenceCursor(t *testing.T) {
 		t.Fatalf("InitializeBaseline() error = %v", err)
 	}
 
-	first, err := fixture.requests.Create(t.Context(), fixture.host.ID, fixture.gameID, nil, time.Now().Add(time.Hour), "First")
-	if err != nil {
-		t.Fatalf("create first game request: %v", err)
-	}
-
-	// Simulate a transaction that assigned a higher sequence value but
-	// commits before "first"'s sequence has been consumed: open a second
-	// connection, start a transaction, insert (reserving a sequence number),
-	// hold it uncommitted, then let "first" be discovered and its work
-	// materialized, and only then commit the held transaction. A
-	// high-watermark cursor advanced past "first"'s sequence would then skip
-	// the held row forever; the NOT EXISTS anti-join this store uses does not.
+	// The adversarial race this store must tolerate is a row that claims a
+	// LOWER sequence number (because its INSERT executes first) but commits
+	// LATER, after some other row with a HIGHER sequence number has already
+	// been discovered and materialized. Postgres identity columns assign
+	// their value at INSERT-statement time via a non-transactional nextval(),
+	// not at commit time, so two transactions can commit in the opposite
+	// order to the numeric order of the sequence values they reserved.
+	//
+	// Construct that ordering explicitly: open a second connection, start a
+	// transaction, and insert the "held" game request and its activity row
+	// directly via raw SQL first -- this claims the LOWER sequence number --
+	// then leave it uncommitted. Only after that does the fixture's own
+	// requests.Create (which auto-commits) insert a second, independent game
+	// request; because its activity INSERT executes after the held
+	// transaction's insert, it claims a HIGHER sequence number and commits
+	// immediately, so it alone is visible to a query issued right now.
 	tx, err := pool.Begin(t.Context())
 	if err != nil {
 		t.Fatalf("begin held transaction: %v", err)
@@ -196,27 +200,46 @@ func TestNotificationDiscoveryHasNoGlobalSequenceCursor(t *testing.T) {
 		t.Fatalf("insert held activity: %v", err)
 	}
 
+	afterHeld, err := fixture.requests.Create(t.Context(), fixture.host.ID, fixture.gameID, nil, time.Now().Add(time.Hour), "After held")
+	if err != nil {
+		t.Fatalf("create higher-sequence game request: %v", err)
+	}
+
+	// Only the higher-sequence, already-committed row is visible: the held
+	// transaction's lower-sequence row is still uncommitted.
 	activities, err := store.DiscoverActivity(t.Context(), 10)
 	if err != nil {
 		t.Fatalf("DiscoverActivity() error = %v", err)
 	}
-	if len(activities) != 1 || activities[0].GameRequestID != first.ID {
-		t.Fatalf("DiscoverActivity() before the held commit = %#v, want only %s", activities, first.ID)
+	if len(activities) != 1 || activities[0].GameRequestID != afterHeld.ID {
+		t.Fatalf("DiscoverActivity() before the held commit = %#v, want only %s", activities, afterHeld.ID)
 	}
+	// This is the step where a naive high-watermark cursor design would
+	// advance its watermark to this higher sequence value, having now
+	// "processed" it.
 	if err := store.MaterializeWork(t.Context(), activities[0], nil); err != nil {
 		t.Fatalf("MaterializeWork() error = %v", err)
 	}
 
+	// The held transaction commits now, making its lower-sequence row
+	// visible for the first time -- after the higher-sequence row was
+	// already discovered and materialized.
 	if err := tx.Commit(t.Context()); err != nil {
 		t.Fatalf("commit held transaction: %v", err)
 	}
 
+	// A high-watermark cursor advanced past the higher sequence in the
+	// MaterializeWork step above would now permanently skip this
+	// lower-sequence row: its sequence value is <= that watermark forever,
+	// even though it only just became visible. The NOT EXISTS anti-join
+	// this store uses does not care about relative sequence ordering at
+	// all, so it correctly finds and returns it.
 	activities, err = store.DiscoverActivity(t.Context(), 10)
 	if err != nil {
 		t.Fatalf("DiscoverActivity() after the held commit error = %v", err)
 	}
 	if len(activities) != 1 || activities[0].GameRequestID != heldRequestID {
-		t.Fatalf("DiscoverActivity() after the held commit = %#v, want the previously-uncommitted row %s", activities, heldRequestID)
+		t.Fatalf("DiscoverActivity() after the held commit = %#v, want the previously-uncommitted lower-sequence row %s", activities, heldRequestID)
 	}
 }
 
