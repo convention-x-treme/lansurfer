@@ -8,11 +8,14 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 const (
-	defaultListenAddr = ":8080"
-	defaultBaseURL    = "http://localhost:8080"
+	defaultListenAddr     = ":8080"
+	defaultBaseURL        = "http://localhost:8080"
+	maxInstanceNameLength = 64
 )
 
 type OIDC struct {
@@ -42,6 +45,11 @@ type Config struct {
 	Discord        *Discord
 	IGDB           *IGDB
 	TrustedProxies []netip.Prefix
+	// InstanceName is the trimmed, optional minimum instance identity from
+	// LANSURFER_INSTANCE_NAME. Empty means unset; the web layer resolves the
+	// display fallback ("LANsurfer"), the same way it already owns
+	// branding.Default() rather than config owning product identity.
+	InstanceName string
 }
 
 // Load reads configuration from environment variables.
@@ -84,6 +92,11 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 
+	instanceName, err := loadInstanceName()
+	if err != nil {
+		return Config{}, err
+	}
+
 	return Config{
 		DatabaseURL:    databaseURL,
 		ListenAddr:     listenAddr,
@@ -92,7 +105,24 @@ func Load() (Config, error) {
 		Discord:        discord,
 		IGDB:           igdb,
 		TrustedProxies: trustedProxies,
+		InstanceName:   instanceName,
 	}, nil
+}
+
+func loadInstanceName() (string, error) {
+	name := strings.TrimSpace(os.Getenv("LANSURFER_INSTANCE_NAME"))
+	if name == "" {
+		return "", nil
+	}
+	for _, r := range name {
+		if unicode.IsControl(r) || r == ' ' || r == ' ' {
+			return "", fmt.Errorf("LANSURFER_INSTANCE_NAME must not contain control characters or line breaks")
+		}
+	}
+	if length := utf8.RuneCountInString(name); length > maxInstanceNameLength {
+		return "", fmt.Errorf("LANSURFER_INSTANCE_NAME must be %d Unicode characters or fewer, got %d", maxInstanceNameLength, length)
+	}
+	return name, nil
 }
 
 func loadTrustedProxies() ([]netip.Prefix, error) {

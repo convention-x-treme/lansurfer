@@ -1,4 +1,20 @@
 import htmx from "htmx.org";
+import { registerServiceWorker } from "./pwa";
+
+window.addEventListener("load", () => {
+  void registerServiceWorker();
+});
+
+// A page restored from the back/forward cache keeps the DOM it was frozen
+// with. On an authenticated page that can be private content a logout since
+// (in this tab, or by using the back button after logging out) must not stay
+// visible, so a restore forces a fresh request instead of trusting the frozen
+// DOM. This is single-tab only: no cross-tab broadcast, no session polling.
+window.addEventListener("pageshow", (event) => {
+  if (event.persisted && document.querySelector("[data-authenticated-shell]")) {
+    window.location.reload();
+  }
+});
 
 // htmx injects an inline <style> for its indicator classes on startup, which the
 // Content-Security-Policy blocks. app.css defines those classes itself.

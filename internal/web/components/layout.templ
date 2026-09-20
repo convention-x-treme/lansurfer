@@ -20,6 +20,33 @@ func themeAttributes(ctx context.Context) templ.Attributes {
 	return nil
 }
 
+// resolvedInstanceName mirrors NewRouter's own fallback: an unset instance
+// (including a component test that never ran the Instance middleware) reads
+// as the fixed brand name.
+func resolvedInstanceName(ctx context.Context, brand branding.Brand) string {
+	if name := webmiddleware.InstanceName(ctx); name != "" {
+		return name
+	}
+	return brand.Name
+}
+
+// PageTitle mirrors LANSURFER_INSTANCE_NAME's contract: unset renders exactly
+// as it always has ("<page> · LANsurfer"); configured renders "<page> ·
+// <instance>".
+func PageTitle(ctx context.Context, brand branding.Brand, title string) string {
+	return title + " · " + resolvedInstanceName(ctx, brand)
+}
+
+// hasCustomInstanceName reports whether a deployment configured
+// LANSURFER_INSTANCE_NAME at all, which is the only condition under which
+// the secondary instance label renders. It checks configuration presence
+// directly rather than comparing the resolved name against the fixed
+// LANsurfer brand, so an operator who explicitly configures the instance
+// name to "LANsurfer" still gets the label.
+func hasCustomInstanceName(ctx context.Context, brand branding.Brand) bool {
+	return webmiddleware.InstanceName(ctx) != ""
+}
+
 type Viewer struct {
 	ID string
 	GameNick string
@@ -43,15 +70,16 @@ templ Layout(brand branding.Brand, title string, navigation NavigationState) {
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
 			<meta name="description" content={ brand.Tagline }/>
-			<title>{ title } · { brand.Name }</title>
+			<title>{ PageTitle(ctx, brand, title) }</title>
 			@FontPreloads(brand)
+			@PWAHeadLinks(brand)
 			<link rel="stylesheet" href={ brand.Assets.Stylesheet }/>
 			<script src={ brand.Assets.Script } defer></script>
 		</head>
 		<body class="bg-base-100 text-base-content antialiased">
 			<a class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-sm focus:bg-warning focus:px-4 focus:py-2 focus:text-warning-content" href="#main-content">Skip to content</a>
 			if navigation.Viewer != nil {
-				<div class="app-shell">
+				<div class="app-shell" data-authenticated-shell>
 					@DesktopNavigation(brand, navigation)
 					<div class="min-w-0">
 						@MobileNavigation(brand, navigation)
@@ -82,14 +110,19 @@ templ AuthLayout(brand branding.Brand, title string) {
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
 			<meta name="description" content={ brand.Tagline }/>
-			<title>{ title } · { brand.Name }</title>
+			<title>{ PageTitle(ctx, brand, title) }</title>
 			@FontPreloads(brand)
+			@PWAHeadLinks(brand)
 			<link rel="stylesheet" href={ brand.Assets.Stylesheet }/>
 			<script src={ brand.Assets.Script } defer></script>
 		</head>
 		<body class="bg-base-100 text-base-content antialiased">
 			<a class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-sm focus:bg-warning focus:px-4 focus:py-2 focus:text-warning-content" href="#main-content">Skip to content</a>
-			<header class="auth-header"><a class="brand-wordmark text-xl" href="/"><span>LAN</span><span class="text-primary">surfer</span></a>@ThemeToggle()</header>
+			<header class="auth-header">
+				<a class="brand-wordmark text-xl" href="/"><span>LAN</span><span class="text-primary">surfer</span></a>
+				@InstanceLabel(brand)
+				@ThemeToggle()
+			</header>
 			<main id="main-content">{ children... }</main>
 		</body>
 	</html>
@@ -98,7 +131,10 @@ templ AuthLayout(brand branding.Brand, title string) {
 templ PublicHeader(brand branding.Brand, state NavigationState) {
 	<header class="border-b border-base-300 bg-base-100/95">
 		<nav class="page-shell flex min-h-16 items-center justify-between gap-4" aria-label="Primary navigation">
-			<a class="brand-wordmark text-xl text-primary" href="/" aria-label={ brand.Name + " home" }>{ brand.Name }</a>
+			<div class="flex items-center gap-2">
+				<a class="brand-wordmark text-xl text-primary" href="/" aria-label={ brand.Name + " home" }>{ brand.Name }</a>
+				@InstanceLabel(brand)
+			</div>
 			<div class="flex items-center gap-2">
 				@ThemeToggle()
 				if state.LoginAvailable {
@@ -114,6 +150,7 @@ templ DesktopNavigation(brand branding.Brand, state NavigationState) {
 		<a class="brand-wordmark px-2 text-xl text-base-content" href="/game-requests" aria-label={ brand.Name + " Game Requests" }>
 			<span>LAN</span><span class="text-primary">surfer</span>
 		</a>
+		@InstanceLabel(brand)
 		@NavigationLinks(state)
 		<div class="mt-auto grid gap-3">
 			@ViewerPanel(state.Viewer)
@@ -139,6 +176,7 @@ templ MobileNavigation(brand branding.Brand, state NavigationState) {
 					<span class="brand-wordmark text-xl"><span>LAN</span><span class="text-primary">surfer</span></span>
 					<button class="btn btn-ghost btn-sm" type="button" data-close-navigation aria-label="Close navigation">×</button>
 				</div>
+				@InstanceLabel(brand)
 				@NavigationLinks(state)
 				<div class="mt-auto grid gap-3">
 					@ViewerPanel(state.Viewer)
@@ -197,6 +235,25 @@ templ LogoutControl() {
 
 templ ThemeToggle() {
 	<button type="button" class="btn btn-ghost btn-sm btn-square" data-theme-toggle aria-label="Use light theme" title="Use light theme"><span data-theme-icon aria-hidden="true">☾</span></button>
+}
+
+// InstanceLabel renders the minimum-instance-identity secondary label next to
+// the fixed wordmark. It renders nothing when no instance name is configured
+// (LANSURFER_INSTANCE_NAME unset), matching current markup exactly.
+templ InstanceLabel(brand branding.Brand) {
+	if hasCustomInstanceName(ctx, brand) {
+		<span class="text-xs font-semibold text-base-content/60" data-instance-name>{ resolvedInstanceName(ctx, brand) }</span>
+	}
+}
+
+// PWAHeadLinks links the manifest and the bundled application-icon
+// renditions from every full HTML layout.
+templ PWAHeadLinks(brand branding.Brand) {
+	<link rel="manifest" href="/manifest.webmanifest"/>
+	<link rel="apple-touch-icon" href={ brand.Assets.Icons.AppleTouch180 }/>
+	<link rel="icon" type="image/png" sizes="32x32" href={ brand.Assets.Icons.Favicon32 }/>
+	<link rel="icon" type="image/png" sizes="16x16" href={ brand.Assets.Icons.Favicon16 }/>
+	<link rel="icon" href={ brand.Assets.Icons.FaviconICO }/>
 }
 
 templ CSRFInput() {

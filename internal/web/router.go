@@ -70,18 +70,31 @@ type RouterDependencies struct {
 	SecureCookies       bool
 	Logger              *slog.Logger
 	TrustedProxies      []netip.Prefix
+	// InstanceName is the raw, already-trimmed config.Config.InstanceName
+	// value. Empty means unset; NewRouter resolves the display fallback.
+	InstanceName string
+	// BaseURL is config.Config.BaseURL, used only by /admin/pwa diagnostics
+	// (manifest/worker URLs and the expected secure-context status).
+	BaseURL string
 }
 
 // NewRouter constructs the HTTP router.
 func NewRouter(dependencies RouterDependencies) http.Handler {
 	brand := branding.Default()
+	instanceName := dependencies.InstanceName
+	if instanceName == "" {
+		instanceName = brand.Name
+	}
 	authenticationHandler := handler.NewAuthentication(dependencies.Authentication, dependencies.Sessions, brand, dependencies.SecureCookies)
 	onboardingHandler := handler.NewOnboarding(
 		dependencies.PendingIdentities, dependencies.AccountRegistration, dependencies.GameNickClaims,
 		dependencies.Identities, dependencies.Authentication, brand, dependencies.SecureCookies,
 	)
 	accountHandler := handler.NewAccount(dependencies.Identities, dependencies.IdentityUnlinker, dependencies.GameNickClaims, dependencies.Authentication, brand)
-	administrationHandler := handler.NewAdministration(dependencies.Games, dependencies.ProviderSync, brand)
+	administrationHandler := handler.NewAdministration(
+		dependencies.Games, dependencies.ProviderSync, brand,
+		instanceName, dependencies.BaseURL, SecureContextStatus(dependencies.BaseURL),
+	)
 	gamesHandler := handler.NewGames(dependencies.Discovery, brand)
 	gameRequestsHandler := handler.NewGameRequests(dependencies.GameRequests, dependencies.RequestQueries, dependencies.GameResolver, dependencies.Discovery, brand)
 	realtimeHandler := handler.NewRealtime(dependencies.Realtime)
@@ -96,8 +109,18 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 	router.Use(webmiddleware.SecurityHeaders(dependencies.SecureCookies))
 	router.Use(webmiddleware.CSRF(dependencies.SecureCookies))
 	router.Use(webmiddleware.Theme)
+	router.Use(webmiddleware.Instance(instanceName))
 
 	router.Handle("/assets/*", http.StripPrefix("/assets/", assets.Handler()))
+	manifest := manifestHandler(brand, instanceName)
+	router.Get("/manifest.webmanifest", manifest)
+	router.Head("/manifest.webmanifest", manifest)
+	serviceWorker, err := serviceWorkerHandler()
+	if err != nil {
+		panic("read compiled service worker: " + err.Error())
+	}
+	router.Get("/service-worker.js", serviceWorker)
+	router.Head("/service-worker.js", serviceWorker)
 	router.Group(func(authenticated chi.Router) {
 		authenticated.Use(webmiddleware.Authentication(dependencies.Sessions, dependencies.SecureCookies))
 		authenticated.Get("/", rootHandler(brand, dependencies.Authentication))
@@ -163,6 +186,7 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 					admin.Get("/igdb", administrationHandler.IGDB)
 					admin.Post("/igdb/sync", administrationHandler.SyncIGDB)
 				}
+				admin.Get("/pwa", administrationHandler.PWA)
 			})
 		}
 	})

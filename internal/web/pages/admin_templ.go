@@ -50,7 +50,7 @@ func AdminGames(brand branding.Brand, navigation components.NavigationState, gam
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<header class=\"app-topbar\"><h1 class=\"app-title\">Manage Games</h1><a class=\"btn btn-quiet btn-sm\" href=\"/admin/igdb\">IGDB Sync</a></header><div class=\"content-page\"><p class=\"mb-5 max-w-2xl text-sm text-base-content/70\">Maintain the local games available for Looking for Group. This LANsurfer installation is the event; Game Requests do not need any further setup.</p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<header class=\"app-topbar\"><h1 class=\"app-title\">Manage Games</h1><div class=\"flex gap-2\"><a class=\"btn btn-quiet btn-sm\" href=\"/admin/igdb\">IGDB Sync</a> <a class=\"btn btn-quiet btn-sm\" href=\"/admin/pwa\">PWA</a></div></header><div class=\"content-page\"><p class=\"mb-5 max-w-2xl text-sm text-base-content/70\">Maintain the local games available for Looking for Group. This LANsurfer installation is the event; Game Requests do not need any further setup.</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -62,7 +62,7 @@ func AdminGames(brand branding.Brand, navigation components.NavigationState, gam
 				var templ_7745c5c3_Var3 string
 				templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(formError)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 21, Col: 70}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 24, Col: 70}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 				if templ_7745c5c3_Err != nil {
@@ -81,7 +81,7 @@ func AdminGames(brand branding.Brand, navigation components.NavigationState, gam
 				var templ_7745c5c3_Var4 string
 				templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(notice)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 24, Col: 67}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 27, Col: 67}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 				if templ_7745c5c3_Err != nil {
@@ -99,7 +99,7 @@ func AdminGames(brand branding.Brand, navigation components.NavigationState, gam
 			var templ_7745c5c3_Var5 string
 			templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.ResolveAttributeValue(search)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 28, Col: 109}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 31, Col: 109}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var5)
 			if templ_7745c5c3_Err != nil {
@@ -185,7 +185,7 @@ func AdminGameCard(item game.Game) templ.Component {
 		var templ_7745c5c3_Var7 string
 		templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(item.Name)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 62, Col: 62}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 65, Col: 62}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 		if templ_7745c5c3_Err != nil {
@@ -198,7 +198,7 @@ func AdminGameCard(item game.Game) templ.Component {
 		var templ_7745c5c3_Var8 string
 		templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(item.Slug)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 62, Col: 130}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 65, Col: 130}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 		if templ_7745c5c3_Err != nil {
@@ -226,7 +226,7 @@ func AdminGameCard(item game.Game) templ.Component {
 		var templ_7745c5c3_Var9 templ.SafeURL
 		templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinURLErrs("/admin/games/" + item.ID)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 69, Col: 56}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 72, Col: 56}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 		if templ_7745c5c3_Err != nil {
@@ -251,7 +251,7 @@ func AdminGameCard(item game.Game) templ.Component {
 		var templ_7745c5c3_Var10 templ.SafeURL
 		templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinURLErrs("/admin/games/" + item.ID + "/active")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 76, Col: 68}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 79, Col: 68}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 		if templ_7745c5c3_Err != nil {
@@ -264,7 +264,7 @@ func AdminGameCard(item game.Game) templ.Component {
 		var templ_7745c5c3_Var11 string
 		templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.ResolveAttributeValue(gameActiveConfirmation(item.Active))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 76, Col: 146}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 79, Col: 146}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var11)
 		if templ_7745c5c3_Err != nil {
@@ -301,7 +301,7 @@ func AdminGameCard(item game.Game) templ.Component {
 			var templ_7745c5c3_Var12 templ.SafeURL
 			templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinURLErrs("/admin/games/" + item.ID + "/aliases/" + alias.ID + "/remove")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 87, Col: 95}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 90, Col: 95}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 			if templ_7745c5c3_Err != nil {
@@ -314,7 +314,7 @@ func AdminGameCard(item game.Game) templ.Component {
 			var templ_7745c5c3_Var13 string
 			templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.ResolveAttributeValue("Remove the alias " + alias.Value + "?")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 87, Col: 152}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 90, Col: 152}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var13)
 			if templ_7745c5c3_Err != nil {
@@ -335,7 +335,7 @@ func AdminGameCard(item game.Game) templ.Component {
 			var templ_7745c5c3_Var14 string
 			templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.ResolveAttributeValue("Remove alias " + alias.Value)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 89, Col: 124}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 92, Col: 124}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var14)
 			if templ_7745c5c3_Err != nil {
@@ -348,7 +348,7 @@ func AdminGameCard(item game.Game) templ.Component {
 			var templ_7745c5c3_Var15 string
 			templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs(alias.Value)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 89, Col: 140}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 92, Col: 140}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
 			if templ_7745c5c3_Err != nil {
@@ -372,7 +372,7 @@ func AdminGameCard(item game.Game) templ.Component {
 		var templ_7745c5c3_Var16 templ.SafeURL
 		templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinURLErrs("/admin/games/" + item.ID + "/aliases")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 96, Col: 69}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 99, Col: 69}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
 		if templ_7745c5c3_Err != nil {
@@ -393,7 +393,7 @@ func AdminGameCard(item game.Game) templ.Component {
 		var templ_7745c5c3_Var17 string
 		templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.ResolveAttributeValue("alias-" + item.ID)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 98, Col: 50}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 101, Col: 50}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var17)
 		if templ_7745c5c3_Err != nil {
@@ -406,7 +406,7 @@ func AdminGameCard(item game.Game) templ.Component {
 		var templ_7745c5c3_Var18 string
 		templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.ResolveAttributeValue("alias-" + item.ID)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 99, Col: 33}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 102, Col: 33}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var18)
 		if templ_7745c5c3_Err != nil {
@@ -448,7 +448,7 @@ func GameFields(name, slug string) templ.Component {
 		var templ_7745c5c3_Var20 string
 		templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.ResolveAttributeValue(name)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 106, Col: 159}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 109, Col: 159}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var20)
 		if templ_7745c5c3_Err != nil {
@@ -461,7 +461,7 @@ func GameFields(name, slug string) templ.Component {
 		var templ_7745c5c3_Var21 string
 		templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.ResolveAttributeValue(slug)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 107, Col: 169}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 110, Col: 169}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var21)
 		if templ_7745c5c3_Err != nil {
@@ -508,7 +508,7 @@ func AdminIGDB(brand branding.Brand, navigation components.NavigationState, stat
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "<header class=\"app-topbar\"><h1 class=\"app-title\">IGDB synchronization</h1><a class=\"btn btn-quiet btn-sm\" href=\"/admin/games\">Manage games</a></header><div class=\"content-page\"><p class=\"mb-5 max-w-2xl text-sm text-base-content/70\">Review the local IGDB discovery index and its background refresh.</p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "<header class=\"app-topbar\"><h1 class=\"app-title\">IGDB synchronization</h1><div class=\"flex gap-2\"><a class=\"btn btn-quiet btn-sm\" href=\"/admin/games\">Manage games</a> <a class=\"btn btn-quiet btn-sm\" href=\"/admin/pwa\">PWA</a></div></header><div class=\"content-page\"><p class=\"mb-5 max-w-2xl text-sm text-base-content/70\">Review the local IGDB discovery index and its background refresh.</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -520,7 +520,7 @@ func AdminIGDB(brand branding.Brand, navigation components.NavigationState, stat
 				var templ_7745c5c3_Var24 string
 				templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.JoinStringErrs(notice)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 119, Col: 67}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 125, Col: 67}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var24))
 				if templ_7745c5c3_Err != nil {
@@ -546,7 +546,7 @@ func AdminIGDB(brand branding.Brand, navigation components.NavigationState, stat
 			var templ_7745c5c3_Var25 string
 			templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinStringErrs(igdbTimestamp(status.LastAttempt))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 129, Col: 63}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 135, Col: 63}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var25))
 			if templ_7745c5c3_Err != nil {
@@ -559,7 +559,7 @@ func AdminIGDB(brand branding.Brand, navigation components.NavigationState, stat
 			var templ_7745c5c3_Var26 string
 			templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs(igdbTimestamp(status.LastSuccess))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 133, Col: 63}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 139, Col: 63}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
 			if templ_7745c5c3_Err != nil {
@@ -572,7 +572,7 @@ func AdminIGDB(brand branding.Brand, navigation components.NavigationState, stat
 			var templ_7745c5c3_Var27 string
 			templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs(strconv.FormatInt(status.RecordCount, 10))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 137, Col: 71}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 143, Col: 71}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
 			if templ_7745c5c3_Err != nil {
@@ -590,7 +590,7 @@ func AdminIGDB(brand branding.Brand, navigation components.NavigationState, stat
 				var templ_7745c5c3_Var28 string
 				templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(status.LastError)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 141, Col: 78}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 147, Col: 78}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
 				if templ_7745c5c3_Err != nil {
@@ -730,6 +730,150 @@ func AdminError(brand branding.Brand, navigation components.NavigationState) tem
 		}
 		return nil
 	})
+}
+
+// PWADiagnostics carries the server-known facts the /admin/pwa page renders
+// unconditionally. Browser-only facts (secure context, registration state,
+// controller, last error) are filled in by admin-pwa.ts and read "Not
+// available without JavaScript" until then.
+type PWADiagnostics struct {
+	InstanceName     string
+	BaseURL          string
+	ManifestURL      string
+	ServiceWorkerURL string
+	SecureContext    bool
+}
+
+func AdminPWA(brand branding.Brand, navigation components.NavigationState, diagnostics PWADiagnostics) templ.Component {
+	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
+			return templ_7745c5c3_CtxErr
+		}
+		templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+		if !templ_7745c5c3_IsBuffer {
+			defer func() {
+				templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err == nil {
+					templ_7745c5c3_Err = templ_7745c5c3_BufErr
+				}
+			}()
+		}
+		ctx = templ.InitializeContext(ctx)
+		templ_7745c5c3_Var32 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var32 == nil {
+			templ_7745c5c3_Var32 = templ.NopComponent
+		}
+		ctx = templ.ClearChildren(ctx)
+		templ_7745c5c3_Var33 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+			templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+			templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+			if !templ_7745c5c3_IsBuffer {
+				defer func() {
+					templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+					if templ_7745c5c3_Err == nil {
+						templ_7745c5c3_Err = templ_7745c5c3_BufErr
+					}
+				}()
+			}
+			ctx = templ.InitializeContext(ctx)
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 61, "<header class=\"app-topbar\"><h1 class=\"app-title\">PWA diagnostics</h1><div class=\"flex gap-2\"><a class=\"btn btn-quiet btn-sm\" href=\"/admin/games\">Manage games</a> <a class=\"btn btn-quiet btn-sm\" href=\"/admin/igdb\">IGDB Sync</a></div></header><div class=\"content-page\"><p class=\"mb-5 max-w-2xl text-sm text-base-content/70\">Read-only facts about this installation's manifest, service worker, and secure-context status. Nothing here is stored or shown to players.</p><section class=\"detail-card\"><h2 class=\"text-[1.0625rem] font-semibold\">Server</h2><dl class=\"mt-2 grid gap-4 sm:grid-cols-2\"><div><dt class=\"text-sm text-base-content/60\">Instance name</dt><dd class=\"data-text\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var34 string
+			templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs(diagnostics.InstanceName)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 209, Col: 117}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var34))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 62, "</dd></div><div><dt class=\"text-sm text-base-content/60\">Base URL</dt><dd class=\"data-text\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var35 string
+			templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.JoinStringErrs(diagnostics.BaseURL)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 210, Col: 107}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var35))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 63, "</dd></div><div><dt class=\"text-sm text-base-content/60\">Manifest URL</dt><dd class=\"data-text\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var36 string
+			templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.JoinStringErrs(diagnostics.ManifestURL)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 211, Col: 115}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var36))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 64, "</dd></div><div><dt class=\"text-sm text-base-content/60\">Service worker URL</dt><dd class=\"data-text\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var37 string
+			templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.JoinStringErrs(diagnostics.ServiceWorkerURL)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 212, Col: 126}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var37))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 65, "</dd></div><div><dt class=\"text-sm text-base-content/60\">Expected secure context</dt><dd class=\"data-text\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var38 string
+			templ_7745c5c3_Var38, templ_7745c5c3_Err = templ.JoinStringErrs(secureContextLabel(diagnostics.SecureContext))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 213, Col: 148}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var38))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 66, "</dd></div></dl></section><section class=\"detail-card mt-4\" data-pwa-diagnostics><h2 class=\"text-[1.0625rem] font-semibold\">Browser</h2><dl class=\"mt-2 grid gap-4 sm:grid-cols-2\"><div><dt class=\"text-sm text-base-content/60\">Diagnostics ran</dt><dd class=\"data-text\" data-fact=\"diagnostics-ran\">No</dd></div><div><dt class=\"text-sm text-base-content/60\">window.isSecureContext</dt><dd class=\"data-text\" data-fact=\"secure-context\">Not available without JavaScript</dd></div><div><dt class=\"text-sm text-base-content/60\">Service worker supported</dt><dd class=\"data-text\" data-fact=\"supported\">Not available without JavaScript</dd></div><div><dt class=\"text-sm text-base-content/60\">Registration</dt><dd class=\"data-text\" data-fact=\"registration\">Not available without JavaScript</dd></div><div><dt class=\"text-sm text-base-content/60\">Controller</dt><dd class=\"data-text\" data-fact=\"controller\">Not available without JavaScript</dd></div><div><dt class=\"text-sm text-base-content/60\">Last registration error</dt><dd class=\"data-text\" data-fact=\"error\">Not available without JavaScript</dd></div></dl></section></div><script src=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var39 string
+			templ_7745c5c3_Var39, templ_7745c5c3_Err = templ.ResolveAttributeValue(brand.Assets.AdminPWADiagnostics)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 228, Col: 48}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var39)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 67, "\" defer></script>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			return nil
+		})
+		templ_7745c5c3_Err = components.Layout(brand, "PWA Diagnostics", navigation).Render(templ.WithChildren(ctx, templ_7745c5c3_Var33), templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		return nil
+	})
+}
+
+func secureContextLabel(secure bool) string {
+	if secure {
+		return "Yes"
+	}
+	return "No (HTTPS, or a loopback/localhost origin, is required for PWA installation and Web Push)"
 }
 
 func igdbTimestamp(value *time.Time) string {

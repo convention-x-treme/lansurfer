@@ -13,7 +13,10 @@ templ AdminGames(brand branding.Brand, navigation components.NavigationState, ga
 	@components.Layout(brand, "Manage Games", navigation) {
 		<header class="app-topbar">
 			<h1 class="app-title">Manage Games</h1>
-			<a class="btn btn-quiet btn-sm" href="/admin/igdb">IGDB Sync</a>
+			<div class="flex gap-2">
+				<a class="btn btn-quiet btn-sm" href="/admin/igdb">IGDB Sync</a>
+				<a class="btn btn-quiet btn-sm" href="/admin/pwa">PWA</a>
+			</div>
 		</header>
 		<div class="content-page">
 			<p class="mb-5 max-w-2xl text-sm text-base-content/70">Maintain the local games available for Looking for Group. This LANsurfer installation is the event; Game Requests do not need any further setup.</p>
@@ -111,7 +114,10 @@ templ AdminIGDB(brand branding.Brand, navigation components.NavigationState, sta
 	@components.Layout(brand, "IGDB Synchronization", navigation) {
 		<header class="app-topbar">
 			<h1 class="app-title">IGDB synchronization</h1>
-			<a class="btn btn-quiet btn-sm" href="/admin/games">Manage games</a>
+			<div class="flex gap-2">
+				<a class="btn btn-quiet btn-sm" href="/admin/games">Manage games</a>
+				<a class="btn btn-quiet btn-sm" href="/admin/pwa">PWA</a>
+			</div>
 		</header>
 		<div class="content-page">
 			<p class="mb-5 max-w-2xl text-sm text-base-content/70">Review the local IGDB discovery index and its background refresh.</p>
@@ -172,6 +178,62 @@ templ AdminError(brand branding.Brand, navigation components.NavigationState) {
 		<header class="app-topbar"><h1 class="app-title">Administration</h1></header>
 		<div class="content-page"><div role="alert" class="alert alert-error"><div><p class="font-bold">Administration could not be loaded</p><p>Try the request again.</p></div></div></div>
 	}
+}
+
+// PWADiagnostics carries the server-known facts the /admin/pwa page renders
+// unconditionally. Browser-only facts (secure context, registration state,
+// controller, last error) are filled in by admin-pwa.ts and read "Not
+// available without JavaScript" until then.
+type PWADiagnostics struct {
+	InstanceName     string
+	BaseURL          string
+	ManifestURL      string
+	ServiceWorkerURL string
+	SecureContext    bool
+}
+
+templ AdminPWA(brand branding.Brand, navigation components.NavigationState, diagnostics PWADiagnostics) {
+	@components.Layout(brand, "PWA Diagnostics", navigation) {
+		<header class="app-topbar">
+			<h1 class="app-title">PWA diagnostics</h1>
+			<div class="flex gap-2">
+				<a class="btn btn-quiet btn-sm" href="/admin/games">Manage games</a>
+				<a class="btn btn-quiet btn-sm" href="/admin/igdb">IGDB Sync</a>
+			</div>
+		</header>
+		<div class="content-page">
+			<p class="mb-5 max-w-2xl text-sm text-base-content/70">Read-only facts about this installation's manifest, service worker, and secure-context status. Nothing here is stored or shown to players.</p>
+			<section class="detail-card">
+				<h2 class="text-[1.0625rem] font-semibold">Server</h2>
+				<dl class="mt-2 grid gap-4 sm:grid-cols-2">
+					<div><dt class="text-sm text-base-content/60">Instance name</dt><dd class="data-text">{ diagnostics.InstanceName }</dd></div>
+					<div><dt class="text-sm text-base-content/60">Base URL</dt><dd class="data-text">{ diagnostics.BaseURL }</dd></div>
+					<div><dt class="text-sm text-base-content/60">Manifest URL</dt><dd class="data-text">{ diagnostics.ManifestURL }</dd></div>
+					<div><dt class="text-sm text-base-content/60">Service worker URL</dt><dd class="data-text">{ diagnostics.ServiceWorkerURL }</dd></div>
+					<div><dt class="text-sm text-base-content/60">Expected secure context</dt><dd class="data-text">{ secureContextLabel(diagnostics.SecureContext) }</dd></div>
+				</dl>
+			</section>
+			<section class="detail-card mt-4" data-pwa-diagnostics>
+				<h2 class="text-[1.0625rem] font-semibold">Browser</h2>
+				<dl class="mt-2 grid gap-4 sm:grid-cols-2">
+					<div><dt class="text-sm text-base-content/60">Diagnostics ran</dt><dd class="data-text" data-fact="diagnostics-ran">No</dd></div>
+					<div><dt class="text-sm text-base-content/60">window.isSecureContext</dt><dd class="data-text" data-fact="secure-context">Not available without JavaScript</dd></div>
+					<div><dt class="text-sm text-base-content/60">Service worker supported</dt><dd class="data-text" data-fact="supported">Not available without JavaScript</dd></div>
+					<div><dt class="text-sm text-base-content/60">Registration</dt><dd class="data-text" data-fact="registration">Not available without JavaScript</dd></div>
+					<div><dt class="text-sm text-base-content/60">Controller</dt><dd class="data-text" data-fact="controller">Not available without JavaScript</dd></div>
+					<div><dt class="text-sm text-base-content/60">Last registration error</dt><dd class="data-text" data-fact="error">Not available without JavaScript</dd></div>
+				</dl>
+			</section>
+		</div>
+		<script src={ brand.Assets.AdminPWADiagnostics } defer></script>
+	}
+}
+
+func secureContextLabel(secure bool) string {
+	if secure {
+		return "Yes"
+	}
+	return "No (HTTPS, or a loopback/localhost origin, is required for PWA installation and Web Push)"
 }
 
 func igdbTimestamp(value *time.Time) string {

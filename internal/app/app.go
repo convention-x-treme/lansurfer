@@ -33,6 +33,14 @@ const (
 
 // Run constructs and runs the LANsurfer application until ctx is cancelled.
 func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
+	if !web.SecureContextStatus(cfg.BaseURL) {
+		logger.Warn(
+			"LANSURFER_BASE_URL is not a secure context: normal LANsurfer operation is unaffected, "+
+				"but PWA installation and Web Push require HTTPS (or a loopback/localhost origin)",
+			"base_url", cfg.BaseURL,
+		)
+	}
+
 	databaseCtx, cancelDatabase := context.WithTimeout(ctx, databaseStartupTimeout)
 	pool, err := postgres.Connect(databaseCtx, cfg.DatabaseURL, logger)
 	cancelDatabase()
@@ -112,6 +120,8 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 			SecureCookies:       strings.HasPrefix(cfg.BaseURL, "https://"),
 			Logger:              logger,
 			TrustedProxies:      cfg.TrustedProxies,
+			InstanceName:        cfg.InstanceName,
+			BaseURL:             cfg.BaseURL,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,

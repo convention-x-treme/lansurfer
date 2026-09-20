@@ -190,6 +190,119 @@ func TestLoadLeavesIGDBUnsetWhenCredentialsAreEmpty(t *testing.T) {
 	}
 }
 
+func TestLoadInstanceNameDefaultsUnset(t *testing.T) {
+	clearOptionalEnvironment(t)
+	t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.InstanceName != "" {
+		t.Errorf("InstanceName = %q, want empty", cfg.InstanceName)
+	}
+}
+
+func TestLoadInstanceNameTrimsWhitespace(t *testing.T) {
+	clearOptionalEnvironment(t)
+	t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
+	t.Setenv("LANSURFER_INSTANCE_NAME", "  Camp Nova  ")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.InstanceName != "Camp Nova" {
+		t.Errorf("InstanceName = %q, want %q", cfg.InstanceName, "Camp Nova")
+	}
+}
+
+func TestLoadInstanceNameWhitespaceOnlyIsUnset(t *testing.T) {
+	clearOptionalEnvironment(t)
+	t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
+	t.Setenv("LANSURFER_INSTANCE_NAME", "   ")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.InstanceName != "" {
+		t.Errorf("InstanceName = %q, want empty", cfg.InstanceName)
+	}
+}
+
+func TestLoadRejectsInstanceNameWithControlCharacter(t *testing.T) {
+	clearOptionalEnvironment(t)
+	t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
+	t.Setenv("LANSURFER_INSTANCE_NAME", "Camp\tNova")
+
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "LANSURFER_INSTANCE_NAME") {
+		t.Fatalf("Load() error = %v, want instance name control-character error", err)
+	}
+}
+
+func TestLoadRejectsInstanceNameWithNewline(t *testing.T) {
+	clearOptionalEnvironment(t)
+	t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
+	t.Setenv("LANSURFER_INSTANCE_NAME", "Camp\nNova")
+
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "LANSURFER_INSTANCE_NAME") {
+		t.Fatalf("Load() error = %v, want instance name newline error", err)
+	}
+}
+
+func TestLoadRejectsInstanceNameWithUnicodeLineSeparator(t *testing.T) {
+	clearOptionalEnvironment(t)
+	t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
+	t.Setenv("LANSURFER_INSTANCE_NAME", "Camp Nova")
+
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "LANSURFER_INSTANCE_NAME") {
+		t.Fatalf("Load() error = %v, want instance name line-separator error", err)
+	}
+}
+
+func TestLoadRejectsInstanceNameWithUnicodeParagraphSeparator(t *testing.T) {
+	clearOptionalEnvironment(t)
+	t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
+	t.Setenv("LANSURFER_INSTANCE_NAME", "Camp Nova")
+
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "LANSURFER_INSTANCE_NAME") {
+		t.Fatalf("Load() error = %v, want instance name paragraph-separator error", err)
+	}
+}
+
+func TestLoadRejectsInstanceNameOverMaxLength(t *testing.T) {
+	clearOptionalEnvironment(t)
+	t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
+	t.Setenv("LANSURFER_INSTANCE_NAME", strings.Repeat("a", 65))
+
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "LANSURFER_INSTANCE_NAME") {
+		t.Fatalf("Load() error = %v, want instance name length error", err)
+	}
+}
+
+func TestLoadAllowsInstanceNameAtMaxLength(t *testing.T) {
+	clearOptionalEnvironment(t)
+	t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
+	// 64 Unicode code points, using a multi-byte rune to prove the limit counts
+	// runes rather than bytes.
+	name := strings.Repeat("é", 64)
+	t.Setenv("LANSURFER_INSTANCE_NAME", name)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.InstanceName != name {
+		t.Errorf("InstanceName = %q, want %q", cfg.InstanceName, name)
+	}
+}
+
 func clearOptionalEnvironment(t *testing.T) {
 	t.Helper()
 	for _, name := range []string{
@@ -204,6 +317,7 @@ func clearOptionalEnvironment(t *testing.T) {
 		"LANSURFER_TRUSTED_PROXIES",
 		"LANSURFER_IGDB_CLIENT_ID",
 		"LANSURFER_IGDB_CLIENT_SECRET",
+		"LANSURFER_INSTANCE_NAME",
 	} {
 		t.Setenv(name, "")
 	}

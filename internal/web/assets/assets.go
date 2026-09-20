@@ -44,6 +44,14 @@ func Handler() http.Handler {
 	})
 }
 
+// ServiceWorkerScript returns the compiled service-worker bundle. It is read
+// separately from Handler because the worker is served at root scope
+// (/service-worker.js), not under /assets/*, with its own Cache-Control
+// contract (no-store, never the generic asset freshness window).
+func ServiceWorkerScript() ([]byte, error) {
+	return files.ReadFile("dist/service-worker.js")
+}
+
 func assetETags(dist fs.FS) (map[string]string, error) {
 	etags := make(map[string]string)
 	err := fs.WalkDir(dist, ".", func(name string, entry fs.DirEntry, err error) error {

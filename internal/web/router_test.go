@@ -467,6 +467,79 @@ func TestAdminIGDBSyncReportsAlreadyRunningWhenDeclined(t *testing.T) {
 	}
 }
 
+func TestAdminPWARequiresAdmin(t *testing.T) {
+	viewer := &routerAuthentication{account: user.User{GameNick: "Player", Role: user.RoleUser}}
+	dependencies := RouterDependencies{
+		Ready:          func(context.Context) error { return nil },
+		Authentication: viewer,
+		Sessions:       viewer,
+		Games:          &routerGames{},
+	}
+	request := httptest.NewRequest(http.MethodGet, "/admin/pwa", nil)
+	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	response := httptest.NewRecorder()
+
+	NewRouter(dependencies).ServeHTTP(response, request)
+
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusForbidden)
+	}
+}
+
+func TestAdminPWARendersServerFacts(t *testing.T) {
+	admin := &routerAuthentication{account: user.User{GameNick: "Ada Admin", Role: user.RoleAdmin}}
+	request := httptest.NewRequest(http.MethodGet, "/admin/pwa", nil)
+	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	response := httptest.NewRecorder()
+
+	NewRouter(RouterDependencies{
+		Ready:          func(context.Context) error { return nil },
+		Authentication: admin,
+		Sessions:       admin,
+		Games:          &routerGames{},
+		InstanceName:   "Camp Nova",
+		BaseURL:        "http://lan.example.test",
+	}).ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
+	}
+	body := response.Body.String()
+	for _, want := range []string{
+		"Camp Nova",
+		"http://lan.example.test",
+		"http://lan.example.test/manifest.webmanifest",
+		"http://lan.example.test/service-worker.js",
+		"No (HTTPS, or a loopback/localhost origin, is required",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("body does not contain %q", want)
+		}
+	}
+}
+
+// The browser-only facts must render something sensible before admin-pwa.ts
+// ever runs: a player with JavaScript disabled (or the script failing to
+// load) still sees a coherent page, not blank cells.
+func TestAdminPWARendersWithoutJavaScript(t *testing.T) {
+	admin := &routerAuthentication{account: user.User{GameNick: "Ada Admin", Role: user.RoleAdmin}}
+	request := httptest.NewRequest(http.MethodGet, "/admin/pwa", nil)
+	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	response := httptest.NewRecorder()
+
+	NewRouter(RouterDependencies{
+		Ready: func(context.Context) error { return nil }, Authentication: admin, Sessions: admin, Games: &routerGames{},
+	}).ServeHTTP(response, request)
+
+	body := response.Body.String()
+	if count := strings.Count(body, "Not available without JavaScript"); count != 5 {
+		t.Errorf("found %d browser-fact placeholders, want 5", count)
+	}
+	if !strings.Contains(body, `src="/assets/admin-pwa.js"`) {
+		t.Error("page does not load the progressive diagnostics script")
+	}
+}
+
 func TestGameCatalogRequiresAuthentication(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/games", nil)
 	response := httptest.NewRecorder()

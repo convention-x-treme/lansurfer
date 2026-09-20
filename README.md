@@ -136,6 +136,21 @@ forwarded client addresses from every other peer; do not use a broad range that
 includes untrusted clients. Proxy TLS headers do not control cookie security—the
 public HTTPS `LANSURFER_BASE_URL` does.
 
+### Configure minimum instance identity (optional)
+
+```sh
+LANSURFER_INSTANCE_NAME=
+```
+
+Optional and unset by default, in which case the application uses the fixed "LANsurfer" name and
+branding everywhere. When set, it is trimmed, limited to 64 Unicode characters, may not contain
+control characters or line breaks, and appears only as a secondary label next to the wordmark, in
+the page title, and as the installed PWA's name/short name — it never changes LANsurfer's colors,
+typography, or other fixed branding. LANsurfer also serves `/manifest.webmanifest` and
+`/service-worker.js` for installability; an administrator can check their resolved values, and
+whether the deployment is a secure context (required for installation and Web Push), at
+`/admin/pwa`.
+
 ### Promote the first administrator
 
 Every new account starts with the `user` role. Log in once to create your local

@@ -66,4 +66,11 @@ func TestSecurityHeaders(t *testing.T) {
 			t.Errorf("%s header is missing", name)
 		}
 	}
+
+	csp := response.Header().Get("Content-Security-Policy")
+	for _, directive := range []string{"worker-src 'self'", "manifest-src 'self'"} {
+		if !strings.Contains(csp, directive) {
+			t.Errorf("Content-Security-Policy = %q, want it to contain %q", csp, directive)
+		}
+	}
 }

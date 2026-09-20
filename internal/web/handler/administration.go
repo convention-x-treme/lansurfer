@@ -37,13 +37,35 @@ type ProviderSyncAdministration interface {
 }
 
 type Administration struct {
-	games        GameAdministration
-	providerSync ProviderSyncAdministration
-	brand        branding.Brand
+	games         GameAdministration
+	providerSync  ProviderSyncAdministration
+	brand         branding.Brand
+	instanceName  string
+	baseURL       string
+	secureContext bool
 }
 
-func NewAdministration(games GameAdministration, providerSync ProviderSyncAdministration, brand branding.Brand) *Administration {
-	return &Administration{games: games, providerSync: providerSync, brand: brand}
+func NewAdministration(
+	games GameAdministration, providerSync ProviderSyncAdministration, brand branding.Brand,
+	instanceName, baseURL string, secureContext bool,
+) *Administration {
+	return &Administration{
+		games: games, providerSync: providerSync, brand: brand,
+		instanceName: instanceName, baseURL: baseURL, secureContext: secureContext,
+	}
+}
+
+// PWA renders the read-only PWA/manifest/service-worker diagnostics facts an
+// administrator can check without inspecting deployment configuration
+// directly. It has no persistence and no player-facing counterpart.
+func (h *Administration) PWA(w http.ResponseWriter, r *http.Request) {
+	render(w, r, http.StatusOK, pages.AdminPWA(h.brand, adminNavigation(r), pages.PWADiagnostics{
+		InstanceName:     h.instanceName,
+		BaseURL:          h.baseURL,
+		ManifestURL:      h.baseURL + "/manifest.webmanifest",
+		ServiceWorkerURL: h.baseURL + "/service-worker.js",
+		SecureContext:    h.secureContext,
+	}))
 }
 
 func (h *Administration) Games(w http.ResponseWriter, r *http.Request) {

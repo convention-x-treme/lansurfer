@@ -7,5 +7,6 @@
     "strict": true,
     "target": "ES2022"
   },
-  "include": ["web/src/**/*.ts"]
+  "include": ["web/src/**/*.ts"],
+  "exclude": ["web/src/service-worker.ts"]
 }

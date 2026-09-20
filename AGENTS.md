@@ -26,6 +26,7 @@ Use Taskfile workflows, not Makefiles; run `task --list` for the authoritative t
 - `task test`: run race-enabled unit tests.
 - `task test:integration`: run PostgreSQL integration tests in an isolated container.
 - `task test:browser`: run Chromium interaction-hardening regression tests.
+- `task test:pwa`: run the focused PWA browser suite (service-worker registration/lifecycle).
 - `task generate`: regenerate templates, frontend assets, and sqlc code.
 - `task lint`: check formatting, modules, Go source, and TypeScript.
 
