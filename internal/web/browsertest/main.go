@@ -406,8 +406,12 @@ func (*fixture) Select(_ context.Context, _ string, selection game.GameSelection
 	}, nil
 }
 
-func (*fixture) MyGames(context.Context, string) ([]game.SubscriptionGame, error) {
-	return nil, nil
+// BrowseFollowed backs the Games screen's "Followed only" filter. No fixture
+// Game is followed, so it is always the empty state here -- the followed
+// one, which needs the catalog itself to be reported as usable, exactly as
+// the real Browse-backed call reports it.
+func (*fixture) BrowseFollowed(context.Context, string, string) (game.DiscoveryPage, error) {
+	return game.DiscoveryPage{ProviderStatus: game.ProviderStatus{State: game.ProviderCurrent, CatalogAvailable: true}}, nil
 }
 
 func (*fixture) FollowLocal(context.Context, string, string) error { return nil }

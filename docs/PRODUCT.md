@@ -255,9 +255,11 @@ IGDB attribution and operator setup/terms must be visible in the appropriate UI 
 
 ## 10. Game Following
 
-A GameSubscription means a player follows a Game. It drives My Games/followed lists, in-browser relevance, and the default Web Push audience.
+A GameSubscription means a player follows a Game. It drives followed lists, in-browser relevance, and the default Web Push audience.
 
-My Games remains explicitly followed Games only. Creating or joining a Game Request never implicitly adds a Game to My Games; a player follows a Game only through an explicit Follow action.
+Following remains explicit. Creating or joining a Game Request never implicitly follows a Game; a player follows a Game only through an explicit Follow action.
+
+Followed Games are not a separate screen. Games is one catalog with a **Followed only** filter, so searching and narrowing to followed Games compose on the same page instead of splitting into two lists of the same cards. The retired `/games/mine` address resolves to that filter.
 
 When IGDB is enabled, following a provider-only search result first materializes the corresponding authoritative local Game atomically and then records the subscription.
 
@@ -321,7 +323,7 @@ Activity is separate from current membership and separate from notification deli
 Every signed-in screen renders the same navigation, so its numbers and lists mean the same thing wherever the player is:
 
 - **Game Requests**, with how many Game Requests are open on the installation. This count is never narrowed by the player's current discovery filter.
-- **Games**, with how many Games the local catalog holds, and **My Games** beneath it with how many Games this player follows. A count of zero is omitted rather than rendered.
+- **Games**, with how many Games the local catalog holds, and **Followed** beneath it with how many Games this player follows. Both lead to the same Games screen; Followed applies its "Followed only" filter. A count of zero is omitted rather than rendered.
 - **Administration**, for administrators only.
 - **Your next games** — up to three Game Requests this player has joined, soonest first. A round whose start time has arrived is marked urgent with the same treatment the request list uses for "now".
 - **Recently viewed** — up to five Game Requests this player most recently opened, newest first.

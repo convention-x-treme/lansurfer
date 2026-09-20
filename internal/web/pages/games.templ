@@ -2,37 +2,50 @@ package pages
 
 import (
 	"fmt"
+	"net/url"
 
 	"github.com/convention-x-treme/lansurfer/internal/game"
 	"github.com/convention-x-treme/lansurfer/internal/web/branding"
 	"github.com/convention-x-treme/lansurfer/internal/web/components"
 )
 
-// GameCatalog is the discovery-first Games page (spec: "2.1 Games is
+// GameCatalog is the single Games screen (spec: "2.1 Games is
 // discovery-first"). It never asks a player to first understand whether a
 // Game is already an authoritative local Game or still exists only in the
-// synchronized IGDB index.
-templ GameCatalog(brand branding.Brand, navigation components.NavigationState, page game.DiscoveryPage, search, message string) {
+// synchronized IGDB index, and it is also the only Games screen: what used
+// to be a separate "My Games" page is the "Followed only" filter here, so a
+// player narrows one catalog instead of navigating between two lists that
+// showed the same cards.
+templ GameCatalog(brand branding.Brand, navigation components.NavigationState, page game.DiscoveryPage, search string, followedOnly bool, message string) {
 	@components.Layout(brand, "Games", navigation) {
 		<header class="app-topbar">
 			<h1 class="app-title sr-only">Games</h1>
-			<a class="btn btn-quiet btn-sm ml-auto" href="/games/mine">My Games</a>
+			@GameSearchForm(search, followedOnly)
+			<a class="btn btn-primary btn-sm" href="/game-requests/new">Create Game Request</a>
 		</header>
 		<div class="content-page">
-			@GameSearchForm(search)
-			@GameCatalogResults(page, search, message, navigation.Viewer)
+			@GameCatalogResults(brand, page, search, followedOnly, message, navigation.Viewer)
 		</div>
 	}
 }
 
-// GameSearchForm live-searches as the player types (spec: "3.2 Live
-// search"): it debounces briefly, drops a stale in-flight search so it
-// cannot land after a newer one, and replaces the URL rather than pushing a
-// history entry for every pause. The plain GET submit button is the
-// no-JavaScript fallback.
-templ GameSearchForm(search string) {
+// GameSearchForm lives in the top bar and applies itself: there is no Search
+// button to press and no Clear button to find, because both states the
+// buttons produced are already one keystroke or one click away in the
+// controls themselves.
+//
+// Typing live-searches (spec: "3.2 Live search") -- it debounces briefly so
+// a pause rather than a keystroke issues the request, drops a stale
+// in-flight search so it cannot land after a newer one, and replaces the URL
+// rather than pushing a history entry per pause. Ticking "Followed only"
+// applies immediately for the same reason.
+//
+// Without scripting the form still submits: this is a GET form with one
+// text field, so Enter submits it natively, and the noscript button is what
+// applies the checkbox, which nothing else would otherwise submit.
+templ GameSearchForm(search string, followedOnly bool) {
 	<form
-		class="request-toolbar"
+		class="topbar-filters"
 		method="get"
 		action="/games"
 		hx-get="/games"
@@ -40,14 +53,12 @@ templ GameSearchForm(search string) {
 		hx-swap="outerHTML"
 		hx-sync="this:replace"
 		hx-replace-url="true"
-		hx-trigger="submit, input changed delay:300ms from:(#game-search), search from:(#game-search)"
+		hx-trigger="submit, change from:(.filter-toggle input), input changed delay:300ms from:(#game-search), search from:(#game-search)"
 	>
 		<label class="sr-only" for="game-search">Search by game name or alias</label>
 		<input id="game-search" class="input input-sm request-search" type="search" name="q" value={ search } maxlength="120" placeholder="Search by name or alias, e.g. wc3" autocomplete="off"/>
-		<button class="btn btn-quiet btn-sm" type="submit">Search</button>
-		if search != "" {
-			<a class="btn btn-ghost btn-sm" href="/games">Clear</a>
-		}
+		<label class="filter-toggle"><input class="checkbox checkbox-sm" type="checkbox" name="followed" value="1" checked?={ followedOnly }/><span>Followed only</span></label>
+		<noscript><button class="btn btn-quiet btn-sm" type="submit">Apply</button></noscript>
 	</form>
 }
 
@@ -56,42 +67,58 @@ templ GameSearchForm(search string) {
 // catalog plus provider availability), and the >=2-character search-result
 // state. It is the htmx live-search swap target, so it alone must carry
 // enough of the page to stay correct after a fragment swap.
-templ GameCatalogResults(page game.DiscoveryPage, search, message string, viewer *components.Viewer) {
+templ GameCatalogResults(brand branding.Brand, page game.DiscoveryPage, search string, followedOnly bool, message string, viewer *components.Viewer) {
 	<div id="game-catalog-results" aria-live="polite">
 		if message != "" {
 			<div role="alert" class="alert alert-error mb-4"><span>{ message }</span></div>
 		}
-		if search == "" {
-			<div class="mb-6">
-				<h2 class="text-[1.0625rem] font-semibold">Find your game</h2>
-				<p class="text-sm text-base-content/70">Search the game catalog to follow something you play or start a Game Request.</p>
-			</div>
+		if len(page.Items) > 0 {
+			<p class="section-label mb-2">{ catalogCountLabel(page.Items, followedOnly) }</p>
 		}
-		@GameDiscoveryState(page, search, viewer, GameCatalogCards(page.Items, search == "" || page.SearchTooShort))
+		@GameDiscoveryState(page, search, viewer, GameCatalogCards(page.Items, followedOnly), GameCatalogEmpty(brand, search, followedOnly))
 	</div>
 }
 
-// GameDiscoveryList renders the no-search discovery state. A one-character
-// search takes this same path (Browse returns the full unfiltered local
-// list alongside SearchTooShort=true), so the "Games on this LAN" heading
-// above the list -- distinct from a search-result heading -- is what keeps
-// that state unambiguous rather than looking like a filtered result.
-templ GameCatalogCards(items []game.DiscoveryItem, showLANHeading bool) {
-	if showLANHeading {
-		<section>
-			<p class="section-label mb-2">Games on this LAN</p>
-			<div class="game-grid">
-				for _, item := range items {
-					@GameCard(item)
+// GameCatalogCards is the card grid itself. The "Games on this LAN" heading
+// the no-search state used to carry is gone: the count line above the grid
+// already says what is being listed, and it says it in every state rather
+// than only the unfiltered one.
+templ GameCatalogCards(items []game.DiscoveryItem, followedOnly bool) {
+	if len(items) > 0 {
+		<div class="game-grid">
+			for _, item := range items {
+				@GameCard(item, followedOnly)
+			}
+		</div>
+	}
+}
+
+// GameCatalogEmpty is the Games screen's "nothing to show" panel, in place
+// of a bare "0 results". Its three cases are named separately because the
+// way out of each differs: an untouched screen on a usable but empty
+// catalog invites a search, following nothing yet invites a follow, and a
+// search or filter that matched nothing invites widening it.
+templ GameCatalogEmpty(brand branding.Brand, search string, followedOnly bool) {
+	if search == "" && !followedOnly {
+		<section class="detail-card">
+			<h2 class="text-[1.0625rem] font-semibold">Find your game</h2>
+			<p class="text-sm text-base-content/70">Search the game catalog to follow something you play or start a Game Request.</p>
+		</section>
+	} else {
+		<section class="request-empty" aria-labelledby="empty-games-title">
+			<img src={ brand.Assets.Mascot } alt=""/>
+			<div>
+				if followedOnly && search == "" {
+					<h2 id="empty-games-title" class="text-2xl font-bold">You follow nothing yet.</h2>
+					<p class="mt-2 max-w-xl text-base-content/70">Follow a game and every new Game Request for it reaches you. That is all following a game does.</p>
+					<a class="btn btn-primary btn-sm mt-5" href="/games">Browse every game</a>
+				} else {
+					<h2 id="empty-games-title" class="text-2xl font-bold">No game matches that.</h2>
+					<p class="mt-2 max-w-xl text-base-content/70">Search covers a game's name and its aliases. Try a single word, or clear the filter to search the whole catalog.</p>
+					<a class="btn btn-quiet btn-sm mt-5" href="/games">Clear search and filters</a>
 				}
 			</div>
 		</section>
-	} else {
-		<div class="game-grid">
-			for _, item := range items {
-				@GameCard(item)
-			}
-		</div>
 	}
 }
 
@@ -118,20 +145,40 @@ templ GameCatalogAvailability(status game.ProviderStatus, viewer *components.Vie
 	}
 }
 
-// GameSearchResults renders a >=2-character search: an explicit truncation
-// hint when the repository signaled more rows exist than the bounded page
-// shows (spec: "3.5 Result limit"), the matching unified cards, or a
-// no-results state naming the query.
 // GameCard is the one player-facing card shared by materialized and
 // unmaterialized discovery results (spec: "4.1 One player-facing Game
 // card"). It never renders materialization origin, provider-record
 // terminology, or a Local/IGDB badge.
-templ GameCard(item game.DiscoveryItem) {
-	<article class="game-card">
-		@GameIdentity(item.GamePresentation, false)
-		<div class="mt-auto flex flex-wrap items-center justify-end gap-2">
-			<a class="btn btn-quiet btn-sm" href={ gameRequestAction(item) }>Find Players</a>
-			@GameCardFollowControl(item)
+//
+// The whole card is the follow control's htmx swap target, because following
+// changes the cover tag and the card border as well as the button; swapping
+// only the button would leave a card claiming a follow state it no longer
+// has. The handler re-reads the item before re-rendering, so the swapped
+// card keeps its cover and metadata rather than degrading to a poorer
+// re-render.
+templ GameCard(item game.DiscoveryItem, followedOnly bool) {
+	<article class={ "game-card", templ.KV("game-card-followed", item.Subscribed) }>
+		<div class="game-card-cover">
+			if item.CoverImageID != "" {
+				<img class="game-card-cover-image" src={ providerCoverLargeURL(item.CoverImageID) } alt="" referrerpolicy="no-referrer" loading="lazy" data-cover-fallback="true"/>
+				<span class="game-card-cover-fallback" aria-hidden="true" hidden>{ components.GameAbbreviation(item.Name) }</span>
+			} else {
+				<span class="game-card-cover-fallback" aria-hidden="true">{ components.GameAbbreviation(item.Name) }</span>
+			}
+			if item.Subscribed {
+				<span class="game-card-tag">Following</span>
+			}
+		</div>
+		<div class="game-card-body">
+			<div class="flex items-baseline gap-2">
+				<h2 class="game-card-name">{ item.Name }</h2>
+				<span class="data-text game-card-short" aria-hidden="true">{ components.GameAbbreviation(item.Name) }</span>
+			</div>
+			<p class="game-card-meta">{ presentationSecondary(item.GamePresentation) }</p>
+			<div class="game-card-actions">
+				<a class="btn btn-quiet btn-sm" href={ gameRequestAction(item) }>Find Players</a>
+				@GameCardFollowControl(item, followedOnly)
+			</div>
 		</div>
 	</article>
 }
@@ -140,95 +187,42 @@ templ GameCard(item game.DiscoveryItem) {
 // a materialized row's Reference is not reliably populated by the
 // underlying query, but LocalGameID is. An unmaterialized item (LocalGameID
 // empty) always has a reliable Reference, since only materialized rows are
-// affected. The provider follow form's htmx target stays "this" (the form
-// itself) rather than the whole card, so a successful follow swaps in only
-// the small GameFollowControl fragment and the richer cover/metadata card
-// around it is never replaced by a poorer local re-render.
-templ GameCardFollowControl(item game.DiscoveryItem) {
-	if item.Subscribed {
-		<div class="flex items-center gap-2">
-			<span class="status-chip status-chip-joined">Following</span>
-			if item.LocalGameID != "" {
-				<form method="post" action={ "/games/" + item.LocalGameID + "/unfollow" } hx-post={ "/games/" + item.LocalGameID + "/unfollow" } hx-target="closest div" hx-swap="outerHTML" hx-sync="this:drop" hx-disabled-elt="find button">
-					@components.CSRFInput()
-					<button class="btn btn-step-back btn-sm" type="submit">Unfollow</button>
-				</form>
-			}
-		</div>
+// affected.
+//
+// Unfollow is an outline button rather than a destructive one: it costs the
+// player nothing they cannot redo in one click, so it never reads as danger.
+// The "Following" state itself is named on the cover tag, so the button says
+// only what pressing it does.
+templ GameCardFollowControl(item game.DiscoveryItem, followedOnly bool) {
+	if item.Subscribed && item.LocalGameID != "" {
+		<form class="game-card-follow" method="post" action={ "/games/" + item.LocalGameID + "/unfollow" } hx-post={ "/games/" + item.LocalGameID + "/unfollow" } hx-target="closest article" hx-swap="outerHTML" hx-sync="this:drop" hx-disabled-elt="find button">
+			@components.CSRFInput()
+			@followedViewInput(followedOnly)
+			<button class="btn btn-quiet btn-sm" type="submit">Unfollow</button>
+		</form>
+	} else if item.Subscribed {
+		<span class="status-chip status-chip-joined">Following</span>
 	} else if item.LocalGameID != "" {
-		<form method="post" action={ "/games/" + item.LocalGameID + "/follow" } hx-post={ "/games/" + item.LocalGameID + "/follow" } hx-target="this" hx-swap="outerHTML" hx-sync="this:drop" hx-disabled-elt="find button">
+		<form class="game-card-follow" method="post" action={ "/games/" + item.LocalGameID + "/follow" } hx-post={ "/games/" + item.LocalGameID + "/follow" } hx-target="closest article" hx-swap="outerHTML" hx-sync="this:drop" hx-disabled-elt="find button">
 			@components.CSRFInput()
+			@followedViewInput(followedOnly)
 			<button class="btn btn-primary btn-sm" type="submit">Follow Game</button>
 		</form>
 	} else {
-		<form method="post" action={ providerFollowAction(item.Reference) } hx-post={ providerFollowAction(item.Reference) } hx-target="this" hx-swap="outerHTML" hx-sync="this:drop" hx-disabled-elt="find button">
+		<form class="game-card-follow" method="post" action={ providerFollowAction(item.Reference) } hx-post={ providerFollowAction(item.Reference) } hx-target="closest article" hx-swap="outerHTML" hx-sync="this:drop" hx-disabled-elt="find button">
 			@components.CSRFInput()
+			@followedViewInput(followedOnly)
 			<button class="btn btn-primary btn-sm" type="submit">Follow Game</button>
 		</form>
 	}
 }
 
-templ MyGames(brand branding.Brand, navigation components.NavigationState, games []game.SubscriptionGame) {
-	@components.Layout(brand, "My Games", navigation) {
-		<header class="app-topbar">
-			<h1 class="app-title">My Games</h1>
-			<a class="btn btn-primary btn-sm" href="/games">Browse games</a>
-		</header>
-		<div class="content-page">
-			<div class="mb-2 flex items-center justify-between gap-4">
-				<p class="section-label">{ followedCountLabel(len(games)) }</p>
-			</div>
-			<div class="game-grid" aria-live="polite">
-				if len(games) == 0 {
-					<section class="detail-card">
-						<h2 class="text-[1.0625rem] font-semibold">You are not following any games yet</h2>
-						<p class="text-sm text-base-content/70">Browse the catalog and follow the games you would like to play.</p>
-						<a class="btn btn-primary btn-sm self-start" href="/games">Browse games</a>
-					</section>
-				}
-				for _, item := range games {
-					@GameSubscriptionCard(item, true)
-				}
-			</div>
-		</div>
-	}
-}
-
-templ GameSubscriptionCard(item game.SubscriptionGame, myGames bool) {
-	<article class="game-card">
-		@GameIdentity(item.GamePresentation, false)
-		<div class="mt-auto flex flex-wrap items-center justify-end gap-2">
-			if item.Subscribed {
-				<a class="btn btn-quiet btn-sm" href={ "/game-requests/new?game_id=" + item.ID }>Find Players</a>
-			}
-			@GameFollowControl(item.ID, item.Subscribed, myGames)
-		</div>
-	</article>
-}
-
-templ GameFollowControl(gameID string, subscribed, myGames bool) {
-	if subscribed && myGames {
-		<div class="flex items-center gap-2">
-			<span class="status-chip status-chip-joined">Following</span>
-			<form method="post" action={ "/games/" + gameID + "/unfollow" } hx-post={ "/games/" + gameID + "/unfollow" } hx-target="closest article" hx-swap="outerHTML" hx-sync="this:drop" hx-disabled-elt="find button">
-				@components.CSRFInput()
-				<input type="hidden" name="view" value="mine"/>
-				<button class="btn btn-step-back btn-sm" type="submit">Unfollow</button>
-			</form>
-		</div>
-	} else if subscribed {
-		<div class="flex items-center gap-2">
-			<span class="status-chip status-chip-joined">Following</span>
-			<form method="post" action={ "/games/" + gameID + "/unfollow" } hx-post={ "/games/" + gameID + "/unfollow" } hx-target="closest div" hx-swap="outerHTML" hx-sync="this:drop" hx-disabled-elt="find button">
-				@components.CSRFInput()
-				<button class="btn btn-step-back btn-sm" type="submit">Unfollow</button>
-			</form>
-		</div>
-	} else {
-		<form method="post" action={ "/games/" + gameID + "/follow" } hx-post={ "/games/" + gameID + "/follow" } hx-target="this" hx-swap="outerHTML" hx-sync="this:drop" hx-disabled-elt="find button">
-			@components.CSRFInput()
-			<button class="btn btn-primary btn-sm" type="submit">Follow Game</button>
-		</form>
+// followedViewInput carries the current screen's filter through a follow or
+// unfollow so the no-JavaScript redirect lands back on the list the player
+// was actually looking at. The htmx path ignores it and swaps the one card.
+templ followedViewInput(followedOnly bool) {
+	if followedOnly {
+		<input type="hidden" name="followed" value="1"/>
 	}
 }
 
@@ -244,11 +238,28 @@ templ GameCatalogError(brand branding.Brand, navigation components.NavigationSta
 	}
 }
 
-func followedCountLabel(count int) string {
-	if count == 1 {
-		return "1 game followed"
+// catalogCountLabel states what the grid is showing, in the terms the filter
+// itself uses. The followed total is counted from the rendered cards rather
+// than from the navigation totals, so the line can never disagree with what
+// is on screen.
+func catalogCountLabel(items []game.DiscoveryItem, followedOnly bool) string {
+	if followedOnly {
+		if len(items) == 1 {
+			return "1 game followed"
+		}
+		return fmt.Sprintf("%d games followed", len(items))
 	}
-	return fmt.Sprintf("%d games followed", count)
+	followed := 0
+	for _, item := range items {
+		if item.Subscribed {
+			followed++
+		}
+	}
+	noun := "games"
+	if len(items) == 1 {
+		noun = "game"
+	}
+	return fmt.Sprintf("%d %s · %d followed", len(items), noun, followed)
 }
 
 // providerFollowAction builds the provider-follow route from only the
@@ -270,4 +281,14 @@ func providerFollowAction(ref game.ProviderReference) string {
 // itself.
 func gameRequestAction(item game.DiscoveryItem) string {
 	return "/game-requests/new?" + GameRequestSelectionQuery(item)
+}
+
+// CatalogURL builds a link back to the Games screen with one filter state,
+// so the navigation and the follow redirects all name the same URLs the
+// screen itself produces.
+func CatalogURL(followedOnly bool) string {
+	if !followedOnly {
+		return "/games"
+	}
+	return "/games?" + url.Values{"followed": {"1"}}.Encode()
 }

@@ -555,9 +555,14 @@ func TestGameCatalogRequiresAuthentication(t *testing.T) {
 }
 
 func TestAuthenticatedUserCanBrowseAndFollowGames(t *testing.T) {
-	subscriptions := &routerDiscovery{items: []game.DiscoveryItem{{
-		LocalGameID: "game-1", Name: "Warcraft III", Slug: "warcraft-3", Materialized: true,
-	}}}
+	subscriptions := &routerDiscovery{
+		items: []game.DiscoveryItem{{
+			LocalGameID: "game-1", Name: "Warcraft III", Slug: "warcraft-3", Materialized: true,
+		}},
+		selectItem: game.DiscoveryItem{
+			LocalGameID: "game-1", Name: "Warcraft III", Slug: "warcraft-3", Materialized: true, Subscribed: true,
+		},
+	}
 	router := gameTestRouter(subscriptions)
 
 	request := httptest.NewRequest(http.MethodGet, "/games?q=wc3", nil)
@@ -567,7 +572,7 @@ func TestAuthenticatedUserCanBrowseAndFollowGames(t *testing.T) {
 	if response.Code != http.StatusOK || subscriptions.search != "wc3" {
 		t.Fatalf("browse response = %d, search = %q", response.Code, subscriptions.search)
 	}
-	for _, want := range []string{"Warcraft III", "Follow Game", `hx-post="/games/game-1/follow"`, "My Games"} {
+	for _, want := range []string{"Warcraft III", "Follow Game", `hx-post="/games/game-1/follow"`, "Followed"} {
 		if !strings.Contains(response.Body.String(), want) {
 			t.Errorf("body does not contain %q", want)
 		}
@@ -582,23 +587,57 @@ func TestAuthenticatedUserCanBrowseAndFollowGames(t *testing.T) {
 	if followResponse.Code != http.StatusOK || subscriptions.followed != "user-1/game-1" {
 		t.Fatalf("follow response = %d, write = %q", followResponse.Code, subscriptions.followed)
 	}
-	if !strings.Contains(followResponse.Body.String(), "Unfollow") {
-		t.Errorf("follow fragment = %q", followResponse.Body.String())
+	// The swap replaces the whole card, not just the button: following also
+	// changes the cover tag and the card border, and the re-read behind it is
+	// what keeps the cover and metadata on the card that lands.
+	fragment := followResponse.Body.String()
+	if !strings.Contains(fragment, "Unfollow") || !strings.Contains(fragment, "<article class=\"game-card") {
+		t.Errorf("follow fragment = %q", fragment)
+	}
+	if subscriptions.selectSelection.LocalGameID != "game-1" {
+		t.Errorf("follow did not re-read the card it changed: %#v", subscriptions.selectSelection)
 	}
 }
 
-func TestMyGamesRendersOnlySubscriptions(t *testing.T) {
-	subscriptions := &routerDiscovery{mine: []game.SubscriptionGame{{
-		ID: "game-1", Name: "Warcraft III", Slug: "warcraft-3", Subscribed: true,
-	}}}
+// Games and My Games are one screen: the followed list is a filter on
+// /games, so the retired /games/mine address resolves to that filter rather
+// than 404ing bookmarks and links that predate the merge.
+func TestMyGamesRedirectsToTheFollowedFilter(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/games/mine", nil)
 	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
 	response := httptest.NewRecorder()
 
-	gameTestRouter(subscriptions).ServeHTTP(response, request)
+	gameTestRouter(&routerDiscovery{}).ServeHTTP(response, request)
 
-	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "Warcraft III") {
-		t.Fatalf("response = %d %q", response.Code, response.Body.String())
+	if response.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusSeeOther)
+	}
+	if location := response.Header().Get("Location"); location != "/games?followed=1" {
+		t.Fatalf("Location = %q, want %q", location, "/games?followed=1")
+	}
+}
+
+// "Followed only" narrows the one catalog rather than opening a second one:
+// it reaches the followed read path, keeps the search alongside it, and the
+// cards it renders are the same cards.
+func TestGameCatalogFollowedFilterNarrowsTheSameScreen(t *testing.T) {
+	discovery := &routerDiscovery{mine: []game.DiscoveryItem{{
+		LocalGameID: "game-1", Name: "Warcraft III", Slug: "warcraft-3", Materialized: true, Subscribed: true,
+	}}}
+	request := httptest.NewRequest(http.MethodGet, "/games?followed=1&q=wc3", nil)
+	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	response := httptest.NewRecorder()
+
+	gameTestRouter(discovery).ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK || !discovery.followedOnly || discovery.search != "wc3" {
+		t.Fatalf("status = %d, followedOnly = %t, search = %q", response.Code, discovery.followedOnly, discovery.search)
+	}
+	body := response.Body.String()
+	for _, want := range []string{"Warcraft III", "1 game followed", "Unfollow"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("body does not contain %q: %s", want, body)
+		}
 	}
 }
 
@@ -629,7 +668,7 @@ func TestGameCatalogRendersUnmaterializedProviderResultWithFollowAction(t *testi
 		"Main Game",
 		"PC (Microsoft Windows)",
 		"2002",
-		"https://images.igdb.com/igdb/image/upload/t_cover_small/co1abc.jpg",
+		"https://images.igdb.com/igdb/image/upload/t_cover_big/co1abc.jpg",
 		"Follow Game",
 		`hx-post="/games/providers/igdb/42/follow"`,
 	} {
@@ -650,7 +689,12 @@ func TestGameCatalogRendersUnmaterializedProviderResultWithFollowAction(t *testi
 }
 
 func TestAuthenticatedUserCanFollowProviderResult(t *testing.T) {
-	discovery := &routerDiscovery{followResult: game.Game{ID: "local-1", Name: "Warcraft III", Slug: "warcraft-3"}}
+	discovery := &routerDiscovery{
+		followResult: game.Game{ID: "local-1", Name: "Warcraft III", Slug: "warcraft-3"},
+		selectItem: game.DiscoveryItem{
+			LocalGameID: "local-1", Name: "Warcraft III", Slug: "warcraft-3", Materialized: true, Subscribed: true,
+		},
+	}
 	router := gameTestRouter(discovery)
 
 	request := httptest.NewRequest(http.MethodPost, "/games/providers/igdb/42/follow", nil)
@@ -1072,7 +1116,8 @@ func (r *routerProviderSync) TryStart(context.Context) bool {
 
 type routerDiscovery struct {
 	items          []game.DiscoveryItem
-	mine           []game.SubscriptionGame
+	mine           []game.DiscoveryItem
+	followedOnly   bool
 	search         string
 	followed       string
 	unfollowed     string
@@ -1169,8 +1214,10 @@ func (r *routerDiscovery) Browse(_ context.Context, _, search string) (game.Disc
 	r.search = search
 	return game.DiscoveryPage{Items: r.items}, nil
 }
-func (r *routerDiscovery) MyGames(context.Context, string) ([]game.SubscriptionGame, error) {
-	return r.mine, nil
+func (r *routerDiscovery) BrowseFollowed(_ context.Context, _, search string) (game.DiscoveryPage, error) {
+	r.search = search
+	r.followedOnly = true
+	return game.DiscoveryPage{Items: r.mine}, nil
 }
 func (r *routerDiscovery) FollowLocal(_ context.Context, userID, gameID string) error {
 	r.followed = userID + "/" + gameID

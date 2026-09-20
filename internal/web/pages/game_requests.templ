@@ -398,7 +398,7 @@ templ GameRequestDiscoverySearchForm(search string, ajax bool, form GameRequestF
 // never disturbs #game-request-details.
 templ GameRequestDiscovery(page game.DiscoveryPage, search string, changeGame bool, viewer *components.Viewer, form GameRequestForm) {
 	<div id="game-request-discovery" aria-live="polite">
-		@GameDiscoveryState(page, search, viewer, GameRequestDiscoveryCards(page.Items, changeGame, form))
+		@GameDiscoveryState(page, search, viewer, GameRequestDiscoveryCards(page.Items, changeGame, form), nil)
 	</div>
 }
 

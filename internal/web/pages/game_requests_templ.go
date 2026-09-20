@@ -1614,7 +1614,7 @@ func GameRequestDiscovery(page game.DiscoveryPage, search string, changeGame boo
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = GameDiscoveryState(page, search, viewer, GameRequestDiscoveryCards(page.Items, changeGame, form)).Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = GameDiscoveryState(page, search, viewer, GameRequestDiscoveryCards(page.Items, changeGame, form), nil).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

@@ -2,6 +2,7 @@ package game
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"unicode/utf8"
 )
@@ -93,6 +94,23 @@ func (s *DiscoveryService) Browse(ctx context.Context, userID, search string) (D
 		HasMore:        result.HasMore,
 		ProviderStatus: status,
 	}, nil
+}
+
+// BrowseFollowed is Browse narrowed to the Games this viewer already
+// follows. It backs the merged Games screen's "Followed only" filter rather
+// than a second catalog: the same ranked, bounded Browse result with
+// everything unfollowed removed, so search and the filter compose instead of
+// living on separate screens. An unmaterialized provider result is never
+// followed, so one can never appear here. HasMore keeps Browse's meaning --
+// matches exist past this page -- which the filter narrows but does not
+// change.
+func (s *DiscoveryService) BrowseFollowed(ctx context.Context, userID, search string) (DiscoveryPage, error) {
+	page, err := s.Browse(ctx, userID, search)
+	if err != nil {
+		return DiscoveryPage{}, err
+	}
+	page.Items = slices.DeleteFunc(page.Items, func(item DiscoveryItem) bool { return !item.Subscribed })
+	return page, nil
 }
 
 // Resolve turns an opaque provider reference into the one authoritative

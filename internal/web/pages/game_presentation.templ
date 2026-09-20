@@ -50,6 +50,14 @@ func providerCoverURL(coverImageID string) string {
 	return "https://images.igdb.com/igdb/image/upload/t_cover_small/" + coverImageID + ".jpg"
 }
 
+// providerCoverLargeURL is providerCoverURL at the size the Games catalog
+// card's cover band needs. t_cover_small is a thumbnail and visibly blurs
+// when stretched across a card; t_cover_big is the same approved host, the
+// same persisted cover_image_id, and the same CSP allowance.
+func providerCoverLargeURL(coverImageID string) string {
+	return "https://images.igdb.com/igdb/image/upload/t_cover_big/" + coverImageID + ".jpg"
+}
+
 // presentationSecondary renders type/platform/release disambiguation when
 // enrichment is known (spec: "4.2 Same-name Games"), falling back to the
 // local slug for a Game that has never been materialized through IGDB.

@@ -65,7 +65,8 @@ type NavigationState struct {
 	// filter matched. Sections without a count on the current page omit it.
 	OpenRequests int64
 	// Games counts the active local catalog; FollowedGames counts what this
-	// viewer follows, matching what My Games itself lists.
+	// viewer follows, matching what the Games screen's "Followed only" filter
+	// itself lists.
 	Games int64
 	FollowedGames int64
 	// Upcoming is the viewer's own joined Game Requests, soonest first and
@@ -218,7 +219,7 @@ templ NavigationLinks(state NavigationState) {
 			</a>
 		</li>
 		<li>
-			<a class={ navigationLinkClass(state.Section == "games") } href="/games" aria-current={ navigationCurrent(state.Section == "games") }>
+			<a class={ navigationLinkClass(state.Section == "games" || state.Section == "games-followed") } href="/games" aria-current={ navigationCurrent(state.Section == "games") }>
 				<span>Games</span>
 				if state.Games > 0 {
 					<span class={ navigationCountClass(state.Section == "games") }>{ fmt.Sprint(state.Games) }</span>
@@ -226,10 +227,10 @@ templ NavigationLinks(state NavigationState) {
 			</a>
 		</li>
 		<li>
-			<a class={ navigationSubLinkClass(state.Section == "my-games") } href="/games/mine" aria-current={ navigationCurrent(state.Section == "my-games") }>
-				<span>My Games</span>
+			<a class={ navigationSubLinkClass(state.Section == "games-followed") } href="/games?followed=1" aria-current={ navigationCurrent(state.Section == "games-followed") }>
+				<span>Followed</span>
 				if state.FollowedGames > 0 {
-					<span class={ navigationCountClass(state.Section == "my-games") }>{ fmt.Sprint(state.FollowedGames) }</span>
+					<span class={ navigationCountClass(state.Section == "games-followed") }>{ fmt.Sprint(state.FollowedGames) }</span>
 				}
 			</a>
 		</li>

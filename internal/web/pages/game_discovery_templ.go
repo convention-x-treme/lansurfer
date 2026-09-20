@@ -18,7 +18,14 @@ import (
 // Games and the request composer. Surfaces provide only their card actions;
 // search threshold, availability, truncation, and empty-result copy stay in
 // one place.
-func GameDiscoveryState(page game.DiscoveryPage, search string, viewer *components.Viewer, cards templ.Component) templ.Component {
+//
+// empty is the surface's own "nothing to show" panel, for the two states
+// where a surface has more to say than a bare count: a search that matched
+// nothing, and a usable catalog that is nevertheless showing no cards. A
+// surface with nothing extra to say passes nil and keeps the shared copy --
+// the composer does, because a chooser mid-flow should not grow a second
+// call to action underneath the one it already has.
+func GameDiscoveryState(page game.DiscoveryPage, search string, viewer *components.Viewer, cards, empty templ.Component) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -51,6 +58,16 @@ func GameDiscoveryState(page game.DiscoveryPage, search string, viewer *componen
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, " ")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if page.ProviderStatus.CatalogAvailable && empty != nil {
+					templ_7745c5c3_Err = empty.Render(ctx, templ_7745c5c3_Buffer)
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
 			} else {
 				templ_7745c5c3_Err = cards.Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
@@ -59,32 +76,39 @@ func GameDiscoveryState(page game.DiscoveryPage, search string, viewer *componen
 			}
 		} else {
 			if page.HasMore {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<p class=\"text-sm text-base-content/70 mb-4\">Too many matches — refine your search.</p>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<p class=\"text-sm text-base-content/70 mb-4\">Too many matches — refine your search.</p>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, " ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, " ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if len(page.Items) == 0 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "<section class=\"detail-card\"><h2 class=\"text-[1.0625rem] font-semibold\">")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				var templ_7745c5c3_Var2 string
-				templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("No games found for %q", search))
-				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/game_discovery.templ`, Line: 29, Col: 93}
-				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var2))
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "</h2></section>")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
+				if empty != nil {
+					templ_7745c5c3_Err = empty.Render(ctx, templ_7745c5c3_Buffer)
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				} else {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<section class=\"detail-card\"><h2 class=\"text-[1.0625rem] font-semibold\">")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var2 string
+					templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("No games found for %q", search))
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/game_discovery.templ`, Line: 42, Col: 94}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var2))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "</h2></section>")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
 				}
 			} else {
 				templ_7745c5c3_Err = cards.Render(ctx, templ_7745c5c3_Buffer)

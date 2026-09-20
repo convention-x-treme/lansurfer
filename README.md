@@ -31,7 +31,7 @@ The original use case is **CXT**, a LAN party with around **400 participants**. 
 
 The completed prototype establishes a simple browser-based flow:
 
-1. **Follow your games.** Pick the games you'd like to play and find them again in My Games.
+1. **Follow your games.** Pick the games you'd like to play and find them again with the **Followed only** filter on Games.
 2. **Find players.** Create a Game Request with a start time, an optional player limit, and a short description.
 3. **Join a game.** Browse requests, see who's still looking for players, and join in. Live updates keep player counts and new requests visible in the browser.
 
