@@ -328,3 +328,117 @@ func TestNotificationWorkWithNoEligibleTargetsCompletesWithoutFutureReplay(t *te
 		t.Fatalf("DiscoverActivity() second pass = %#v, want none (no replay of already-materialized work)", activities)
 	}
 }
+
+func TestNotificationClaimDueDeliveriesIsExclusiveUnderConcurrency(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+	fixture := newNotificationFixture(t, pool)
+	store := notificationpostgres.NewStore(pool)
+	if err := store.InitializeBaseline(t.Context()); err != nil {
+		t.Fatalf("InitializeBaseline() error = %v", err)
+	}
+	for i := 0; i < 20; i++ {
+		if _, err := fixture.requests.Create(t.Context(), fixture.host.ID, fixture.gameID, nil, time.Now().Add(time.Hour), "Concurrent"); err != nil {
+			t.Fatalf("create game request %d: %v", i, err)
+		}
+	}
+	activities, err := store.DiscoverActivity(t.Context(), 100)
+	if err != nil || len(activities) != 20 {
+		t.Fatalf("DiscoverActivity() = %#v, %v, want 20 activities", activities, err)
+	}
+	for _, activity := range activities {
+		if err := store.MaterializeWork(t.Context(), activity, []notification.Target{{Transport: "test", Key: "target-1"}}); err != nil {
+			t.Fatalf("MaterializeWork() error = %v", err)
+		}
+	}
+
+	const racers = 5
+	seen := make(chan int64, 20*racers)
+	start := make(chan struct{})
+	done := make(chan struct{})
+	for i := 0; i < racers; i++ {
+		go func() {
+			<-start
+			claimed, err := store.ClaimDueDeliveries(t.Context(), 20, time.Now().Add(time.Minute))
+			if err != nil {
+				t.Errorf("ClaimDueDeliveries() error = %v", err)
+			}
+			for _, delivery := range claimed {
+				seen <- delivery.DeliveryID
+			}
+			done <- struct{}{}
+		}()
+	}
+	close(start)
+	for i := 0; i < racers; i++ {
+		<-done
+	}
+	close(seen)
+
+	counts := make(map[int64]int)
+	for id := range seen {
+		counts[id]++
+	}
+	if len(counts) != 20 {
+		t.Fatalf("distinct claimed delivery IDs = %d, want 20", len(counts))
+	}
+	for id, count := range counts {
+		if count != 1 {
+			t.Fatalf("delivery %d was claimed %d times, want exactly 1 (SKIP LOCKED must prevent double-claiming)", id, count)
+		}
+	}
+}
+
+func TestNotificationExpiredClaimLeaseBecomesClaimableAgain(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+	fixture := newNotificationFixture(t, pool)
+	store := notificationpostgres.NewStore(pool)
+	if err := store.InitializeBaseline(t.Context()); err != nil {
+		t.Fatalf("InitializeBaseline() error = %v", err)
+	}
+	if _, err := fixture.requests.Create(t.Context(), fixture.host.ID, fixture.gameID, nil, time.Now().Add(time.Hour), "Abandoned claim"); err != nil {
+		t.Fatalf("create game request: %v", err)
+	}
+	activities, err := store.DiscoverActivity(t.Context(), 10)
+	if err != nil || len(activities) != 1 {
+		t.Fatalf("DiscoverActivity() = %#v, %v", activities, err)
+	}
+	if err := store.MaterializeWork(t.Context(), activities[0], []notification.Target{{Transport: "test", Key: "target-1"}}); err != nil {
+		t.Fatalf("MaterializeWork() error = %v", err)
+	}
+
+	firstClaim, err := store.ClaimDueDeliveries(t.Context(), 10, time.Now().Add(time.Minute))
+	if err != nil || len(firstClaim) != 1 {
+		t.Fatalf("first ClaimDueDeliveries() = %#v, %v, want exactly one claim", firstClaim, err)
+	}
+
+	// A second claim attempt before the lease expires must find nothing: the
+	// worker that made the first claim is (as far as this test can tell)
+	// still working on it.
+	stillLeased, err := store.ClaimDueDeliveries(t.Context(), 10, time.Now().Add(time.Minute))
+	if err != nil {
+		t.Fatalf("ClaimDueDeliveries() while leased error = %v", err)
+	}
+	if len(stillLeased) != 0 {
+		t.Fatalf("ClaimDueDeliveries() while leased = %#v, want none", stillLeased)
+	}
+
+	// Simulate a crashed worker: back-date the lease directly, as no
+	// application code path is expected to do this.
+	if _, err := pool.Exec(t.Context(),
+		"UPDATE notification_delivery SET claimed_until = now() - interval '1 second' WHERE id = $1",
+		firstClaim[0].DeliveryID,
+	); err != nil {
+		t.Fatalf("expire lease: %v", err)
+	}
+
+	recovered, err := store.ClaimDueDeliveries(t.Context(), 10, time.Now().Add(time.Minute))
+	if err != nil || len(recovered) != 1 || recovered[0].DeliveryID != firstClaim[0].DeliveryID {
+		t.Fatalf("ClaimDueDeliveries() after lease expiry = %#v, %v, want to recover delivery %d", recovered, err, firstClaim[0].DeliveryID)
+	}
+}

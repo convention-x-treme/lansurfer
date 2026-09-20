@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/convention-x-treme/lansurfer/internal/notification"
 	"github.com/convention-x-treme/lansurfer/internal/notification/postgres/sqlcgen"
@@ -121,6 +122,36 @@ func (s *Store) MaterializeWork(ctx context.Context, activity notification.Activ
 		return fmt.Errorf("commit materialize work transaction: %w", err)
 	}
 	return nil
+}
+
+// ClaimDueDeliveries atomically claims up to limit deliveries that are
+// either newly pending and due, or claimed by an earlier lease that has
+// since expired (a crashed or stalled worker), and extends their lease to
+// leaseUntil. The underlying query's FOR UPDATE SKIP LOCKED row-selection
+// runs inside one implicit statement-level transaction, so concurrent
+// callers never see or wait on rows another in-flight call has already
+// locked: each one claims a disjoint set of rows, or none if nothing is
+// left.
+func (s *Store) ClaimDueDeliveries(ctx context.Context, limit int, leaseUntil time.Time) ([]notification.ClaimedDelivery, error) {
+	rows, err := s.queries.ClaimDueDeliveries(ctx, sqlcgen.ClaimDueDeliveriesParams{
+		RowLimit: int32(limit), ClaimedUntil: pgtype.Timestamptz{Time: leaseUntil, Valid: true},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("claim due deliveries: %w", err)
+	}
+	claimed := make([]notification.ClaimedDelivery, 0, len(rows))
+	for _, row := range rows {
+		claimed = append(claimed, notification.ClaimedDelivery{
+			DeliveryID:   row.ID,
+			Target:       notification.Target{Transport: row.Transport, Key: row.TargetKey},
+			AttemptCount: row.AttemptCount,
+			Activity: notification.Activity{
+				Sequence: row.ActivitySequence, GameRequestID: row.GameRequestID, ActorID: row.ActorID,
+				Kind: notification.ActivityKind(row.Kind), OccurredAt: row.OccurredAt.Time,
+			},
+		})
+	}
+	return claimed, nil
 }
 
 func parseUUID(value string) (pgtype.UUID, error) {
