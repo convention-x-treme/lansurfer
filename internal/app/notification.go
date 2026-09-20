@@ -1,11 +1,16 @@
 package app
 
 import (
+	"context"
+	"fmt"
 	"log/slog"
+	"strconv"
 	"time"
 
 	"github.com/convention-x-treme/lansurfer/internal/notification"
 	notificationpostgres "github.com/convention-x-treme/lansurfer/internal/notification/postgres"
+	"github.com/convention-x-treme/lansurfer/internal/platform/config"
+	platformpostgres "github.com/convention-x-treme/lansurfer/internal/platform/postgres"
 )
 
 // newNotificationWorker ties the worker to the caller's root context by
@@ -18,4 +23,72 @@ import (
 // transports to this slice as they land.
 func newNotificationWorker(store *notificationpostgres.Store, logger *slog.Logger) *notification.Worker {
 	return notification.NewWorker(store, nil, logger, time.Now)
+}
+
+// ListNotificationProblems opens its own standalone database connection and
+// reports every exhausted, permanent, or uncertain delivery for operator
+// diagnosis, following the same one-shot pattern as ListUsers.
+func ListNotificationProblems(ctx context.Context, cfg config.Config, logger *slog.Logger) ([]notification.ProblemDelivery, error) {
+	databaseCtx, cancelDatabase := context.WithTimeout(ctx, databaseStartupTimeout)
+	pool, err := platformpostgres.Connect(databaseCtx, cfg.DatabaseURL, logger)
+	cancelDatabase()
+	if err != nil {
+		return nil, fmt.Errorf("connect to PostgreSQL: %w", err)
+	}
+	defer pool.Close()
+
+	migrationCtx, cancelMigration := context.WithTimeout(ctx, migrationTimeout)
+	err = platformpostgres.Migrate(migrationCtx, pool, logger)
+	cancelMigration()
+	if err != nil {
+		return nil, fmt.Errorf("apply database migrations: %w", err)
+	}
+
+	service := notification.NewService(notificationpostgres.NewStore(pool), nil)
+	problems, err := service.ListProblems(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list notification problems: %w", err)
+	}
+	return problems, nil
+}
+
+// RetryNotificationDelivery reopens one exhausted or permanent delivery for
+// a fresh automatic retry budget, after re-checking present-day eligibility.
+func RetryNotificationDelivery(ctx context.Context, cfg config.Config, deliveryID string, logger *slog.Logger) error {
+	return retryNotificationDelivery(ctx, cfg, deliveryID, logger, false)
+}
+
+// RetryUncertainNotificationDelivery reopens one uncertain delivery despite
+// the possibility of a duplicate externally visible effect. It is a
+// distinct action from RetryNotificationDelivery.
+func RetryUncertainNotificationDelivery(ctx context.Context, cfg config.Config, deliveryID string, logger *slog.Logger) error {
+	return retryNotificationDelivery(ctx, cfg, deliveryID, logger, true)
+}
+
+func retryNotificationDelivery(ctx context.Context, cfg config.Config, deliveryID string, logger *slog.Logger, uncertain bool) error {
+	id, err := strconv.ParseInt(deliveryID, 10, 64)
+	if err != nil {
+		return fmt.Errorf("parse delivery ID: %w", err)
+	}
+
+	databaseCtx, cancelDatabase := context.WithTimeout(ctx, databaseStartupTimeout)
+	pool, err := platformpostgres.Connect(databaseCtx, cfg.DatabaseURL, logger)
+	cancelDatabase()
+	if err != nil {
+		return fmt.Errorf("connect to PostgreSQL: %w", err)
+	}
+	defer pool.Close()
+
+	migrationCtx, cancelMigration := context.WithTimeout(ctx, migrationTimeout)
+	err = platformpostgres.Migrate(migrationCtx, pool, logger)
+	cancelMigration()
+	if err != nil {
+		return fmt.Errorf("apply database migrations: %w", err)
+	}
+
+	service := notification.NewService(notificationpostgres.NewStore(pool), nil)
+	if uncertain {
+		return service.ManualRetryUncertain(ctx, id)
+	}
+	return service.ManualRetry(ctx, id)
 }
