@@ -13,7 +13,10 @@ templ AdminGames(brand branding.Brand, navigation components.NavigationState, ga
 	@components.Layout(brand, "Manage Games", navigation) {
 		<header class="app-topbar">
 			<h1 class="app-title">Manage Games</h1>
-			<a class="btn btn-quiet btn-sm" href="/admin/igdb">IGDB Sync</a>
+			<div class="flex gap-2">
+				<a class="btn btn-quiet btn-sm" href="/admin/igdb">IGDB Sync</a>
+				<a class="btn btn-quiet btn-sm" href="/admin/pwa">PWA</a>
+			</div>
 		</header>
 		<div class="content-page">
 			<p class="mb-5 max-w-2xl text-sm text-base-content/70">Maintain the local games available for Looking for Group. This LANsurfer installation is the event; Game Requests do not need any further setup.</p>
@@ -111,7 +114,10 @@ templ AdminIGDB(brand branding.Brand, navigation components.NavigationState, sta
 	@components.Layout(brand, "IGDB Synchronization", navigation) {
 		<header class="app-topbar">
 			<h1 class="app-title">IGDB synchronization</h1>
-			<a class="btn btn-quiet btn-sm" href="/admin/games">Manage games</a>
+			<div class="flex gap-2">
+				<a class="btn btn-quiet btn-sm" href="/admin/games">Manage games</a>
+				<a class="btn btn-quiet btn-sm" href="/admin/pwa">PWA</a>
+			</div>
 		</header>
 		<div class="content-page">
 			<p class="mb-5 max-w-2xl text-sm text-base-content/70">Review the local IGDB discovery index and its background refresh.</p>
@@ -190,7 +196,10 @@ templ AdminPWA(brand branding.Brand, navigation components.NavigationState, diag
 	@components.Layout(brand, "PWA Diagnostics", navigation) {
 		<header class="app-topbar">
 			<h1 class="app-title">PWA diagnostics</h1>
-			<a class="btn btn-quiet btn-sm" href="/admin/games">Manage games</a>
+			<div class="flex gap-2">
+				<a class="btn btn-quiet btn-sm" href="/admin/games">Manage games</a>
+				<a class="btn btn-quiet btn-sm" href="/admin/igdb">IGDB Sync</a>
+			</div>
 		</header>
 		<div class="content-page">
 			<p class="mb-5 max-w-2xl text-sm text-base-content/70">Read-only facts about this installation's manifest, service worker, and secure-context status. Nothing here is stored or shown to players.</p>
