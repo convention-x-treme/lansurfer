@@ -97,6 +97,10 @@ Settled personal-notification rules so far:
 
 The remaining choices are implementation-level naming and mechanics that do not change the settled contract, such as exact Go method/type names and exact SQL column/index names. They are not open product/architecture decisions.
 
+## Known implementation alignment follow-up
+
+E1 is already implemented, but the approved Q75 clarification post-dates the current backoff helper: LANsurfer's own exponential backoff is capped at five minutes, while an explicit provider `Retry-After` must be honored in full even when it is longer. The current implementation must be aligned and regression-tested before E2/E3 rely on provider retry hints.
+
 ## Acceptance direction
 
 The final design must make it possible to prove:
