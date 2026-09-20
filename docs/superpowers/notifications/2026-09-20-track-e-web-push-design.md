@@ -73,6 +73,9 @@ Detailed E2 questions are intentionally blocked until E1 settles the shared dura
 - **Push TTL:** use a maximum Push-service TTL of 5 minutes for LANsurfer notifications.
 - **Provider result mapping:** provider acceptance maps to success; expired/invalid subscriptions map to permanent failure and remove that active subscription; 429, temporary/5xx, and network failures map to retryable; other non-expiry 4xx failures map to permanent without deleting the endpoint solely because of status class; uncertain remains reserved for adapter outcomes where retry cannot be considered safe.
 - **Payload contract:** use versioned structured minimal JSON containing schema version, activity kind, Game, planned start, request deep link, minimum instance context, and optional actor Game Nick only for `joined`/`left`. Do not include description, roster, provider identity data, or activity history.
+- **PushSubscription encryption at rest:** encrypt endpoint, `p256dh`, and `auth` using the Track E operator-provided data-encryption key and AES-GCM. Do not log or expose decrypted subscription material in diagnostics/UI.
+- Keep non-sensitive ownership/operational metadata separately queryable. If uniqueness/deduplication requires endpoint lookup without decryption scans, persist a keyed or cryptographic fingerprint suitable only for equality matching; do not persist the raw endpoint alongside the ciphertext.
+- The data-encryption key is therefore required when Web Push is enabled, not only for Discord. Losing the key makes existing encrypted PushSubscriptions unrecoverable and requires users to register devices again; later Discord credentials encrypted with the same key likewise require reconfiguration.
 - This is an intentional extension beyond the current roadmap's creation-focused Web Push and identity-minimized wording and requires canonical documentation reconciliation before implementation merge.
 
 ### Open decision branches
