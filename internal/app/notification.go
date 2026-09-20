@@ -18,11 +18,19 @@ import (
 // application's own ctx), matching appBoundIGDBSync's rationale: a
 // background worker must keep running, and be cancellable only by
 // application shutdown, independent of any single request.
-//
-// No transports are registered yet: E1 has none. E2/E3 append their
-// transports to this slice as they land.
 func newNotificationWorker(store *notificationpostgres.Store, logger *slog.Logger) *notification.Worker {
-	return notification.NewWorker(store, nil, logger, time.Now)
+	return notification.NewWorker(store, notificationTransports(), logger, time.Now)
+}
+
+// notificationTransports is the single place every notification.Transport
+// this application registers is listed. newNotificationWorker and the CLI
+// diagnostics/retry helpers below all call this rather than passing nil
+// directly, so a transport added here reaches manual retry too instead of
+// leaving it permanently unable to find the transport it needs.
+//
+// E1 registers none. E2/E3 append their transports here as they land.
+func notificationTransports() []notification.Transport {
+	return nil
 }
 
 // ListNotificationProblems opens its own standalone database connection and
@@ -44,7 +52,7 @@ func ListNotificationProblems(ctx context.Context, cfg config.Config, logger *sl
 		return nil, fmt.Errorf("apply database migrations: %w", err)
 	}
 
-	service := notification.NewService(notificationpostgres.NewStore(pool), nil)
+	service := notification.NewService(notificationpostgres.NewStore(pool), notificationTransports())
 	problems, err := service.ListProblems(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list notification problems: %w", err)
@@ -86,7 +94,7 @@ func retryNotificationDelivery(ctx context.Context, cfg config.Config, deliveryI
 		return fmt.Errorf("apply database migrations: %w", err)
 	}
 
-	service := notification.NewService(notificationpostgres.NewStore(pool), nil)
+	service := notification.NewService(notificationpostgres.NewStore(pool), notificationTransports())
 	if uncertain {
 		return service.ManualRetryUncertain(ctx, id)
 	}
