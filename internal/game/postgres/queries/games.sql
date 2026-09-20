@@ -43,7 +43,19 @@ DELETE FROM game_aliases
 WHERE id = sqlc.arg(id)::uuid AND game_id = sqlc.arg(game_id)::uuid;
 
 -- name: BrowseSubscriptionGames :many
+-- Empty search (the "browse the catalog" case) prioritizes followed Games
+-- first. A non-empty search (the local-only fallback for a disabled
+-- provider) keeps the pre-existing plain name order: the empty-search guard
+-- makes every row's ORDER BY sort key false there, so followed status never
+-- reorders results. PostgreSQL's SELECT-list output-alias shorthand for
+-- ORDER BY only applies to a bare name, not a name nested in an expression,
+-- so the followed-game EXISTS check is repeated in the ORDER BY clause
+-- rather than referenced through the subscribed alias.
 SELECT g.id::text, g.name, g.slug,
+       enrichment.cover_image_id,
+       enrichment.game_type,
+       enrichment.platform_names,
+       enrichment.first_release_date,
        EXISTS (
            SELECT 1
            FROM game_subscriptions gs
@@ -51,6 +63,7 @@ SELECT g.id::text, g.name, g.slug,
              AND gs.user_id = sqlc.arg(user_id)::uuid
        ) AS subscribed
 FROM games g
+LEFT JOIN game_igdb_enrichment enrichment ON enrichment.game_id = g.id
 WHERE g.active
   AND (
       sqlc.arg(search)::text = ''
@@ -62,12 +75,26 @@ WHERE g.active
             AND strpos(lower(ga.alias), lower(sqlc.arg(search)::text)) > 0
       )
   )
-ORDER BY lower(g.name), g.id;
+ORDER BY (
+    sqlc.arg(search)::text = ''
+    AND EXISTS (
+        SELECT 1
+        FROM game_subscriptions gs
+        WHERE gs.game_id = g.id
+          AND gs.user_id = sqlc.arg(user_id)::uuid
+    )
+) DESC, lower(g.name), g.id;
 
 -- name: ListSubscribedGames :many
-SELECT g.id::text, g.name, g.slug, true AS subscribed
+SELECT g.id::text, g.name, g.slug,
+       enrichment.cover_image_id,
+       enrichment.game_type,
+       enrichment.platform_names,
+       enrichment.first_release_date,
+       true AS subscribed
 FROM game_subscriptions gs
 JOIN games g ON g.id = gs.game_id
+LEFT JOIN game_igdb_enrichment enrichment ON enrichment.game_id = g.id
 WHERE gs.user_id = sqlc.arg(user_id)::uuid
   AND g.active
 ORDER BY lower(g.name), g.id;

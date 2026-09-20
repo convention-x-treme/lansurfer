@@ -11,35 +11,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const activeGamesForGameRequest = `-- name: ActiveGamesForGameRequest :many
-SELECT id::text, name FROM games WHERE active ORDER BY lower(name), id
-`
-
-type ActiveGamesForGameRequestRow struct {
-	ID   string
-	Name string
-}
-
-func (q *Queries) ActiveGamesForGameRequest(ctx context.Context) ([]ActiveGamesForGameRequestRow, error) {
-	rows, err := q.db.Query(ctx, activeGamesForGameRequest)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []ActiveGamesForGameRequestRow
-	for rows.Next() {
-		var i ActiveGamesForGameRequestRow
-		if err := rows.Scan(&i.ID, &i.Name); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const countOpenGameRequests = `-- name: CountOpenGameRequests :one
 SELECT count(*) FROM game_requests WHERE status = 'open'
 `
@@ -56,7 +27,13 @@ func (q *Queries) CountOpenGameRequests(ctx context.Context) (int64, error) {
 
 const getGameRequest = `-- name: GetGameRequest :one
 SELECT gr.id::text AS request_id,
+       g.id::text AS game_id,
        g.name AS game_name,
+       g.slug AS game_slug,
+       enrichment.cover_image_id,
+       enrichment.game_type,
+       enrichment.platform_names,
+       enrichment.first_release_date,
        gr.creator_id::text AS creator_id, u.display_name AS creator_name,
        gr.max_players, gr.starts_at, gr.description, gr.status,
        gr.created_at, gr.updated_at,
@@ -69,8 +46,9 @@ JOIN users u ON u.id = gr.creator_id
 JOIN game_request_members m ON m.game_request_id = gr.id
 LEFT JOIN game_subscriptions gs ON gs.game_id = gr.game_id
   AND gs.user_id = $1::uuid
+LEFT JOIN game_igdb_enrichment enrichment ON enrichment.game_id = g.id
 WHERE gr.id = $2::uuid
-GROUP BY gr.id, g.name, u.display_name
+GROUP BY gr.id, g.id, g.name, g.slug, enrichment.game_id, u.display_name
 `
 
 type GetGameRequestParams struct {
@@ -80,7 +58,13 @@ type GetGameRequestParams struct {
 
 type GetGameRequestRow struct {
 	RequestID        string
+	GameID           string
 	GameName         string
+	GameSlug         string
+	CoverImageID     pgtype.Text
+	GameType         pgtype.Text
+	PlatformNames    []string
+	FirstReleaseDate pgtype.Timestamptz
 	CreatorID        string
 	CreatorName      string
 	MaxPlayers       pgtype.Int4
@@ -99,7 +83,13 @@ func (q *Queries) GetGameRequest(ctx context.Context, arg GetGameRequestParams) 
 	var i GetGameRequestRow
 	err := row.Scan(
 		&i.RequestID,
+		&i.GameID,
 		&i.GameName,
+		&i.GameSlug,
+		&i.CoverImageID,
+		&i.GameType,
+		&i.PlatformNames,
+		&i.FirstReleaseDate,
 		&i.CreatorID,
 		&i.CreatorName,
 		&i.MaxPlayers,
@@ -117,7 +107,13 @@ func (q *Queries) GetGameRequest(ctx context.Context, arg GetGameRequestParams) 
 
 const listActiveGameRequests = `-- name: ListActiveGameRequests :many
 SELECT gr.id::text AS request_id,
+       g.id::text AS game_id,
        g.name AS game_name,
+       g.slug AS game_slug,
+       enrichment.cover_image_id,
+       enrichment.game_type,
+       enrichment.platform_names,
+       enrichment.first_release_date,
        gr.creator_id::text AS creator_id, u.display_name AS creator_name,
        gr.max_players, gr.starts_at, gr.description, gr.status,
        gr.created_at, gr.updated_at,
@@ -130,6 +126,7 @@ JOIN users u ON u.id = gr.creator_id
 JOIN game_request_members m ON m.game_request_id = gr.id
 LEFT JOIN game_subscriptions gs ON gs.game_id = gr.game_id
   AND gs.user_id = $1::uuid
+LEFT JOIN game_igdb_enrichment enrichment ON enrichment.game_id = g.id
 WHERE gr.status = 'open'
   AND (
       $2::text = ''
@@ -143,7 +140,7 @@ WHERE gr.status = 'open'
   )
   AND ($3::text <> 'my-games' OR gs.user_id IS NOT NULL)
   AND ($3::text <> 'mine' OR gr.creator_id = $1::uuid)
-GROUP BY gr.id, g.name, u.display_name
+GROUP BY gr.id, g.id, g.name, g.slug, enrichment.game_id, u.display_name
 HAVING ($3::text <> 'joined' OR bool_or(m.user_id = $1::uuid))
    AND (NOT $4::boolean
     OR gr.max_players IS NULL
@@ -160,7 +157,13 @@ type ListActiveGameRequestsParams struct {
 
 type ListActiveGameRequestsRow struct {
 	RequestID        string
+	GameID           string
 	GameName         string
+	GameSlug         string
+	CoverImageID     pgtype.Text
+	GameType         pgtype.Text
+	PlatformNames    []string
+	FirstReleaseDate pgtype.Timestamptz
 	CreatorID        string
 	CreatorName      string
 	MaxPlayers       pgtype.Int4
@@ -190,7 +193,13 @@ func (q *Queries) ListActiveGameRequests(ctx context.Context, arg ListActiveGame
 		var i ListActiveGameRequestsRow
 		if err := rows.Scan(
 			&i.RequestID,
+			&i.GameID,
 			&i.GameName,
+			&i.GameSlug,
+			&i.CoverImageID,
+			&i.GameType,
+			&i.PlatformNames,
+			&i.FirstReleaseDate,
 			&i.CreatorID,
 			&i.CreatorName,
 			&i.MaxPlayers,

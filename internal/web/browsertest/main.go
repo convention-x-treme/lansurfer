@@ -49,7 +49,7 @@ func main() {
 	mux.Handle("/", web.NewRouter(web.RouterDependencies{
 		Ready:          func(context.Context) error { return nil },
 		Authentication: state,
-		Subscriptions:  state,
+		Discovery:      state,
 		GameRequests:   state,
 		RequestQueries: state,
 		Realtime:       state,
@@ -102,7 +102,7 @@ func (f *fixture) seed(gameName string, maxPlayers int32, members int64) {
 	f.next++
 	id := fmt.Sprintf("00000000-0000-0000-0000-00000000000%d", f.next)
 	request := requestquery.Request{
-		ID: id, GameName: gameName, CreatorID: "creator-" + id, CreatorName: "Host",
+		ID: id, Game: game.GamePresentation{Name: gameName}, CreatorID: "creator-" + id, CreatorName: "Host",
 		StartsAt: time.Now().Add(time.Hour), Status: gamerequest.StatusOpen,
 		MemberCount: members, CreatedAt: time.Now().Add(-time.Hour),
 		Members:  []requestquery.Member{{ID: "creator-" + id, DisplayName: "Host", JoinedAt: time.Now().Add(-time.Hour)}},
@@ -158,7 +158,7 @@ func (f *fixture) Create(_ context.Context, _, gameID string, maxPlayers *int32,
 	id := fmt.Sprintf("00000000-0000-0000-0000-00000000000%d", f.next)
 	f.requests[id] = &fixtureRequest{
 		request: requestquery.Request{
-			ID: id, GameName: gameName(gameID), CreatorID: viewerID, CreatorName: "Ada Player",
+			ID: id, Game: game.GamePresentation{Name: gameName(gameID)}, CreatorID: viewerID, CreatorName: "Ada Player",
 			MaxPlayers: maxPlayers, StartsAt: startsAt, Description: description,
 			Status: gamerequest.StatusOpen, MemberCount: 1, CreatedAt: time.Now(),
 			Members:  []requestquery.Member{{ID: viewerID, DisplayName: "Ada Player", JoinedAt: time.Now()}},
@@ -275,7 +275,7 @@ func (f *fixture) ListActive(_ context.Context, _ string, filter requestquery.Fi
 		if entry.request.Status != gamerequest.StatusOpen {
 			continue
 		}
-		if filter.Search != "" && !strings.Contains(strings.ToLower(entry.request.GameName), strings.ToLower(filter.Search)) {
+		if filter.Search != "" && !strings.Contains(strings.ToLower(entry.request.Game.Name), strings.ToLower(filter.Search)) {
 			continue
 		}
 		switch filter.Scope {
@@ -310,13 +310,6 @@ func (f *fixture) ByID(_ context.Context, id, _ string) (requestquery.Request, e
 	return entry.request, nil
 }
 
-func (*fixture) CreationOptions(context.Context) ([]requestquery.GameOption, error) {
-	return []requestquery.GameOption{
-		{ID: "game-1", Name: "Warcraft III"},
-		{ID: "game-2", Name: "Quake III Arena"},
-	}, nil
-}
-
 // CountOpen is the whole installation's open total, never the filtered subset,
 // which is what the navigation badge states.
 func (f *fixture) CountOpen(context.Context) (int64, error) {
@@ -335,18 +328,40 @@ func (f *fixture) Trending(context.Context) ([]requestquery.TrendingGame, error)
 	return []requestquery.TrendingGame{{GameID: "game-1", GameName: "Warcraft III", ActivityCount: 4, RequestCount: 2}}, nil
 }
 
-// --- game subscriptions ---------------------------------------------------
+// --- game discovery ---------------------------------------------------
+//
+// Browser tests never exercise the IGDB provider path (no fixture Game is
+// unmaterialized), so Browse only ever returns already-materialized local
+// Games and Follow(ProviderReference) is unreachable from these tests.
 
-func (*fixture) Browse(context.Context, string, string) ([]game.SubscriptionGame, error) {
-	return []game.SubscriptionGame{{ID: "game-1", Name: "Warcraft III", Slug: "warcraft-3"}}, nil
+func (*fixture) Browse(context.Context, string, string) (game.DiscoveryPage, error) {
+	return game.DiscoveryPage{Items: []game.DiscoveryItem{{LocalGameID: "game-1", Name: "Warcraft III", Slug: "warcraft-3", Materialized: true}}}, nil
+}
+
+// Select is the Game Request composer's read-only lookup (Task 7). Browser
+// tests only ever select an already-local Game by ID; the provider path is
+// unreachable here for the same reason Follow's provider path is.
+func (*fixture) Select(_ context.Context, _ string, selection game.GameSelection) (game.DiscoveryItem, error) {
+	if selection.LocalGameID == "" {
+		return game.DiscoveryItem{}, game.ErrProviderRecordNotFound
+	}
+	return game.DiscoveryItem{
+		LocalGameID:      selection.LocalGameID,
+		GamePresentation: game.GamePresentation{Name: gameName(selection.LocalGameID)},
+		Materialized:     true,
+	}, nil
 }
 
 func (*fixture) MyGames(context.Context, string) ([]game.SubscriptionGame, error) {
 	return nil, nil
 }
 
-func (*fixture) Follow(context.Context, string, string) error   { return nil }
-func (*fixture) Unfollow(context.Context, string, string) error { return nil }
+func (*fixture) FollowLocal(context.Context, string, string) error { return nil }
+func (*fixture) Unfollow(context.Context, string, string) error    { return nil }
+
+func (*fixture) Follow(context.Context, string, game.ProviderReference) (game.Game, error) {
+	return game.Game{}, game.ErrProviderRecordNotFound
+}
 
 // --- test control plane ---------------------------------------------------
 

@@ -27,13 +27,23 @@ type GameAdministration interface {
 	RemoveAlias(context.Context, string, string) error
 }
 
-type Administration struct {
-	games GameAdministration
-	brand branding.Brand
+// ProviderSyncAdministration is the narrow interface the admin IGDB status
+// page and manual "Sync now" action need. It is satisfied by
+// *game.IGDBSyncService and by the disabled adapter wired in when IGDB
+// credentials are not configured.
+type ProviderSyncAdministration interface {
+	Status(context.Context) (game.ProviderStatus, error)
+	TryStart(context.Context) bool
 }
 
-func NewAdministration(games GameAdministration, brand branding.Brand) *Administration {
-	return &Administration{games: games, brand: brand}
+type Administration struct {
+	games        GameAdministration
+	providerSync ProviderSyncAdministration
+	brand        branding.Brand
+}
+
+func NewAdministration(games GameAdministration, providerSync ProviderSyncAdministration, brand branding.Brand) *Administration {
+	return &Administration{games: games, providerSync: providerSync, brand: brand}
 }
 
 func (h *Administration) Games(w http.ResponseWriter, r *http.Request) {
@@ -114,6 +124,23 @@ func (h *Administration) RemoveGameAlias(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	h.redirect(w, r, "/admin/games?notice=alias-removed")
+}
+
+func (h *Administration) IGDB(w http.ResponseWriter, r *http.Request) {
+	status, err := h.providerSync.Status(r.Context())
+	if err != nil {
+		h.renderAdminError(w, r, err)
+		return
+	}
+	render(w, r, http.StatusOK, pages.AdminIGDB(h.brand, adminNavigation(r), status, notice(r)))
+}
+
+func (h *Administration) SyncIGDB(w http.ResponseWriter, r *http.Request) {
+	if h.providerSync.TryStart(r.Context()) {
+		h.redirect(w, r, "/admin/igdb?notice=igdb-sync-started")
+		return
+	}
+	h.redirect(w, r, "/admin/igdb?notice=igdb-sync-already-running")
 }
 
 func (h *Administration) renderGamesWithError(w http.ResponseWriter, r *http.Request, cause error) {
@@ -199,6 +226,10 @@ func notice(r *http.Request) string {
 		return "Alias removed."
 	case "request-created":
 		return "Game Request created."
+	case "igdb-sync-started":
+		return "IGDB synchronization requested."
+	case "igdb-sync-already-running":
+		return "IGDB synchronization is already in progress."
 	default:
 		return ""
 	}

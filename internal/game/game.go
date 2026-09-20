@@ -47,9 +47,8 @@ type Game struct {
 // SubscriptionGame is the user-facing catalog projection with the current
 // user's subscription state.
 type SubscriptionGame struct {
-	ID         string
-	Name       string
-	Slug       string
+	ID string
+	GamePresentation
 	Subscribed bool
 }
 
@@ -164,8 +163,16 @@ func validateGame(name, slug string) (string, string, error) {
 	if name == "" || utf8.RuneCountInString(name) > maxNameLength {
 		return "", "", ErrInvalidName
 	}
-	if utf8.RuneCountInString(slug) > maxSlugLength || !slugPattern.MatchString(slug) {
+	if !ValidSlug(slug) {
 		return "", "", ErrInvalidSlug
 	}
 	return name, slug, nil
+}
+
+// ValidSlug reports whether value satisfies the local Game slug invariant,
+// which the games.slug CHECK constraint enforces in PostgreSQL as well.
+// Materialization uses it to decide whether a provider-supplied slug can be
+// adopted verbatim before falling back to a deterministic suffixed slug.
+func ValidSlug(value string) bool {
+	return utf8.RuneCountInString(value) <= maxSlugLength && slugPattern.MatchString(value)
 }

@@ -71,10 +71,11 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	)
 	gameStore := gamepostgres.NewStore(pool)
 	gameService := game.NewService(gameStore)
-	gameSubscriptions := game.NewSubscriptionService(gameStore)
 	realtime := sse.NewBroker()
 	gameRequests := gamerequest.NewService(gamerequestpostgres.NewStore(pool), gameService, realtime)
 	gameRequestQueries := gamerequestquery.NewStore(pool)
+	igdbSyncService := newIGDBSync(ctx, cfg.IGDB, gameStore, logger)
+	gameDiscovery := game.NewDiscoveryService(gameStore, gameStore, gameStore, igdbSyncService)
 
 	server := &http.Server{
 		Addr: cfg.ListenAddr,
@@ -82,10 +83,12 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 			Ready:          postgres.ReadyCheck(pool),
 			Authentication: authService,
 			Games:          gameService,
-			Subscriptions:  gameSubscriptions,
+			Discovery:      gameDiscovery,
+			GameResolver:   gameDiscovery,
 			GameRequests:   gameRequests,
 			RequestQueries: gameRequestQueries,
 			Realtime:       realtime,
+			ProviderSync:   igdbSyncService,
 			SecureCookies:  strings.HasPrefix(cfg.BaseURL, "https://"),
 			Logger:         logger,
 			TrustedProxies: cfg.TrustedProxies,
@@ -100,6 +103,15 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	go func() {
 		logger.Info("HTTP server listening", "address", cfg.ListenAddr)
 		serverErrors <- server.ListenAndServe()
+	}()
+	go runDailyIGDBSync(ctx, igdbSyncService, igdbSyncInterval)
+	// Registered after pool.Close() above so it runs first on the way out:
+	// an in-flight sync's transaction must finish (or be abandoned within the
+	// bound) before the pool it depends on is closed.
+	defer func() {
+		waitCtx, cancelWait := context.WithTimeout(context.Background(), shutdownTimeout)
+		defer cancelWait()
+		igdbSyncService.Wait(waitCtx)
 	}()
 
 	select {

@@ -1,0 +1,35 @@
+package pages
+
+import (
+	"fmt"
+	"github.com/convention-x-treme/lansurfer/internal/game"
+	"github.com/convention-x-treme/lansurfer/internal/web/components"
+)
+
+// GameDiscoveryState is the single player-visible discovery state machine for
+// Games and the request composer. Surfaces provide only their card actions;
+// search threshold, availability, truncation, and empty-result copy stay in
+// one place.
+templ GameDiscoveryState(page game.DiscoveryPage, search string, viewer *components.Viewer, cards templ.Component) {
+	if page.SearchTooShort {
+		<p class="text-sm text-base-content/70 mb-4">Type at least 2 characters to search.</p>
+	}
+	if search == "" || page.SearchTooShort {
+		if len(page.Items) == 0 {
+			@GameCatalogAvailability(page.ProviderStatus, viewer)
+		} else {
+			@cards
+		}
+	} else {
+		if page.HasMore {
+			<p class="text-sm text-base-content/70 mb-4">Too many matches — refine your search.</p>
+		}
+		if len(page.Items) == 0 {
+			<section class="detail-card">
+				<h2 class="text-[1.0625rem] font-semibold">{ fmt.Sprintf("No games found for %q", search) }</h2>
+			</section>
+		} else {
+			@cards
+		}
+	}
+}

@@ -1,6 +1,9 @@
 package pages
 
 import (
+	"strconv"
+	"time"
+
 	"github.com/convention-x-treme/lansurfer/internal/game"
 	"github.com/convention-x-treme/lansurfer/internal/web/branding"
 	"github.com/convention-x-treme/lansurfer/internal/web/components"
@@ -10,6 +13,7 @@ templ AdminGames(brand branding.Brand, navigation components.NavigationState, ga
 	@components.Layout(brand, "Manage Games", navigation) {
 		<header class="app-topbar">
 			<h1 class="app-title">Manage Games</h1>
+			<a class="btn btn-quiet btn-sm" href="/admin/igdb">IGDB Sync</a>
 		</header>
 		<div class="content-page">
 			<p class="mb-5 max-w-2xl text-sm text-base-content/70">Maintain the local games available for Looking for Group. This LANsurfer installation is the event; Game Requests do not need any further setup.</p>
@@ -103,11 +107,78 @@ templ GameFields(name, slug string) {
 	<label class="form-control"><span class="label"><span class="label-text">Slug</span></span><input class="input input-bordered w-full data-text" name="slug" value={ slug } maxlength="120" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" placeholder="counter-strike-2" required/></label>
 }
 
+templ AdminIGDB(brand branding.Brand, navigation components.NavigationState, status game.ProviderStatus, notice string) {
+	@components.Layout(brand, "IGDB Synchronization", navigation) {
+		<header class="app-topbar">
+			<h1 class="app-title">IGDB synchronization</h1>
+			<a class="btn btn-quiet btn-sm" href="/admin/games">Manage games</a>
+		</header>
+		<div class="content-page">
+			<p class="mb-5 max-w-2xl text-sm text-base-content/70">Review the local IGDB discovery index and its background refresh.</p>
+			if notice != "" {
+				<div role="status" class="alert alert-info mb-4"><span>{ notice }</span></div>
+			}
+			<section class="detail-card">
+				<div class="flex flex-wrap items-center justify-between gap-3">
+					<h2 class="text-[1.0625rem] font-semibold">Status</h2>
+					@igdbStatusBadge(status.State)
+				</div>
+				<dl class="mt-2 grid gap-4 sm:grid-cols-3">
+					<div>
+						<dt class="text-sm text-base-content/60">Last attempt</dt>
+						<dd class="data-text">{ igdbTimestamp(status.LastAttempt) }</dd>
+					</div>
+					<div>
+						<dt class="text-sm text-base-content/60">Last success</dt>
+						<dd class="data-text">{ igdbTimestamp(status.LastSuccess) }</dd>
+					</div>
+					<div>
+						<dt class="text-sm text-base-content/60">Indexed records</dt>
+						<dd class="data-text">{ strconv.FormatInt(status.RecordCount, 10) }</dd>
+					</div>
+				</dl>
+				if status.LastError != "" {
+					<div role="alert" class="alert alert-error mt-2"><span>{ status.LastError }</span></div>
+				}
+				if status.State != game.ProviderDisabled && status.State != game.ProviderSyncing {
+					<form method="post" action="/admin/igdb/sync" class="flex justify-end mt-2">
+						@components.CSRFInput()
+						<button class="btn btn-primary btn-sm" type="submit">Sync now</button>
+					</form>
+				}
+			</section>
+		</div>
+	}
+}
+
+templ igdbStatusBadge(state game.ProviderState) {
+	if state == game.ProviderCurrent {
+		<span class="badge badge-primary">Current</span>
+	} else if state == game.ProviderSyncing {
+		<span class="badge badge-info">Syncing</span>
+	} else if state == game.ProviderFailed {
+		<span class="badge badge-error">Failed</span>
+	} else if state == game.ProviderStale {
+		<span class="badge badge-warning">Stale</span>
+	} else if state == game.ProviderDisabled {
+		<span class="badge badge-ghost">Disabled</span>
+	} else {
+		<span class="badge badge-outline">Not synced</span>
+	}
+}
+
 templ AdminError(brand branding.Brand, navigation components.NavigationState) {
 	@components.Layout(brand, "Administration error", navigation) {
 		<header class="app-topbar"><h1 class="app-title">Administration</h1></header>
 		<div class="content-page"><div role="alert" class="alert alert-error"><div><p class="font-bold">Administration could not be loaded</p><p>Try the request again.</p></div></div></div>
 	}
+}
+
+func igdbTimestamp(value *time.Time) string {
+	if value == nil {
+		return "Never"
+	}
+	return value.UTC().Format("2006-01-02T15:04Z")
 }
 
 func gameActiveConfirmation(active bool) string {

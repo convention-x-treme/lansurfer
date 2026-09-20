@@ -350,6 +350,8 @@ Rules:
 
 Trending is a focused read model derived from Game Request activity over the product-defined rolling six-hour window. It does not authorize raw search-query tracking or a general analytics event store.
 
+Game Request list/detail read models may join the local `game_igdb_enrichment` last-known-good snapshot to render presentation (cover, Game Type, platforms, release date) alongside a request's Game. The `gamerequest` domain owns no IGDB state itself; it never reads or writes `game_igdb_enrichment`, and this join stays confined to the read model.
+
 This is intentionally lightweight and does not imply event sourcing or full CQRS.
 
 ---
@@ -538,6 +540,8 @@ Default player-visible provider categories are semantic product policy rather th
 Searching/viewing a provider result is read-only. Following it or creating a Game Request for it invokes the `game` module to atomically materialize one authoritative local Game keyed by provider/external ID. Any signed-in player may trigger this when IGDB is enabled; there is no administrator approval step.
 
 Never merge by name. Once materialized, local Games remain authoritative and usable if the provider is disabled, unavailable, changed, or later loses the source record.
+
+Unmaterialized discovery reads presentation metadata from the active provider generation. Once materialized, player-facing reads use the authoritative local Game plus a local last-known-good IGDB enrichment snapshot (`game_igdb_enrichment`). Successful provider syncs refresh only non-empty enrichment fields; provider disappearance or disablement does not remove the snapshot.
 
 If a synchronized provider record disappears:
 

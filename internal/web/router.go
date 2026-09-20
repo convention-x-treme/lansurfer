@@ -36,11 +36,23 @@ type Authentication interface {
 	webmiddleware.Authenticator
 }
 
+// Discovery combines Games' and the Game Request composer's separate narrow
+// consuming interfaces (handler.GameDiscovery, handler.GameRequestDiscovery):
+// one concrete *game.DiscoveryService backs both, and this composition root
+// is where it is fine to say so explicitly, rather than widening either
+// handler package's own narrower interface for a need only one of them has.
+type Discovery interface {
+	handler.GameDiscovery
+	handler.GameRequestDiscovery
+}
+
 type RouterDependencies struct {
 	Ready          ReadyCheck
 	Authentication Authentication
 	Games          handler.GameAdministration
-	Subscriptions  handler.GameSubscriptions
+	ProviderSync   handler.ProviderSyncAdministration
+	Discovery      Discovery
+	GameResolver   handler.GameResolver
 	GameRequests   handler.GameRequestCommands
 	RequestQueries handler.GameRequestQueries
 	Realtime       handler.GameRequestEvents
@@ -53,9 +65,9 @@ type RouterDependencies struct {
 func NewRouter(dependencies RouterDependencies) http.Handler {
 	brand := branding.Default()
 	authenticationHandler := handler.NewAuthentication(dependencies.Authentication, brand, dependencies.SecureCookies)
-	administrationHandler := handler.NewAdministration(dependencies.Games, brand)
-	gamesHandler := handler.NewGames(dependencies.Subscriptions, brand)
-	gameRequestsHandler := handler.NewGameRequests(dependencies.GameRequests, dependencies.RequestQueries, brand)
+	administrationHandler := handler.NewAdministration(dependencies.Games, dependencies.ProviderSync, brand)
+	gamesHandler := handler.NewGames(dependencies.Discovery, brand)
+	gameRequestsHandler := handler.NewGameRequests(dependencies.GameRequests, dependencies.RequestQueries, dependencies.GameResolver, dependencies.Discovery, brand)
 	realtimeHandler := handler.NewRealtime(dependencies.Realtime)
 	router := chi.NewRouter()
 	router.Use(middleware.RequestID)
@@ -73,11 +85,12 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 	router.Group(func(authenticated chi.Router) {
 		authenticated.Use(webmiddleware.Authentication(dependencies.Authentication, dependencies.SecureCookies))
 		authenticated.Get("/", rootHandler(brand, dependencies.Authentication))
-		if dependencies.Subscriptions != nil {
+		if dependencies.Discovery != nil {
 			authenticated.Route("/games", func(games chi.Router) {
 				games.Use(handler.RequireAuthentication)
 				games.Get("/", gamesHandler.Browse)
 				games.Get("/mine", gamesHandler.MyGames)
+				games.Post("/providers/{provider}/{externalID}/follow", gamesHandler.FollowProvider)
 				games.Post("/{gameID}/follow", gamesHandler.Follow)
 				games.Post("/{gameID}/unfollow", gamesHandler.Unfollow)
 			})
@@ -87,6 +100,8 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 				requests.Use(handler.RequireAuthentication)
 				requests.Get("/", gameRequestsHandler.List)
 				requests.Get("/new", gameRequestsHandler.New)
+				requests.Get("/new/discovery", gameRequestsHandler.Discovery)
+				requests.Get("/new/selection", gameRequestsHandler.Selection)
 				requests.Get("/refresh", gameRequestsHandler.RefreshList)
 				requests.Post("/", gameRequestsHandler.Create)
 				requests.Get("/{requestID}", gameRequestsHandler.View)
@@ -109,6 +124,10 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 				admin.Post("/games/{gameID}/active", administrationHandler.SetGameActive)
 				admin.Post("/games/{gameID}/aliases", administrationHandler.AddGameAlias)
 				admin.Post("/games/{gameID}/aliases/{aliasID}/remove", administrationHandler.RemoveGameAlias)
+				if dependencies.ProviderSync != nil {
+					admin.Get("/igdb", administrationHandler.IGDB)
+					admin.Post("/igdb/sync", administrationHandler.SyncIGDB)
+				}
 			})
 		}
 	})

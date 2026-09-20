@@ -18,8 +18,7 @@ test.beforeEach(async ({ request }) => {
 // The test that exercises a guard the application actually owns is the htmx
 // burst below.
 test("rapid clicks on Create Game Request create exactly one", async ({ page, request }) => {
-  await page.goto("/game-requests/new");
-  await page.selectOption("select[name=game_id]", "game-1");
+  await page.goto("/game-requests/new?game_id=game-1");
 
   // The clicks are dispatched inside one task in the page rather than driven
   // one at a time over the protocol. Driving them from the test would let the
@@ -40,8 +39,7 @@ test("rapid clicks on Create Game Request create exactly one", async ({ page, re
 // the player cannot create anything until they reload — the same "stuck UI"
 // symptom issue #15 was opened for, reached a different way.
 test("going back to a submitted form leaves it usable", async ({ page }) => {
-  await page.goto("/game-requests/new");
-  await page.selectOption("select[name=game_id]", "game-1");
+  await page.goto("/game-requests/new?game_id=game-1");
   await page.getByRole("button", { name: "Create Game Request" }).click();
   await page.waitForURL(/\/game-requests\/[0-9a-f-]+/);
 
@@ -51,8 +49,9 @@ test("going back to a submitted form leaves it usable", async ({ page }) => {
   await expect(submit).toBeEnabled();
   await expect(page.locator("form[data-submitting='true']")).toHaveCount(0);
 
-  // And it still works: the guard was released, not merely repainted.
-  await page.selectOption("select[name=game_id]", "game-1");
+  // And it still works: the guard was released, not merely repainted -- the
+  // bfcache-restored page still carries the same selected game (Warcraft III)
+  // in its hidden identity field, so no reselection is needed.
   await submit.click();
   await page.waitForURL(/\/game-requests\/[0-9a-f-]+/, { timeout: 15_000 });
 });

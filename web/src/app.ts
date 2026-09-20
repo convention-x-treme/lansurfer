@@ -42,6 +42,23 @@ document.querySelectorAll<HTMLInputElement>("[data-timezone-offset]").forEach((i
   input.value = String(new Date().getTimezoneOffset());
 });
 
+// IGDB is the only approved remote-content host, and its cover images can 404
+// or time out independently of LANsurfer's own availability (spec: "Covers").
+// `error` does not bubble on media elements, so this listens during the
+// capture phase; that also covers covers rendered into HTMX-swapped markup
+// without needing to rebind after every swap.
+document.addEventListener(
+  "error",
+  (event) => {
+    const cover = event.target;
+    if (!(cover instanceof HTMLImageElement) || !cover.hasAttribute("data-cover-fallback")) return;
+    cover.hidden = true;
+    const placeholder = cover.nextElementSibling;
+    if (placeholder instanceof HTMLElement) placeholder.hidden = false;
+  },
+  true,
+);
+
 document.querySelectorAll<HTMLButtonElement>("[data-theme-toggle]").forEach((button) => {
   button.addEventListener("click", () => {
     const nextTheme = currentTheme() === darkTheme ? lightTheme : darkTheme;
