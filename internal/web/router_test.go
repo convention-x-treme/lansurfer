@@ -348,6 +348,20 @@ func TestAdminRoutesRequireAdmin(t *testing.T) {
 	}
 }
 
+func TestAdminRoutesRedirectAnonymousUsersToLogin(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "/admin/games", nil)
+	response := httptest.NewRecorder()
+
+	NewRouter(RouterDependencies{
+		Ready: func(context.Context) error { return nil },
+		Games: &routerGames{},
+	}).ServeHTTP(response, request)
+
+	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/auth/login" {
+		t.Fatalf("status/location = %d, %q", response.Code, response.Header().Get("Location"))
+	}
+}
+
 func TestAdminGameSearchRendersAliasMatch(t *testing.T) {
 	games := &routerGames{items: []game.Game{{ID: "game-1", Name: "Warcraft III", Slug: "warcraft-3", Active: true, Aliases: []game.Alias{{ID: "alias-1", Value: "WC3"}}}}}
 	request := httptest.NewRequest(http.MethodGet, "/admin/games?q=wc3", nil)
@@ -540,7 +554,7 @@ func TestAdminPWARendersWithoutJavaScript(t *testing.T) {
 	}
 }
 
-func TestGameCatalogRequiresAuthentication(t *testing.T) {
+func TestGameCatalogRedirectsAnonymousUsersToLogin(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/games", nil)
 	response := httptest.NewRecorder()
 
@@ -549,8 +563,8 @@ func TestGameCatalogRequiresAuthentication(t *testing.T) {
 		Discovery: &routerDiscovery{},
 	}).ServeHTTP(response, request)
 
-	if response.Code != http.StatusUnauthorized {
-		t.Fatalf("status = %d, want %d", response.Code, http.StatusUnauthorized)
+	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/auth/login" {
+		t.Fatalf("status/location = %d, %q", response.Code, response.Header().Get("Location"))
 	}
 }
 
@@ -745,7 +759,7 @@ func TestFollowProviderResultReportsInvalidReference(t *testing.T) {
 	}
 }
 
-func TestGameRequestsRequireAuthentication(t *testing.T) {
+func TestGameRequestsRedirectAnonymousUsersToLogin(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/game-requests", nil)
 	response := httptest.NewRecorder()
 
@@ -754,12 +768,12 @@ func TestGameRequestsRequireAuthentication(t *testing.T) {
 		GameRequests: &routerGameRequests{}, RequestQueries: &routerGameRequestQueries{},
 	}).ServeHTTP(response, request)
 
-	if response.Code != http.StatusUnauthorized {
-		t.Fatalf("status = %d, want %d", response.Code, http.StatusUnauthorized)
+	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/auth/login" {
+		t.Fatalf("status/location = %d, %q", response.Code, response.Header().Get("Location"))
 	}
 }
 
-func TestRealtimeRequiresAuthentication(t *testing.T) {
+func TestRealtimeRedirectsAnonymousUsersToLogin(t *testing.T) {
 	events := make(chan gamerequest.Event)
 	close(events)
 	request := httptest.NewRequest(http.MethodGet, "/events/game-requests", nil)
@@ -770,8 +784,8 @@ func TestRealtimeRequiresAuthentication(t *testing.T) {
 		Realtime: &routerRealtime{events: events},
 	}).ServeHTTP(response, request)
 
-	if response.Code != http.StatusUnauthorized {
-		t.Fatalf("status = %d, want %d", response.Code, http.StatusUnauthorized)
+	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/auth/login" {
+		t.Fatalf("status/location = %d, %q", response.Code, response.Header().Get("Location"))
 	}
 }
 
