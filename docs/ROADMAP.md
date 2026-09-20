@@ -46,27 +46,29 @@ Each track has a GitHub tracking issue carrying its current checklist. The issue
 
 | Track | Scope | Tracking issue | Planning status | Integration dependencies |
 | --- | --- | --- | --- | --- |
-| **A** | Single-Event Core & Request Discovery | [#24](https://github.com/convention-x-treme/lansurfer/issues/24) | In progress — see delivery evidence below | Track B only for final public Game Nick rendering; Track E consumes A's outbox contract |
-| **B** | Game Nick & Authentication | [#25](https://github.com/convention-x-treme/lansurfer/issues/25) | Prioritized | None |
-| **C** | Game Catalog & IGDB Discovery | [#26](https://github.com/convention-x-treme/lansurfer/issues/26) | Prioritized | None for provider/index work; A for final request-card/read-model presentation where needed |
-| **D** | Minimum Instance Identity & PWA | [#27](https://github.com/convention-x-treme/lansurfer/issues/27) | Prioritized | None; service-worker contract is consumed by E; G owns visual presentation |
-| **E** | Durable Notifications | [#28](https://github.com/convention-x-treme/lansurfer/issues/28) | Prioritized with integration dependencies | A for Game Request outbox hookup; D for browser Web Push integration; B only where Game Nick is rendered; G presents settings/permission states |
-| **F** | Distribution & Operations | [#29](https://github.com/convention-x-treme/lansurfer/issues/29) | Prioritized | Final upgrade/restore validation depends on persistent migrations from A–E; release validation consumes G's production assets |
-| **G** | Default Brand & UI System Adoption | [#30](https://github.com/convention-x-treme/lansurfer/issues/30) | In progress — PRs #17, #19, #21 (`deto1986`) | None for shared tokens/shell/components; final feature-surface integration waits only for affected A–F contracts |
+| **A** | Single-Event Core & Request Discovery | [#24](https://github.com/convention-x-treme/lansurfer/issues/24) | **Integration ready** — PRs #23/#35 merged; browser regression work #31 complete | Track E consumes A's current `game_request_activity` handoff |
+| **B** | Game Nick & Authentication | [#25](https://github.com/convention-x-treme/lansurfer/issues/25) | **Integration ready** — PR #41 merged; tracker closed | None |
+| **C** | Game Catalog & IGDB Discovery | [#26](https://github.com/convention-x-treme/lansurfer/issues/26) | **Integration ready** — PR #36 merged | None for provider/index work; issue #37 is an operator-UX follow-up |
+| **D** | Minimum Instance Identity & PWA | [#27](https://github.com/convention-x-treme/lansurfer/issues/27) | **In progress** — draft PR #42; not yet on `main` | None; service-worker contract is consumed by E; G owns visual presentation |
+| **E** | Durable Notifications | [#28](https://github.com/convention-x-treme/lansurfer/issues/28) | **Prioritized** — not implemented on `main` | A for Game Request handoff; D for browser Web Push integration; B where Game Nick is rendered; G presents settings/permission states |
+| **F** | Distribution & Operations | [#29](https://github.com/convention-x-treme/lansurfer/issues/29) | **Prioritized** — not implemented on `main` | Final upgrade/restore validation depends on persistent migrations from A–E; release validation consumes G's production assets |
+| **G** | Default Brand & UI System Adoption | [#30](https://github.com/convention-x-treme/lansurfer/issues/30) | **In progress** — foundation PRs #17/#19/#21 merged; cross-track surfaces/audit remain | None for shared tokens/shell/components; final feature-surface integration waits only for affected A–F contracts |
 
 ### Planning status and delivery evidence
 
-**Prioritized** describes planning, not verified implementation progress. Mark work **In progress** only with a linked delivery issue/PR and a responsible implementer. **Integration ready** requires demonstrated track-local outcomes, stable contracts, and a linked list of remaining cross-track checks. **Done** additionally requires merged work and applicable integration checks.
+Status describes repository evidence, not a percentage estimate. **Integration ready** means the track-local implementation and verification have landed and its cross-track contract is available; it does not mean the Pilot, 1.0 Integration, or Release gate has passed.
 
-Review checkpoint: **2026-09-15**, against `main` at [`e356791`](https://github.com/convention-x-treme/lansurfer/commit/e356791affdef6a2eb4968c1256c17be870e8407). At that revision the current Game Request service still required a current Event during creation.
+Current delivery snapshot: **2026-09-20**, against `main` after Tracks B and C merged.
 
-Track A delivery evidence (**2026-09-17**): issue [#24](https://github.com/convention-x-treme/lansurfer/issues/24), PR [#23](https://github.com/convention-x-treme/lansurfer/pull/23), implementer `deto1986`. Migration `00006_single_event_core` removes the Game Request/Event association and adds `game_request_activity`; the `event` module, its administration screens, and its routes are gone; Game Request discovery gained name/alias search, followed/My Games, and free-places filters; the Trending rail now ranks from recorded request activity over the stated 6-hour window; and the detail screen renders the durable activity record. Track G surfaces were updated in the same change so the list, detail, creation, and administration screens stay consistent. Repository checks run for that work: `task lint`, `go test -race ./...`, `task test:integration`, `task frontend:build`, and `task build`.
+- **Track A — Integration ready.** PR #23 removed Event-scoped request behavior, added durable request activity and the A→E transactional handoff, discovery/filtering, and 6-hour Trending. PR #35 added the approved Joined and Created-by-me scopes. Browser interaction/SSE regression coverage from #31 is committed and that issue is closed. Track B has since supplied Game Nick public rendering. The current handoff is the single `game_request_activity` record described in ARCHITECTURE; Track E may introduce delivery-specific persistence if its implementation demonstrates that need.
+- **Track B — Integration ready.** PR #41 merged Game Nick, provider-neutral OIDC/Discord authentication, persistent browser-bound flows, explicit link/unlink, onboarding, and public-identity rendering. Issue #25 is closed. The retained feature design is supporting history; PRODUCT/ARCHITECTURE own the durable behavior and ROADMAP owns current status.
+- **Track C — Integration ready.** PR #36 merged optional asynchronous IGDB synchronization, local provider search, materialization, provider lifecycle handling, and enrichment. Issue #37 remains a real operator-UX follow-up for in-progress sync visibility; it does not redefine Track C's architecture.
+- **Track D — In progress, not on `main`.** Draft PR #42 implements the minimum instance-name/manifest/service-worker shell and PWA diagnostics, but explicitly leaves real-device validation and final icon approval outstanding. Do not describe Track D as implemented on `main` until that PR (or its successor) lands.
+- **Track E — Planned.** No `notification` module exists on `main`; durable Web Push/Discord delivery and delivery persistence remain outstanding.
+- **Track F — Planned.** Stable distribution artifacts, clean-host/backup/restore/upgrade evidence, and production operations work remain outstanding.
+- **Track G — In progress.** PRs #17, #19, and #21 established and remediated the shared design system, and implemented A/B/C surfaces consume it. Remaining work follows new D/E/F surfaces, the full re-audit when a new audit result is claimed, and release-time asset verification.
 
-Track A is **not** complete. Issue [#24](https://github.com/convention-x-treme/lansurfer/issues/24) records the remainder: committed browser regression coverage for rapid HTMX/SSE interaction ([#31](https://github.com/convention-x-treme/lansurfer/issues/31)), public Game Nick rendering once Track B lands, and sign-off on using one `game_request_activity` table as both the durable activity record and the A/E notification intent. The Event-state migration fixtures and the restart-before-delivery case are done.
-
-Track G's current delivery evidence is the stacked UI work in PRs #17, #19, and #21; it remains **In progress** until that work is merged and applicable integration checks are recorded.
-
-Do not infer delivery dates, staffing, owners, or completion percentages from this roadmap.
+Tracking issues are progress views, not scope authorities. If a tracker body disagrees with merged code and these canonical documents, reconcile the tracker rather than treating its stale checklist as current truth.
 
 ### Cross-track contracts
 
@@ -162,7 +164,7 @@ The complete Game Request flow works without Event/Clan/context selection or mem
 - Prove failed/rejected/duplicate mutations do not produce durable activity.
 - Prove the 6-hour Trending window and filters use the intended read model without raw-query tracking.
 - At the A/E boundary, prove a rollback leaves neither the domain change nor its outbox work, while a committed change retains notification intent across restart-before-delivery.
-- Keep regression coverage for rapid HTMX/SSE interaction and supported production HTTP behavior. This is Track A's own standing obligation, tracked in issue #31. Issue #15 is closed: PR #17 documented the confirmed SSE/HTTP/1.1 connection-exhaustion root cause and production HTTP/2 mitigation, and PR #18 covered additional rapid-interaction hardening; its remaining work was split into #31 (committed browser regression tests), #32 (request-outcome and stream-lifecycle diagnostics), and #33 (Game Request creation idempotency). HTTP/2 remains a mitigation for the original browser connection-pool symptom, not the root cause itself.
+- Keep the committed rapid HTMX/SSE interaction and supported-production-HTTP regression coverage healthy. Issue #31 is closed with browser coverage in `web/tests`; #32 and #33 are also resolved. Issue #15's root cause remains the browser HTTP/1.1 connection-pool exhaustion caused by long-lived SSE streams; HTTP/2 is a production-path mitigation, not the root cause.
 
 # Track B — Game Nick & Authentication
 
@@ -493,7 +495,7 @@ The Pilot Gate is green only when the following approved pilot subset is impleme
 - At least one upgrade path using existing data is exercised.
 - A representative documented load/recovery rehearsal covers realistic parallel browsing/search, request create/join/leave flows, SSE updates, and notification behavior.
 - The validation artifact records tested hardware, network conditions, client/browser mix where relevant, tested load envelope, observed response/update behavior, failures, and recovery characteristics. Do not invent permanent concurrency/latency numbers in the roadmap.
-- Supported production deployment preserves required HTTP behavior and core interaction reliability under normal regression testing. This is not waived by documentation: a reproducible persistent hang in a supported core workflow remains a pilot blocker. Issue #15's fix is merged; the outstanding regression evidence for it is issue #31.
+- Supported production deployment preserves required HTTP behavior and core interaction reliability under normal regression testing. This is not waived by documentation: a reproducible persistent hang in a supported core workflow remains a pilot blocker. The #15 fix and #31 browser regression coverage are merged; the Pilot Gate still requires the production/load/recovery evidence described here.
 
 ## Pilot evidence
 
@@ -552,12 +554,12 @@ All track and Integration Gate acceptance criteria remain green in a release bui
 
 # Review decisions and backlog alignment
 
-Review snapshot: **2026-09-15**. Issue existence is not evidence of implementation. The following dispositions are approved for the reviewed roadmap.
+Review snapshot: **2026-09-20**. Issue existence is not evidence of implementation. The following dispositions are approved for the reviewed roadmap.
 
 | Issue / topic | Stable 1.0 disposition |
 | --- | --- |
 | [#15 — interaction hangs](https://github.com/convention-x-treme/lansurfer/issues/15) | Closed. The confirmed original hang was caused by long-lived SSE `EventSource` connections exhausting the browser's HTTP/1.1 per-origin connection pool; HTTP/2 multiplexing prevents that production-path pool exhaustion but is not the root cause. PR #17 addressed the stream-lifecycle problem and PR #18 added rapid-interaction hardening. The remainder was split into [#31](https://github.com/convention-x-treme/lansurfer/issues/31) (committed browser regression tests, the only Track A dependency), [#32](https://github.com/convention-x-treme/lansurfer/issues/32) (diagnostics), and [#33](https://github.com/convention-x-treme/lansurfer/issues/33) (creation idempotency). |
-| [#12 — request search and filters](https://github.com/convention-x-treme/lansurfer/issues/12) | Include Game name/alias search, followed/My Games, and open capacity/free places. Other proposed filters are not automatically approved by this review. |
+| [#12 — request search and filters](https://github.com/convention-x-treme/lansurfer/issues/12) | Closed. Stable 1.0 includes Game name/alias search, the exclusive All/My Games/Joined/Created-by-me scope, and open capacity/free places. Further filters are not automatically approved. |
 | [#11 — English/German i18n](https://github.com/convention-x-treme/lansurfer/issues/11) | Deferred beyond stable 1.0. Stable 1.0 is English-only. |
 | [#10 — curated request tags](https://github.com/convention-x-treme/lansurfer/issues/10) | Deferred beyond stable 1.0. Free-text request descriptions remain sufficient. |
 | [#13 — trending/current interest](https://github.com/convention-x-treme/lansurfer/issues/13) | Include request-based Trending with a visible rolling 6-hour window. Do not persist raw search queries or introduce search-interest tracking. |
