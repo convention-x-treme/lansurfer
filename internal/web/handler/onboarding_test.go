@@ -40,6 +40,43 @@ func TestShowPendingRendersSuggestionAndResolveOptions(t *testing.T) {
 	}
 }
 
+// A signed-in caller must never be able to complete (or even see the form
+// for) someone else's pending identity: on a shared/kiosk browser this would
+// otherwise silently create a new account and overwrite the caller's own
+// session.
+func TestShowPendingRedirectsAlreadySignedInCallerToAccount(t *testing.T) {
+	pending := &stubPending{}
+	handler := NewOnboarding(pending, &stubRegistration{}, &stubGameNickClaims{}, &stubIdentityLookup{}, &stubAuthentication{}, branding.Default(), false)
+	request := withCurrentUser(withURLParam(httptest.NewRequest(http.MethodGet, "/onboarding/pending-1", nil), "pendingID", "pending-1"), user.User{ID: "user-1"})
+	response := httptest.NewRecorder()
+
+	handler.ShowPending(response, request)
+
+	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/account" {
+		t.Fatalf("status/location = %d, %q", response.Code, response.Header().Get("Location"))
+	}
+	if pending.lookedUpID != "" {
+		t.Fatalf("pending identity was looked up despite the signed-in guard: %#v", pending)
+	}
+}
+
+func TestSubmitPendingRedirectsAlreadySignedInCallerToAccount(t *testing.T) {
+	registration := &stubRegistration{}
+	handler := NewOnboarding(&stubPending{}, registration, &stubGameNickClaims{}, &stubIdentityLookup{}, &stubAuthentication{}, branding.Default(), false)
+	request := withCurrentUser(withURLParam(httptest.NewRequest(http.MethodPost, "/onboarding/pending-1", strings.NewReader("game_nick=NightOtter")), "pendingID", "pending-1"), user.User{ID: "user-1"})
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	response := httptest.NewRecorder()
+
+	handler.SubmitPending(response, request)
+
+	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/account" {
+		t.Fatalf("status/location = %d, %q", response.Code, response.Header().Get("Location"))
+	}
+	if registration.pendingID != "" {
+		t.Fatalf("registration was attempted despite the signed-in guard: %#v", registration)
+	}
+}
+
 func TestShowPendingRedirectsToLoginWithoutBrowserBinding(t *testing.T) {
 	handler := NewOnboarding(&stubPending{}, &stubRegistration{}, &stubGameNickClaims{}, &stubIdentityLookup{}, &stubAuthentication{}, branding.Default(), false)
 	response := httptest.NewRecorder()

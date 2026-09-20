@@ -54,8 +54,15 @@ func NewOnboarding(pending PendingIdentities, registration AccountRegistration, 
 }
 
 // ShowPending renders the Game Nick form for a brand-new, not-yet-linked
-// identity. No local session exists yet at this point.
+// identity. No local session exists yet at this point. An already signed-in
+// caller (e.g. a stale onboarding tab left open on a shared/kiosk browser
+// after signing in as someone else) is sent to their own account instead of
+// a form that would otherwise create and switch them into a second one.
 func (h *OnboardingHandler) ShowPending(w http.ResponseWriter, r *http.Request) {
+	if _, ok := webmiddleware.CurrentUser(r.Context()); ok {
+		http.Redirect(w, r, "/account", http.StatusSeeOther)
+		return
+	}
 	pendingID := chi.URLParam(r, "pendingID")
 	binding, ok := browserBindingCookie(r)
 	if !ok {
@@ -72,8 +79,14 @@ func (h *OnboardingHandler) ShowPending(w http.ResponseWriter, r *http.Request) 
 
 // SubmitPending atomically creates the account once a valid, unclaimed Game
 // Nick is submitted. An invalid or taken Game Nick re-renders the form
-// without consuming the pending identity.
+// without consuming the pending identity. Guarded the same way ShowPending
+// is: an already signed-in caller is never allowed to complete this and have
+// it silently overwrite their session with a freshly created account.
 func (h *OnboardingHandler) SubmitPending(w http.ResponseWriter, r *http.Request) {
+	if _, ok := webmiddleware.CurrentUser(r.Context()); ok {
+		http.Redirect(w, r, "/account", http.StatusSeeOther)
+		return
+	}
 	pendingID := chi.URLParam(r, "pendingID")
 	binding, ok := browserBindingCookie(r)
 	if !ok {

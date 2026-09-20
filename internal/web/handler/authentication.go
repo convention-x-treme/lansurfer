@@ -175,8 +175,26 @@ func (h *AuthenticationHandler) CallbackFor(providerKind string) http.HandlerFun
 }
 
 func (h *AuthenticationHandler) handleCallbackError(w http.ResponseWriter, r *http.Request, err error, signedIn bool) {
-	if (errors.Is(err, auth.ErrIdentityConflict) || errors.Is(err, auth.ErrProviderAlreadyLinked)) && signedIn {
-		http.Redirect(w, r, "/account?link_error=1", http.StatusSeeOther)
+	// ErrIdentityConflict/ErrProviderAlreadyLinked also come from the
+	// resolution ("prove existing account") path, which never has a session
+	// (e.g. proving through the same provider the pending identity already
+	// used). Only a signed-in Link failure has an /account to go back to; an
+	// unauthenticated one still gets an actionable message instead of
+	// falling through to the generic 500 below.
+	if errors.Is(err, auth.ErrIdentityConflict) {
+		if signedIn {
+			http.Redirect(w, r, "/account?link_error=1", http.StatusSeeOther)
+			return
+		}
+		h.renderError(w, r, http.StatusConflict, "That account already belongs to someone else. Please start again.")
+		return
+	}
+	if errors.Is(err, auth.ErrProviderAlreadyLinked) {
+		if signedIn {
+			http.Redirect(w, r, "/account?link_error=1", http.StatusSeeOther)
+			return
+		}
+		h.renderError(w, r, http.StatusConflict, "Choose a different sign-in method to prove your existing account.")
 		return
 	}
 	if errors.Is(err, auth.ErrResolutionIdentityUnknown) {

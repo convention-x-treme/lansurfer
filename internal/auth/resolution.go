@@ -119,7 +119,18 @@ func (s *ResolutionService) Link(ctx context.Context, profile Profile, userID st
 		Subject: profile.Subject, DisplayName: profile.Name, Email: profile.Email,
 	})
 	if errors.Is(err, ErrIdentityExists) {
-		return Identity{}, ErrIdentityConflict
+		// The pre-check above raced with a concurrent identical link request
+		// (double-click, two tabs) and lost. Resolve it the same way the
+		// ByProviderSubject branch above would have, instead of assuming a
+		// real conflict: a same-user race completes idempotently.
+		raced, raceErr := s.identities.ByProviderSubject(ctx, profile.ProviderKind, profile.ProviderKey, profile.Subject)
+		if raceErr != nil {
+			return Identity{}, fmt.Errorf("resolve concurrent identity link: %w", raceErr)
+		}
+		if raced.UserID != userID {
+			return Identity{}, ErrIdentityConflict
+		}
+		return raced, nil
 	}
 	return identity, err
 }

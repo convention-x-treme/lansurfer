@@ -50,7 +50,21 @@ func (a *PendingIdentityAttacher) AttachPending(ctx context.Context, pendingID, 
 		Subject: pending.Subject, DisplayName: pending.DisplayName, Email: pending.Email,
 	})
 	if errors.Is(err, auth.ErrIdentityExists) {
-		return auth.ErrIdentityConflict
+		// The pre-check above raced with a concurrent identical attach
+		// request (e.g. a double-submitted "prove existing account" form)
+		// and lost. Look the identity up against the pool, past this
+		// transaction's own rollback, to see what the winner committed.
+		raced, raceErr := NewIdentityStore(a.pool).ByProviderSubject(ctx, pending.ProviderKind, pending.ProviderKey, pending.Subject)
+		if raceErr != nil {
+			return fmt.Errorf("resolve concurrent pending attachment: %w", raceErr)
+		}
+		if raced.UserID != userID {
+			return auth.ErrIdentityConflict
+		}
+		// The concurrent winner already attached this identity to the same
+		// user and will consume (or has consumed) the pending row itself;
+		// this request completed too, idempotently.
+		return nil
 	}
 	if err != nil {
 		return err

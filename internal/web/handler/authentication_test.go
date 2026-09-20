@@ -206,7 +206,8 @@ func TestCallbackForMapsFlowAndPersistenceFailures(t *testing.T) {
 		{name: "expired flow", err: auth.ErrFlowExpired, wantStatus: http.StatusBadRequest},
 		{name: "wrong browser", err: auth.ErrFlowBrowser, wantStatus: http.StatusBadRequest},
 		{name: "unknown resolution identity", err: auth.ErrResolutionIdentityUnknown, wantStatus: http.StatusUnauthorized},
-		{name: "anonymous identity conflict falls back to a generic error", err: auth.ErrIdentityConflict, wantStatus: http.StatusInternalServerError},
+		{name: "anonymous identity conflict gets an actionable message", err: auth.ErrIdentityConflict, wantStatus: http.StatusConflict},
+		{name: "anonymous provider already linked gets an actionable message", err: auth.ErrProviderAlreadyLinked, wantStatus: http.StatusConflict},
 		{name: "persistence failure", err: errors.New("database unavailable"), wantStatus: http.StatusInternalServerError},
 	}
 	for _, test := range tests {

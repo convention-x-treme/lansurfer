@@ -50,8 +50,17 @@ func TestAccountRegistrationIsAtomic(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create duplicate pending identity: %v", err)
 	}
-	if _, _, err := registration.Register(t.Context(), duplicate.ID, "browser", "OrphanNick"); !errors.Is(err, auth.ErrIdentityExists) {
-		t.Fatalf("duplicate registration error = %v", err)
+	// A second pending identity for a subject that's already linked to an
+	// account (a stale/replayed pending row, or a race narrowly missed by
+	// the concurrent case below) resolves into that existing account rather
+	// than failing outright: no orphan "OrphanNick" user, and no new
+	// identity, just a fresh session for the account that already exists.
+	duplicateAccount, duplicateSession, err := registration.Register(t.Context(), duplicate.ID, "browser", "OrphanNick")
+	if err != nil {
+		t.Fatalf("duplicate registration error = %v, want nil (resolves to the existing account)", err)
+	}
+	if duplicateAccount.ID != account.ID || duplicateAccount.GameNick != "NightOtter" || duplicateSession.Token == "" {
+		t.Fatalf("duplicate registration = %#v, %#v, want the original account %#v", duplicateAccount, duplicateSession, account)
 	}
 	var orphanUsers int
 	if err := pool.QueryRow(t.Context(), `SELECT count(*) FROM users WHERE game_nick = 'OrphanNick'`).Scan(&orphanUsers); err != nil {
@@ -61,7 +70,7 @@ func TestAccountRegistrationIsAtomic(t *testing.T) {
 		t.Fatalf("rolled-back users = %d, want 0", orphanUsers)
 	}
 	if _, err := flows.Pending(t.Context(), duplicate.ID, "browser"); err != nil {
-		t.Fatalf("failed registration consumed pending identity: %v", err)
+		t.Fatalf("resolved-race registration unexpectedly consumed the pending identity: %v", err)
 	}
 }
 
@@ -107,7 +116,12 @@ func TestAccountRegistrationConcurrentGameNickClaimHasOneWinner(t *testing.T) {
 	}
 }
 
-func TestAccountRegistrationConcurrentIdentityClaimHasOneWinner(t *testing.T) {
+// Two pending identities for the same underlying provider subject (e.g. two
+// browser tabs that each independently completed the same Discord login)
+// racing to register must both succeed and sign into the same account,
+// rather than the loser failing outright with the winner's database
+// conflict.
+func TestAccountRegistrationConcurrentIdentityClaimResolvesBothIntoOneAccount(t *testing.T) {
 	pool := registrationTestPool(t)
 	flows := auth.NewFlowService(authpostgres.NewFlowStore(pool))
 	registration := app.NewAccountRegistration(pool, auth.NewSessionService(authpostgres.NewSessionStore(pool), user.NewService(userpostgres.NewStore(pool))))
@@ -122,30 +136,30 @@ func TestAccountRegistrationConcurrentIdentityClaimHasOneWinner(t *testing.T) {
 		pending[index] = created
 	}
 	start := make(chan struct{})
-	results := make([]error, 2)
+	accounts := make([]user.User, 2)
+	sessions := make([]auth.BrowserSession, 2)
+	errs := make([]error, 2)
 	var wait sync.WaitGroup
 	for index := range pending {
 		wait.Add(1)
 		go func() {
 			defer wait.Done()
 			<-start
-			_, _, results[index] = registration.Register(context.Background(), pending[index].ID, "browser", []string{"FirstNick", "SecondNick"}[index])
+			accounts[index], sessions[index], errs[index] = registration.Register(context.Background(), pending[index].ID, "browser", []string{"FirstNick", "SecondNick"}[index])
 		}()
 	}
 	close(start)
 	wait.Wait()
-	winners, conflicts := 0, 0
-	for _, err := range results {
-		if err == nil {
-			winners++
-		} else if errors.Is(err, auth.ErrIdentityExists) {
-			conflicts++
-		} else {
-			t.Fatalf("unexpected registration error: %v", err)
+	for index, err := range errs {
+		if err != nil {
+			t.Fatalf("registration %d error = %v, want nil (idempotent race)", index, err)
 		}
 	}
-	if winners != 1 || conflicts != 1 {
-		t.Fatalf("winners = %d, conflicts = %d", winners, conflicts)
+	if accounts[0].ID != accounts[1].ID || accounts[0].ID == "" {
+		t.Fatalf("accounts = %#v, want both to resolve to the same non-empty account", accounts)
+	}
+	if sessions[0].Token == "" || sessions[1].Token == "" || sessions[0].Token == sessions[1].Token {
+		t.Fatalf("sessions = %#v, want two distinct non-empty tokens", sessions)
 	}
 	var users int
 	if err := pool.QueryRow(t.Context(), `SELECT count(*) FROM users`).Scan(&users); err != nil {
@@ -153,6 +167,63 @@ func TestAccountRegistrationConcurrentIdentityClaimHasOneWinner(t *testing.T) {
 	}
 	if users != 1 {
 		t.Fatalf("users = %d, want one committed account", users)
+	}
+}
+
+// Two identical concurrent "prove existing account" submissions (a
+// double-submitted form) attaching the same pending identity to the same
+// proven account must never make the loser fail with a false "belongs to
+// another account" conflict, and must attach the identity exactly once.
+//
+// Depending on OS scheduling, the two attempts either interleave tightly
+// enough that both pass AttachPending's own pre-check before either commits
+// (exercising the Create-time ErrIdentityExists race this test exists to
+// cover) or one finishes completely — including consuming the pending row —
+// before the other starts (a legitimate ErrFlowConsumed rejection, not a
+// bug). Both outcomes are acceptable; a false conflict is not.
+func TestAttachPendingConcurrentRaceResolvesIdempotently(t *testing.T) {
+	pool := registrationTestPool(t)
+	var userID string
+	if err := pool.QueryRow(t.Context(), `INSERT INTO users (game_nick) VALUES ('NightOtter') RETURNING id::text`).Scan(&userID); err != nil {
+		t.Fatalf("create proven user: %v", err)
+	}
+	flows := auth.NewFlowService(authpostgres.NewFlowStore(pool))
+	pending, err := flows.CreatePending(t.Context(), auth.PendingIdentityInput{
+		BrowserBinding: "browser", ProviderKind: "discord", ProviderKey: "discord", Subject: "discord-1", Operation: auth.FlowResolution,
+	})
+	if err != nil {
+		t.Fatalf("create pending identity: %v", err)
+	}
+	attacher := authpostgres.NewPendingIdentityAttacher(pool)
+
+	start := make(chan struct{})
+	errs := make([]error, 2)
+	var wait sync.WaitGroup
+	for index := range errs {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			<-start
+			errs[index] = attacher.AttachPending(context.Background(), pending.ID, "browser", userID, "oidc", "https://issuer.example")
+		}()
+	}
+	close(start)
+	wait.Wait()
+	for index, err := range errs {
+		if errors.Is(err, auth.ErrIdentityConflict) || errors.Is(err, auth.ErrProviderAlreadyLinked) {
+			t.Fatalf("attach %d error = %v, want no false conflict from the concurrent race", index, err)
+		}
+		if err != nil && !errors.Is(err, auth.ErrFlowConsumed) {
+			t.Fatalf("attach %d unexpected error = %v", index, err)
+		}
+	}
+
+	identities, err := authpostgres.NewIdentityStore(pool).ListByUser(t.Context(), userID)
+	if err != nil {
+		t.Fatalf("list identities: %v", err)
+	}
+	if len(identities) != 1 || identities[0].ProviderKind != "discord" || identities[0].Subject != "discord-1" {
+		t.Fatalf("identities = %#v, want exactly one discord identity attached once", identities)
 	}
 }
 

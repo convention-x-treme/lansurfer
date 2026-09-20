@@ -17,9 +17,21 @@ type stubIdentityStore struct {
 	updatedName  string
 	updatedEmail string
 	listed       []Identity
+
+	// byProviderSubjectCalls/raceWinner let a test simulate a concurrent
+	// identity-creation race: the first ByProviderSubject call (the initial
+	// existence check) returns found/findErr as usual, and every call after
+	// that returns raceWinner instead, standing in for what a concurrent
+	// request committed between this Create's own pre-check and its insert.
+	byProviderSubjectCalls int
+	raceWinner             Identity
 }
 
 func (s *stubIdentityStore) ByProviderSubject(context.Context, string, string, string) (Identity, error) {
+	s.byProviderSubjectCalls++
+	if s.byProviderSubjectCalls > 1 {
+		return s.raceWinner, nil
+	}
 	return s.found, s.findErr
 }
 

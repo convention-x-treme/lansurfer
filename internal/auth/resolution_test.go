@@ -71,6 +71,36 @@ func TestLinkRejectsSameProviderReplacement(t *testing.T) {
 	}
 }
 
+// A concurrent identical link request (double-click, two tabs) racing this
+// one to create the same identity for the same user must resolve
+// idempotently, not report a false conflict.
+func TestLinkResolvesConcurrentSameUserRaceIdempotently(t *testing.T) {
+	winner := Identity{ID: "identity-1", UserID: "user-1", ProviderKind: "discord", ProviderKey: "discord", Subject: "123"}
+	identities := &stubIdentityStore{findErr: ErrIdentityNotFound, createErr: ErrIdentityExists, raceWinner: winner}
+	resolver := NewResolutionService(identities, &stubResolutionFlows{}, &stubSessionCreator{}, &stubUsers{}, &stubPendingAttacher{})
+
+	identity, err := resolver.Link(t.Context(), Profile{ProviderKind: "discord", ProviderKey: "discord", Subject: "123"}, "user-1")
+	if err != nil {
+		t.Fatalf("Link() error = %v, want nil (idempotent race)", err)
+	}
+	if identity != winner {
+		t.Fatalf("Link() identity = %#v, want the concurrent winner %#v", identity, winner)
+	}
+}
+
+// The same race, but the identity that committed first belongs to someone
+// else: that is a real conflict, not a same-user race.
+func TestLinkStillReportsConflictWhenRaceWinnerBelongsToAnotherUser(t *testing.T) {
+	winner := Identity{ID: "identity-1", UserID: "other-user", ProviderKind: "discord", ProviderKey: "discord", Subject: "123"}
+	identities := &stubIdentityStore{findErr: ErrIdentityNotFound, createErr: ErrIdentityExists, raceWinner: winner}
+	resolver := NewResolutionService(identities, &stubResolutionFlows{}, &stubSessionCreator{}, &stubUsers{}, &stubPendingAttacher{})
+
+	_, err := resolver.Link(t.Context(), Profile{ProviderKind: "discord", ProviderKey: "discord", Subject: "123"}, "user-1")
+	if !errors.Is(err, ErrIdentityConflict) {
+		t.Fatalf("Link() error = %v, want ErrIdentityConflict", err)
+	}
+}
+
 func TestExistingAccountProofRequiresKnownOtherProvider(t *testing.T) {
 	resolver := NewResolutionService(
 		&stubIdentityStore{findErr: ErrIdentityNotFound}, &stubResolutionFlows{}, &stubSessionCreator{}, &stubUsers{}, &stubPendingAttacher{},
