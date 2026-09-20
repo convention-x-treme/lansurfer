@@ -1,6 +1,6 @@
 # Track E3 — Discord Delivery Design
 
-Status: Design complete — awaiting shared-understanding approval
+Status: Approved — shared understanding confirmed 2026-09-20
 Date: 2026-09-20
 Tracking issue: #28
 Branch: docs/track-e-notifications-sdd
