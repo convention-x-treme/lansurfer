@@ -86,6 +86,8 @@ type fakeGameRequestDiscovery struct {
 	browseItem   game.DiscoveryPage
 	browseErr    error
 
+	browseFollowedCalls int
+
 	selectCalls     int
 	selectUserID    string
 	selectSelection game.GameSelection
@@ -101,6 +103,15 @@ func (f *fakeGameRequestDiscovery) Browse(_ context.Context, userID, search stri
 		return game.DiscoveryPage{}, f.browseErr
 	}
 	return f.browseItem, nil
+}
+
+// BrowseFollowed is the composer's pre-search list. The fake records it as
+// a Browse call with the same fields, so existing assertions about
+// "the composer browsed, it never materialized" keep holding, and
+// browseFollowedCalls alone distinguishes the followed list from a search.
+func (f *fakeGameRequestDiscovery) BrowseFollowed(ctx context.Context, userID, search string) (game.DiscoveryPage, error) {
+	f.browseFollowedCalls++
+	return f.Browse(ctx, userID, search)
 }
 
 func (f *fakeGameRequestDiscovery) Select(_ context.Context, userID string, selection game.GameSelection) (game.DiscoveryItem, error) {
@@ -244,6 +255,38 @@ func TestNewGameRequestUsesDiscoveryWithoutMaterializing(t *testing.T) {
 	}
 }
 
+// The composer opens on the games this player follows, and only a real
+// search of two characters or more reaches the whole catalog. A
+// one-character search never reaches the repository anyway, so it keeps
+// showing the followed list rather than flashing the full catalog between
+// keystrokes.
+func TestNewGameRequestListsFollowedGamesBeforeASearch(t *testing.T) {
+	for _, testCase := range []struct {
+		name           string
+		query          string
+		wantFollowed   int
+		wantBrowseOnly bool
+	}{
+		{name: "no search", query: "", wantFollowed: 1},
+		{name: "one character", query: "?q=w", wantFollowed: 1},
+		{name: "real search", query: "?q=war", wantFollowed: 0, wantBrowseOnly: true},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			discovery := &fakeGameRequestDiscovery{}
+			handler := NewGameRequests(&fakeGameRequestCommands{}, fakeGameRequestQueries{}, &fakeGameResolver{}, discovery, nil, branding.Default())
+
+			handler.New(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/game-requests/new"+testCase.query, nil))
+
+			if discovery.browseFollowedCalls != testCase.wantFollowed {
+				t.Fatalf("browseFollowedCalls = %d, want %d", discovery.browseFollowedCalls, testCase.wantFollowed)
+			}
+			if testCase.wantBrowseOnly && discovery.browseCalls != 1 {
+				t.Fatalf("browseCalls = %d, want 1", discovery.browseCalls)
+			}
+		})
+	}
+}
+
 // A normal GET search/selection is the no-JavaScript composer path. Its
 // request-detail fields are transport state, not trusted game metadata, and
 // must survive both searching and selecting without calling Resolve.
@@ -262,6 +305,36 @@ func TestNewGameRequestNoJSSelectionPreservesRequestDetails(t *testing.T) {
 	}
 	if body := response.Body.String(); !strings.Contains(body, `value="4"`) || !strings.Contains(body, `value="2027-05-01"`) || !strings.Contains(body, `value="18:00"`) || !strings.Contains(body, `value="-120"`) || !strings.Contains(body, "LAN night") {
 		t.Fatalf("selected no-JS composer lost request details: %s", body)
+	}
+}
+
+// The live-search fragment serves both composer search boxes. The "change"
+// field decides which card action comes back: a selection swap for the
+// "Change game" panel, a plain full-page link for the first-pick list --
+// whose href must still carry the request details the player already typed.
+func TestGameRequestDiscoveryFragmentCardModeFollowsTheAskingForm(t *testing.T) {
+	item := game.DiscoveryItem{
+		LocalGameID: "local-2", GamePresentation: game.GamePresentation{Name: "Age of Empires"}, Materialized: true,
+	}
+
+	firstPick := &fakeGameRequestDiscovery{browseItem: game.DiscoveryPage{Items: []game.DiscoveryItem{item}}}
+	handler := NewGameRequests(&fakeGameRequestCommands{}, fakeGameRequestQueries{}, &fakeGameResolver{}, firstPick, nil, branding.Default())
+	response := httptest.NewRecorder()
+	handler.Discovery(response, httptest.NewRequest(http.MethodGet, "/game-requests/new/discovery?q=age&max_players=4", nil))
+	body := response.Body.String()
+	if strings.Contains(body, "hx-get=") {
+		t.Errorf("first-pick fragment returned selection-swap cards: %s", body)
+	}
+	if !strings.Contains(body, "max_players=4") {
+		t.Errorf("first-pick fragment dropped the composer request details: %s", body)
+	}
+
+	changeGame := &fakeGameRequestDiscovery{browseItem: game.DiscoveryPage{Items: []game.DiscoveryItem{item}}}
+	handler = NewGameRequests(&fakeGameRequestCommands{}, fakeGameRequestQueries{}, &fakeGameResolver{}, changeGame, nil, branding.Default())
+	response = httptest.NewRecorder()
+	handler.Discovery(response, httptest.NewRequest(http.MethodGet, "/game-requests/new/discovery?q=age&change=1", nil))
+	if body := response.Body.String(); !strings.Contains(body, `hx-target="#game-request-selected-game"`) {
+		t.Errorf("change-game fragment did not return selection-swap cards: %s", body)
 	}
 }
 

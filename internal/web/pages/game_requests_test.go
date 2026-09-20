@@ -618,6 +618,112 @@ func TestComposerRecoveryDiscoveryPreservesDetailsInNoJSActions(t *testing.T) {
 	}
 }
 
+// The first-pick search is live like Games' search: typing filters the
+// list on the same debounce, and the only submit control left is the
+// no-JavaScript fallback.
+func TestComposerFirstPickSearchIsLive(t *testing.T) {
+	form := GameRequestForm{MaxPlayers: "4", Description: "LAN night"}
+
+	var rendered bytes.Buffer
+	if err := GameRequestDiscoverySearchForm("war", false, form).Render(context.Background(), &rendered); err != nil {
+		t.Fatalf("render first-pick search: %v", err)
+	}
+	body := rendered.String()
+	for _, want := range []string{
+		`hx-get="/game-requests/new/discovery"`,
+		`hx-target="#game-request-discovery"`,
+		"input changed delay:300ms from:(#game-request-search)",
+		"search from:(#game-request-search)",
+		`action="/game-requests/new"`,
+		`name="max_players" value="4"`,
+		`<noscript><button`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("first-pick search missing %q: %s", want, body)
+		}
+	}
+	if strings.Contains(body, `name="change"`) {
+		t.Errorf("first-pick search asks for the change-game fragment mode: %s", body)
+	}
+	if before, _, _ := strings.Cut(body, "<noscript>"); strings.Contains(before, "<button") {
+		t.Errorf("first-pick search still renders a visible search button: %s", body)
+	}
+}
+
+// The "Change game" search asks the same fragment for the selection-swap
+// card mode, so its results keep swapping the selection in place.
+func TestComposerChangeGameSearchRequestsSelectionSwapCards(t *testing.T) {
+	var rendered bytes.Buffer
+	if err := GameRequestDiscoverySearchForm("", true, GameRequestForm{}).Render(context.Background(), &rendered); err != nil {
+		t.Fatalf("render change-game search: %v", err)
+	}
+	body := rendered.String()
+	if !strings.Contains(body, `name="change" value="1"`) {
+		t.Errorf("change-game search does not request the selection-swap mode: %s", body)
+	}
+	if !strings.Contains(body, "input changed delay:300ms from:(#game-request-change-search)") {
+		t.Errorf("change-game search lost its own debounce trigger: %s", body)
+	}
+}
+
+// The pick row itself is the select control, so there is no separate
+// button to hunt for, and the cover is what makes a game recognisable in
+// the list.
+func TestGameRequestDiscoveryRowIsTheSelectControl(t *testing.T) {
+	page := game.DiscoveryPage{Items: []game.DiscoveryItem{{
+		LocalGameID:      "local-2",
+		GamePresentation: game.GamePresentation{Name: "Age of Empires", CoverImageID: "cover-2"},
+		Subscribed:       true,
+		Materialized:     true,
+	}}}
+
+	var rendered bytes.Buffer
+	if err := GameRequestDiscovery(page, "", false, nil, GameRequestForm{}).Render(context.Background(), &rendered); err != nil {
+		t.Fatalf("render discovery: %v", err)
+	}
+	body := rendered.String()
+	for _, want := range []string{
+		`<a class="pick-card" href="/game-requests/new?game_id=local-2"`,
+		`class="pick-cover"`,
+		`cover-2.jpg`,
+		`Age of Empires`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("pick row missing %q: %s", want, body)
+		}
+	}
+	if strings.Contains(body, ">Select<") {
+		t.Errorf("pick row still renders a separate select button: %s", body)
+	}
+}
+
+// Following nothing yet is not an empty catalog: the pre-search list says
+// so and points at the search, while a search that matched nothing keeps
+// its own message.
+func TestGameRequestDiscoveryEmptyStates(t *testing.T) {
+	available := game.ProviderStatus{CatalogAvailable: true}
+
+	var followed bytes.Buffer
+	if err := GameRequestDiscovery(game.DiscoveryPage{ProviderStatus: available}, "", false, nil, GameRequestForm{}).Render(context.Background(), &followed); err != nil {
+		t.Fatalf("render pre-search discovery: %v", err)
+	}
+	if body := followed.String(); !strings.Contains(body, "You follow no games yet.") {
+		t.Errorf("pre-search empty list lacks the follow explanation: %s", body)
+	}
+
+	var searched bytes.Buffer
+	if err := GameRequestDiscovery(game.DiscoveryPage{ProviderStatus: available}, "warcraft", false, nil, GameRequestForm{}).Render(context.Background(), &searched); err != nil {
+		t.Fatalf("render searched discovery: %v", err)
+	}
+	body := searched.String()
+	if !strings.Contains(body, `No games found for &#34;warcraft&#34;`) {
+		t.Errorf("empty search result lacks its own message: %s", body)
+	}
+	if strings.Contains(body, "You follow no games yet.") {
+		t.Errorf("empty search result reused the followed-list message: %s", body)
+	}
+}
+
 func TestGameRequestDiscoveryUsesAdminForCatalogAvailability(t *testing.T) {
 	page := game.DiscoveryPage{ProviderStatus: game.ProviderStatus{State: game.ProviderDisabled}}
 	viewer := &components.Viewer{Role: "admin"}

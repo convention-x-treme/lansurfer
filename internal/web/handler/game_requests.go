@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/convention-x-treme/lansurfer/internal/game"
 	"github.com/convention-x-treme/lansurfer/internal/gamerequest"
@@ -57,7 +58,23 @@ type GameResolver interface {
 // GET/search/selection").
 type GameRequestDiscovery interface {
 	Browse(context.Context, string, string) (game.DiscoveryPage, error)
+	BrowseFollowed(context.Context, string, string) (game.DiscoveryPage, error)
 	Select(context.Context, string, game.GameSelection) (game.DiscoveryItem, error)
+}
+
+// browsePicker is the composer's "Find your game" list. Before a real
+// search it is the viewer's followed Games alone -- the short list of what
+// they actually play, which is what a Game Request usually starts from --
+// while any search of two characters or more stays the same full catalog
+// search /games runs. A one-character search never reaches the repository
+// (DiscoveryService.Browse's SearchTooShort rule) and so still shows that
+// same followed list, rather than flashing the whole local catalog between
+// the first and second keystroke.
+func (h *GameRequests) browsePicker(ctx context.Context, userID, search string) (game.DiscoveryPage, error) {
+	if utf8.RuneCountInString(search) < 2 {
+		return h.discovery.BrowseFollowed(ctx, userID, search)
+	}
+	return h.discovery.Browse(ctx, userID, search)
 }
 
 // gameCatalogUnavailableMessage explains a selected provider Game that has
@@ -158,8 +175,9 @@ func discoveryFilter(r *http.Request) requestquery.Filter {
 
 // New renders the Game Request composer. It never materializes a provider
 // Game: with a game_id or provider/external_id selection in the query, it
-// calls the read-only discovery.Select; otherwise it calls discovery.Browse
-// for the shared "Find your game" search, exactly like /games (Task 4).
+// calls the read-only discovery.Select; otherwise it calls browsePicker for
+// the "Find your game" list: followed Games before a search, the same shared
+// catalog search /games runs once the player types.
 func (h *GameRequests) New(w http.ResponseWriter, r *http.Request) {
 	account, _ := webmiddleware.CurrentUser(r.Context())
 	search := strings.TrimSpace(r.URL.Query().Get("q"))
@@ -169,7 +187,7 @@ func (h *GameRequests) New(w http.ResponseWriter, r *http.Request) {
 		r.URL.Query().Get("game_id"), r.URL.Query().Get("provider"), r.URL.Query().Get("external_id"),
 	)
 	if !hasSelection {
-		page, err := h.discovery.Browse(r.Context(), account.ID, search)
+		page, err := h.browsePicker(r.Context(), account.ID, search)
 		if err != nil {
 			webmiddleware.LogError(r, "browse Game Request discovery", err)
 			h.renderError(w, r)
@@ -186,7 +204,7 @@ func (h *GameRequests) New(w http.ResponseWriter, r *http.Request) {
 			h.renderError(w, r)
 			return
 		}
-		page, browseErr := h.discovery.Browse(r.Context(), account.ID, "")
+		page, browseErr := h.browsePicker(r.Context(), account.ID, "")
 		if browseErr != nil {
 			webmiddleware.LogError(r, "browse Game Request discovery", browseErr)
 			h.renderError(w, r)
@@ -199,23 +217,28 @@ func (h *GameRequests) New(w http.ResponseWriter, r *http.Request) {
 	render(w, r, http.StatusOK, pages.NewGameRequest(h.brand, h.navigationFor(r), game.DiscoveryPage{}, &item, true, "", form, ""))
 }
 
-// Discovery is the composer's live-search fragment (used by the "Change
-// game" search, Task 7 Step 6): it always calls the same read-only
-// discovery.Browse as New/Games and never materializes anything. changeGame
-// is always true here, since this fragment is only ever reachable from the
-// "Change game" panel that itself only exists once a selection is already
-// active -- unlike the composer's own first-pick discovery list, which
-// stays a plain full-page navigation (New, changeGame=false).
+// Discovery is the composer's live-search fragment, serving both search
+// boxes (Task 7 Step 6): it always calls the same read-only browsePicker as
+// New and never materializes anything. The "change" field says which one
+// asked -- the "Change game" panel, whose cards swap the selection in place,
+// or the first-pick list, whose cards stay plain full-page navigations.
+// Sending it as a form field rather than a query parameter keeps it part of
+// the same request htmx already serializes from the form.
+//
+// The first-pick form also carries the composer's request details as hidden
+// transport fields, so the cards this fragment renders keep them in their
+// hrefs and a failed-submission recovery never loses what the player typed.
 func (h *GameRequests) Discovery(w http.ResponseWriter, r *http.Request) {
 	account, _ := webmiddleware.CurrentUser(r.Context())
 	search := r.URL.Query().Get("q")
-	page, err := h.discovery.Browse(r.Context(), account.ID, search)
+	page, err := h.browsePicker(r.Context(), account.ID, search)
 	if err != nil {
 		webmiddleware.LogError(r, "browse Game Request discovery", err)
 		h.renderError(w, r)
 		return
 	}
-	render(w, r, http.StatusOK, pages.GameRequestDiscovery(page, search, true, h.navigationFor(r).Viewer, pages.GameRequestForm{}))
+	changeGame := r.URL.Query().Get("change") == "1"
+	render(w, r, http.StatusOK, pages.GameRequestDiscovery(page, search, changeGame, h.navigationFor(r).Viewer, composerFormFromValues(r.URL.Query())))
 }
 
 // Selection is the composer's read-only reselection endpoint (Task 7 Step
@@ -324,7 +347,7 @@ func (h *GameRequests) renderComposerError(w http.ResponseWriter, r *http.Reques
 	var page game.DiscoveryPage
 	if selected == nil {
 		var err error
-		page, err = h.discovery.Browse(r.Context(), account.ID, "")
+		page, err = h.browsePicker(r.Context(), account.ID, "")
 		if err != nil {
 			webmiddleware.LogError(r, "reload Game Request discovery", err)
 			h.renderError(w, r)

@@ -3,6 +3,7 @@ package pages
 import (
 	"net/url"
 
+	"github.com/a-h/templ"
 	"github.com/convention-x-treme/lansurfer/internal/game"
 )
 
@@ -49,4 +50,33 @@ func addComposerDetails(values url.Values, form GameRequestForm) {
 			values.Set(key, value)
 		}
 	}
+}
+
+// gameRequestPickEmpty supplies GameDiscoveryState's empty panel only for
+// the composer's pre-search list, where "nothing to show" means "you follow
+// nothing yet". A search that matched nothing keeps GameDiscoveryState's own
+// "No games found for ..." message instead.
+func gameRequestPickEmpty(search string) templ.Component {
+	if search != "" {
+		return nil
+	}
+	return GameRequestPickEmpty()
+}
+
+// composerSearchInputID keeps the first-pick search and the "Change game"
+// search distinct ids: each form's live-search trigger names its own input,
+// and the two never coexist in one document.
+func composerSearchInputID(changeGame bool) string {
+	if changeGame {
+		return "game-request-change-search"
+	}
+	return "game-request-search"
+}
+
+// composerSearchTrigger is Games' live-search trigger (Task 4), including
+// the type=search clear button's own "search" event, so clearing the field
+// returns to the followed list without a submit.
+func composerSearchTrigger(changeGame bool) string {
+	id := "#" + composerSearchInputID(changeGame)
+	return "submit, input changed delay:300ms from:(" + id + "), search from:(" + id + ")"
 }

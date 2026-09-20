@@ -575,6 +575,59 @@
     grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr));
   }
 
+  /* The composer picks a game, it does not browse the catalog: a row of
+     cover plus title, with the whole row as the control. */
+  .pick-card {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 0.75rem;
+    border: 1px solid var(--border-raised);
+    border-radius: var(--radius-box);
+    background: var(--color-base-200);
+    padding: 0.625rem;
+    color: inherit;
+    text-decoration: none;
+    transition:
+      border-color 180ms ease-out,
+      background-color 180ms ease-out;
+  }
+
+  /* Picking a game is the whole point of this list, so its hover is louder
+     than the catalog card's: the fill moves, not only the edge, and the
+     cover picks up the same Surf Blue rim so the row reads as one target
+     rather than as art sitting next to a link. */
+  .pick-card:hover,
+  .pick-card:focus-visible {
+    border-color: color-mix(in srgb, var(--color-primary) 72%, var(--border-raised));
+    background: color-mix(in srgb, var(--color-primary) 14%, var(--color-base-200));
+  }
+
+  .pick-card:hover .pick-cover,
+  .pick-card:focus-visible .pick-cover {
+    border-color: color-mix(in srgb, var(--color-primary) 55%, var(--border-raised));
+  }
+
+  /* Pressed is a deeper fill of the same tint, so the row answers the click
+     before the next page arrives. */
+  .pick-card:active {
+    background: color-mix(in srgb, var(--color-primary) 22%, var(--color-base-200));
+  }
+
+  /* Small enough that a followed list reads as a list rather than a wall of
+     box art, at the ratio the covers are published in. */
+  .pick-cover {
+    width: 4.6875rem;
+  }
+
+  .pick-name {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    font-size: 1rem;
+    font-weight: 600;
+    line-height: 1.3;
+  }
+
   .member-time {
     width: 6.5rem;
     flex: none;
@@ -831,7 +884,8 @@
      never letterboxes and never crops the title band out of the image. */
   .request-cover,
   .trending-cover,
-  .detail-cover {
+  .detail-cover,
+  .pick-cover {
     position: relative;
     display: grid;
     width: 6rem;
