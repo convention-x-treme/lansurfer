@@ -43,6 +43,11 @@ Detailed E2 questions are intentionally blocked until E1 settles the shared dura
 - E2 is a complete vertical Web Push slice on top of E1.
 - E2 and E3 remain independent.
 - Browser permission, subscription existence, LANsurfer enablement, and audience preference must be treated as distinct states.
+- **Actor exclusion is general for personal Web Push:** the actor who caused an activity never receives a push for that same activity.
+- **Created:** eligible followers/My Games users receive a push for a newly created request; users in the explicit all-new-requests audience may receive it regardless of following. The creator is excluded.
+- **Joined:** Game Request participants receive a push that someone joined, excluding the joining actor.
+- **Left:** Game Request participants receive a push that someone left, excluding the leaving actor.
+- This is an intentional extension beyond the current roadmap's creation-focused Web Push wording and requires canonical documentation reconciliation before implementation merge.
 
 ### Open decision branches
 
@@ -51,7 +56,8 @@ Detailed E2 questions are intentionally blocked until E1 settles the shared dura
 - duplicate endpoint ownership;
 - subscribe/unsubscribe HTTP contract;
 - enable/disable semantics;
-- exact first Web Push activity coverage;
+- `closed` / `cancelled` Web Push coverage;
+- exact participant snapshot for join/leave recipient resolution;
 - delivery-time eligibility query;
 - payload shape;
 - notification replacement/tag behavior;
