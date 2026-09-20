@@ -172,6 +172,8 @@ available directly from the binary as `lansurfer admin users` and
 `lansurfer admin promote --user-id <UUID>` when
 `LANSURFER_DATABASE_URL` is configured.
 
+Once promoted, an administrator can also inspect and retry stuck notification deliveries from the binary: `lansurfer admin notifications problems` lists exhausted, permanent, and uncertain deliveries, and `lansurfer admin notifications retry --delivery-id <ID>` (or `retry-uncertain` for a delivery in the uncertain state) reopens one for a fresh attempt.
+
 The Compose credentials are development defaults; do not use them for an exposed deployment. See the [contributing guide](CONTRIBUTING.md) for local Go development, configuration, and checks.
 
 ## 🤝 Get involved

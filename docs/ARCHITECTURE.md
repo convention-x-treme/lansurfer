@@ -316,6 +316,8 @@ Owns:
 
 The notification module consumes durable Game Request outbox work asynchronously; it does not own or write Game Requests, and Track A never writes into `notification`'s tables. Discovery uses a `NOT EXISTS` anti-join against `game_request_activity.sequence` plus a unique constraint on `notification_work.activity_sequence`, not a high-watermark cursor, so a row committed late is never silently skipped. A one-time, idempotent baseline pass materializes all pre-existing `origin=live` activity as never-deliverable "baseline" work before the worker starts; `origin=backfill` rows are excluded from discovery entirely. Delivery claiming uses `FOR UPDATE SKIP LOCKED` with a 60-second lease so a crashed worker's claim becomes eligible again automatically, with no in-process mutex and no additional required runtime service.
 
+E1 exposes authorized diagnostics and manual retry as `lansurfer admin notifications problems|retry|retry-uncertain` — a CLI surface, not an HTTP page, since Track G owns any future in-app presentation and no real transport exists yet to show anything transport-specific.
+
 E1 (this durable foundation) is implemented. E2 (Web Push) and E3 (Discord delivery) are not yet implemented; see `docs/ROADMAP.md`.
 
 A module must not directly update another module's tables merely because they are in the same database.
