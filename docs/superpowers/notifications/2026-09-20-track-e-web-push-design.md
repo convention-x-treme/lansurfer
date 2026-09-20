@@ -52,15 +52,20 @@ Detailed E2 questions are intentionally blocked until E1 settles the shared dura
 - **Delivery-time membership:** lifecycle recipients are resolved from current membership at send/retry time; users who have since left are not sent stale lifecycle pushes.
 - **Audience scope:** followed/My Games versus all-new-requests applies to `created` discovery only. Lifecycle notifications are based on current participation.
 - **Join/leave actor identity:** the push may include the activity actor's public Game Nick. Provider identity/name/email remain forbidden.
+- **Server-side preferences:** persist an explicit `web_push_enabled` preference, default `false`, and a `new_request_audience` preference, default `followed` with optional `all`. Lifecycle notifications for requests the user currently participates in depend on `web_push_enabled`, not on the new-request audience preference.
+- Browser permission, browser PushSubscription existence, LANsurfer enablement, and LANsurfer audience preference are separate states.
+- **Multiple devices:** each active subscription endpoint is an independent delivery target; a user with several active subscriptions receives the same eligible personal notification on all of them.
+- **Subscription labels:** labels are user-editable human-readable names such as `Gaming PC`, `iPhone`, or `Laptop`; LANsurfer may prefill a neutral suggestion such as `This device`. Do not infer labels from browser/OS fingerprinting.
+- **Endpoint ownership:** one push endpoint belongs to at most one LANsurfer user at a time. If another authenticated user explicitly enables Push in that same browser, the endpoint is atomically reassigned to the newly consenting user.
+- **Logout:** explicit logout removes/deactivates the current browser's server-side subscription for the current user and best-effort calls browser-side `unsubscribe()`. Other devices remain active.
+- **Manual device removal:** remove the active server-side subscription record. If the removed device is the current browser, best-effort unsubscribe browser-side as well. Historical delivery rows remain separate and are not deleted with the subscription.
 - This is an intentional extension beyond the current roadmap's creation-focused Web Push and identity-minimized wording and requires canonical documentation reconciliation before implementation merge.
 
 ### Open decision branches
 
-- exact preference schema;
-- subscription schema and labels;
-- duplicate endpoint ownership;
-- subscribe/unsubscribe HTTP contract;
-- enable/disable semantics;
+- exact subscription persistence fields and key constraints;
+- subscribe/unsubscribe HTTP contract and CSRF behavior;
+- browser permission/enablement state transitions;
 - exact wording/payload schema for each activity kind;
 - delivery-time eligibility query;
 - payload shape;
