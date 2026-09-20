@@ -3,6 +3,8 @@
 package postgres
 
 import (
+	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -440,5 +442,444 @@ func TestNotificationExpiredClaimLeaseBecomesClaimableAgain(t *testing.T) {
 	recovered, err := store.ClaimDueDeliveries(t.Context(), 10, time.Now().Add(time.Minute))
 	if err != nil || len(recovered) != 1 || recovered[0].DeliveryID != firstClaim[0].DeliveryID {
 		t.Fatalf("ClaimDueDeliveries() after lease expiry = %#v, %v, want to recover delivery %d", recovered, err, firstClaim[0].DeliveryID)
+	}
+}
+
+// fakeTransport is a controllable notification.Transport for proving the
+// worker's claim/send/record loop without a real Web Push or Discord
+// adapter, which do not exist until later tracks.
+type fakeTransport struct {
+	name        string
+	targets     []notification.Target
+	targetsErr  error
+	results     map[string]notification.SendResult // keyed by target.Key
+	defaultSend notification.SendResult
+	sendCalls   chan notification.Target
+}
+
+func newFakeTransport(name string, targets []notification.Target) *fakeTransport {
+	return &fakeTransport{
+		name: name, targets: targets, results: map[string]notification.SendResult{},
+		defaultSend: notification.SendResult{Outcome: notification.OutcomeSucceeded},
+		sendCalls:   make(chan notification.Target, 64),
+	}
+}
+
+func (f *fakeTransport) Name() string { return f.name }
+
+func (f *fakeTransport) Targets(context.Context, notification.Activity) ([]notification.Target, error) {
+	if f.targetsErr != nil {
+		return nil, f.targetsErr
+	}
+	return f.targets, nil
+}
+
+func (f *fakeTransport) Send(_ context.Context, _ notification.Activity, target notification.Target) notification.SendResult {
+	select {
+	case f.sendCalls <- target:
+	default:
+	}
+	if result, ok := f.results[target.Key]; ok {
+		return result
+	}
+	return f.defaultSend
+}
+
+func newTestWorker(repo *notificationpostgres.Store, transports []notification.Transport) *notification.Worker {
+	return notification.NewWorker(repo, transports, testLogger(), time.Now)
+}
+
+func materializeOneActivityWithTransport(t *testing.T, store *notificationpostgres.Store, activity notification.Activity, transport *fakeTransport) {
+	t.Helper()
+	targets, err := transport.Targets(t.Context(), activity)
+	if err != nil {
+		t.Fatalf("transport.Targets() error = %v", err)
+	}
+	if err := store.MaterializeWork(t.Context(), activity, targets); err != nil {
+		t.Fatalf("MaterializeWork() error = %v", err)
+	}
+}
+
+func TestNotificationFakeTransportSuccessPathMarksDeliverySucceeded(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+	fixture := newNotificationFixture(t, pool)
+	store := notificationpostgres.NewStore(pool)
+	if err := store.InitializeBaseline(t.Context()); err != nil {
+		t.Fatalf("InitializeBaseline() error = %v", err)
+	}
+	created, err := fixture.requests.Create(t.Context(), fixture.host.ID, fixture.gameID, nil, time.Now().Add(time.Hour), "Success path")
+	if err != nil {
+		t.Fatalf("create game request: %v", err)
+	}
+	transport := newFakeTransport("test", []notification.Target{{Transport: "test", Key: "target-1"}})
+	activities, err := store.DiscoverActivity(t.Context(), 10)
+	if err != nil || len(activities) != 1 {
+		t.Fatalf("DiscoverActivity() = %#v, %v", activities, err)
+	}
+	materializeOneActivityWithTransport(t, store, activities[0], transport)
+
+	worker := newTestWorker(store, []notification.Transport{transport})
+	worker.Tick(t.Context())
+
+	var status string
+	if err := pool.QueryRow(t.Context(),
+		"SELECT status FROM notification_delivery d JOIN notification_work w ON w.id = d.work_id WHERE w.game_request_id = $1",
+		created.ID,
+	).Scan(&status); err != nil {
+		t.Fatalf("read delivery status: %v", err)
+	}
+	if status != "succeeded" {
+		t.Fatalf("delivery status = %q, want %q", status, "succeeded")
+	}
+}
+
+func TestNotificationPermanentFailureIsTerminal(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+	fixture := newNotificationFixture(t, pool)
+	store := notificationpostgres.NewStore(pool)
+	if err := store.InitializeBaseline(t.Context()); err != nil {
+		t.Fatalf("InitializeBaseline() error = %v", err)
+	}
+	if _, err := fixture.requests.Create(t.Context(), fixture.host.ID, fixture.gameID, nil, time.Now().Add(time.Hour), "Permanent failure"); err != nil {
+		t.Fatalf("create game request: %v", err)
+	}
+	transport := newFakeTransport("test", []notification.Target{{Transport: "test", Key: "target-1"}})
+	transport.results["target-1"] = notification.SendResult{Outcome: notification.OutcomePermanent, Err: errors.New("target permanently invalid")}
+	activities, err := store.DiscoverActivity(t.Context(), 10)
+	if err != nil || len(activities) != 1 {
+		t.Fatalf("DiscoverActivity() = %#v, %v", activities, err)
+	}
+	materializeOneActivityWithTransport(t, store, activities[0], transport)
+
+	worker := newTestWorker(store, []notification.Transport{transport})
+	worker.Tick(t.Context())
+	worker.Tick(t.Context()) // a permanent delivery must never be reclaimed
+
+	var status string
+	var attempts int32
+	if err := pool.QueryRow(t.Context(),
+		"SELECT status, attempt_count FROM notification_delivery ORDER BY id DESC LIMIT 1",
+	).Scan(&status, &attempts); err != nil {
+		t.Fatalf("read delivery status: %v", err)
+	}
+	if status != "permanent" {
+		t.Fatalf("delivery status = %q, want %q", status, "permanent")
+	}
+	if attempts != 0 {
+		t.Fatalf("attempt_count = %d, want 0 (permanent is not a retry outcome)", attempts)
+	}
+	if len(transport.sendCalls) != 1 {
+		t.Fatalf("Send() was called %d times, want exactly 1 (a permanent delivery must not be reclaimed)", len(transport.sendCalls))
+	}
+}
+
+func TestNotificationUncertainOutcomeRequiresManualRetryAndIsNeverAutomaticallyRetried(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+	fixture := newNotificationFixture(t, pool)
+	store := notificationpostgres.NewStore(pool)
+	if err := store.InitializeBaseline(t.Context()); err != nil {
+		t.Fatalf("InitializeBaseline() error = %v", err)
+	}
+	if _, err := fixture.requests.Create(t.Context(), fixture.host.ID, fixture.gameID, nil, time.Now().Add(time.Hour), "Uncertain outcome"); err != nil {
+		t.Fatalf("create game request: %v", err)
+	}
+	transport := newFakeTransport("test", []notification.Target{{Transport: "test", Key: "target-1"}})
+	transport.results["target-1"] = notification.SendResult{Outcome: notification.OutcomeUncertain, Err: errors.New("ambiguous provider response")}
+	activities, err := store.DiscoverActivity(t.Context(), 10)
+	if err != nil || len(activities) != 1 {
+		t.Fatalf("DiscoverActivity() = %#v, %v", activities, err)
+	}
+	materializeOneActivityWithTransport(t, store, activities[0], transport)
+
+	worker := newTestWorker(store, []notification.Transport{transport})
+	for i := 0; i < 3; i++ {
+		worker.Tick(t.Context())
+	}
+
+	var status string
+	if err := pool.QueryRow(t.Context(), "SELECT status FROM notification_delivery ORDER BY id DESC LIMIT 1").Scan(&status); err != nil {
+		t.Fatalf("read delivery status: %v", err)
+	}
+	if status != "uncertain" {
+		t.Fatalf("delivery status = %q, want %q", status, "uncertain")
+	}
+	if len(transport.sendCalls) != 1 {
+		t.Fatalf("Send() was called %d times across 3 ticks, want exactly 1 (uncertain must never be automatically retried)", len(transport.sendCalls))
+	}
+}
+
+func TestNotificationRetryBackoffProgressesToExhaustionAfterSixAttempts(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+	fixture := newNotificationFixture(t, pool)
+	store := notificationpostgres.NewStore(pool)
+	if err := store.InitializeBaseline(t.Context()); err != nil {
+		t.Fatalf("InitializeBaseline() error = %v", err)
+	}
+	if _, err := fixture.requests.Create(t.Context(), fixture.host.ID, fixture.gameID, nil, time.Now().Add(time.Hour), "Always retryable"); err != nil {
+		t.Fatalf("create game request: %v", err)
+	}
+	transport := newFakeTransport("test", []notification.Target{{Transport: "test", Key: "target-1"}})
+	transport.defaultSend = notification.SendResult{Outcome: notification.OutcomeRetryable, Err: errors.New("temporary provider error")}
+	activities, err := store.DiscoverActivity(t.Context(), 10)
+	if err != nil || len(activities) != 1 {
+		t.Fatalf("DiscoverActivity() = %#v, %v", activities, err)
+	}
+	materializeOneActivityWithTransport(t, store, activities[0], transport)
+
+	worker := newTestWorker(store, []notification.Transport{transport})
+	for attempt := 1; attempt <= notification.MaxAutomaticAttempts; attempt++ {
+		if _, err := pool.Exec(t.Context(), "UPDATE notification_delivery SET next_attempt_at = now()"); err != nil {
+			t.Fatalf("force delivery due: %v", err)
+		}
+		worker.Tick(t.Context())
+
+		var status string
+		var attemptCount int32
+		if err := pool.QueryRow(t.Context(),
+			"SELECT status, attempt_count FROM notification_delivery ORDER BY id DESC LIMIT 1",
+		).Scan(&status, &attemptCount); err != nil {
+			t.Fatalf("read delivery after attempt %d: %v", attempt, err)
+		}
+		if int(attemptCount) != attempt {
+			t.Fatalf("attempt %d: attempt_count = %d, want %d", attempt, attemptCount, attempt)
+		}
+		if attempt < notification.MaxAutomaticAttempts {
+			if status != "pending" {
+				t.Fatalf("attempt %d: status = %q, want %q", attempt, status, "pending")
+			}
+		} else {
+			if status != "exhausted" {
+				t.Fatalf("final attempt: status = %q, want %q", status, "exhausted")
+			}
+		}
+	}
+
+	if _, err := pool.Exec(t.Context(), "UPDATE notification_delivery SET next_attempt_at = now()"); err != nil {
+		t.Fatalf("force delivery due after exhaustion: %v", err)
+	}
+	worker.Tick(t.Context())
+	var attemptCountAfterExtraTick int32
+	if err := pool.QueryRow(t.Context(), "SELECT attempt_count FROM notification_delivery ORDER BY id DESC LIMIT 1").Scan(&attemptCountAfterExtraTick); err != nil {
+		t.Fatalf("read attempt_count after exhaustion tick: %v", err)
+	}
+	if int(attemptCountAfterExtraTick) != notification.MaxAutomaticAttempts {
+		t.Fatalf("attempt_count after exhaustion tick = %d, want unchanged at %d (exhausted deliveries are never reclaimed)", attemptCountAfterExtraTick, notification.MaxAutomaticAttempts)
+	}
+}
+
+func TestNotificationRetryAfterHintOverridesScheduledBackoffCappedAtFiveMinutes(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+	fixture := newNotificationFixture(t, pool)
+	store := notificationpostgres.NewStore(pool)
+	if err := store.InitializeBaseline(t.Context()); err != nil {
+		t.Fatalf("InitializeBaseline() error = %v", err)
+	}
+	if _, err := fixture.requests.Create(t.Context(), fixture.host.ID, fixture.gameID, nil, time.Now().Add(time.Hour), "Retry-After"); err != nil {
+		t.Fatalf("create game request: %v", err)
+	}
+	retryAfter := 20 * time.Minute // deliberately far beyond the 5m cap
+	transport := newFakeTransport("test", []notification.Target{{Transport: "test", Key: "target-1"}})
+	transport.results["target-1"] = notification.SendResult{Outcome: notification.OutcomeRetryable, RetryAfter: &retryAfter, Err: errors.New("rate limited")}
+	activities, err := store.DiscoverActivity(t.Context(), 10)
+	if err != nil || len(activities) != 1 {
+		t.Fatalf("DiscoverActivity() = %#v, %v", activities, err)
+	}
+	materializeOneActivityWithTransport(t, store, activities[0], transport)
+
+	worker := newTestWorker(store, []notification.Transport{transport})
+	before := time.Now()
+	worker.Tick(t.Context())
+
+	var nextAttemptAt time.Time
+	if err := pool.QueryRow(t.Context(), "SELECT next_attempt_at FROM notification_delivery ORDER BY id DESC LIMIT 1").Scan(&nextAttemptAt); err != nil {
+		t.Fatalf("read next_attempt_at: %v", err)
+	}
+	delay := nextAttemptAt.Sub(before)
+	if delay < 4*time.Minute+30*time.Second || delay > 5*time.Minute+30*time.Second {
+		t.Fatalf("next_attempt_at delay = %v, want capped at approximately 5m (Retry-After of 20m must not be honored past the cap)", delay)
+	}
+}
+
+func TestNotificationRestartRedeliversPendingAndRetryScheduledWorkAfterProcessRestart(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+	fixture := newNotificationFixture(t, pool)
+	store := notificationpostgres.NewStore(pool)
+	if err := store.InitializeBaseline(t.Context()); err != nil {
+		t.Fatalf("InitializeBaseline() error = %v", err)
+	}
+
+	// One request whose delivery will be scheduled for a future retry before
+	// the restart, and a second, created after the first Tick, whose
+	// delivery is still untouched (pending, immediately due) at restart time
+	// — the two required "restart with pending work" and "restart with
+	// retry-scheduled work" cases, proven together.
+	if _, err := fixture.requests.Create(t.Context(), fixture.host.ID, fixture.gameID, nil, time.Now().Add(time.Hour), "Restart retry-scheduled"); err != nil {
+		t.Fatalf("create retry-scheduled game request: %v", err)
+	}
+	transport := newFakeTransport("test", []notification.Target{{Transport: "test", Key: "target-1"}, {Transport: "test", Key: "target-2"}})
+	transport.defaultSend = notification.SendResult{Outcome: notification.OutcomeRetryable, Err: errors.New("temporary")}
+	activities, err := store.DiscoverActivity(t.Context(), 10)
+	if err != nil || len(activities) != 1 {
+		t.Fatalf("DiscoverActivity() = %#v, %v", activities, err)
+	}
+	if err := store.MaterializeWork(t.Context(), activities[0], []notification.Target{{Transport: "test", Key: "target-1"}}); err != nil {
+		t.Fatalf("MaterializeWork() for the retry-scheduled request error = %v", err)
+	}
+
+	worker := newTestWorker(store, []notification.Transport{transport})
+	worker.Tick(t.Context()) // one failure on target-1 schedules a future retry
+
+	var scheduledAt time.Time
+	var scheduledDeliveryID int64
+	if err := pool.QueryRow(t.Context(), "SELECT id, next_attempt_at FROM notification_delivery ORDER BY id DESC LIMIT 1").Scan(&scheduledDeliveryID, &scheduledAt); err != nil {
+		t.Fatalf("read scheduled retry: %v", err)
+	}
+	if !scheduledAt.After(time.Now()) {
+		t.Fatalf("next_attempt_at = %v, want a future time after one retryable failure", scheduledAt)
+	}
+
+	// A second request materialized after that Tick, whose delivery has
+	// never been attempted and is still pending/due when the restart happens.
+	if _, err := fixture.requests.Create(t.Context(), fixture.guest.ID, fixture.gameID, nil, time.Now().Add(time.Hour), "Restart still pending"); err != nil {
+		t.Fatalf("create still-pending game request: %v", err)
+	}
+	pendingActivities, err := store.DiscoverActivity(t.Context(), 10)
+	if err != nil || len(pendingActivities) != 1 {
+		t.Fatalf("DiscoverActivity() for the still-pending request = %#v, %v", pendingActivities, err)
+	}
+	if err := store.MaterializeWork(t.Context(), pendingActivities[0], []notification.Target{{Transport: "test", Key: "target-2"}}); err != nil {
+		t.Fatalf("MaterializeWork() for the still-pending request error = %v", err)
+	}
+	var pendingDeliveryID int64
+	var pendingStatus string
+	if err := pool.QueryRow(t.Context(),
+		"SELECT id, status FROM notification_delivery WHERE target_key = 'target-2'",
+	).Scan(&pendingDeliveryID, &pendingStatus); err != nil {
+		t.Fatalf("read still-pending delivery: %v", err)
+	}
+	if pendingStatus != "pending" {
+		t.Fatalf("still-pending delivery status = %q, want %q (never attempted before restart)", pendingStatus, "pending")
+	}
+
+	// "Restart" the process: close this pool, open a fresh one against the
+	// same schema, and build a new Store/Worker, exactly as
+	// TestCommittedActivitySurvivesRestartBeforeDelivery does for Track A.
+	schemaName := currentSchema(t, pool)
+	pool.Close()
+	restartedPool := reopenTestPool(t, schemaName)
+	restartedStore := notificationpostgres.NewStore(restartedPool)
+	restartedTransport := newFakeTransport("test", []notification.Target{{Transport: "test", Key: "target-1"}, {Transport: "test", Key: "target-2"}})
+	restartedWorker := newTestWorker(restartedStore, []notification.Transport{restartedTransport})
+
+	// The still-pending delivery (target-2) is due now and must be picked up
+	// immediately; the retry-scheduled delivery (target-1) is not yet due
+	// and must not be jumped.
+	restartedWorker.Tick(t.Context())
+	var statusAfterFirstRestartTick string
+	if err := restartedPool.QueryRow(t.Context(), "SELECT status FROM notification_delivery WHERE id = $1", pendingDeliveryID).Scan(&statusAfterFirstRestartTick); err != nil {
+		t.Fatalf("read still-pending delivery status after restart: %v", err)
+	}
+	if statusAfterFirstRestartTick != "succeeded" {
+		t.Fatalf("still-pending delivery status after restart = %q, want %q", statusAfterFirstRestartTick, "succeeded")
+	}
+	sawTarget1 := false
+	for target := range drainTargets(restartedTransport.sendCalls) {
+		if target.Key == "target-1" {
+			sawTarget1 = true
+		}
+	}
+	if sawTarget1 {
+		t.Fatal("the retry-scheduled delivery (target-1) was attempted before it was due")
+	}
+
+	if _, err := restartedPool.Exec(t.Context(), "UPDATE notification_delivery SET next_attempt_at = now() WHERE id = $1", scheduledDeliveryID); err != nil {
+		t.Fatalf("advance clock to the scheduled retry: %v", err)
+	}
+	restartedTransport.defaultSend = notification.SendResult{Outcome: notification.OutcomeSucceeded}
+	restartedWorker.Tick(t.Context())
+
+	var finalStatus string
+	if err := restartedPool.QueryRow(t.Context(), "SELECT status FROM notification_delivery WHERE id = $1", scheduledDeliveryID).Scan(&finalStatus); err != nil {
+		t.Fatalf("read final status: %v", err)
+	}
+	if finalStatus != "succeeded" {
+		t.Fatalf("final status after restart = %q, want %q", finalStatus, "succeeded")
+	}
+}
+
+// drainTargets non-blockingly reads every currently buffered target off a
+// fakeTransport's sendCalls channel, for asserting what was (or was not)
+// attempted so far without racing the channel's producer.
+func drainTargets(calls chan notification.Target) <-chan notification.Target {
+	drained := make(chan notification.Target, cap(calls))
+	for {
+		select {
+		case target := <-calls:
+			drained <- target
+		default:
+			close(drained)
+			return drained
+		}
+	}
+}
+
+func TestNotificationTransportFailureNeverAffectsOriginatingGameRequestWrites(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+	fixture := newNotificationFixture(t, pool)
+	store := notificationpostgres.NewStore(pool)
+	if err := store.InitializeBaseline(t.Context()); err != nil {
+		t.Fatalf("InitializeBaseline() error = %v", err)
+	}
+	created, err := fixture.requests.Create(t.Context(), fixture.host.ID, fixture.gameID, nil, time.Now().Add(time.Hour), "Never affected")
+	if err != nil {
+		t.Fatalf("create game request: %v", err)
+	}
+	if err := fixture.requests.Join(t.Context(), created.ID, fixture.guest.ID); err != nil {
+		t.Fatalf("join game request: %v", err)
+	}
+	transport := newFakeTransport("test", []notification.Target{{Transport: "test", Key: "target-1"}})
+	transport.defaultSend = notification.SendResult{Outcome: notification.OutcomePermanent, Err: errors.New("provider rejected")}
+	activities, err := store.DiscoverActivity(t.Context(), 10)
+	if err != nil {
+		t.Fatalf("DiscoverActivity() error = %v", err)
+	}
+	for _, activity := range activities {
+		materializeOneActivityWithTransport(t, store, activity, transport)
+	}
+
+	worker := newTestWorker(store, []notification.Transport{transport})
+	worker.Tick(t.Context())
+
+	var status string
+	var memberCount int
+	if err := pool.QueryRow(t.Context(), "SELECT status FROM game_requests WHERE id = $1", created.ID).Scan(&status); err != nil {
+		t.Fatalf("read game request status: %v", err)
+	}
+	if err := pool.QueryRow(t.Context(), "SELECT count(*) FROM game_request_members WHERE game_request_id = $1", created.ID).Scan(&memberCount); err != nil {
+		t.Fatalf("count members: %v", err)
+	}
+	if status != "open" || memberCount != 2 {
+		t.Fatalf("game request state after a permanent transport failure = status=%q members=%d, want status=%q members=2 (unaffected)", status, memberCount, "open")
 	}
 }

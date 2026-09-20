@@ -154,6 +154,58 @@ func (s *Store) ClaimDueDeliveries(ctx context.Context, limit int, leaseUntil ti
 	return claimed, nil
 }
 
+// RecordSuccess marks one delivery succeeded, releasing its claim lease.
+func (s *Store) RecordSuccess(ctx context.Context, deliveryID int64) error {
+	if err := s.queries.RecordDeliverySuccess(ctx, deliveryID); err != nil {
+		return fmt.Errorf("record delivery success: %w", err)
+	}
+	return nil
+}
+
+// RecordRetry marks one delivery pending again, scheduled for nextAttemptAt,
+// and increments its attempt count.
+func (s *Store) RecordRetry(ctx context.Context, deliveryID int64, nextAttemptAt time.Time, lastError string) error {
+	if err := s.queries.RecordDeliveryRetry(ctx, sqlcgen.RecordDeliveryRetryParams{
+		ID: deliveryID, NextAttemptAt: pgtype.Timestamptz{Time: nextAttemptAt, Valid: true}, LastError: nullableText(lastError),
+	}); err != nil {
+		return fmt.Errorf("record delivery retry: %w", err)
+	}
+	return nil
+}
+
+// RecordExhausted marks one delivery exhausted (all automatic attempts
+// used) and increments its attempt count.
+func (s *Store) RecordExhausted(ctx context.Context, deliveryID int64, lastError string) error {
+	if err := s.queries.RecordDeliveryExhausted(ctx, sqlcgen.RecordDeliveryExhaustedParams{
+		ID: deliveryID, LastError: nullableText(lastError),
+	}); err != nil {
+		return fmt.Errorf("record delivery exhausted: %w", err)
+	}
+	return nil
+}
+
+// RecordPermanent marks one delivery permanently failed. It never touches
+// attempt_count: permanent is not a retry outcome.
+func (s *Store) RecordPermanent(ctx context.Context, deliveryID int64, lastError string) error {
+	if err := s.queries.RecordDeliveryPermanent(ctx, sqlcgen.RecordDeliveryPermanentParams{
+		ID: deliveryID, LastError: nullableText(lastError),
+	}); err != nil {
+		return fmt.Errorf("record delivery permanent: %w", err)
+	}
+	return nil
+}
+
+// RecordUncertain marks one delivery uncertain, requiring manual retry. It
+// never touches attempt_count and is never automatically reclaimed.
+func (s *Store) RecordUncertain(ctx context.Context, deliveryID int64, lastError string) error {
+	if err := s.queries.RecordDeliveryUncertain(ctx, sqlcgen.RecordDeliveryUncertainParams{
+		ID: deliveryID, LastError: nullableText(lastError),
+	}); err != nil {
+		return fmt.Errorf("record delivery uncertain: %w", err)
+	}
+	return nil
+}
+
 func parseUUID(value string) (pgtype.UUID, error) {
 	var id pgtype.UUID
 	if err := id.Scan(value); err != nil {
