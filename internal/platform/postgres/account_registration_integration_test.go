@@ -227,6 +227,69 @@ func TestAttachPendingConcurrentRaceResolvesIdempotently(t *testing.T) {
 	}
 }
 
+// The losing side of that race deterministically: it read the pending row
+// before the winner consumed it, but reads the user's identities after the
+// winner committed the attachment. Seeing the winner's own identity is an
+// idempotent completion, not a second provider link.
+func TestAttachPendingToleratesIdentityCommittedByConcurrentWinner(t *testing.T) {
+	pool := registrationTestPool(t)
+	var userID string
+	if err := pool.QueryRow(t.Context(), `INSERT INTO users (game_nick) VALUES ('NightOtter') RETURNING id::text`).Scan(&userID); err != nil {
+		t.Fatalf("create proven user: %v", err)
+	}
+	flows := auth.NewFlowService(authpostgres.NewFlowStore(pool))
+	pending, err := flows.CreatePending(t.Context(), auth.PendingIdentityInput{
+		BrowserBinding: "browser", ProviderKind: "discord", ProviderKey: "discord", Subject: "discord-1", Operation: auth.FlowResolution,
+	})
+	if err != nil {
+		t.Fatalf("create pending identity: %v", err)
+	}
+	if _, err := authpostgres.NewIdentityStore(pool).Create(t.Context(), auth.Identity{
+		UserID: userID, ProviderKind: "discord", ProviderKey: "discord", Subject: "discord-1",
+	}); err != nil {
+		t.Fatalf("simulate the concurrent winner's committed identity: %v", err)
+	}
+
+	err = authpostgres.NewPendingIdentityAttacher(pool).AttachPending(t.Context(), pending.ID, "browser", userID, "oidc", "https://issuer.example")
+	if err != nil {
+		t.Fatalf("attach error = %v, want nil (the winner already attached this identity)", err)
+	}
+	identities, err := authpostgres.NewIdentityStore(pool).ListByUser(t.Context(), userID)
+	if err != nil {
+		t.Fatalf("list identities: %v", err)
+	}
+	if len(identities) != 1 {
+		t.Fatalf("identities = %#v, want exactly one discord identity attached once", identities)
+	}
+}
+
+// A different subject for a provider the account already uses is still a
+// real conflict, not an idempotent race.
+func TestAttachPendingRejectsSecondSubjectForLinkedProvider(t *testing.T) {
+	pool := registrationTestPool(t)
+	var userID string
+	if err := pool.QueryRow(t.Context(), `INSERT INTO users (game_nick) VALUES ('NightOtter') RETURNING id::text`).Scan(&userID); err != nil {
+		t.Fatalf("create proven user: %v", err)
+	}
+	flows := auth.NewFlowService(authpostgres.NewFlowStore(pool))
+	pending, err := flows.CreatePending(t.Context(), auth.PendingIdentityInput{
+		BrowserBinding: "browser", ProviderKind: "discord", ProviderKey: "discord", Subject: "discord-2", Operation: auth.FlowResolution,
+	})
+	if err != nil {
+		t.Fatalf("create pending identity: %v", err)
+	}
+	if _, err := authpostgres.NewIdentityStore(pool).Create(t.Context(), auth.Identity{
+		UserID: userID, ProviderKind: "discord", ProviderKey: "discord", Subject: "discord-1",
+	}); err != nil {
+		t.Fatalf("link the account's existing discord identity: %v", err)
+	}
+
+	err = authpostgres.NewPendingIdentityAttacher(pool).AttachPending(t.Context(), pending.ID, "browser", userID, "oidc", "https://issuer.example")
+	if !errors.Is(err, auth.ErrProviderAlreadyLinked) {
+		t.Fatalf("attach error = %v, want ErrProviderAlreadyLinked", err)
+	}
+}
+
 // Unlinking a player's last two identities at once must never leave zero
 // identities linked. The persistence layer, not the web UI (which never
 // offers an unlink control for a player's last identity), is what actually

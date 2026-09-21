@@ -41,9 +41,17 @@ func (a *PendingIdentityAttacher) AttachPending(ctx context.Context, pendingID, 
 		return err
 	}
 	for _, identity := range linked {
-		if identity.ProviderKind == pending.ProviderKind && identity.ProviderKey == pending.ProviderKey {
-			return auth.ErrProviderAlreadyLinked
+		if identity.ProviderKind != pending.ProviderKind || identity.ProviderKey != pending.ProviderKey {
+			continue
 		}
+		if identity.Subject == pending.Subject {
+			// A concurrent identical attach committed this exact identity
+			// between this transaction reading the still-unconsumed pending
+			// row and this lookup. That is the same idempotent race the
+			// Create branch below handles, not a second provider link.
+			return nil
+		}
+		return auth.ErrProviderAlreadyLinked
 	}
 	_, err = identities.Create(ctx, auth.Identity{
 		UserID: userID, ProviderKind: pending.ProviderKind, ProviderKey: pending.ProviderKey,
