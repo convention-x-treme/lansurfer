@@ -72,6 +72,10 @@
   --ink-open: light-dark(var(--brand-deep-blue), var(--brand-aqua-wave));
   --ink-hot: light-dark(color-mix(in srgb, var(--brand-golden-hour) 45%, black), var(--brand-golden-hour));
   --ink-last: light-dark(color-mix(in srgb, var(--brand-sunset) 64%, black), var(--brand-sunset));
+  /* Accent as text. Sea Foam is a fill colour: straight on the light card it
+     is 1.4:1, so the light theme darkens it the way --ink-hot darkens Golden
+     Hour, while the dark theme keeps the brand value. */
+  --ink-accent: light-dark(color-mix(in srgb, var(--color-accent) 38%, black), var(--color-accent));
   /* Sunset on its own 18% chip tint is 4.2:1 in dark mode; whitening it to 88%
      reaches 4.65:1 without leaving the colour's one job. */
   --ink-chip-last: light-dark(
@@ -210,6 +214,15 @@
     padding-top: 1rem;
   }
 
+  /* Grid items default to min-width:auto, so a nowrap truncating label sizes
+     its column to the whole Game name and scrolls the sidebar sideways. The
+     floor lets the existing truncation cut the name instead. */
+  .nav-section,
+  .nav-section ul,
+  .nav-section li {
+    min-width: 0;
+  }
+
   .nav-section-heading {
     display: flex;
     align-items: baseline;
@@ -260,6 +273,20 @@
 
   .nav-upcoming-item-now time {
     color: var(--ink-last);
+  }
+
+  /* The warning tier before Sunset: the round is inside a quarter of an hour
+     and Golden Hour is this product's colour for time itself. */
+  .nav-upcoming-item-soon {
+    border-color: color-mix(in srgb, var(--brand-golden-hour) 55%, transparent);
+  }
+
+  .nav-upcoming-item-soon .nav-upcoming-dot {
+    background: var(--ink-hot);
+  }
+
+  .nav-upcoming-item-soon time {
+    color: var(--ink-hot);
   }
 
   .nav-recent-item {
@@ -441,6 +468,23 @@
     line-height: 1.15;
   }
 
+  /* The activity feed is a scanning surface: alternating rows keep a time
+     with its own sentence without drawing a rule between every entry. */
+  .activity-list {
+    display: grid;
+  }
+
+  .activity-row {
+    display: flex;
+    gap: 0.75rem;
+    border-radius: var(--radius-field);
+    padding: 0.375rem 0.5rem;
+  }
+
+  .activity-row:nth-child(odd) {
+    background: color-mix(in srgb, var(--color-base-content) 5%, transparent);
+  }
+
   .detail-card-accent {
     border-color: color-mix(in srgb, var(--color-warning) 40%, var(--border-raised));
   }
@@ -576,7 +620,7 @@
     display: -webkit-box;
     overflow: hidden;
     -webkit-box-orient: vertical;
-    -webkit-line-clamp: 3;
+    -webkit-line-clamp: 5;
     font-size: 0.8125rem;
     color: color-mix(in srgb, var(--color-base-content) 70%, transparent);
     line-height: 1.45;
@@ -969,14 +1013,23 @@
     gap: 0.5rem;
   }
 
+  /* The Host mark sits on the title line, next to the sentence it qualifies,
+     so the title truncates around it instead of through it. */
   .request-row-title {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 1.1875rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  .request-row-title-text {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 1.1875rem;
-    font-weight: 600;
-    letter-spacing: -0.01em;
   }
 
   /* The Game Nick and the Game are what a player scans the line for, so the
@@ -1005,8 +1058,10 @@
   }
 
   /* Hairline separators instead of separator elements: nothing between the
-     facts is content, so nothing between them is markup. */
-  .request-row-meta > * + * {
+     facts is content, so nothing between them is markup. A chip already has
+     its own edge and fill, so the hairline is drawn on the chip itself and
+     reads as a pipe stuck to it; the row gap separates it instead. */
+  .request-row-meta > * + *:not(.status-chip) {
     border-left: 1px solid var(--border-raised);
     padding-left: 0.75rem;
   }
@@ -1482,7 +1537,7 @@ textarea::placeholder {
 @media (min-width: 64rem) {
   .app-shell {
     display: grid;
-    grid-template-columns: 15.5rem minmax(0, 1fr);
+    grid-template-columns: 18.75rem minmax(0, 1fr);
   }
 
   .app-topbar {

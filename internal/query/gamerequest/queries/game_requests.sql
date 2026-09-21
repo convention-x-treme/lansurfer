@@ -49,6 +49,9 @@ SELECT gr.id::text AS request_id,
        enrichment.game_type,
        enrichment.platform_names,
        enrichment.first_release_date,
+       -- The summary is read for one request at a time only: the detail
+       -- page states it in full, and a list of rows has no room for it.
+       enrichment.summary,
        gr.creator_id::text AS creator_id, u.game_nick AS creator_game_nick,
        gr.max_players, gr.starts_at, gr.description, gr.status,
        gr.created_at, gr.updated_at,

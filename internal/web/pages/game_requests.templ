@@ -3,6 +3,7 @@ package pages
 import (
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -237,11 +238,16 @@ templ GameRequestRow(request requestquery.Request, viewerID, highlightedID strin
 			</span>
 			<span class="request-row-body">
 				<span class="request-row-title">
-					if request.CreatorGameNick != "" {
-						{ request.CreatorGameNick }
-						<span class="request-row-connector">is looking for</span>
+					<span class="request-row-title-text">
+						if request.CreatorGameNick != "" {
+							{ request.CreatorGameNick }
+							<span class="request-row-connector">is looking for</span>
+						}
+						{ request.Game.Name }
+					</span>
+					if request.CreatorID == viewerID {
+						<span class="status-chip status-chip-host flex-none">Host</span>
 					}
-					{ request.Game.Name }
 				</span>
 				if request.Description != "" {
 					<span class="request-row-description">{ request.Description }</span>
@@ -251,15 +257,15 @@ templ GameRequestRow(request requestquery.Request, viewerID, highlightedID strin
 						<span class={ playerCountClass(request) } aria-label={ playerCountAccessible(request) }>{ playerCount(request) }</span>
 						<span class="data-text text-xs text-base-content/70" aria-hidden="true">players</span>
 					</span>
-					<time class={ startTimeClass(request.StartsAt) } datetime={ request.StartsAt.Format(time.RFC3339) }>{ components.StartLabel(request.StartsAt) }</time>
-					if request.CreatorID == viewerID {
-						<span class="status-chip status-chip-host">Host</span>
-					} else if request.ViewerJoined {
-						<span class="status-chip status-chip-joined">Joined</span>
-					} else if lastPlace(request) {
-						<span class="status-chip status-chip-last">Last place</span>
-					} else if requestFull(request) {
-						<span class="status-chip">Full</span>
+					<time class={ startTimeClass(request.StartsAt) } datetime={ request.StartsAt.Format(time.RFC3339) } title={ components.AbsoluteTime(request.StartsAt) }>{ components.StartLabel(request.StartsAt) }</time>
+					if request.CreatorID != viewerID {
+						if request.ViewerJoined {
+							<span class="status-chip status-chip-joined">Joined</span>
+						} else if lastPlace(request) {
+							<span class="status-chip status-chip-last">Last place</span>
+						} else if requestFull(request) {
+							<span class="status-chip">Full</span>
+						}
 					}
 				</span>
 			</span>
@@ -605,7 +611,7 @@ templ GameRequestDetailContent(request requestquery.Request, viewerID string, re
 							<strong class={ detailCountClass(request) }>{ playerCount(request) }</strong>
 							<span>players</span>
 							<span aria-hidden="true">·</span>
-							<span>{ startLongLabel(request.StartsAt) }</span>
+							<time class={ detailStartClass(request.StartsAt) } datetime={ request.StartsAt.Format(time.RFC3339) } title={ components.AbsoluteTime(request.StartsAt) }>{ startLongLabel(request.StartsAt) }</time>
 						</p>
 					</div>
 					<div class="flex w-full flex-wrap items-center gap-2.5 sm:w-auto">
@@ -626,7 +632,7 @@ templ GameRequestDetailContent(request requestquery.Request, viewerID string, re
 					</div>
 				</div>
 				<div class="mt-4 border-t border-base-300 pt-4">
-					<p class="section-label">Description</p>
+					<p class="section-label data-text">Description</p>
 					if request.Description == "" {
 						<p class="mt-2 text-base-content/65">No description.</p>
 					} else {
@@ -648,7 +654,7 @@ templ GameRequestDetailContent(request requestquery.Request, viewerID string, re
 								<span class="status-chip status-chip-host">Host</span>
 							}
 							if !activityTime(member, request).IsZero() {
-								<time class="member-time" datetime={ activityTime(member, request).Format(time.RFC3339) }>{ memberTimeLabel(member, request) }</time>
+								<time class="member-time" datetime={ activityTime(member, request).Format(time.RFC3339) } title={ components.AbsoluteTime(activityTime(member, request)) }>{ memberTimeLabel(member, request) }</time>
 							}
 						</li>
 					}
@@ -679,22 +685,24 @@ templ GameRequestDetailContent(request requestquery.Request, viewerID string, re
 			}
 			<section class="detail-card">
 				<p class="section-label">Game</p>
-				<div class="flex items-center gap-3.5">
-					<span class="detail-cover">
-						@CoverArt(request.Game.CoverImageID, request.Game.Name, false)
-					</span>
+				<div>
 					<p class="min-w-0 text-[1.0625rem] font-semibold">{ request.Game.Name }</p>
-				</div>
-				<div class="flex items-center gap-3 text-xs text-base-content/70">
-					if presentationSecondary(request.Game) != "" {
-						<span class="data-text min-w-0 truncate">{ presentationSecondary(request.Game) }</span>
-					}
-					if request.ViewerSubscribed {
-						<span class="count-open ms-auto flex-none font-semibold">followed</span>
-					} else {
-						<span class="ms-auto flex-none">not followed</span>
+					if releaseYear(request.Game) != "" {
+						<p class="data-text text-xs text-base-content/70">{ releaseYear(request.Game) }</p>
 					}
 				</div>
+				if request.Game.Summary != "" {
+					<p class="whitespace-pre-line text-sm leading-relaxed text-base-content/80">{ request.Game.Summary }</p>
+				}
+				if request.ViewerSubscribed {
+					<span class="status-chip status-chip-joined self-start">Following</span>
+				} else if request.GameID != "" {
+					<form method="post" action={ "/games/" + request.GameID + "/follow" }>
+						@components.CSRFInput()
+						<input type="hidden" name="request_id" value={ request.ID }/>
+						<button class="btn btn-primary btn-sm w-full" type="submit">Follow Game</button>
+					</form>
+				}
 				<a class="link count-open text-sm font-semibold no-underline" href={ templ.SafeURL("/game-requests?q=" + url.QueryEscape(request.Game.Name)) }>More rounds of this game →</a>
 			</section>
 			<section class="detail-card flex-1">
@@ -702,18 +710,17 @@ templ GameRequestDetailContent(request requestquery.Request, viewerID string, re
 				if len(request.Activity) == 0 {
 					<p class="text-sm text-base-content/70">No activity recorded yet.</p>
 				} else {
-					<ol class="grid gap-3">
+					<ol class="activity-list">
 						for _, entry := range request.Activity {
-							<li class="flex gap-3">
+							<li class="activity-row">
 								if !entry.OccurredAt.IsZero() {
-									<time class="data-text w-12 flex-none text-xs text-base-content/70" datetime={ entry.OccurredAt.Format(time.RFC3339) }>{ clockLabel(entry.OccurredAt) }</time>
+									<time class="data-text w-12 flex-none text-xs text-base-content/70" datetime={ entry.OccurredAt.Format(time.RFC3339) } title={ components.AbsoluteTime(entry.OccurredAt) }>{ clockLabel(entry.OccurredAt) }</time>
 								}
 								<span class="flex-1 text-sm text-base-content/80">{ activityLabel(entry) }</span>
 							</li>
 						}
 					</ol>
 				}
-				<p class="mt-auto text-xs leading-relaxed text-base-content/65">Counter, player list and activity update without a reload. Leaving removes a player from the round, not from this history.</p>
 			</section>
 		</aside>
 	</div>
@@ -864,14 +871,43 @@ func activityLabel(entry requestquery.Activity) string {
 	}
 }
 
-// startTimeClass marks a request that is already starting, so "now" carries
-// the same urgency in the row as the last free place does. Anything still
-// counting down stays quiet.
+// startTimeClass warms a start time as it approaches and makes it loud once
+// there is no time left, on the shared thresholds. Anything further out stays
+// quiet, so a scanning eye only stops at the rounds that need it.
 func startTimeClass(startsAt time.Time) string {
-	if components.StartLabel(startsAt) == "now" {
+	switch components.StartUrgency(startsAt) {
+	case components.UrgencyStarting:
 		return "data-text text-xs font-bold count-last"
+	case components.UrgencySoon:
+		return "data-text text-xs font-bold count-hot"
+	default:
+		return "data-text text-xs text-base-content/70"
 	}
-	return "data-text text-xs text-base-content/70"
+}
+
+// detailStartClass is the same rule on the detail header's start sentence,
+// which inherits the quiet meta ink until the round is close.
+//
+// The meta line keeps its facts on one line each, which its own [&>span] rule
+// can no longer do for a <time>, so the class carries the wrap rule itself.
+func detailStartClass(startsAt time.Time) string {
+	switch components.StartUrgency(startsAt) {
+	case components.UrgencyStarting:
+		return "whitespace-nowrap font-semibold count-last"
+	case components.UrgencySoon:
+		return "whitespace-nowrap font-semibold count-hot"
+	default:
+		return "whitespace-nowrap"
+	}
+}
+
+// releaseYear is the one piece of catalog metadata the rail's Game card
+// states outright; everything else it has room for is the summary itself.
+func releaseYear(p game.GamePresentation) string {
+	if p.FirstReleaseDate == nil {
+		return ""
+	}
+	return strconv.Itoa(p.FirstReleaseDate.Year())
 }
 
 func startLongLabel(startsAt time.Time) string {

@@ -1556,6 +1556,7 @@ func TestGameRequestPresentationIncludesLocalEnrichment(t *testing.T) {
 		Slug:         "warcraft-iii",
 		GameType:     "Main Game",
 		CoverImageID: "co1abc",
+		Summary:      "Reign of Chaos is the third game in the Warcraft series.",
 	}
 	activateIGDBGeneration(t, gameStore, []game.ProviderGame{provider})
 
@@ -1599,6 +1600,15 @@ func TestGameRequestPresentationIncludesLocalEnrichment(t *testing.T) {
 		t.Fatalf("get by id: %v", err)
 	}
 	assertRequestGame(t, "ByID", detail)
+
+	// The detail page states the whole summary, so only that projection
+	// reads it; a list row has no room for it and does not pay for it.
+	if detail.Game.Summary != provider.Summary {
+		t.Fatalf("ByID summary = %q, want %q", detail.Game.Summary, provider.Summary)
+	}
+	if active[index].Game.Summary != "" {
+		t.Fatalf("ListActive summary = %q, want it unread", active[index].Game.Summary)
+	}
 }
 
 // TestIGDBBeginGenerationFailsAbandonedSyncingGeneration exercises the

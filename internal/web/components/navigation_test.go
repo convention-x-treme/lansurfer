@@ -100,6 +100,30 @@ func TestNavigationRendersEveryCountAndMarksOnlyTheCurrentSection(t *testing.T) 
 
 // A count of zero is absent rather than rendered: "Games 0" states a fact the
 // empty screen already states better.
+// The two thresholds every start time in the product colours by. The
+// boundaries themselves belong to the warmer tier, and a round that already
+// started stays at the loudest one.
+func TestStartUrgencyCrossesAtFifteenAndFiveMinutes(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		remaining time.Duration
+		want      string
+	}{
+		{"an hour out is quiet", time.Hour, UrgencyNone},
+		{"just over a quarter hour is quiet", 15*time.Minute + time.Second, UrgencyNone},
+		{"a quarter hour warms", 15 * time.Minute, UrgencySoon},
+		{"just over five minutes stays warm", 5*time.Minute + time.Second, UrgencySoon},
+		{"five minutes is starting", 5 * time.Minute, UrgencyStarting},
+		{"already started is starting", -time.Hour, UrgencyStarting},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := StartUrgency(time.Now().Add(test.remaining)); got != test.want {
+				t.Errorf("StartUrgency(%s) = %q, want %q", test.remaining, got, test.want)
+			}
+		})
+	}
+}
+
 func TestNavigationOmitsZeroCounts(t *testing.T) {
 	body := renderNavigation(t, NavigationState{
 		Viewer:  &Viewer{ID: "user-1", GameNick: "Ada", Role: "player"},
@@ -125,6 +149,20 @@ func TestUpcomingGamesMarksAStartedRoundUrgent(t *testing.T) {
 	}
 	if !strings.Contains(body, "/game-requests/request-1") || !strings.Contains(body, "in 15 min") {
 		t.Errorf("upcoming rounds should link and state their start: %s", body)
+	}
+}
+
+// A relative label alone hides the fact a player needs when planning, so every
+// time in the product states its absolute local time on hover.
+func TestUpcomingGamesStateTheAbsoluteStartOnHover(t *testing.T) {
+	startsAt := time.Now().Add(3 * time.Hour)
+	body := renderNavigation(t, NavigationState{
+		Viewer:   &Viewer{ID: "user-1", GameNick: "Ada", Role: "player"},
+		Upcoming: []requestquery.Request{{ID: "request-1", Game: game.GamePresentation{Name: "Trackmania"}, StartsAt: startsAt}},
+	})
+
+	if want := `title="` + startsAt.Local().Format("2006-01-02 15:04") + `"`; !strings.Contains(body, want) {
+		t.Errorf("want the absolute start %s in the title: %s", want, body)
 	}
 }
 

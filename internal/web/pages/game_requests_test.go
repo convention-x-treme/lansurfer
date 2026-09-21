@@ -289,7 +289,7 @@ func TestGameRequestRowTitleFallsBackToTheGameWithoutANick(t *testing.T) {
 		t.Fatalf("render GameRequestRow: %v", err)
 	}
 	body := rendered.String()
-	if !strings.Contains(body, `class="request-row-title">Warcraft III<`) {
+	if !strings.Contains(body, `class="request-row-title-text">Warcraft III<`) {
 		t.Errorf("row title does not fall back to the Game name: %s", body)
 	}
 	if strings.Contains(body, "is looking for") {
@@ -348,15 +348,18 @@ func TestTrendingRailRendersRankedCoversWithAccessibleNames(t *testing.T) {
 }
 
 // The detail page leads with the Game's portrait cover and names it as the
-// screen title, and keeps the type/platform/release metadata that
-// disambiguates same-name Games in the rail's Game panel.
-func TestGameRequestDetailContentRendersCoverAndMetadata(t *testing.T) {
+// screen title. The cover is shown once: the rail's Game panel states the
+// Game in words -- release year and the whole summary -- rather than
+// repeating the art the hero already carries.
+func TestGameRequestDetailContentRendersCoverOnceAndDescribesTheGame(t *testing.T) {
 	release := time.Date(2002, time.July, 3, 0, 0, 0, 0, time.UTC)
 	request := requestquery.Request{
-		ID: "request-1",
+		ID: "request-1", GameID: "game-1",
 		Game: game.GamePresentation{
 			Name: "Warcraft III", CoverImageID: "co1abc", GameType: "Main Game",
-			PlatformNames: []string{"PC (Microsoft Windows)"}, FirstReleaseDate: &release,
+			PlatformNames:    []string{"PC (Microsoft Windows)"},
+			FirstReleaseDate: &release,
+			Summary:          "Reign of Chaos is the third game in the Warcraft series.",
 		},
 		CreatorID: "host-1", Status: gamerequest.StatusOpen, MemberCount: 1,
 	}
@@ -366,15 +369,45 @@ func TestGameRequestDetailContentRendersCoverAndMetadata(t *testing.T) {
 	}
 	body := rendered.String()
 	for _, want := range []string{
-		"https://images.igdb.com/igdb/image/upload/t_cover_big/co1abc.jpg",
 		`<h1 class="detail-title">Warcraft III</h1>`,
-		"Main Game",
-		"PC (Microsoft Windows)",
 		"2002",
+		"Reign of Chaos is the third game in the Warcraft series.",
+		"More rounds of this game",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("detail does not contain %q: %s", want, body)
 		}
+	}
+	if count := strings.Count(body, "co1abc"); count != 1 {
+		t.Errorf("the cover should be rendered once, got %d: %s", count, body)
+	}
+}
+
+// Following is offered where a player decides they want more of this Game,
+// and only as an offer: unfollowing belongs to the catalog, not to a round.
+func TestGameRequestDetailOffersFollowOnlyWhileNotFollowing(t *testing.T) {
+	request := requestquery.Request{
+		ID: "request-1", GameID: "game-1",
+		Game:      game.GamePresentation{Name: "Warcraft III"},
+		CreatorID: "host-1", Status: gamerequest.StatusOpen, MemberCount: 1,
+	}
+	var rendered bytes.Buffer
+	if err := GameRequestDetailContent(request, "viewer-1", false).Render(context.Background(), &rendered); err != nil {
+		t.Fatalf("render detail: %v", err)
+	}
+	body := rendered.String()
+	if !strings.Contains(body, `action="/games/game-1/follow"`) || !strings.Contains(body, `name="request_id" value="request-1"`) {
+		t.Errorf("an unfollowed Game should offer a follow that returns to the round: %s", body)
+	}
+
+	request.ViewerSubscribed = true
+	rendered.Reset()
+	if err := GameRequestDetailContent(request, "viewer-1", false).Render(context.Background(), &rendered); err != nil {
+		t.Fatalf("render detail: %v", err)
+	}
+	body = rendered.String()
+	if strings.Contains(body, "/follow") || strings.Contains(body, "/unfollow") {
+		t.Errorf("a followed Game states the fact and offers no action: %s", body)
 	}
 }
 

@@ -186,9 +186,13 @@ func (s *Store) ByID(ctx context.Context, id, viewerID string) (Request, error) 
 	if err != nil {
 		return Request{}, fmt.Errorf("get game request: %w", err)
 	}
+	presentation := gamePresentationFromRow(row.GameName, row.GameSlug, row.GameType, row.CoverImageID, row.PlatformNames, row.FirstReleaseDate)
+	// Only the detail projection carries the summary: it is the one screen
+	// that states it, and a list would pay for it once per row.
+	presentation.Summary = textValue(row.Summary)
 	request := requestFromFields(requestFields{
 		ID: row.RequestID, GameID: row.GameID,
-		Game:      gamePresentationFromRow(row.GameName, row.GameSlug, row.GameType, row.CoverImageID, row.PlatformNames, row.FirstReleaseDate),
+		Game:      presentation,
 		CreatorID: row.CreatorID, CreatorGameNick: row.CreatorGameNick.String,
 		MaxPlayers: row.MaxPlayers, StartsAt: row.StartsAt, Description: row.Description, Status: row.Status,
 		CreatedAt: row.CreatedAt, MemberCount: row.MemberCount, ViewerJoined: row.ViewerJoined, ViewerSubscribed: row.ViewerSubscribed,

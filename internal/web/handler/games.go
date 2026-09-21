@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/url"
 
 	"github.com/convention-x-treme/lansurfer/internal/game"
 	"github.com/convention-x-treme/lansurfer/internal/web/branding"
@@ -135,6 +136,14 @@ func (h *Games) renderBrowse(w http.ResponseWriter, r *http.Request, status int,
 // result rather than surfacing a write error that did not happen.
 func (h *Games) mutationSuccess(w http.ResponseWriter, r *http.Request, userID, gameID string) {
 	followedOnly := r.FormValue("followed") == "1"
+	// A follow can also be pressed in a Game Request's rail, and that player
+	// is reading a round, not browsing the catalog. The form states which
+	// request it was pressed on and the path is built here from that id, so
+	// no browser-supplied URL is ever redirected to.
+	if requestID := r.FormValue("request_id"); requestID != "" {
+		http.Redirect(w, r, "/game-requests/"+url.PathEscape(requestID), http.StatusSeeOther)
+		return
+	}
 	if r.Header.Get("HX-Request") != "true" {
 		http.Redirect(w, r, pages.CatalogURL(followedOnly), http.StatusSeeOther)
 		return
