@@ -544,6 +544,8 @@ When enabled:
 - keep serving the last successful index while a later refresh is running or has failed
 - expose at least `disabled`, `not synced`, `syncing`, `current`, `stale`, and `failed` operator states
 
+The administrator status page reads both counts in one query: `RecordCount` is the active generation's `record_count`, and `StagedRecords` is a `count(*)` over `igdb_game_index` joined to `igdb_sync_generations` through `igdb_provider_state.latest_attempt_generation_id` while that generation is still `syncing`. The two are deliberately separate, so an in-progress baseline never looks like a shrunken active catalog. While the state is `syncing`, that card polls its own fragment route (`/admin/igdb/status`) with HTMX; the polled response replaces the element that carries the polling attributes, so the settled state stops polling without a separate stop condition or client script. The fragment sits behind the same administrator authorization as the page.
+
 Default player-visible provider categories are semantic product policy rather than hardcoded numeric enum assumptions. Ordinary search includes main games, standalone expansions, remakes, remasters, ports, and independently playable expanded/edition variants. DLC/add-ons, bundles, mods, episodes/seasons, packs, and updates remain synchronized but hidden by default.
 
 ### Materialization and authority

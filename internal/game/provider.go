@@ -67,10 +67,18 @@ const (
 )
 
 type ProviderStatus struct {
-	State            ProviderState
-	LastAttempt      *time.Time
-	LastSuccess      *time.Time
-	RecordCount      int64
+	State       ProviderState
+	LastAttempt *time.Time
+	LastSuccess *time.Time
+	// RecordCount is the record count of the last successfully activated
+	// baseline generation, not of whatever sync may be running right now.
+	RecordCount int64
+	// StagedRecords is how many provider records have already been written
+	// into the in-progress generation. It is 0 whenever no generation is
+	// still being staged, so the admin status page renders it only while
+	// State reports ProviderSyncing; it is the signal that tells a running
+	// full sync apart from a hung one.
+	StagedRecords    int64
 	LastError        string
 	CatalogAvailable bool
 }

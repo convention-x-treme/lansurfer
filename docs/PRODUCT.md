@@ -238,6 +238,7 @@ When configured, LANsurfer synchronizes lightweight IGDB metadata into a local s
 - After the baseline, refresh the provider index automatically once per day and provide global administrators a manual **Sync now** action.
 - Refresh failures retry independently of normal application traffic. The last successful provider index remains usable while the provider is `stale` or `failed`.
 - Operator-visible provider states distinguish at least `disabled`, `not synced`, `syncing`, `current`, `stale`, and `failed`.
+- While a synchronization is running, the administrator status page reports separately how many records the in-progress generation has staged so far, refreshing itself without a manual reload, and keeps reporting the last successful baseline's record count unchanged.
 
 Ordinary player search shows by default the useful playable categories: main games, standalone expansions, remakes, remasters, ports, and independently playable expanded/edition variants. Noise-heavy categories such as DLC/add-ons, bundles, mods, episodes/seasons, packs, and updates remain synchronized but are hidden from ordinary player search by default.
 

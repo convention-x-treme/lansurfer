@@ -427,37 +427,69 @@ templ AdminIGDB(brand branding.Brand, navigation components.NavigationState, sta
 			if notice != "" {
 				<div role="status" class="alert alert-info mb-4"><span>{ notice }</span></div>
 			}
-			<section class="detail-card">
-				<div class="flex flex-wrap items-center justify-between gap-3">
-					<h2 class="text-[1.0625rem] font-semibold">Status</h2>
-					@igdbStatusBadge(status.State)
-				</div>
-				<dl class="mt-2 grid gap-4 sm:grid-cols-3">
-					<div>
-						<dt class="text-sm text-base-content/60">Last attempt</dt>
-						<dd class="data-text">{ igdbTimestamp(status.LastAttempt) }</dd>
-					</div>
-					<div>
-						<dt class="text-sm text-base-content/60">Last success</dt>
-						<dd class="data-text">{ igdbTimestamp(status.LastSuccess) }</dd>
-					</div>
-					<div>
-						<dt class="text-sm text-base-content/60">Indexed records</dt>
-						<dd class="data-text">{ strconv.FormatInt(status.RecordCount, 10) }</dd>
-					</div>
-				</dl>
-				if status.LastError != "" {
-					<div role="alert" class="alert alert-error mt-2"><span>{ status.LastError }</span></div>
-				}
-				if status.State != game.ProviderDisabled && status.State != game.ProviderSyncing {
-					<form method="post" action="/admin/igdb/sync" class="flex justify-end mt-2">
-						@components.CSRFInput()
-						<button class="btn btn-primary btn-sm" type="submit">Sync now</button>
-					</form>
-				}
-			</section>
+			@AdminIGDBStatus(status)
 		</div>
 	}
+}
+
+// AdminIGDBStatus is the status card on /admin/igdb and the fragment
+// GET /admin/igdb/status returns. While a sync is in progress it polls that
+// route; the response replaces this very element, and the settled state
+// renders without the polling attributes, so the loop stops by itself once
+// the sync finishes. No client script and no separate stop condition.
+templ AdminIGDBStatus(status game.ProviderStatus) {
+	<section id="igdb-status" class="detail-card" { syncStatusAttributes(status.State)... }>
+		<div class="flex flex-wrap items-center justify-between gap-3">
+			<h2 class="text-[1.0625rem] font-semibold">Status</h2>
+			@igdbStatusBadge(status.State)
+		</div>
+		<dl class="mt-2 grid gap-4 sm:grid-cols-3">
+			<div>
+				<dt class="text-sm text-base-content/60">Last attempt</dt>
+				<dd class="data-text">{ igdbTimestamp(status.LastAttempt) }</dd>
+			</div>
+			<div>
+				<dt class="text-sm text-base-content/60">Last success</dt>
+				<dd class="data-text">{ igdbTimestamp(status.LastSuccess) }</dd>
+			</div>
+			<div>
+				<dt class="text-sm text-base-content/60">Indexed records</dt>
+				<dd class="data-text">{ strconv.FormatInt(status.RecordCount, 10) }</dd>
+			</div>
+			if status.State == game.ProviderSyncing {
+				<div>
+					<dt class="text-sm text-base-content/60">Staged in this sync</dt>
+					<dd class="data-text">{ strconv.FormatInt(status.StagedRecords, 10) }</dd>
+				</div>
+			}
+		</dl>
+		if status.LastError != "" {
+			<div role="alert" class="alert alert-error mt-2"><span>{ status.LastError }</span></div>
+		}
+		if status.State != game.ProviderDisabled && status.State != game.ProviderSyncing {
+			<form method="post" action="/admin/igdb/sync" class="flex justify-end mt-2">
+				@components.CSRFInput()
+				<button class="btn btn-primary btn-sm" type="submit">Sync now</button>
+			</form>
+		}
+	</section>
+}
+
+// syncStatusAttributes makes the status card reload itself while a sync is in
+// progress. The polling element is the element the response replaces, so the
+// state that no longer carries these attributes is also the state that stops
+// polling. aria-live is added only then, so a settled card never re-announces
+// itself on an ordinary page load.
+func syncStatusAttributes(state game.ProviderState) templ.Attributes {
+	if state == game.ProviderSyncing {
+		return templ.Attributes{
+			"aria-live":  "polite",
+			"hx-get":     "/admin/igdb/status",
+			"hx-trigger": "every 2s",
+			"hx-swap":    "outerHTML",
+		}
+	}
+	return nil
 }
 
 templ igdbStatusBadge(state game.ProviderState) {

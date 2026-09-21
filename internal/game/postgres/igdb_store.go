@@ -201,6 +201,7 @@ func (s *Store) Status(ctx context.Context, now time.Time) (game.ProviderStatus,
 		LastAttempt:      timestamptzPointer(row.LastAttemptAt),
 		LastSuccess:      timestamptzPointer(row.LastSuccessAt),
 		RecordCount:      row.RecordCount,
+		StagedRecords:    row.StagedRecordCount,
 		CatalogAvailable: row.ActiveGenerationID.Valid,
 	}
 	if row.LastError.Valid {
