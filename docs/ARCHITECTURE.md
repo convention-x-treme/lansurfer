@@ -133,6 +133,8 @@ Track E delivery state / notification worker
 
 Game Request writes and the corresponding live `game_request_activity` row must be transactionally consistent. That row is the current Track A → E notification-intent handoff as well as request-local history. A failed or rolled-back mutation must not leave successful activity or notification work behind. If Track E later requires delivery-specific state that does not belong in `gamerequest`, add that state on the consumer side or explicitly split the handoff; do not maintain two competing transactional records by default.
 
+`game_request_activity.sequence` is a stable row identifier and orders activity within one Game Request; it is not a global replay/high-watermark cursor because sequence allocation and transaction commit order can differ. Consumers must not advance one global cursor from it. Rows with `origin=backfill` are reconstructed history and are never deliverable notification intent. Delivery-specific persistence belongs to Track E and must reference/claim work without turning a second record into a competing source of transactional truth.
+
 Persist delivery status, retry schedule, ordering/replay identifiers, and external message references. External transport failure never fails or reverses the originating Game Request action. Honor `Retry-After` for HTTP 429 responses; use capped exponential backoff with jitter for network and 5xx failures; mark permanent or exhausted failures for authorized manual retry.
 
 The event publishing abstraction should remain replaceable so PostgreSQL `LISTEN/NOTIFY` can be considered later if multiple application instances are ever approved. Multi-instance/high-availability operation is not part of 1.0.
