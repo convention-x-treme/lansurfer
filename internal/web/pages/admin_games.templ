@@ -27,6 +27,7 @@ templ AdminGames(brand branding.Brand, navigation components.NavigationState, ga
 		<header class="app-topbar">
 			<h1 class="app-title sr-only">Manage games</h1>
 			@AdminCatalogFilters(search, localOnly)
+			<a class="btn btn-quiet btn-sm" href={ "#" + adminComposerID }>Add game</a>
 		</header>
 		<div class="content-page catalog-shell">
 			if formError != "" {
@@ -257,12 +258,18 @@ templ AdminGameDangerSection(item game.Game) {
 	</section>
 }
 
+// adminComposerID is what the top bar's "Add game" link jumps to. The link
+// is an ordinary fragment link, so without scripting it still lands on the
+// composer; app.ts opens the disclosure on the way, because no markup can
+// state "expand this on arrival".
+const adminComposerID = "add-game"
+
 // AdminGameComposer is manual Game creation, collapsed. It follows the
 // catalog rather than leading it and says when it is the right tool, so an
 // administrator reaches for IGDB discovery first and creates the Game IGDB
 // does not know about by hand.
 templ AdminGameComposer() {
-	<details class="detail-card mt-4">
+	<details id={ adminComposerID } class="detail-card mt-4">
 		<summary class="catalog-composer-summary">
 			<span class="text-[1.0625rem] font-semibold">Add a game manually</span>
 			<span class="text-sm text-base-content/70">For games IGDB does not list. Following or requesting an IGDB result adds it to this catalog on its own.</span>

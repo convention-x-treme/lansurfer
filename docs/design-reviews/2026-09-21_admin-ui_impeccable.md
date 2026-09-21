@@ -88,6 +88,10 @@ Adding an alias posted the form and redirected, which reloaded `/admin/games`, c
 
 Driven in Chromium against the real router: scroll unchanged (520 → 520), entry still open, only that entry swapped, focus back in the alias field, duplicate alias answered inline, deactivation flipping the chip and the button in place, one confirmation dialog.
 
+### Top-bar shortcut to the composer
+
+The catalog's own action is back in the top bar as a quiet `Add game` link — quiet, not primary, because IGDB discovery is still how a Game normally enters the catalog. It is an ordinary fragment link to `#add-game`, so it works without scripting and lands on the composer; `app.ts` opens the disclosure on the way and puts the caret in the Name field once the fragment navigation has finished resetting focus. Verified in Chromium with scripting on (scrolls to the composer, opens it, focuses Name) and off (scrolls to it, closed).
+
 ## Verification
 
 - `go test -race ./...`, `task test:integration` (the modified `ListGames` runs against real PostgreSQL), `task lint`: all pass.

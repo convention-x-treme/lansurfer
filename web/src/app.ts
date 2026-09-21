@@ -313,6 +313,24 @@ document.addEventListener("submit", (event) => {
   window.setTimeout(() => releaseSubmitGuard(form), submitRecoveryDelay);
 });
 
+// A link into a collapsed disclosure -- the administration top bar's "Add
+// game" is the one that exists -- would otherwise jump to a panel that is
+// still shut. The panel opens before the browser scrolls to it, and the
+// first field takes the caret so the form is ready to type into. Without
+// this the link still works; it just lands on a closed panel.
+document.addEventListener("click", (event) => {
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  const link = target.closest<HTMLAnchorElement>("a[href^='#']");
+  if (!link || link.hash.length < 2) return;
+  const panel = document.getElementById(link.hash.slice(1));
+  if (!(panel instanceof HTMLDetailsElement)) return;
+  panel.open = true;
+  // The fragment navigation that follows this click resets focus, so the
+  // caret is placed after it rather than before.
+  window.setTimeout(() => panel.querySelector<HTMLInputElement>("input:not([type=hidden])")?.focus(), 0);
+});
+
 // Adding an alias replaces the whole catalog entry it belongs to, which takes
 // the caret with it: the field that was being typed in no longer exists. The
 // replacement carries the same id, so the caret goes back into it and several

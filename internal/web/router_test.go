@@ -464,6 +464,24 @@ func TestAdminGameCatalogFiltersLiveToUnlinkedGames(t *testing.T) {
 	}
 }
 
+// The top bar's shortcut and the composer it opens are one contract: the
+// link is useless if the fragment does not name the composer.
+func TestAdminCatalogLinksTheTopBarShortcutToTheComposer(t *testing.T) {
+	games := &routerGames{items: []game.Game{{ID: "game-1", Name: "Warcraft III", Slug: "warcraft-3", Active: true}}}
+	request := httptest.NewRequest(http.MethodGet, "/admin/games", nil)
+	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	response := httptest.NewRecorder()
+
+	adminTestRouter(games).ServeHTTP(response, request)
+
+	body := response.Body.String()
+	for _, want := range []string{`href="#add-game"`, `id="add-game"`, "Add a game manually"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("body does not contain %q", want)
+		}
+	}
+}
+
 // Adding an alias from an opened Game must not reload the screen: the
 // answer is that Game's own entry, re-read and still open, so the panel the
 // administrator is working in stays open and in place.
