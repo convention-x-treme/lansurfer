@@ -42,17 +42,21 @@ type Alias struct {
 }
 
 type Game struct {
-	ID                string
-	Name              string
-	Slug              string
-	Active            bool
-	Aliases           []Alias
-	IGDBExternalID    string
-	IGDBEnriched      bool
-	GameRequestCount  int64
-	SubscriptionCount int64
-	CreatedAt         time.Time
-	UpdatedAt         time.Time
+	ID                   string
+	Name                 string
+	Slug                 string
+	Active               bool
+	Aliases              []Alias
+	IGDBExternalID       string
+	IGDBEnriched         bool
+	IGDBSummary          string
+	IGDBGenreNames       []string
+	IGDBGameModeNames    []string
+	IGDBMultiplayerModes []MultiplayerMode
+	GameRequestCount     int64
+	SubscriptionCount    int64
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
 }
 
 // AdminProviderGame is one active-generation IGDB record offered for an
@@ -66,6 +70,10 @@ type AdminProviderGame struct {
 	PlatformNames    []string
 	FirstReleaseDate *time.Time
 	CoverImageID     string
+	Summary          string
+	GenreNames       []string
+	GameModeNames    []string
+	MultiplayerModes []MultiplayerMode
 	LinkedGameID     string
 	LinkedGameName   string
 }

@@ -145,6 +145,8 @@ func TestGameCardRendersUnifiedPresentationForMaterializedAndProviderItems(t *te
 		PlatformNames:    []string{"PC (Microsoft Windows)"},
 		FirstReleaseDate: &releaseDate,
 		CoverImageID:     "co1abc",
+		Summary:          "Azeroth braces for war.",
+		GenreNames:       []string{"Real Time Strategy (RTS)", "Strategy"},
 	}
 	items := map[string]game.DiscoveryItem{
 		"materialized": {
@@ -163,13 +165,21 @@ func TestGameCardRendersUnifiedPresentationForMaterializedAndProviderItems(t *te
 		for _, want := range []string{
 			"https://images.igdb.com/igdb/image/upload/t_cover_big/co1abc.jpg",
 			"Warcraft III: Reign of Chaos",
-			"Main Game",
-			"PC (Microsoft Windows)",
-			"2002",
+			"2002 · Azeroth braces for war.",
+			"game-card-genre",
+			">RTS<",
 			"Find Players",
 		} {
 			if !strings.Contains(markup, want) {
 				t.Errorf("%s card does not contain %q: %s", name, want, markup)
+			}
+		}
+		// The card spends its secondary line on the summary, so game type
+		// and platforms no longer appear there, and only the first genre
+		// earns the cover badge.
+		for _, unwanted := range []string{"Main Game", "PC (Microsoft Windows)", ">Strategy<", "Real Time Strategy (RTS)"} {
+			if strings.Contains(markup, unwanted) {
+				t.Errorf("%s card unexpectedly still contains %q: %s", name, unwanted, markup)
 			}
 		}
 		if !strings.Contains(markup, "Follow Game") && !strings.Contains(markup, "Following") {
@@ -207,6 +217,82 @@ func TestGameCardRendersAbbreviationFallbackForLocalGameWithoutCover(t *testing.
 	}
 	if strings.Contains(markup, "<img") {
 		t.Errorf("no-cover local game unexpectedly renders a cover image: %s", markup)
+	}
+}
+
+// The card's secondary line degrades one field at a time: either half alone
+// still reads, and a Game with neither falls back to the slug exactly as it
+// did before the summary moved in.
+func TestGameCardMetaCombinesYearAndSummary(t *testing.T) {
+	releaseDate := time.Date(2002, time.July, 3, 0, 0, 0, 0, time.UTC)
+	long := strings.Repeat("a", gameCardSummaryLimit+10)
+	for name, testCase := range map[string]struct {
+		presentation game.GamePresentation
+		want         string
+	}{
+		"year and summary": {
+			presentation: game.GamePresentation{FirstReleaseDate: &releaseDate, Summary: "Azeroth braces for war."},
+			want:         "2002 · Azeroth braces for war.",
+		},
+		"year only":    {presentation: game.GamePresentation{FirstReleaseDate: &releaseDate}, want: "2002"},
+		"summary only": {presentation: game.GamePresentation{Summary: "Azeroth braces for war."}, want: "Azeroth braces for war."},
+		"neither falls back to the slug": {
+			presentation: game.GamePresentation{Slug: "warcraft-3", GameType: "Main Game"},
+			want:         "warcraft-3",
+		},
+		"collapses provider whitespace": {
+			presentation: game.GamePresentation{Summary: "Azeroth\n\nbraces  for war."},
+			want:         "Azeroth braces for war.",
+		},
+		"over-long summary is cut with an ellipsis": {
+			presentation: game.GamePresentation{Summary: long},
+			want:         strings.Repeat("a", gameCardSummaryLimit) + "…",
+		},
+	} {
+		if got := gameCardMeta(testCase.presentation); got != testCase.want {
+			t.Errorf("%s: gameCardMeta() = %q, want %q", name, got, testCase.want)
+		}
+	}
+}
+
+// The cover badge is narrow, so IGDB's own trailing acronym is preferred
+// over its long form wherever the provider supplies one. The genre name
+// IGDB stores is never rewritten; only this label is shortened.
+func TestShortGenrePrefersProviderAcronym(t *testing.T) {
+	for name, want := range map[string]string{
+		"Real Time Strategy (RTS)":   "RTS",
+		"Role-playing (RPG)":         "RPG",
+		"Turn-based strategy (TBS)":  "TBS",
+		"Hack and slash/Beat 'em up": "Hack & Slash",
+		"Strategy":                   "Strategy",
+		"Point-and-click":            "Point-and-click",
+		"Card & Board Game":          "Card & Board Game",
+		// Nothing before the parenthesis means there is no long form to
+		// drop, so the name survives whole rather than becoming empty.
+		"(RTS)":     "(RTS)",
+		"Puzzle ()": "Puzzle ()",
+		"":          "",
+	} {
+		if got := shortGenre(name); got != want {
+			t.Errorf("shortGenre(%q) = %q, want %q", name, got, want)
+		}
+	}
+}
+
+// A Game with no IGDB genres has no badge to show, and must render the
+// cover without an empty chip floating on it.
+func TestGameCardOmitsGenreBadgeWithoutGenres(t *testing.T) {
+	item := game.DiscoveryItem{
+		LocalGameID:      "game-1",
+		GamePresentation: game.GamePresentation{Name: "Trackmania", Slug: "trackmania"},
+		Materialized:     true,
+	}
+	var rendered bytes.Buffer
+	if err := GameCard(item, false).Render(context.Background(), &rendered); err != nil {
+		t.Fatalf("render GameCard: %v", err)
+	}
+	if strings.Contains(rendered.String(), "game-card-genre") {
+		t.Errorf("genre-less card unexpectedly renders a genre badge: %s", rendered.String())
 	}
 }
 

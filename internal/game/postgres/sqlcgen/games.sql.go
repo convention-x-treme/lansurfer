@@ -44,6 +44,8 @@ SELECT g.id::text, g.name, g.slug,
        enrichment.game_type,
        enrichment.platform_names,
        enrichment.first_release_date,
+       enrichment.summary,
+       enrichment.genre_names,
        EXISTS (
            SELECT 1
            FROM game_subscriptions gs
@@ -87,6 +89,8 @@ type BrowseSubscriptionGamesRow struct {
 	GameType         pgtype.Text
 	PlatformNames    []string
 	FirstReleaseDate pgtype.Timestamptz
+	Summary          pgtype.Text
+	GenreNames       []string
 	Subscribed       bool
 }
 
@@ -115,6 +119,8 @@ func (q *Queries) BrowseSubscriptionGames(ctx context.Context, arg BrowseSubscri
 			&i.GameType,
 			&i.PlatformNames,
 			&i.FirstReleaseDate,
+			&i.Summary,
+			&i.GenreNames,
 			&i.Subscribed,
 		); err != nil {
 			return nil, err
@@ -313,6 +319,80 @@ func (q *Queries) DeleteGameSubscriptions(ctx context.Context, gameID pgtype.UUI
 	return err
 }
 
+const enrichmentMultiplayerModesForGame = `-- name: EnrichmentMultiplayerModesForGame :many
+SELECT ordinal,
+       platform_igdb_id,
+       platform_name,
+       campaign_coop,
+       drop_in,
+       lan_coop,
+       offline_coop,
+       online_coop,
+       split_screen,
+       split_screen_online,
+       offline_coop_max,
+       offline_max,
+       online_coop_max,
+       online_max
+FROM game_igdb_enrichment_multiplayer_modes
+WHERE game_id = $1::uuid
+ORDER BY ordinal
+`
+
+type EnrichmentMultiplayerModesForGameRow struct {
+	Ordinal           int32
+	PlatformIgdbID    pgtype.Int8
+	PlatformName      pgtype.Text
+	CampaignCoop      bool
+	DropIn            bool
+	LanCoop           bool
+	OfflineCoop       bool
+	OnlineCoop        bool
+	SplitScreen       bool
+	SplitScreenOnline bool
+	OfflineCoopMax    pgtype.Int4
+	OfflineMax        pgtype.Int4
+	OnlineCoopMax     pgtype.Int4
+	OnlineMax         pgtype.Int4
+}
+
+// Read-only: the last-known-good multiplayer snapshot of one Game, used by
+// the Admin UI game card. Ordered by ordinal to preserve provider order.
+func (q *Queries) EnrichmentMultiplayerModesForGame(ctx context.Context, gameID pgtype.UUID) ([]EnrichmentMultiplayerModesForGameRow, error) {
+	rows, err := q.db.Query(ctx, enrichmentMultiplayerModesForGame, gameID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []EnrichmentMultiplayerModesForGameRow
+	for rows.Next() {
+		var i EnrichmentMultiplayerModesForGameRow
+		if err := rows.Scan(
+			&i.Ordinal,
+			&i.PlatformIgdbID,
+			&i.PlatformName,
+			&i.CampaignCoop,
+			&i.DropIn,
+			&i.LanCoop,
+			&i.OfflineCoop,
+			&i.OnlineCoop,
+			&i.SplitScreen,
+			&i.SplitScreenOnline,
+			&i.OfflineCoopMax,
+			&i.OfflineMax,
+			&i.OnlineCoopMax,
+			&i.OnlineMax,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const followGame = `-- name: FollowGame :execrows
 INSERT INTO game_subscriptions (user_id, game_id)
 SELECT $1::uuid, g.id
@@ -408,6 +488,9 @@ const listGames = `-- name: ListGames :many
 SELECT g.id::text, g.name, g.slug, g.active, g.created_at, g.updated_at,
        COALESCE(mapping.external_id, '')::text AS igdb_external_id,
        (enrichment.game_id IS NOT NULL)::boolean AS igdb_enriched,
+       COALESCE(enrichment.summary, '')::text AS enrichment_summary,
+       enrichment.genre_names,
+       enrichment.game_mode_names,
        (SELECT count(*) FROM game_requests request WHERE request.game_id = g.id)::bigint AS game_request_count,
        (SELECT count(*) FROM game_subscriptions subscription WHERE subscription.game_id = g.id)::bigint AS subscription_count
 FROM games g
@@ -435,6 +518,9 @@ type ListGamesRow struct {
 	UpdatedAt         pgtype.Timestamptz
 	IgdbExternalID    string
 	IgdbEnriched      bool
+	EnrichmentSummary string
+	GenreNames        []string
+	GameModeNames     []string
 	GameRequestCount  int64
 	SubscriptionCount int64
 }
@@ -457,6 +543,9 @@ func (q *Queries) ListGames(ctx context.Context, search string) ([]ListGamesRow,
 			&i.UpdatedAt,
 			&i.IgdbExternalID,
 			&i.IgdbEnriched,
+			&i.EnrichmentSummary,
+			&i.GenreNames,
+			&i.GameModeNames,
 			&i.GameRequestCount,
 			&i.SubscriptionCount,
 		); err != nil {
@@ -476,6 +565,8 @@ SELECT g.id::text, g.name, g.slug,
        enrichment.game_type,
        enrichment.platform_names,
        enrichment.first_release_date,
+       enrichment.summary,
+       enrichment.genre_names,
        true AS subscribed
 FROM game_subscriptions gs
 JOIN games g ON g.id = gs.game_id
@@ -493,6 +584,8 @@ type ListSubscribedGamesRow struct {
 	GameType         pgtype.Text
 	PlatformNames    []string
 	FirstReleaseDate pgtype.Timestamptz
+	Summary          pgtype.Text
+	GenreNames       []string
 	Subscribed       bool
 }
 
@@ -513,6 +606,8 @@ func (q *Queries) ListSubscribedGames(ctx context.Context, userID pgtype.UUID) (
 			&i.GameType,
 			&i.PlatformNames,
 			&i.FirstReleaseDate,
+			&i.Summary,
+			&i.GenreNames,
 			&i.Subscribed,
 		); err != nil {
 			return nil, err
@@ -629,6 +724,9 @@ SELECT provider_game.igdb_id::text AS external_id,
        provider_game.platform_names,
        provider_game.first_release_date,
        COALESCE(provider_game.cover_image_id, '')::text AS cover_image_id,
+       COALESCE(provider_game.summary, '')::text AS summary,
+       provider_game.genre_names,
+       provider_game.game_mode_names,
        COALESCE(linked_game.id::text, '')::text AS linked_game_id,
        COALESCE(linked_game.name, '')::text AS linked_game_name
 FROM igdb_game_index provider_game
@@ -655,6 +753,9 @@ type SearchActiveIGDBGamesForAdminRow struct {
 	PlatformNames    []string
 	FirstReleaseDate pgtype.Timestamptz
 	CoverImageID     string
+	Summary          string
+	GenreNames       []string
+	GameModeNames    []string
 	LinkedGameID     string
 	LinkedGameName   string
 }
@@ -675,6 +776,9 @@ func (q *Queries) SearchActiveIGDBGamesForAdmin(ctx context.Context, search stri
 			&i.PlatformNames,
 			&i.FirstReleaseDate,
 			&i.CoverImageID,
+			&i.Summary,
+			&i.GenreNames,
+			&i.GameModeNames,
 			&i.LinkedGameID,
 			&i.LinkedGameName,
 		); err != nil {
