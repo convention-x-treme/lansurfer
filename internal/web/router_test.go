@@ -420,14 +420,47 @@ func TestAdminGameCatalogShowsIdentityAndDeletionGuards(t *testing.T) {
 
 	body := response.Body.String()
 	for _, want := range []string{
-		"IGDB #100", "Enrichment snapshot available", "Manage IGDB link",
+		"IGDB #100", "enrichment snapshot available", "Manage IGDB link",
 		"This game has Game Requests and cannot be deleted", "This game is followed by users",
 		"Permanently delete Unused Game?",
-		"A linked adventure.", "Strategy", "Multiplayer", "PC: online co-op · online max 4",
+		"A linked adventure.", "Strategy", "Multiplayer", "PC", "Online co-op", "Up to 4 online",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("body does not contain %q", want)
 		}
+	}
+}
+
+// The catalog filters apply live, like every other list in the product: an
+// htmx request must swap the result list alone, and the "not linked to IGDB"
+// filter must narrow it to the Games that still need a provider identity.
+func TestAdminGameCatalogFiltersLiveToUnlinkedGames(t *testing.T) {
+	games := &routerGames{items: []game.Game{
+		{ID: "linked", Name: "Linked Game", Slug: "linked-game", Active: true, IGDBExternalID: "100"},
+		{ID: "local", Name: "Local Game", Slug: "local-game", Active: true},
+	}}
+	request := httptest.NewRequest(http.MethodGet, "/admin/games?local=1", nil)
+	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	request.Header.Set("HX-Request", "true")
+	response := httptest.NewRecorder()
+
+	adminTestRouter(games).ServeHTTP(response, request)
+
+	body := response.Body.String()
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
+	}
+	if strings.Contains(body, "<html") || strings.Contains(body, "app-sidebar") {
+		t.Error("htmx response re-rendered the whole page instead of the result list")
+	}
+	if !strings.Contains(body, "Local Game") {
+		t.Error("filtered list does not contain the unlinked game")
+	}
+	if strings.Contains(body, "Linked Game") {
+		t.Error("filtered list still contains a game linked to IGDB")
+	}
+	if !strings.Contains(body, "1 game · 1 active · 0 linked to IGDB") {
+		t.Errorf("count line does not describe the filtered list: %q", body)
 	}
 }
 
@@ -458,8 +491,11 @@ func TestAdminIGDBLinkSearchGuidesExistingMappingToMerge(t *testing.T) {
 	}
 	for _, want := range []string{
 		"Provider Name", "2024", "co-admin.jpg", "Linked to IGDB Game", "/admin/games/target/merge?source=source",
-		"grid-cols-[auto_minmax(0,1fr)_auto]", "aspect-[3/4]", "max-w-[100px]", "break-words",
-		"Provider summary.", "RPG", "Co-op", "PC: offline co-op",
+		// The candidate renders in the product's own row and cover
+		// vocabulary rather than in a layout of its own, so a long provider
+		// name wraps in the row instead of widening the page.
+		"catalog-entry", "catalog-cover", "catalog-entry-title",
+		"Provider summary.", "RPG", "Co-op", "PC", "Offline co-op",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("body does not contain %q", want)

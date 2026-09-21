@@ -489,6 +489,21 @@ SELECT g.id::text, g.name, g.slug, g.active, g.created_at, g.updated_at,
        COALESCE(mapping.external_id, '')::text AS igdb_external_id,
        (enrichment.game_id IS NOT NULL)::boolean AS igdb_enriched,
        COALESCE(enrichment.summary, '')::text AS enrichment_summary,
+       COALESCE(enrichment.cover_image_id, '')::text AS cover_image_id,
+       -- The canonical igdb.com page is addressed by IGDB's own slug, which
+       -- lives in the synchronized provider index rather than in the
+       -- enrichment snapshot. The cast is safe because it reads the
+       -- enrichment external ID, whose CHECK constraint is numeric; a
+       -- provider that is disabled or has never completed a baseline has no
+       -- active generation and yields the empty string.
+       COALESCE((
+           SELECT provider_game.slug
+           FROM igdb_game_index provider_game
+           JOIN igdb_provider_state provider_state
+             ON provider_state.singleton
+            AND provider_state.active_generation_id = provider_game.generation_id
+           WHERE provider_game.igdb_id = enrichment.external_id::bigint
+       ), '')::text AS igdb_slug,
        enrichment.genre_names,
        enrichment.game_mode_names,
        (SELECT count(*) FROM game_requests request WHERE request.game_id = g.id)::bigint AS game_request_count,
@@ -519,6 +534,8 @@ type ListGamesRow struct {
 	IgdbExternalID    string
 	IgdbEnriched      bool
 	EnrichmentSummary string
+	CoverImageID      string
+	IgdbSlug          string
 	GenreNames        []string
 	GameModeNames     []string
 	GameRequestCount  int64
@@ -544,6 +561,8 @@ func (q *Queries) ListGames(ctx context.Context, search string) ([]ListGamesRow,
 			&i.IgdbExternalID,
 			&i.IgdbEnriched,
 			&i.EnrichmentSummary,
+			&i.CoverImageID,
+			&i.IgdbSlug,
 			&i.GenreNames,
 			&i.GameModeNames,
 			&i.GameRequestCount,
@@ -720,6 +739,7 @@ func (q *Queries) MoveGameRequests(ctx context.Context, arg MoveGameRequestsPara
 const searchActiveIGDBGamesForAdmin = `-- name: SearchActiveIGDBGamesForAdmin :many
 SELECT provider_game.igdb_id::text AS external_id,
        provider_game.name,
+       provider_game.slug,
        COALESCE(provider_game.game_type, '')::text AS game_type,
        provider_game.platform_names,
        provider_game.first_release_date,
@@ -749,6 +769,7 @@ LIMIT 25
 type SearchActiveIGDBGamesForAdminRow struct {
 	ExternalID       string
 	Name             string
+	Slug             string
 	GameType         string
 	PlatformNames    []string
 	FirstReleaseDate pgtype.Timestamptz
@@ -772,6 +793,7 @@ func (q *Queries) SearchActiveIGDBGamesForAdmin(ctx context.Context, search stri
 		if err := rows.Scan(
 			&i.ExternalID,
 			&i.Name,
+			&i.Slug,
 			&i.GameType,
 			&i.PlatformNames,
 			&i.FirstReleaseDate,

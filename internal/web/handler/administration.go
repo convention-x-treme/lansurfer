@@ -65,7 +65,7 @@ func NewAdministration(
 // administrator can check without inspecting deployment configuration
 // directly. It has no persistence and no player-facing counterpart.
 func (h *Administration) PWA(w http.ResponseWriter, r *http.Request) {
-	render(w, r, http.StatusOK, pages.AdminPWA(h.brand, h.navigationFor(r), pages.PWADiagnostics{
+	render(w, r, http.StatusOK, pages.AdminPWA(h.brand, h.navigationFor(r, "administration-pwa"), pages.PWADiagnostics{
 		InstanceName:     h.instanceName,
 		BaseURL:          h.baseURL,
 		ManifestURL:      h.baseURL + "/manifest.webmanifest",
@@ -74,18 +74,30 @@ func (h *Administration) PWA(w http.ResponseWriter, r *http.Request) {
 	}))
 }
 
+// Games serves the catalog administration screen. Its filters apply live,
+// so an htmx request swaps only the result list, exactly like the
+// player-facing catalog.
 func (h *Administration) Games(w http.ResponseWriter, r *http.Request) {
 	search := r.URL.Query().Get("q")
 	items, err := h.games.List(r.Context(), search)
 	if err != nil {
 		if errors.Is(err, game.ErrInvalidSearch) {
-			render(w, r, http.StatusUnprocessableEntity, pages.AdminGames(h.brand, h.navigationFor(r), nil, search, "Search must be 120 characters or fewer.", ""))
+			h.renderGames(w, r, http.StatusUnprocessableEntity, nil, search, "Search must be 120 characters or fewer.", "")
 			return
 		}
 		h.renderAdminError(w, r, err)
 		return
 	}
-	render(w, r, http.StatusOK, pages.AdminGames(h.brand, h.navigationFor(r), items, search, "", notice(r)))
+	h.renderGames(w, r, http.StatusOK, items, search, "", notice(r))
+}
+
+func (h *Administration) renderGames(w http.ResponseWriter, r *http.Request, status int, items []game.Game, search, formError, message string) {
+	localOnly := r.URL.Query().Get("local") == "1"
+	if r.Header.Get("HX-Request") == "true" {
+		render(w, r, status, pages.AdminCatalogResults(items, search, localOnly))
+		return
+	}
+	render(w, r, status, pages.AdminGames(h.brand, h.navigationFor(r, "administration"), items, search, localOnly, formError, message))
 }
 
 func (h *Administration) CreateGame(w http.ResponseWriter, r *http.Request) {
@@ -164,13 +176,17 @@ func (h *Administration) GameIGDB(w http.ResponseWriter, r *http.Request) {
 	results, err := h.games.SearchIGDB(r.Context(), search)
 	if err != nil {
 		if errors.Is(err, game.ErrInvalidSearch) {
-			render(w, r, http.StatusUnprocessableEntity, pages.AdminGameIGDB(h.brand, h.navigationFor(r), item, nil, search, "Search must be 120 characters or fewer."))
+			render(w, r, http.StatusUnprocessableEntity, pages.AdminGameIGDB(h.brand, h.navigationFor(r, "administration"), item, nil, search, "Search must be 120 characters or fewer."))
 			return
 		}
 		h.renderAdminError(w, r, err)
 		return
 	}
-	render(w, r, http.StatusOK, pages.AdminGameIGDB(h.brand, h.navigationFor(r), item, results, search, ""))
+	if r.Header.Get("HX-Request") == "true" {
+		render(w, r, http.StatusOK, pages.AdminIGDBLinkResults(item, results, search))
+		return
+	}
+	render(w, r, http.StatusOK, pages.AdminGameIGDB(h.brand, h.navigationFor(r, "administration"), item, results, search, ""))
 }
 
 func (h *Administration) LinkGameIGDB(w http.ResponseWriter, r *http.Request) {
@@ -237,7 +253,7 @@ func (h *Administration) IGDB(w http.ResponseWriter, r *http.Request) {
 		h.renderAdminError(w, r, err)
 		return
 	}
-	render(w, r, http.StatusOK, pages.AdminIGDB(h.brand, h.navigationFor(r), status, notice(r)))
+	render(w, r, http.StatusOK, pages.AdminIGDB(h.brand, h.navigationFor(r, "administration-igdb"), status, notice(r)))
 }
 
 // IGDBStatus renders the status card on its own for the refresh /admin/igdb
@@ -275,7 +291,7 @@ func (h *Administration) renderGamesWithError(w http.ResponseWriter, r *http.Req
 		h.renderAdminError(w, r, err)
 		return
 	}
-	render(w, r, status, pages.AdminGames(h.brand, h.navigationFor(r), items, "", adminMessage(cause), ""))
+	h.renderGames(w, r, status, items, "", adminMessage(cause), "")
 }
 
 func (h *Administration) renderGameIGDBWithError(w http.ResponseWriter, r *http.Request, cause error, search string) {
@@ -294,7 +310,7 @@ func (h *Administration) renderGameIGDBWithError(w http.ResponseWriter, r *http.
 		h.renderAdminError(w, r, err)
 		return
 	}
-	render(w, r, status, pages.AdminGameIGDB(h.brand, h.navigationFor(r), item, results, search, adminMessage(cause)))
+	render(w, r, status, pages.AdminGameIGDB(h.brand, h.navigationFor(r, "administration"), item, results, search, adminMessage(cause)))
 }
 
 func (h *Administration) renderMergeGame(w http.ResponseWriter, r *http.Request, status int, formError string) {
@@ -310,7 +326,7 @@ func (h *Administration) renderMergeGame(w http.ResponseWriter, r *http.Request,
 	}
 	sourceID := r.URL.Query().Get("source")
 	source, _ := findAdminGame(items, sourceID)
-	render(w, r, status, pages.AdminGameMerge(h.brand, h.navigationFor(r), target, source, items, sourceID, formError, notice(r)))
+	render(w, r, status, pages.AdminGameMerge(h.brand, h.navigationFor(r, "administration"), target, source, items, sourceID, formError, notice(r)))
 }
 
 func (h *Administration) gameByID(ctx context.Context, id string) (game.Game, error) {
@@ -345,12 +361,12 @@ func (h *Administration) renderGameReconciliationError(w http.ResponseWriter, r 
 		h.renderAdminError(w, r, err)
 		return
 	}
-	render(w, r, status, pages.AdminGames(h.brand, h.navigationFor(r), items, "", adminMessage(cause), ""))
+	h.renderGames(w, r, status, items, "", adminMessage(cause), "")
 }
 
 func (h *Administration) renderAdminError(w http.ResponseWriter, r *http.Request, cause error) {
 	webmiddleware.LogError(r, "serve administration request", cause)
-	render(w, r, http.StatusInternalServerError, pages.AdminError(h.brand, h.navigationFor(r)))
+	render(w, r, http.StatusInternalServerError, pages.AdminError(h.brand, h.navigationFor(r, "administration")))
 }
 
 func (h *Administration) redirect(w http.ResponseWriter, r *http.Request, target string) {
@@ -362,8 +378,8 @@ func (h *Administration) redirect(w http.ResponseWriter, r *http.Request, target
 	http.Redirect(w, r, target, http.StatusSeeOther)
 }
 
-func (h *Administration) navigationFor(r *http.Request) components.NavigationState {
-	return h.navigation.For(r, "administration")
+func (h *Administration) navigationFor(r *http.Request, section string) components.NavigationState {
+	return h.navigation.For(r, section)
 }
 
 func adminMessage(err error) string {

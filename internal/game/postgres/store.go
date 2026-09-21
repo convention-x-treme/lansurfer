@@ -45,7 +45,7 @@ func (s *Store) List(ctx context.Context, search string) ([]game.Game, error) {
 		item := game.Game{
 			ID: row.GID, Name: row.Name, Slug: row.Slug, Active: row.Active,
 			IGDBExternalID: row.IgdbExternalID, IGDBEnriched: row.IgdbEnriched,
-			IGDBSummary:    row.EnrichmentSummary,
+			IGDBSlug: row.IgdbSlug, IGDBCoverImageID: row.CoverImageID, IGDBSummary: row.EnrichmentSummary,
 			IGDBGenreNames: nonNilStrings(row.GenreNames), IGDBGameModeNames: nonNilStrings(row.GameModeNames),
 			IGDBMultiplayerModes: enrichmentModeRows(modeRows),
 			GameRequestCount:     row.GameRequestCount, SubscriptionCount: row.SubscriptionCount,

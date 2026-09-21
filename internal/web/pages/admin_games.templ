@@ -1,0 +1,376 @@
+package pages
+
+import (
+	"fmt"
+	"net/url"
+	"strconv"
+	"strings"
+
+	"github.com/convention-x-treme/lansurfer/internal/game"
+	"github.com/convention-x-treme/lansurfer/internal/web/branding"
+	"github.com/convention-x-treme/lansurfer/internal/web/components"
+)
+
+// AdminGames is the catalog administration screen. It is laid out like the
+// player-facing screens rather than like a settings form: the top bar
+// carries the live filters and the screen's own action, and the body is one
+// scannable list.
+//
+// The catalog leads and the manual composer trails it. Manual creation was
+// the only way a Game entered the catalog before IGDB discovery existed;
+// now a player following or requesting an IGDB result materializes one
+// automatically, so adding a Game by hand is the exception and sits
+// collapsed under the list instead of occupying a permanent column beside
+// it.
+templ AdminGames(brand branding.Brand, navigation components.NavigationState, games []game.Game, search string, localOnly bool, formError, notice string) {
+	@components.Layout(brand, "Manage Games", navigation) {
+		<header class="app-topbar">
+			<h1 class="app-title sr-only">Manage games</h1>
+			@AdminCatalogFilters(search, localOnly)
+		</header>
+		<div class="content-page catalog-shell">
+			if formError != "" {
+				<div role="alert" class="alert alert-error mb-4"><span>{ formError }</span></div>
+			}
+			if notice != "" {
+				<div role="status" class="alert alert-info mb-4"><span>{ notice }</span></div>
+			}
+			@AdminCatalogResults(games, search, localOnly)
+			@AdminGameComposer()
+		</div>
+	}
+}
+
+// AdminCatalogFilters is the Games screen's search form with the catalog's
+// own second filter. It applies itself on a pause in typing and on a change
+// of the toggle, exactly like the player catalog's, so administration has no
+// Search button to press and no Clear button to hunt for.
+templ AdminCatalogFilters(search string, localOnly bool) {
+	<form
+		class="topbar-filters"
+		method="get"
+		action="/admin/games"
+		hx-get="/admin/games"
+		hx-target="#admin-catalog"
+		hx-swap="outerHTML"
+		hx-sync="this:replace"
+		hx-replace-url="true"
+		hx-trigger="submit, change from:(.filter-toggle input), input changed delay:300ms from:(#admin-game-search), search from:(#admin-game-search)"
+	>
+		<label class="sr-only" for="admin-game-search">Search by game name or alias</label>
+		<input id="admin-game-search" class="input input-sm request-search" type="search" name="q" value={ search } maxlength="120" placeholder="Search by name or alias, e.g. wc3" autocomplete="off"/>
+		<label class="filter-toggle"><input class="checkbox checkbox-sm" type="checkbox" name="local" value="1" checked?={ localOnly }/><span>Not linked to IGDB</span></label>
+		<noscript><button class="btn btn-quiet btn-sm" type="submit">Apply</button></noscript>
+	</form>
+}
+
+// AdminCatalogResults is the live-filter swap target, so it carries the
+// count line and every empty state as well as the list itself.
+templ AdminCatalogResults(games []game.Game, search string, localOnly bool) {
+	<div id="admin-catalog" aria-live="polite">
+		{{ items := adminCatalogItems(games, localOnly) }}
+		<p class="section-label mb-2">{ adminCatalogCount(items) }</p>
+		if len(items) == 0 {
+			<section class="detail-card">
+				<h2 class="text-[1.0625rem] font-semibold">{ adminEmptyTitle(search, localOnly) }</h2>
+				<p class="text-sm text-base-content/70">{ adminEmptyHint(search, localOnly) }</p>
+			</section>
+		} else {
+			<div class="catalog-list">
+				for _, item := range items {
+					@AdminGameEntry(item)
+				}
+			</div>
+		}
+	</div>
+}
+
+// AdminGameEntry is one catalog Game. Collapsed it is a scanning row -- the
+// same cover, name and chip vocabulary the player-facing lists use -- and
+// opening it reveals everything an administrator can change about that one
+// Game. A catalog of a hundred Games therefore stays a list a hundred rows
+// long rather than a hundred stacked forms, and nothing is hidden behind a
+// route: the disclosure is native, so it works without scripting.
+templ AdminGameEntry(item game.Game) {
+	<details class="catalog-entry">
+		<summary class="catalog-summary">
+			<span class="catalog-cover">
+				@CoverArt(item.IGDBCoverImageID, item.Name, false)
+			</span>
+			<span class="catalog-entry-body">
+				<span class="catalog-entry-title">{ item.Name }</span>
+				<span class="catalog-entry-meta">
+					<span class="data-text">{ item.Slug }</span>
+					<span>{ adminRelationshipLabel(item) }</span>
+					if len(item.Aliases) > 0 {
+						<span>{ adminAliasLabel(item.Aliases) }</span>
+					}
+				</span>
+			</span>
+			<span class="catalog-entry-state">
+				if !item.Active {
+					<span class="status-chip">Inactive</span>
+				}
+				@adminIdentityChip(item)
+				<span class="catalog-entry-disclosure" aria-hidden="true">Edit</span>
+			</span>
+		</summary>
+		<div class="catalog-panel">
+			@AdminGameEditSection(item)
+			@AdminGameAliasSection(item)
+			@AdminGameProviderSection(item)
+			@AdminGameDangerSection(item)
+		</div>
+	</details>
+}
+
+// adminIdentityChip states the Game's catalog identity in the chip
+// vocabulary the rest of the product uses: an IGDB-backed Game is the
+// normal case and reads as a quiet fact, a link without an enrichment
+// snapshot is the one state worth flagging.
+templ adminIdentityChip(item game.Game) {
+	if item.IGDBExternalID == "" {
+		<span class="status-chip">Local-only</span>
+	} else if item.IGDBEnriched {
+		<span class="status-chip status-chip-open">IGDB</span>
+	} else {
+		<span class="status-chip status-chip-host">IGDB · no snapshot</span>
+	}
+}
+
+// AdminGameEditSection is the authoritative local identity: the name and
+// the slug players reach the Game by. It leads the panel because it is what
+// an administrator opens a Game to change.
+templ AdminGameEditSection(item game.Game) {
+	<section class="catalog-section">
+		<h3 class="catalog-section-heading">Game details</h3>
+		<form method="post" action={ "/admin/games/" + item.ID } class="grid gap-4 sm:grid-cols-2">
+			@components.CSRFInput()
+			@GameFields(item.Name, item.Slug)
+			<div class="sm:col-span-2 flex justify-end"><button class="btn btn-primary btn-sm" type="submit">Save name and slug</button></div>
+		</form>
+	</section>
+}
+
+// AdminGameAliasSection follows the name and slug it extends: an alias is
+// another spelling of this Game's name, and each one saves on its own, so
+// the add field sits in the same row as the aliases it adds to rather than
+// claiming a full-width row of its own.
+templ AdminGameAliasSection(item game.Game) {
+	<section class="catalog-section">
+		<h3 class="catalog-section-heading">Search aliases</h3>
+		<div class="alias-row">
+			for _, alias := range item.Aliases {
+				<form method="post" action={ "/admin/games/" + item.ID + "/aliases/" + alias.ID + "/remove" } data-confirm={ "Remove the alias " + alias.Value + "?" }>
+					@components.CSRFInput()
+					<button class="alias-chip" type="submit" aria-label={ "Remove alias " + alias.Value }>{ alias.Value } <span class="alias-chip-remove" aria-hidden="true">×</span></button>
+				</form>
+			}
+			<form class="alias-add" method="post" action={ "/admin/games/" + item.ID + "/aliases" }>
+				@components.CSRFInput()
+				<label class="sr-only" for={ "alias-" + item.ID }>New alias</label>
+				<input id={ "alias-" + item.ID } class="input input-bordered input-sm alias-input" name="alias" maxlength="120" placeholder="e.g. wc3" required/>
+				<button class="btn btn-quiet btn-sm" type="submit">Add</button>
+			</form>
+		</div>
+	</section>
+}
+
+// AdminGameProviderSection is the read-only half: where this Game's provider
+// identity points, the actions that change it, a link out to the record on
+// igdb.com, and the enrichment snapshot IGDB last returned.
+templ AdminGameProviderSection(item game.Game) {
+	<section class="catalog-section">
+		<h3 class="catalog-section-heading">IGDB record</h3>
+		<div class="catalog-actions">
+			<span class="flex-1 text-sm text-base-content/75">{ adminIdentityLabel(item) }</span>
+			if item.IGDBSlug != "" {
+				<a class="btn btn-quiet btn-sm" href={ igdbGameURL(item.IGDBSlug) } target="_blank" rel="noopener noreferrer">
+					Open on IGDB
+					<span class="sr-only">(opens in a new tab)</span>
+					<span class="external-mark" aria-hidden="true">↗</span>
+				</a>
+			}
+			<a class="btn btn-quiet btn-sm" href={ "/admin/games/" + item.ID + "/igdb" }>
+				if item.IGDBExternalID == "" {
+					Link IGDB record
+				} else {
+					Manage IGDB link
+				}
+			</a>
+			<a class="btn btn-quiet btn-sm" href={ "/admin/games/" + item.ID + "/merge" }>Merge duplicate</a>
+		</div>
+		@AdminIGDBMetadata(adminGameFacts(item))
+	</section>
+}
+
+// AdminGameDangerSection holds the two ways a Game leaves play, in the
+// order an administrator should consider them: deactivating hides it from
+// players and keeps its history, deleting is irreversible and only ever
+// available for a Game nothing references. They belong together because
+// choosing between them is one decision.
+templ AdminGameDangerSection(item game.Game) {
+	<section class="catalog-section">
+		<h3 class="catalog-section-heading">Availability and deletion</h3>
+		<div class="catalog-decision">
+			<p class="catalog-decision-text">
+				if item.Active {
+					An inactive game keeps its Game Requests, followers and aliases, but players cannot find or request it.
+				} else {
+					This game is hidden from players. Activating it makes it findable and requestable again.
+				}
+			</p>
+			<form method="post" action={ "/admin/games/" + item.ID + "/active" } data-confirm={ gameActiveConfirmation(item.Active) }>
+				@components.CSRFInput()
+				if item.Active {
+					<input type="hidden" name="active" value="false"/><button class="btn btn-step-back btn-sm" type="submit">Deactivate game</button>
+				} else {
+					<input type="hidden" name="active" value="true"/><button class="btn btn-quiet btn-sm" type="submit">Activate game</button>
+				}
+			</form>
+		</div>
+		<div class="catalog-decision">
+			if item.GameRequestCount > 0 {
+				<p class="catalog-decision-text">This game has Game Requests and cannot be deleted. Deactivate or merge it instead.</p>
+				<button class="btn btn-danger btn-sm" type="button" disabled>Delete permanently</button>
+			} else if item.SubscriptionCount > 0 {
+				<p class="catalog-decision-text">This game is followed by users. Merge or remove those relationships before deleting.</p>
+				<button class="btn btn-danger btn-sm" type="button" disabled>Delete permanently</button>
+			} else {
+				<p class="catalog-decision-text">Nothing references this game. Permanent deletion also removes its aliases and provider link.</p>
+				<form method="post" action={ "/admin/games/" + item.ID + "/delete" } data-confirm={ "Permanently delete " + item.Name + "? This cannot be undone." }>
+					@components.CSRFInput()
+					<button class="btn btn-danger btn-sm" type="submit">Delete permanently</button>
+				</form>
+			}
+		</div>
+	</section>
+}
+
+// AdminGameComposer is manual Game creation, collapsed. It follows the
+// catalog rather than leading it and says when it is the right tool, so an
+// administrator reaches for IGDB discovery first and creates the Game IGDB
+// does not know about by hand.
+templ AdminGameComposer() {
+	<details class="detail-card mt-4">
+		<summary class="catalog-composer-summary">
+			<span class="text-[1.0625rem] font-semibold">Add a game manually</span>
+			<span class="text-sm text-base-content/70">For games IGDB does not list. Following or requesting an IGDB result adds it to this catalog on its own.</span>
+		</summary>
+		<form method="post" action="/admin/games" class="mt-4 grid gap-4 sm:grid-cols-2">
+			@components.CSRFInput()
+			@GameFields("", "")
+			<div class="sm:col-span-2 flex justify-end"><button class="btn btn-primary btn-sm" type="submit">Add game</button></div>
+		</form>
+	</details>
+}
+
+templ GameFields(name, slug string) {
+	<label class="form-control"><span class="label"><span class="catalog-input-label">Name</span></span><input class="input input-bordered w-full" name="name" value={ name } maxlength="120" required/></label>
+	<label class="form-control"><span class="label"><span class="catalog-input-label">Slug</span></span><input class="input input-bordered w-full data-text" name="slug" value={ slug } maxlength="120" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" placeholder="counter-strike-2" required/></label>
+}
+
+// igdbGameURL addresses the canonical igdb.com page for one provider slug.
+// The slug is provider data rather than browser input, but it is still path
+// escaped: the URL is rendered into an href, and nothing about a provider
+// value guarantees it is path safe.
+func igdbGameURL(slug string) templ.SafeURL {
+	return templ.SafeURL("https://www.igdb.com/games/" + url.PathEscape(slug))
+}
+
+// adminCatalogItems applies the screen's one list filter. It is a view
+// filter over the catalog the service already returned, not a second
+// catalog query: the administration list is the whole local catalog and is
+// read whole by the merge and link screens as well.
+func adminCatalogItems(games []game.Game, localOnly bool) []game.Game {
+	if !localOnly {
+		return games
+	}
+	items := make([]game.Game, 0, len(games))
+	for _, item := range games {
+		if item.IGDBExternalID == "" {
+			items = append(items, item)
+		}
+	}
+	return items
+}
+
+// adminCatalogCount states what the list is showing in the terms the screen
+// itself acts on: how much of the catalog players can reach, and how much of
+// it still has no provider identity to enrich it.
+func adminCatalogCount(items []game.Game) string {
+	active, linked := 0, 0
+	for _, item := range items {
+		if item.Active {
+			active++
+		}
+		if item.IGDBExternalID != "" {
+			linked++
+		}
+	}
+	noun := "games"
+	if len(items) == 1 {
+		noun = "game"
+	}
+	return fmt.Sprintf("%d %s · %d active · %d linked to IGDB", len(items), noun, active, linked)
+}
+
+func adminEmptyTitle(search string, localOnly bool) string {
+	if search == "" && !localOnly {
+		return "The catalog is empty"
+	}
+	return "No game matches that"
+}
+
+func adminEmptyHint(search string, localOnly bool) string {
+	switch {
+	case search == "" && !localOnly:
+		return "Add a game below, or let a player follow an IGDB result to materialize one."
+	case localOnly && search == "":
+		return "Every game in the catalog is linked to an IGDB record."
+	default:
+		return "Search covers a game's name and its aliases. Try a single word, or clear the filter."
+	}
+}
+
+// adminRelationshipLabel is the row's one-line usage summary. It is what
+// decides whether a Game may be deleted, so it is stated on the collapsed
+// row rather than only inside the opened panel.
+func adminRelationshipLabel(item game.Game) string {
+	return fmt.Sprintf("%s · %s", adminCountLabel(item.GameRequestCount, "Game Request"), adminCountLabel(item.SubscriptionCount, "follower"))
+}
+
+func adminCountLabel(count int64, noun string) string {
+	if count == 1 {
+		return "1 " + noun
+	}
+	return strconv.FormatInt(count, 10) + " " + noun + "s"
+}
+
+func adminAliasLabel(aliases []game.Alias) string {
+	values := make([]string, 0, len(aliases))
+	for _, alias := range aliases {
+		values = append(values, alias.Value)
+	}
+	return "aka " + strings.Join(values, ", ")
+}
+
+// adminIdentityLabel states the provider identity beside the save action,
+// where an administrator is already reading the fields the link does not
+// own.
+func adminIdentityLabel(item game.Game) string {
+	if item.IGDBExternalID == "" {
+		return "Local-only · no IGDB record linked"
+	}
+	if item.IGDBEnriched {
+		return "IGDB #" + item.IGDBExternalID + " · enrichment snapshot available"
+	}
+	return "IGDB #" + item.IGDBExternalID + " · linked without enrichment"
+}
+
+func gameActiveConfirmation(active bool) string {
+	if active {
+		return "Deactivate this game? Existing Game Requests are not changed."
+	}
+	return ""
+}

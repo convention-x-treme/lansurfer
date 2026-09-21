@@ -236,8 +236,18 @@ templ NavigationLinks(state NavigationState) {
 		</li>
 		if state.Viewer != nil && state.Viewer.Role == "admin" {
 			<li>
-				<a class={ navigationLinkClass(state.Section == "administration") } href="/admin/games" aria-current={ navigationCurrent(state.Section == "administration") }>
+				<a class={ navigationLinkClass(strings.HasPrefix(state.Section, "administration")) } href="/admin/games" aria-current={ navigationCurrent(state.Section == "administration") }>
 					<span>Administration</span><span class="status-chip status-chip-host ml-auto">Orga</span>
+				</a>
+			</li>
+			<li>
+				<a class={ navigationSubLinkClass(state.Section == "administration-igdb") } href="/admin/igdb" aria-current={ navigationCurrent(state.Section == "administration-igdb") }>
+					<span>IGDB sync</span>
+				</a>
+			</li>
+			<li>
+				<a class={ navigationSubLinkClass(state.Section == "administration-pwa") } href="/admin/pwa" aria-current={ navigationCurrent(state.Section == "administration-pwa") }>
+					<span>PWA</span>
 				</a>
 			</li>
 		}
