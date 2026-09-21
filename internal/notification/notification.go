@@ -152,3 +152,58 @@ type DiagnosticsRepository interface {
 	ReopenDelivery(ctx context.Context, deliveryID int64) (bool, error)
 	ReopenUncertainDelivery(ctx context.Context, deliveryID int64) (bool, error)
 }
+
+// PushSubscriptionRecord is one stored browser Push subscription.
+// EndpointCiphertext/P256dhCiphertext/AuthCiphertext are opaque AES-GCM
+// ciphertext: Store never sees, and this type never carries, plaintext
+// subscription material. Only SubscriptionService encrypts/decrypts it.
+type PushSubscriptionRecord struct {
+	ID                  int64
+	UserID              string
+	Label               string
+	DeviceIDHash        string
+	EndpointFingerprint string
+	EndpointCiphertext  []byte
+	P256dhCiphertext    []byte
+	AuthCiphertext      []byte
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
+}
+
+// PushPreference is one user's Web Push preferences. The zero value is the
+// correct default for a user who has never touched Push settings: disabled,
+// followed-only audience.
+type PushPreference struct {
+	WebPushEnabled     bool
+	NewRequestAudience string // "followed" or "all"
+}
+
+const (
+	AudienceFollowed = "followed"
+	AudienceAll      = "all"
+)
+
+// SubscriptionRepository is the durable state SubscriptionService needs for
+// managing one user's Push subscriptions.
+type SubscriptionRepository interface {
+	// UpsertSubscription persists sub, atomically reassigning ownership if
+	// EndpointFingerprint already belongs to a different user. Only
+	// UserID/Label/DeviceIDHash/EndpointFingerprint/EndpointCiphertext/
+	// P256dhCiphertext/AuthCiphertext are read from sub; ID/CreatedAt/
+	// UpdatedAt are populated in the returned record.
+	UpsertSubscription(ctx context.Context, sub PushSubscriptionRecord) (PushSubscriptionRecord, error)
+	ListSubscriptions(ctx context.Context, userID string) ([]PushSubscriptionRecord, error)
+	// DeleteSubscription removes one subscription scoped to its owner; it
+	// reports whether a row was actually deleted.
+	DeleteSubscription(ctx context.Context, subscriptionID int64, userID string) (bool, error)
+	DeleteSubscriptionByDeviceHash(ctx context.Context, userID, deviceIDHash string) (bool, error)
+}
+
+// PreferenceRepository is the durable state SubscriptionService needs for
+// one user's Web Push preferences.
+type PreferenceRepository interface {
+	// GetPreference returns the zero-value PushPreference (disabled,
+	// followed-only) when the user has no stored row yet.
+	GetPreference(ctx context.Context, userID string) (PushPreference, error)
+	SetPreference(ctx context.Context, userID string, preference PushPreference) error
+}
