@@ -152,23 +152,92 @@ func TestLoadLeavesDiscordUnsetWhenCredentialsAreEmpty(t *testing.T) {
 func TestLoadIGDBConfiguration(t *testing.T) {
 	clearOptionalEnvironment(t)
 	t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
-	t.Setenv("LANSURFER_IGDB_CLIENT_ID", "client")
-	t.Setenv("LANSURFER_IGDB_CLIENT_SECRET", "secret")
+	t.Setenv("LANSURFER_TWITCH_CLIENT_ID", "client")
+	t.Setenv("LANSURFER_TWITCH_CLIENT_SECRET", "secret")
+	t.Setenv("LANSURFER_IGDB_ENABLED", "true")
 
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if cfg.IGDB == nil || cfg.IGDB.ClientID != "client" || cfg.IGDB.ClientSecret != "secret" {
-		t.Fatalf("IGDB = %#v", cfg.IGDB)
+	if cfg.Twitch == nil || cfg.Twitch.ClientID != "client" || cfg.Twitch.ClientSecret != "secret" || !cfg.Twitch.IGDBEnabled {
+		t.Fatalf("Twitch = %#v", cfg.Twitch)
+	}
+}
+
+func TestLoadTwitchConfigurationEnablesCapabilitiesIndependently(t *testing.T) {
+	clearOptionalEnvironment(t)
+	t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
+	t.Setenv("LANSURFER_TWITCH_CLIENT_ID", "client")
+	t.Setenv("LANSURFER_TWITCH_CLIENT_SECRET", "secret")
+	t.Setenv("LANSURFER_TWITCH_AUTH_ENABLED", "true")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Twitch == nil || !cfg.Twitch.AuthEnabled || cfg.Twitch.IGDBEnabled {
+		t.Fatalf("Twitch = %#v", cfg.Twitch)
+	}
+}
+
+func TestLoadTwitchConfigurationAcceptsEachCapabilityCombination(t *testing.T) {
+	tests := []struct {
+		name, authEnabled, igdbEnabled string
+		wantAuth, wantIGDB             bool
+	}{
+		{name: "both disabled"},
+		{name: "IGDB only", igdbEnabled: "true", wantIGDB: true},
+		{name: "both enabled", authEnabled: "true", igdbEnabled: "true", wantAuth: true, wantIGDB: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			clearOptionalEnvironment(t)
+			t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
+			t.Setenv("LANSURFER_TWITCH_CLIENT_ID", "client")
+			t.Setenv("LANSURFER_TWITCH_CLIENT_SECRET", "secret")
+			t.Setenv("LANSURFER_TWITCH_AUTH_ENABLED", test.authEnabled)
+			t.Setenv("LANSURFER_IGDB_ENABLED", test.igdbEnabled)
+
+			cfg, err := Load()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cfg.Twitch == nil || cfg.Twitch.AuthEnabled != test.wantAuth || cfg.Twitch.IGDBEnabled != test.wantIGDB {
+				t.Fatalf("Twitch = %#v", cfg.Twitch)
+			}
+		})
+	}
+}
+
+func TestLoadRejectsInvalidTwitchConfiguration(t *testing.T) {
+	tests := []struct {
+		name, clientID, clientSecret, authEnabled, igdbEnabled string
+	}{
+		{name: "enabled without credentials", igdbEnabled: "true"},
+		{name: "partial credentials", clientID: "client", authEnabled: "true"},
+		{name: "invalid auth flag", clientID: "client", clientSecret: "secret", authEnabled: "sometimes"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			clearOptionalEnvironment(t)
+			t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
+			t.Setenv("LANSURFER_TWITCH_CLIENT_ID", test.clientID)
+			t.Setenv("LANSURFER_TWITCH_CLIENT_SECRET", test.clientSecret)
+			t.Setenv("LANSURFER_TWITCH_AUTH_ENABLED", test.authEnabled)
+			t.Setenv("LANSURFER_IGDB_ENABLED", test.igdbEnabled)
+			if _, err := Load(); err == nil {
+				t.Fatal("Load() accepted invalid Twitch configuration")
+			}
+		})
 	}
 }
 
 func TestLoadRejectsPartialIGDBConfiguration(t *testing.T) {
 	clearOptionalEnvironment(t)
 	t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
-	t.Setenv("LANSURFER_IGDB_CLIENT_ID", "client")
-	t.Setenv("LANSURFER_IGDB_CLIENT_SECRET", "")
+	t.Setenv("LANSURFER_TWITCH_CLIENT_ID", "client")
+	t.Setenv("LANSURFER_IGDB_ENABLED", "true")
 
 	if _, err := Load(); err == nil {
 		t.Fatal("Load() unexpectedly accepted partial IGDB configuration")
@@ -178,15 +247,13 @@ func TestLoadRejectsPartialIGDBConfiguration(t *testing.T) {
 func TestLoadLeavesIGDBUnsetWhenCredentialsAreEmpty(t *testing.T) {
 	clearOptionalEnvironment(t)
 	t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
-	t.Setenv("LANSURFER_IGDB_CLIENT_ID", "")
-	t.Setenv("LANSURFER_IGDB_CLIENT_SECRET", "")
 
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if cfg.IGDB != nil {
-		t.Fatalf("IGDB = %#v, want nil", cfg.IGDB)
+	if cfg.Twitch != nil {
+		t.Fatalf("Twitch = %#v, want nil", cfg.Twitch)
 	}
 }
 
@@ -315,8 +382,10 @@ func clearOptionalEnvironment(t *testing.T) {
 		"LANSURFER_DISCORD_CLIENT_ID",
 		"LANSURFER_DISCORD_CLIENT_SECRET",
 		"LANSURFER_TRUSTED_PROXIES",
-		"LANSURFER_IGDB_CLIENT_ID",
-		"LANSURFER_IGDB_CLIENT_SECRET",
+		"LANSURFER_TWITCH_CLIENT_ID",
+		"LANSURFER_TWITCH_CLIENT_SECRET",
+		"LANSURFER_TWITCH_AUTH_ENABLED",
+		"LANSURFER_IGDB_ENABLED",
 		"LANSURFER_INSTANCE_NAME",
 	} {
 		t.Setenv(name, "")
