@@ -1254,6 +1254,44 @@ func TestGameRequestPresentationIncludesLocalEnrichment(t *testing.T) {
 	assertRequestGame(t, "ByID", detail)
 }
 
+// TestGetGameRequestSummaryHasNoViewer covers Track E2's system-caller read:
+// the notification worker resolves a Game Request's summary with no viewer
+// in play, unlike GetGameRequest/ByID which require one for personalization.
+func TestGetGameRequestSummaryHasNoViewer(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+
+	users := user.NewService(userpostgres.NewStore(pool))
+	host, err := users.Register(t.Context(), "Summary Host")
+	if err != nil {
+		t.Fatalf("register host: %v", err)
+	}
+
+	catalog := game.NewService(gamepostgres.NewStore(pool))
+	warcraft, err := catalog.Create(t.Context(), "Warcraft III", "warcraft-3-summary")
+	if err != nil {
+		t.Fatalf("create game: %v", err)
+	}
+
+	requests := gamerequest.NewService(gamerequestpostgres.NewStore(pool), catalog, nil)
+	startsAt := time.Now().UTC().Add(time.Hour).Truncate(time.Microsecond)
+	created, err := requests.Create(t.Context(), host.ID, warcraft.ID, nil, startsAt, "Summary round")
+	if err != nil {
+		t.Fatalf("create request: %v", err)
+	}
+
+	readStore := gamerequestquery.NewStore(pool)
+	summary, err := readStore.GetGameRequestSummary(t.Context(), created.ID)
+	if err != nil {
+		t.Fatalf("get game request summary: %v", err)
+	}
+	if summary.GameID != warcraft.ID || summary.GameName != "Warcraft III" || !summary.StartsAt.Equal(startsAt) {
+		t.Fatalf("summary = %#v, want GameID=%q GameName=%q StartsAt=%v", summary, warcraft.ID, "Warcraft III", startsAt)
+	}
+}
+
 // TestIGDBBeginGenerationFailsAbandonedSyncingGeneration exercises the
 // plan's Step 2 lifecycle scenario: a generation left 'syncing' by a process
 // that exited before completing or failing it (simulated by inserting the

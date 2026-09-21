@@ -105,6 +105,37 @@ func (q *Queries) GetGameRequest(ctx context.Context, arg GetGameRequestParams) 
 	return i, err
 }
 
+const getGameRequestSummary = `-- name: GetGameRequestSummary :one
+SELECT gr.id::text AS request_id, g.id::text AS game_id, g.name AS game_name,
+       gr.starts_at, gr.status
+FROM game_requests gr
+JOIN games g ON g.id = gr.game_id
+WHERE gr.id = $1::uuid
+`
+
+type GetGameRequestSummaryRow struct {
+	RequestID string
+	GameID    string
+	GameName  string
+	StartsAt  pgtype.Timestamptz
+	Status    string
+}
+
+// GetGameRequestSummary backs system callers (e.g. the notification worker)
+// that resolve a Game Request without a viewer to personalize for.
+func (q *Queries) GetGameRequestSummary(ctx context.Context, id pgtype.UUID) (GetGameRequestSummaryRow, error) {
+	row := q.db.QueryRow(ctx, getGameRequestSummary, id)
+	var i GetGameRequestSummaryRow
+	err := row.Scan(
+		&i.RequestID,
+		&i.GameID,
+		&i.GameName,
+		&i.StartsAt,
+		&i.Status,
+	)
+	return i, err
+}
+
 const listActiveGameRequests = `-- name: ListActiveGameRequests :many
 SELECT gr.id::text AS request_id,
        g.id::text AS game_id,

@@ -100,3 +100,12 @@ LIMIT sqlc.arg(result_limit);
 -- affected by the viewer's discovery filters.
 -- name: CountOpenGameRequests :one
 SELECT count(*) FROM game_requests WHERE status = 'open';
+
+-- GetGameRequestSummary backs system callers (e.g. the notification worker)
+-- that resolve a Game Request without a viewer to personalize for.
+-- name: GetGameRequestSummary :one
+SELECT gr.id::text AS request_id, g.id::text AS game_id, g.name AS game_name,
+       gr.starts_at, gr.status
+FROM game_requests gr
+JOIN games g ON g.id = gr.game_id
+WHERE gr.id = sqlc.arg(id)::uuid;
