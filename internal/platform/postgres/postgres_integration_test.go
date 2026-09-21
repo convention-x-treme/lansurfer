@@ -3440,6 +3440,28 @@ func TestForwardMigrationIntroducesGameNickAndAuthFlows(t *testing.T) {
 	`, flowID).Scan(&consumed); !errors.Is(err, pgx.ErrNoRows) {
 		t.Fatalf("replay flow error = %v, want no rows", err)
 	}
+
+	if _, err := pool.Exec(t.Context(), `
+		INSERT INTO user_identities (user_id, provider_kind, provider_key, subject)
+		VALUES ($1, 'twitch', 'twitch', 'twitch-subject')
+	`, userID); err != nil {
+		t.Fatalf("insert Twitch identity: %v", err)
+	}
+	twitchStateHash := sha256.Sum256([]byte("twitch-oauth-state"))
+	if _, err := pool.Exec(t.Context(), `
+		INSERT INTO auth_flows (
+			phase, operation, provider_kind, provider_key, state_hash, browser_binding_hash,
+			nonce, pkce_verifier, expires_at
+		) VALUES ('oauth', 'login', 'twitch', 'twitch', $1, $2, 'nonce', 'verifier', now() + interval '10 minutes')
+	`, twitchStateHash[:], browserHash[:]); err != nil {
+		t.Fatalf("create Twitch oauth flow: %v", err)
+	}
+	if _, err := pool.Exec(t.Context(), `
+		INSERT INTO user_identities (user_id, provider_kind, provider_key, subject)
+		VALUES ($1, 'unknown', 'unknown', 'unknown-subject')
+	`, userID); err == nil {
+		t.Fatal("unknown provider kind unexpectedly succeeded")
+	}
 }
 
 type prototypeFixture struct {

@@ -95,6 +95,18 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		})
 		providers = append(providers, auth.ConfiguredProvider{DisplayName: "Discord", Adapter: discordProvider})
 	}
+	if cfg.Twitch != nil && cfg.Twitch.AuthEnabled {
+		discoveryCtx, cancelDiscovery := context.WithTimeout(ctx, oidcDiscoveryTimeout)
+		twitchProvider, discoverErr := auth.DiscoverTwitchProvider(discoveryCtx, auth.TwitchConfig{
+			ClientID: cfg.Twitch.ClientID, ClientSecret: cfg.Twitch.ClientSecret,
+			RedirectURL: cfg.BaseURL + "/auth/twitch/callback",
+		})
+		cancelDiscovery()
+		if discoverErr != nil {
+			return fmt.Errorf("initialize Twitch: %w", discoverErr)
+		}
+		providers = append(providers, auth.ConfiguredProvider{DisplayName: "Twitch", Adapter: twitchProvider})
+	}
 	oauthService := auth.NewOAuthService(providers, flowService, resolutionService)
 
 	gameStore := gamepostgres.NewStore(pool)
