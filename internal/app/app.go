@@ -89,6 +89,18 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		})
 		providers = append(providers, auth.ConfiguredProvider{DisplayName: "Discord", Adapter: discordProvider})
 	}
+	if cfg.Twitch != nil && cfg.Twitch.AuthEnabled {
+		discoveryCtx, cancelDiscovery := context.WithTimeout(ctx, oidcDiscoveryTimeout)
+		twitchProvider, discoverErr := auth.DiscoverTwitchProvider(discoveryCtx, auth.TwitchConfig{
+			ClientID: cfg.Twitch.ClientID, ClientSecret: cfg.Twitch.ClientSecret,
+			RedirectURL: cfg.BaseURL + "/auth/twitch/callback",
+		})
+		cancelDiscovery()
+		if discoverErr != nil {
+			return fmt.Errorf("initialize Twitch: %w", discoverErr)
+		}
+		providers = append(providers, auth.ConfiguredProvider{DisplayName: "Twitch", Adapter: twitchProvider})
+	}
 	oauthService := auth.NewOAuthService(providers, flowService, resolutionService)
 
 	gameStore := gamepostgres.NewStore(pool)
@@ -96,7 +108,11 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	realtime := sse.NewBroker()
 	gameRequests := gamerequest.NewService(gamerequestpostgres.NewStore(pool), gameService, realtime)
 	gameRequestQueries := gamerequestquery.NewStore(pool)
-	igdbSyncService := newIGDBSync(ctx, cfg.IGDB, gameStore, logger)
+	var igdbCreds igdbCredentials
+	if cfg.Twitch != nil {
+		igdbCreds = igdbCredentials{Enabled: cfg.Twitch.IGDBEnabled, ClientID: cfg.Twitch.ClientID, ClientSecret: cfg.Twitch.ClientSecret}
+	}
+	igdbSyncService := newIGDBSync(ctx, igdbCreds, gameStore, logger)
 	gameDiscovery := game.NewDiscoveryService(gameStore, gameStore, gameStore, igdbSyncService)
 
 	server := &http.Server{

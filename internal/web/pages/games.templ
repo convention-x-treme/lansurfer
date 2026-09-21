@@ -3,6 +3,8 @@ package pages
 import (
 	"fmt"
 	"net/url"
+	"strconv"
+	"strings"
 
 	"github.com/convention-x-treme/lansurfer/internal/game"
 	"github.com/convention-x-treme/lansurfer/internal/web/branding"
@@ -165,6 +167,9 @@ templ GameCard(item game.DiscoveryItem, followedOnly bool) {
 			} else {
 				<span class="game-card-cover-fallback" aria-hidden="true">{ components.GameAbbreviation(item.Name) }</span>
 			}
+			if len(item.GenreNames) > 0 {
+				<span class="game-card-genre">{ shortGenre(item.GenreNames[0]) }</span>
+			}
 			if item.Subscribed {
 				<span class="game-card-tag">Following</span>
 			}
@@ -174,7 +179,7 @@ templ GameCard(item game.DiscoveryItem, followedOnly bool) {
 				<h2 class="game-card-name">{ item.Name }</h2>
 				<span class="data-text game-card-short" aria-hidden="true">{ components.GameAbbreviation(item.Name) }</span>
 			</div>
-			<p class="game-card-meta">{ presentationSecondary(item.GamePresentation) }</p>
+			<p class="game-card-meta">{ gameCardMeta(item.GamePresentation) }</p>
 			<div class="game-card-actions">
 				<a class="btn btn-quiet btn-sm" href={ gameRequestAction(item) }>Find Players</a>
 				@GameCardFollowControl(item, followedOnly)
@@ -236,6 +241,72 @@ templ GameCatalogError(brand branding.Brand, navigation components.NavigationSta
 			<div role="alert" class="alert alert-error"><div><p class="font-bold">Games could not be loaded</p><p>Try the request again.</p></div></div>
 		</div>
 	}
+}
+
+// shortGenreOverrides shortens the genre names no rule can derive, and is
+// the extension point for any future one: add the IGDB genre name exactly as
+// the provider spells it, mapped to the badge label. Everything with a
+// trailing acronym is handled by shortGenre's rule instead and does not
+// belong here. IGDB's own data is never rewritten -- this is a label for one
+// narrow badge, and the full name stays in the stored snapshot and on the
+// admin surfaces that inspect it.
+var shortGenreOverrides = map[string]string{
+	"Hack and slash/Beat 'em up": "Hack & Slash",
+}
+
+// shortGenre reduces one IGDB genre name to what fits a cover badge. IGDB
+// spells its abbreviated genres "Real Time Strategy (RTS)", "Role-playing
+// (RPG)", "Turn-based strategy (TBS)" -- a trailing parenthesized acronym
+// that already is the short form, so the rule below covers those three and
+// any later genre IGDB names the same way, without a table to maintain. A
+// name with no acronym and no override renders in full; the badge clips with
+// an ellipsis if an unusually long one ever appears.
+func shortGenre(name string) string {
+	name = strings.TrimSpace(name)
+	if override, ok := shortGenreOverrides[name]; ok {
+		return override
+	}
+	if !strings.HasSuffix(name, ")") {
+		return name
+	}
+	open := strings.LastIndex(name, "(")
+	// Require text before the parenthesis: a name that is nothing but a
+	// parenthesized token has no long form to shorten away from.
+	if open <= 0 {
+		return name
+	}
+	if acronym := strings.TrimSpace(name[open+1 : len(name)-1]); acronym != "" {
+		return acronym
+	}
+	return name
+}
+
+// gameCardSummaryLimit caps the summary a card previews. A card's width is
+// fluid, so no rune count can promise a constant height -- .game-card-meta
+// clamps the visible lines and this only bounds how much provider prose a
+// full grid ships. It is sized so a widened card still fills roughly the
+// clamped three lines rather than running out of text.
+const gameCardSummaryLimit = 200
+
+// gameCardMeta is the card's own secondary line: release year, then the
+// IGDB summary. Unlike presentationSecondary -- which the composer and Game
+// Request lists still use to disambiguate same-named Games -- a card drops
+// game type and platforms, because the summary earns that space and the
+// cover already carries the genre. Either half alone still reads, and a
+// Game with neither falls back to the slug, matching what the line showed
+// before any enrichment existed.
+func gameCardMeta(p game.GamePresentation) string {
+	parts := make([]string, 0, 2)
+	if p.FirstReleaseDate != nil {
+		parts = append(parts, strconv.Itoa(p.FirstReleaseDate.Year()))
+	}
+	if summary := truncateSummary(p.Summary, gameCardSummaryLimit); summary != "" {
+		parts = append(parts, summary)
+	}
+	if len(parts) == 0 {
+		return p.Slug
+	}
+	return strings.Join(parts, " · ")
 }
 
 // catalogCountLabel states what the grid is showing, in the terms the filter

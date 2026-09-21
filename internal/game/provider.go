@@ -29,6 +29,30 @@ type ProviderGame struct {
 	CoverImageID      string
 	ProviderUpdatedAt *time.Time
 	Checksum          string
+	Summary           string
+	GenreNames        []string
+	GameModeNames     []string
+	MultiplayerModes  []MultiplayerMode
+}
+
+// MultiplayerMode is one platform-specific multiplayer capability record
+// (issue #46). Player limits are nil when IGDB does not report them: nil is
+// "not reported" and is deliberately distinct from a zero-player limit,
+// which IGDB never sends (0 is its unset representation).
+type MultiplayerMode struct {
+	PlatformIGDBID    int64
+	PlatformName      string
+	CampaignCoop      bool
+	DropIn            bool
+	LanCoop           bool
+	OfflineCoop       bool
+	OnlineCoop        bool
+	SplitScreen       bool
+	SplitScreenOnline bool
+	OfflineCoopMax    *int
+	OfflineMax        *int
+	OnlineCoopMax     *int
+	OnlineMax         *int
 }
 
 type ProviderState string

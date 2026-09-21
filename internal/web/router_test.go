@@ -246,6 +246,29 @@ func TestAccountLinkStartBindsSignedInUserAndRedirectsToProvider(t *testing.T) {
 	}
 }
 
+func TestTwitchAuthRoutesUseTwitchProvider(t *testing.T) {
+	authentication := &routerAuthentication{start: auth.OAuthStart{AuthorizationURL: "https://id.twitch.tv/oauth2/authorize"}}
+	router := NewRouter(RouterDependencies{
+		Ready:          func(context.Context) error { return nil },
+		Authentication: authentication,
+		Sessions:       authentication,
+	})
+
+	beginResponse := httptest.NewRecorder()
+	router.ServeHTTP(beginResponse, httptest.NewRequest(http.MethodGet, "/auth/twitch", nil))
+	if beginResponse.Code != http.StatusFound || authentication.began.ProviderKind != "twitch" {
+		t.Fatalf("begin status/input = %d, %#v", beginResponse.Code, authentication.began)
+	}
+
+	callbackRequest := httptest.NewRequest(http.MethodGet, "/auth/twitch/callback?code=code&state=state", nil)
+	callbackRequest.AddCookie(&http.Cookie{Name: "lansurfer_auth_binding", Value: "binding"})
+	callbackResponse := httptest.NewRecorder()
+	router.ServeHTTP(callbackResponse, callbackRequest)
+	if authentication.completed.ProviderKind != "twitch" {
+		t.Fatalf("completion input = %#v", authentication.completed)
+	}
+}
+
 func TestAuthCallbackRoutesSignedInIdentityConflictToAccount(t *testing.T) {
 	authentication := &routerAuthentication{
 		account:     user.User{ID: "user-1", Role: user.RoleUser},
@@ -382,7 +405,10 @@ func TestAdminGameSearchRendersAliasMatch(t *testing.T) {
 
 func TestAdminGameCatalogShowsIdentityAndDeletionGuards(t *testing.T) {
 	games := &routerGames{items: []game.Game{
-		{ID: "linked", Name: "Linked Game", Slug: "linked-game", Active: true, IGDBExternalID: "100", IGDBEnriched: true, GameRequestCount: 2},
+		{ID: "linked", Name: "Linked Game", Slug: "linked-game", Active: true, IGDBExternalID: "100", IGDBEnriched: true, GameRequestCount: 2,
+			IGDBSummary: "A linked adventure.", IGDBGenreNames: []string{"Strategy"}, IGDBGameModeNames: []string{"Multiplayer"},
+			IGDBMultiplayerModes: []game.MultiplayerMode{{PlatformIGDBID: 6, PlatformName: "PC", OnlineCoop: true, OnlineMax: new(4)}},
+		},
 		{ID: "followed", Name: "Followed Game", Slug: "followed-game", Active: true, SubscriptionCount: 1},
 		{ID: "unused", Name: "Unused Game", Slug: "unused-game", Active: false},
 	}}
@@ -397,6 +423,7 @@ func TestAdminGameCatalogShowsIdentityAndDeletionGuards(t *testing.T) {
 		"IGDB #100", "Enrichment snapshot available", "Manage IGDB link",
 		"This game has Game Requests and cannot be deleted", "This game is followed by users",
 		"Permanently delete Unused Game?",
+		"A linked adventure.", "Strategy", "Multiplayer", "PC: online co-op · online max 4",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("body does not contain %q", want)
@@ -414,7 +441,9 @@ func TestAdminIGDBLinkSearchGuidesExistingMappingToMerge(t *testing.T) {
 		igdbItems: []game.AdminProviderGame{{
 			ExternalID: "100", Name: "Provider Name", GameType: "Main Game",
 			FirstReleaseDate: &release, CoverImageID: "co-admin",
-			LinkedGameID: "source", LinkedGameName: "IGDB Game",
+			Summary: "Provider summary.", GenreNames: []string{"RPG"}, GameModeNames: []string{"Co-op"},
+			MultiplayerModes: []game.MultiplayerMode{{PlatformIGDBID: 6, PlatformName: "PC", OfflineCoop: true}},
+			LinkedGameID:     "source", LinkedGameName: "IGDB Game",
 		}},
 	}
 	request := httptest.NewRequest(http.MethodGet, "/admin/games/target/igdb?q=provider", nil)
@@ -430,6 +459,7 @@ func TestAdminIGDBLinkSearchGuidesExistingMappingToMerge(t *testing.T) {
 	for _, want := range []string{
 		"Provider Name", "2024", "co-admin.jpg", "Linked to IGDB Game", "/admin/games/target/merge?source=source",
 		"grid-cols-[auto_minmax(0,1fr)_auto]", "aspect-[3/4]", "max-w-[100px]", "break-words",
+		"Provider summary.", "RPG", "Co-op", "PC: offline co-op",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("body does not contain %q", want)
@@ -888,6 +918,8 @@ func TestGameCatalogRendersUnmaterializedProviderResultWithFollowAction(t *testi
 		PlatformNames:    []string{"PC (Microsoft Windows)"},
 		FirstReleaseDate: &releaseDate,
 		CoverImageID:     "co1abc",
+		Summary:          "Azeroth braces for war.",
+		GenreNames:       []string{"Real Time Strategy (RTS)"},
 		Materialized:     false,
 	}}}
 	router := gameTestRouter(discovery)
@@ -903,9 +935,8 @@ func TestGameCatalogRendersUnmaterializedProviderResultWithFollowAction(t *testi
 	body := response.Body.String()
 	for _, want := range []string{
 		"Warcraft III: Reign of Chaos",
-		"Main Game",
-		"PC (Microsoft Windows)",
-		"2002",
+		"2002 · Azeroth braces for war.",
+		">RTS<",
 		"https://images.igdb.com/igdb/image/upload/t_cover_big/co1abc.jpg",
 		"Follow Game",
 		`hx-post="/games/providers/igdb/42/follow"`,
@@ -1253,6 +1284,7 @@ type routerAuthentication struct {
 	start       auth.OAuthStart
 	began       auth.OAuthStartInput
 	result      auth.OAuthResult
+	completed   auth.OAuthCompletion
 	completeErr error
 }
 
@@ -1523,7 +1555,8 @@ func (a *routerAuthentication) Begin(_ context.Context, input auth.OAuthStartInp
 	return a.start, nil
 }
 
-func (a *routerAuthentication) Complete(context.Context, auth.OAuthCompletion) (auth.OAuthResult, error) {
+func (a *routerAuthentication) Complete(_ context.Context, completion auth.OAuthCompletion) (auth.OAuthResult, error) {
+	a.completed = completion
 	return a.result, a.completeErr
 }
 

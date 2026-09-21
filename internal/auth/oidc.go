@@ -20,19 +20,53 @@ type OIDCConfig struct {
 	GameNickClaim string
 }
 
-type OIDCProvider struct {
-	issuer        string
-	oauth         oauth2.Config
-	verifier      *oidc.IDTokenVerifier
-	gameNickClaim string
+type TwitchConfig struct {
+	ClientID     string
+	ClientSecret string
+	RedirectURL  string
 }
 
-func (*OIDCProvider) ProviderKind() string  { return "oidc" }
-func (p *OIDCProvider) ProviderKey() string { return p.issuer }
+type oidcProviderConfig struct {
+	OIDCConfig
+	ProviderKind               string
+	ProviderKey                string
+	Scopes                     []string
+	AuthorizationOptions       []oauth2.AuthCodeOption
+	UsePreferredUsernameAsName bool
+	IncludeEmail               bool
+}
+
+type OIDCProvider struct {
+	providerKind               string
+	providerKey                string
+	oauth                      oauth2.Config
+	verifier                   *oidc.IDTokenVerifier
+	gameNickClaim              string
+	authorizationOptions       []oauth2.AuthCodeOption
+	usePreferredUsernameAsName bool
+	includeEmail               bool
+}
+
+func (p *OIDCProvider) ProviderKind() string { return p.providerKind }
+func (p *OIDCProvider) ProviderKey() string  { return p.providerKey }
 
 // DiscoverOIDCProvider performs provider discovery once during application
 // startup and constructs the long-lived token verifier/key cache.
 func DiscoverOIDCProvider(ctx context.Context, cfg OIDCConfig) (*OIDCProvider, error) {
+	return discoverOIDCProvider(ctx, oidcProviderConfig{
+		OIDCConfig: cfg, ProviderKind: "oidc", Scopes: []string{oidc.ScopeOpenID, oidc.ScopeProfile, oidc.ScopeEmail}, IncludeEmail: true,
+	})
+}
+
+func DiscoverTwitchProvider(ctx context.Context, cfg TwitchConfig) (*OIDCProvider, error) {
+	return discoverOIDCProvider(ctx, oidcProviderConfig{
+		OIDCConfig:   OIDCConfig{IssuerURL: "https://id.twitch.tv/oauth2", ClientID: cfg.ClientID, ClientSecret: cfg.ClientSecret, RedirectURL: cfg.RedirectURL},
+		ProviderKind: "twitch", ProviderKey: "twitch", Scopes: []string{oidc.ScopeOpenID},
+		AuthorizationOptions: []oauth2.AuthCodeOption{twitchUsernameClaims()}, UsePreferredUsernameAsName: true,
+	})
+}
+
+func discoverOIDCProvider(ctx context.Context, cfg oidcProviderConfig) (*OIDCProvider, error) {
 	provider, err := oidc.NewProvider(ctx, cfg.IssuerURL)
 	if err != nil {
 		return nil, fmt.Errorf("discover OIDC provider: %w", err)
@@ -46,26 +80,32 @@ func DiscoverOIDCProvider(ctx context.Context, cfg OIDCConfig) (*OIDCProvider, e
 	if metadata.Issuer == "" {
 		return nil, errors.New("OIDC discovery document has no issuer")
 	}
+	providerKey := cfg.ProviderKey
+	if providerKey == "" {
+		providerKey = metadata.Issuer
+	}
 	return &OIDCProvider{
-		issuer: metadata.Issuer,
+		providerKind: cfg.ProviderKind,
+		providerKey:  providerKey,
 		oauth: oauth2.Config{
 			ClientID:     cfg.ClientID,
 			ClientSecret: cfg.ClientSecret,
 			Endpoint:     provider.Endpoint(),
 			RedirectURL:  cfg.RedirectURL,
-			Scopes:       []string{oidc.ScopeOpenID, oidc.ScopeProfile, oidc.ScopeEmail},
+			Scopes:       cfg.Scopes,
 		},
-		verifier:      provider.Verifier(&oidc.Config{ClientID: cfg.ClientID}),
-		gameNickClaim: cfg.GameNickClaim,
+		verifier:                   provider.Verifier(&oidc.Config{ClientID: cfg.ClientID}),
+		gameNickClaim:              cfg.GameNickClaim,
+		authorizationOptions:       cfg.AuthorizationOptions,
+		usePreferredUsernameAsName: cfg.UsePreferredUsernameAsName,
+		includeEmail:               cfg.IncludeEmail,
 	}, nil
 }
 
 func (p *OIDCProvider) AuthorizationURL(state, nonce, verifier string) string {
-	return p.oauth.AuthCodeURL(
-		state,
-		oauth2.S256ChallengeOption(verifier),
-		oauth2.SetAuthURLParam("nonce", nonce),
-	)
+	options := []oauth2.AuthCodeOption{oauth2.S256ChallengeOption(verifier), oauth2.SetAuthURLParam("nonce", nonce)}
+	options = append(options, p.authorizationOptions...)
+	return p.oauth.AuthCodeURL(state, options...)
 }
 
 func (p *OIDCProvider) Exchange(ctx context.Context, code, verifier, nonce string) (Profile, error) {
@@ -88,15 +128,32 @@ func (p *OIDCProvider) Exchange(ctx context.Context, code, verifier, nonce strin
 	if err := idToken.Claims(&claims); err != nil {
 		return Profile{}, fmt.Errorf("decode ID token claims: %w", err)
 	}
+	return p.profileFromClaims(idToken.Subject, claims), nil
+}
+
+func (p *OIDCProvider) profileFromClaims(subject string, claims map[string]any) Profile {
+	preferredUsername := strings.TrimSpace(stringClaim(claims, "preferred_username"))
+	name := strings.TrimSpace(stringClaim(claims, "name"))
+	if p.usePreferredUsernameAsName {
+		name = preferredUsername
+	}
+	email := ""
+	if p.includeEmail {
+		email = stringClaim(claims, "email")
+	}
 	return Profile{
-		ProviderKind:       "oidc",
-		ProviderKey:        p.issuer,
-		Subject:            strings.TrimSpace(idToken.Subject),
-		Name:               stringClaim(claims, "name"),
-		PreferredUsername:  stringClaim(claims, "preferred_username"),
-		Email:              stringClaim(claims, "email"),
+		ProviderKind:       p.providerKind,
+		ProviderKey:        p.providerKey,
+		Subject:            strings.TrimSpace(subject),
+		Name:               name,
+		PreferredUsername:  preferredUsername,
+		Email:              email,
 		GameNickSuggestion: oidcGameNickSuggestion(claims, p.gameNickClaim),
-	}, nil
+	}
+}
+
+func twitchUsernameClaims() oauth2.AuthCodeOption {
+	return oauth2.SetAuthURLParam("claims", `{"id_token":{"preferred_username":null}}`)
 }
 
 func oidcGameNickSuggestion(claims map[string]any, customClaim string) string {

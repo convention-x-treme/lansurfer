@@ -60,6 +60,7 @@ This document records both the implemented prototype baseline and the approved 1
 - HTMX
 - Tailwind CSS
 - DaisyUI
+- Phosphor Icons (Regular + Fill webfonts)
 - TypeScript for limited browser-specific behavior
 - esbuild
 - `go:embed`
@@ -439,6 +440,8 @@ Linking and unlinking are explicit authenticated account operations, and an acco
 
 Both providers resolve to the same local User/session model. Required Game Nick selection is provider-independent. A Discord display name may seed the Game Nick form but does not become LANsurfer public identity automatically.
 
+Post-1.0 Twitch authentication is a third provider adapter in the same registry. It reuses OIDC discovery, PKCE, nonce, authorization-code exchange, ID-token validation, and the existing OAuth flow service. Its fixed `provider_kind` and `provider_key` are both `twitch`; its verified Twitch `sub` remains the external identity subject. It requests `openid` and the `preferred_username` ID-token claim, never email. The same local identity, linking, onboarding, and session paths apply unchanged.
+
 Provider names and email addresses are private account data. Normal player and global administrator views must not expose them to anyone except the account owner.
 
 ---
@@ -467,11 +470,15 @@ LANSURFER_DISCORD_CLIENT_SECRET
 LANSURFER_DATA_ENCRYPTION_KEY
 LANSURFER_WEBPUSH_PUBLIC_KEY
 LANSURFER_WEBPUSH_PRIVATE_KEY
-LANSURFER_IGDB_CLIENT_ID
-LANSURFER_IGDB_CLIENT_SECRET
+LANSURFER_TWITCH_CLIENT_ID
+LANSURFER_TWITCH_CLIENT_SECRET
+LANSURFER_TWITCH_AUTH_ENABLED
+LANSURFER_IGDB_ENABLED
 ```
 
 `LANSURFER_OIDC_CLIENT_SECRET` is optional for public clients using PKCE and required when the provider configures LANsurfer as a confidential client.
+
+Twitch application credentials are shared only by Twitch authentication and IGDB discovery. Each capability is disabled by default and enabled with its own strict boolean flag; enabling either requires both shared credentials. The two capabilities do not share access tokens, clients, retries, or runtime state. Legacy `LANSURFER_IGDB_CLIENT_ID` and `LANSURFER_IGDB_CLIENT_SECRET` are not supported.
 
 Provider credentials, the 32-byte data-encryption key, and VAPID private key remain operator configuration and must not be stored as ordinary product settings.
 
@@ -575,6 +582,7 @@ IGDB covers are the only approved remote content exception. Allow images only fr
 ## 18. Frontend Architecture
 
 `templ` renders full pages and HTMX fragments. DaisyUI provides the stable base component vocabulary; Tailwind handles layout/local variations. Avoid another UI framework.
+Icons are the Phosphor webfonts (Regular default, Fill for emphasized state), consumed as plain CSS classes in templ markup with `currentColor`; TypeScript does not manage icons.
 
 TypeScript handles only browser-specific progressive enhancement such as SSE connection handling, toast/dialog helpers, installability/service-worker registration, and Web Push permission/subscription behavior. Do not implement domain decisions in TypeScript.
 
@@ -587,6 +595,7 @@ When Tracks D and E both need browser changes, Track D owns the service-worker s
 Build frontend assets during development/CI. Production artifacts are embedded using `go:embed`.
 
 The deployed application should not require Node.js, package managers, Tailwind CLI, templ CLI, or esbuild at runtime.
+Icon webfonts and their stylesheet are bundled and embedded like the fonts through `scripts/prepare-assets.mjs`; there is no runtime icon CDN and no CSP change — the IGDB cover host stays the only remote-content exception.
 
 ---
 

@@ -25,6 +25,8 @@ For stable 1.0:
 
 Post-1.0 items are intentionally **not scheduled to a version** unless the roadmap is explicitly changed.
 
+Implemented post-1.0 scope includes [#40](https://github.com/convention-x-treme/lansurfer/issues/40): optional Twitch authentication. Twitch is a third independently configured login provider using the existing local identity/linking/session model; it shares Twitch application credentials with independently enabled IGDB discovery and does not request email.
+
 ## Completed prototype baseline
 
 The completed prototype established:

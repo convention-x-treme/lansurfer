@@ -26,7 +26,7 @@ const (
 	tokenExpiryMargin = time.Minute
 )
 
-const gameFields = "id,name,slug,game_type.type,first_release_date,parent_game,version_parent,platforms.name,alternative_names.name,cover.image_id,updated_at,checksum"
+const gameFields = "id,name,slug,game_type.type,first_release_date,parent_game,version_parent,platforms.id,platforms.name,alternative_names.name,cover.image_id,updated_at,checksum,summary,genres.name,game_modes.name,multiplayer_modes.*"
 
 type Option func(*Client)
 
@@ -314,11 +314,15 @@ func mapProviderGame(source igdbGame) game.ProviderGame {
 		FirstReleaseDate:  unixTime(source.FirstReleaseDate),
 		ParentExternalID:  optionalExternalID(source.ParentGame),
 		VersionParentID:   optionalExternalID(source.VersionParent),
-		PlatformNames:     names(source.Platforms),
+		PlatformNames:     platformNames(source.Platforms),
 		AlternativeNames:  names(source.AlternativeNames),
 		CoverImageID:      source.Cover.ImageID,
 		ProviderUpdatedAt: unixTime(source.UpdatedAt),
 		Checksum:          source.Checksum,
+		Summary:           source.Summary,
+		GenreNames:        names(source.Genres),
+		GameModeNames:     names(source.GameModes),
+		MultiplayerModes:  mapMultiplayerModes(source.MultiplayerModes, source.Platforms),
 	}
 }
 
@@ -354,18 +358,22 @@ type tokenResponse struct {
 }
 
 type igdbGame struct {
-	ID               int64        `json:"id"`
-	Name             string       `json:"name"`
-	Slug             string       `json:"slug"`
-	GameType         gameType     `json:"game_type"`
-	FirstReleaseDate *int64       `json:"first_release_date"`
-	ParentGame       *int64       `json:"parent_game"`
-	VersionParent    *int64       `json:"version_parent"`
-	Platforms        []namedValue `json:"platforms"`
-	AlternativeNames []namedValue `json:"alternative_names"`
-	Cover            cover        `json:"cover"`
-	UpdatedAt        *int64       `json:"updated_at"`
-	Checksum         string       `json:"checksum"`
+	ID               int64                 `json:"id"`
+	Name             string                `json:"name"`
+	Slug             string                `json:"slug"`
+	GameType         gameType              `json:"game_type"`
+	FirstReleaseDate *int64                `json:"first_release_date"`
+	ParentGame       *int64                `json:"parent_game"`
+	VersionParent    *int64                `json:"version_parent"`
+	Platforms        []platform            `json:"platforms"`
+	AlternativeNames []namedValue          `json:"alternative_names"`
+	Cover            cover                 `json:"cover"`
+	UpdatedAt        *int64                `json:"updated_at"`
+	Checksum         string                `json:"checksum"`
+	Summary          string                `json:"summary"`
+	Genres           []namedValue          `json:"genres"`
+	GameModes        []namedValue          `json:"game_modes"`
+	MultiplayerModes []igdbMultiplayerMode `json:"multiplayer_modes"`
 }
 
 type gameType struct {
@@ -378,4 +386,81 @@ type namedValue struct {
 
 type cover struct {
 	ImageID string `json:"image_id"`
+}
+
+type platform struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
+// igdbMultiplayerMode mirrors one IGDB multiplayer_modes entry. Numeric
+// limits stay pointers so an absent field stays distinguishable from a
+// transferred value until the "0 means unset" normalization in
+// positiveLimit runs.
+type igdbMultiplayerMode struct {
+	Platform          *int64 `json:"platform"`
+	CampaignCoop      bool   `json:"campaigncoop"`
+	DropIn            bool   `json:"dropin"`
+	LanCoop           bool   `json:"lancoop"`
+	OfflineCoop       bool   `json:"offlinecoop"`
+	OfflineCoopMax    *int   `json:"offlinecoopmax"`
+	OfflineMax        *int   `json:"offlinemax"`
+	OnlineCoop        bool   `json:"onlinecoop"`
+	OnlineCoopMax     *int   `json:"onlinecoopmax"`
+	OnlineMax         *int   `json:"onlinemax"`
+	SplitScreen       bool   `json:"splitscreen"`
+	SplitScreenOnline bool   `json:"splitscreenonline"`
+}
+
+func platformNames(source []platform) []string {
+	if source == nil {
+		return nil
+	}
+	result := make([]string, len(source))
+	for i, value := range source {
+		result[i] = value.Name
+	}
+	return result
+}
+
+func mapMultiplayerModes(source []igdbMultiplayerMode, platforms []platform) []game.MultiplayerMode {
+	if len(source) == 0 {
+		return nil
+	}
+	platformName := make(map[int64]string, len(platforms))
+	for _, value := range platforms {
+		platformName[value.ID] = value.Name
+	}
+	modes := make([]game.MultiplayerMode, 0, len(source))
+	for _, mode := range source {
+		mapped := game.MultiplayerMode{
+			CampaignCoop:      mode.CampaignCoop,
+			DropIn:            mode.DropIn,
+			LanCoop:           mode.LanCoop,
+			OfflineCoop:       mode.OfflineCoop,
+			OnlineCoop:        mode.OnlineCoop,
+			SplitScreen:       mode.SplitScreen,
+			SplitScreenOnline: mode.SplitScreenOnline,
+			OfflineCoopMax:    positiveLimit(mode.OfflineCoopMax),
+			OfflineMax:        positiveLimit(mode.OfflineMax),
+			OnlineCoopMax:     positiveLimit(mode.OnlineCoopMax),
+			OnlineMax:         positiveLimit(mode.OnlineMax),
+		}
+		if mode.Platform != nil {
+			mapped.PlatformIGDBID = *mode.Platform
+			mapped.PlatformName = platformName[*mode.Platform]
+		}
+		modes = append(modes, mapped)
+	}
+	return modes
+}
+
+// positiveLimit normalizes IGDB's "unset" representation: the API omits
+// unreported limits and reports 0 for them, so both map to nil and a nil
+// limit never reads as a zero-player cap (issue #46 decision).
+func positiveLimit(value *int) *int {
+	if value == nil || *value <= 0 {
+		return nil
+	}
+	return value
 }

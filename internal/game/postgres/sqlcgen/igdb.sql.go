@@ -120,6 +120,59 @@ func (q *Queries) BeginIGDBGeneration(ctx context.Context) (string, error) {
 	return generation_id, err
 }
 
+const clearIGDBEnrichmentMultiplayerModesForExternalID = `-- name: ClearIGDBEnrichmentMultiplayerModesForExternalID :exec
+DELETE FROM game_igdb_enrichment_multiplayer_modes child
+WHERE EXISTS (
+    SELECT 1
+    FROM igdb_game_index_multiplayer_modes m
+    JOIN igdb_provider_state state ON state.singleton
+    JOIN igdb_game_index provider_game
+      ON provider_game.generation_id = state.active_generation_id
+     AND provider_game.igdb_id = m.igdb_id
+    WHERE provider_game.igdb_id::text = $1::text
+) AND child.game_id = (
+    SELECT mapping.game_id
+    FROM game_external_ids mapping
+    WHERE lower(btrim(mapping.provider)) = 'igdb'
+      AND mapping.external_id = $1::text
+)
+`
+
+// Deletes one linked Game's last-known-good multiplayer snapshot, but only
+// when the active generation reports mode rows for that provider record.
+// Paired with InsertIGDBEnrichmentMultiplayerModesForExternalID in the same
+// transaction: clear-then-insert in two statements, because data-modifying
+// CTEs in one statement share one snapshot and the insert would collide
+// with rows the delete in the same statement has not removed yet. A
+// provider record with no mode rows never clears anything (the same
+// last-known-good rule the scalar/array columns use).
+func (q *Queries) ClearIGDBEnrichmentMultiplayerModesForExternalID(ctx context.Context, externalID string) error {
+	_, err := q.db.Exec(ctx, clearIGDBEnrichmentMultiplayerModesForExternalID, externalID)
+	return err
+}
+
+const clearIGDBEnrichmentMultiplayerModesFromGeneration = `-- name: ClearIGDBEnrichmentMultiplayerModesFromGeneration :exec
+DELETE FROM game_igdb_enrichment_multiplayer_modes child
+USING game_external_ids mapping
+WHERE lower(btrim(mapping.provider)) = 'igdb'
+  AND mapping.game_id = child.game_id
+  AND EXISTS (
+      SELECT 1
+      FROM igdb_game_index_multiplayer_modes m
+      WHERE m.generation_id = $1::uuid
+        AND m.igdb_id::text = mapping.external_id
+  )
+`
+
+// Same clear rule as ClearIGDBEnrichmentMultiplayerModesForExternalID for
+// every IGDB mapping at once, from the generation just activated: per game,
+// snapshot rows are removed only when that generation reports modes for the
+// record. Paired with InsertIGDBEnrichmentMultiplayerModesFromGeneration.
+func (q *Queries) ClearIGDBEnrichmentMultiplayerModesFromGeneration(ctx context.Context, generationID pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, clearIGDBEnrichmentMultiplayerModesFromGeneration, generationID)
+	return err
+}
+
 const completeIGDBGeneration = `-- name: CompleteIGDBGeneration :execrows
 UPDATE igdb_sync_generations
 SET completed_at = now(),
@@ -303,6 +356,8 @@ SELECT g.id::text, g.name, g.slug,
        enrichment.game_type,
        enrichment.platform_names,
        enrichment.first_release_date,
+       enrichment.summary,
+       enrichment.genre_names,
        EXISTS (
            SELECT 1
            FROM game_subscriptions gs
@@ -328,6 +383,8 @@ type FindLocalDiscoveryGameRow struct {
 	GameType         pgtype.Text
 	PlatformNames    []string
 	FirstReleaseDate pgtype.Timestamptz
+	Summary          pgtype.Text
+	GenreNames       []string
 	Subscribed       bool
 }
 
@@ -350,6 +407,8 @@ func (q *Queries) FindLocalDiscoveryGame(ctx context.Context, arg FindLocalDisco
 		&i.GameType,
 		&i.PlatformNames,
 		&i.FirstReleaseDate,
+		&i.Summary,
+		&i.GenreNames,
 		&i.Subscribed,
 	)
 	return i, err
@@ -367,7 +426,9 @@ WITH active_generation AS (
            provider_game.game_type,
            provider_game.platform_names,
            provider_game.first_release_date,
-           provider_game.cover_image_id
+           provider_game.cover_image_id,
+           provider_game.summary,
+           provider_game.genre_names
     FROM igdb_game_index provider_game
     JOIN active_generation ON active_generation.id = provider_game.generation_id
     WHERE provider_game.igdb_id = $1
@@ -381,6 +442,8 @@ WITH active_generation AS (
         enrichment.platform_names,
         enrichment.first_release_date,
         enrichment.cover_image_id,
+        enrichment.summary,
+        enrichment.genre_names,
         true::boolean AS materialized,
         (subscription.game_id IS NOT NULL)::boolean AS subscribed
     FROM provider_row
@@ -405,6 +468,8 @@ WITH active_generation AS (
         provider_row.platform_names,
         provider_row.first_release_date,
         provider_row.cover_image_id,
+        provider_row.summary,
+        provider_row.genre_names,
         false::boolean AS materialized,
         false::boolean AS subscribed
     FROM provider_row
@@ -417,11 +482,13 @@ WITH active_generation AS (
     )
 )
 SELECT external_id, local_game_id, name, slug, game_type, platform_names,
-       first_release_date, cover_image_id, materialized, subscribed
+       first_release_date, cover_image_id, summary, genre_names,
+       materialized, subscribed
 FROM materialized_row
 UNION ALL
 SELECT external_id, local_game_id, name, slug, game_type, platform_names,
-       first_release_date, cover_image_id, materialized, subscribed
+       first_release_date, cover_image_id, summary, genre_names,
+       materialized, subscribed
 FROM unmaterialized_row
 `
 
@@ -439,6 +506,8 @@ type FindProviderDiscoveryGameRow struct {
 	PlatformNames    []string
 	FirstReleaseDate pgtype.Timestamptz
 	CoverImageID     pgtype.Text
+	Summary          pgtype.Text
+	GenreNames       []string
 	Materialized     bool
 	Subscribed       bool
 }
@@ -480,6 +549,8 @@ func (q *Queries) FindProviderDiscoveryGame(ctx context.Context, arg FindProvide
 		&i.PlatformNames,
 		&i.FirstReleaseDate,
 		&i.CoverImageID,
+		&i.Summary,
+		&i.GenreNames,
 		&i.Materialized,
 		&i.Subscribed,
 	)
@@ -497,6 +568,88 @@ func (q *Queries) GameSlugTaken(ctx context.Context, slug string) (bool, error) 
 	var taken bool
 	err := row.Scan(&taken)
 	return taken, err
+}
+
+const iGDBMultiplayerModesForExternalIDs = `-- name: IGDBMultiplayerModesForExternalIDs :many
+SELECT m.igdb_id::text AS external_id,
+       m.ordinal,
+       m.platform_igdb_id,
+       m.platform_name,
+       m.campaign_coop,
+       m.drop_in,
+       m.lan_coop,
+       m.offline_coop,
+       m.online_coop,
+       m.split_screen,
+       m.split_screen_online,
+       m.offline_coop_max,
+       m.offline_max,
+       m.online_coop_max,
+       m.online_max
+FROM igdb_game_index_multiplayer_modes m
+JOIN igdb_provider_state state
+  ON state.singleton
+ AND state.active_generation_id = m.generation_id
+JOIN unnest($1::bigint[]) AS wanted(igdb_id)
+  ON wanted.igdb_id = m.igdb_id
+ORDER BY m.igdb_id, m.ordinal
+`
+
+type IGDBMultiplayerModesForExternalIDsRow struct {
+	ExternalID        string
+	Ordinal           int32
+	PlatformIgdbID    pgtype.Int8
+	PlatformName      pgtype.Text
+	CampaignCoop      bool
+	DropIn            bool
+	LanCoop           bool
+	OfflineCoop       bool
+	OnlineCoop        bool
+	SplitScreen       bool
+	SplitScreenOnline bool
+	OfflineCoopMax    pgtype.Int4
+	OfflineMax        pgtype.Int4
+	OnlineCoopMax     pgtype.Int4
+	OnlineMax         pgtype.Int4
+}
+
+// Read-only: the active generation's multiplayer modes for the given
+// provider records, used by the Admin UI. Rows are ordered by igdb_id and
+// ordinal; the caller groups them by external ID.
+func (q *Queries) IGDBMultiplayerModesForExternalIDs(ctx context.Context, externalIds []int64) ([]IGDBMultiplayerModesForExternalIDsRow, error) {
+	rows, err := q.db.Query(ctx, iGDBMultiplayerModesForExternalIDs, externalIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []IGDBMultiplayerModesForExternalIDsRow
+	for rows.Next() {
+		var i IGDBMultiplayerModesForExternalIDsRow
+		if err := rows.Scan(
+			&i.ExternalID,
+			&i.Ordinal,
+			&i.PlatformIgdbID,
+			&i.PlatformName,
+			&i.CampaignCoop,
+			&i.DropIn,
+			&i.LanCoop,
+			&i.OfflineCoop,
+			&i.OnlineCoop,
+			&i.SplitScreen,
+			&i.SplitScreenOnline,
+			&i.OfflineCoopMax,
+			&i.OfflineMax,
+			&i.OnlineCoopMax,
+			&i.OnlineMax,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const iGDBProviderStatus = `-- name: IGDBProviderStatus :one
@@ -551,6 +704,88 @@ func (q *Queries) IGDBProviderStatus(ctx context.Context) (IGDBProviderStatusRow
 	return i, err
 }
 
+const insertIGDBEnrichmentMultiplayerModesForExternalID = `-- name: InsertIGDBEnrichmentMultiplayerModesForExternalID :exec
+INSERT INTO game_igdb_enrichment_multiplayer_modes (
+    game_id, ordinal, platform_igdb_id, platform_name,
+    campaign_coop, drop_in, lan_coop, offline_coop, online_coop,
+    split_screen, split_screen_online,
+    offline_coop_max, offline_max, online_coop_max, online_max
+)
+SELECT mapping.game_id,
+       m.ordinal,
+       m.platform_igdb_id,
+       m.platform_name,
+       m.campaign_coop,
+       m.drop_in,
+       m.lan_coop,
+       m.offline_coop,
+       m.online_coop,
+       m.split_screen,
+       m.split_screen_online,
+       m.offline_coop_max,
+       m.offline_max,
+       m.online_coop_max,
+       m.online_max
+FROM game_external_ids mapping
+JOIN igdb_provider_state state ON state.singleton
+JOIN igdb_game_index provider_game
+  ON provider_game.generation_id = state.active_generation_id
+ AND provider_game.igdb_id::text = mapping.external_id
+JOIN igdb_game_index_multiplayer_modes m
+  ON m.generation_id = provider_game.generation_id
+ AND m.igdb_id = provider_game.igdb_id
+WHERE lower(btrim(mapping.provider)) = 'igdb'
+  AND mapping.external_id = $1::text
+`
+
+// Copies the active generation's mode rows into one linked Game's
+// last-known-good snapshot. Runs after the matching Clear... query; inserts
+// nothing when the provider record has no mode rows.
+func (q *Queries) InsertIGDBEnrichmentMultiplayerModesForExternalID(ctx context.Context, externalID string) error {
+	_, err := q.db.Exec(ctx, insertIGDBEnrichmentMultiplayerModesForExternalID, externalID)
+	return err
+}
+
+const insertIGDBEnrichmentMultiplayerModesFromGeneration = `-- name: InsertIGDBEnrichmentMultiplayerModesFromGeneration :exec
+INSERT INTO game_igdb_enrichment_multiplayer_modes (
+    game_id, ordinal, platform_igdb_id, platform_name,
+    campaign_coop, drop_in, lan_coop, offline_coop, online_coop,
+    split_screen, split_screen_online,
+    offline_coop_max, offline_max, online_coop_max, online_max
+)
+SELECT mapping.game_id,
+       m.ordinal,
+       m.platform_igdb_id,
+       m.platform_name,
+       m.campaign_coop,
+       m.drop_in,
+       m.lan_coop,
+       m.offline_coop,
+       m.online_coop,
+       m.split_screen,
+       m.split_screen_online,
+       m.offline_coop_max,
+       m.offline_max,
+       m.online_coop_max,
+       m.online_max
+FROM game_external_ids mapping
+JOIN igdb_game_index provider_game
+  ON provider_game.generation_id = $1::uuid
+ AND provider_game.igdb_id::text = mapping.external_id
+JOIN igdb_game_index_multiplayer_modes m
+  ON m.generation_id = provider_game.generation_id
+ AND m.igdb_id = provider_game.igdb_id
+WHERE lower(btrim(mapping.provider)) = 'igdb'
+`
+
+// Copies the just-activated generation's mode rows into the last-known-good
+// snapshot of every mapped Game. Runs after the matching Clear... query;
+// games whose provider record has no mode rows are untouched.
+func (q *Queries) InsertIGDBEnrichmentMultiplayerModesFromGeneration(ctx context.Context, generationID pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, insertIGDBEnrichmentMultiplayerModesFromGeneration, generationID)
+	return err
+}
+
 const recordIGDBGenerationFailure = `-- name: RecordIGDBGenerationFailure :exec
 UPDATE igdb_provider_state
 SET last_attempt_succeeded = false,
@@ -572,7 +807,8 @@ func (q *Queries) RecordIGDBGenerationFailure(ctx context.Context, arg RecordIGD
 const refreshIGDBEnrichmentFromGeneration = `-- name: RefreshIGDBEnrichmentFromGeneration :exec
 INSERT INTO game_igdb_enrichment (
     game_id, external_id, cover_image_id, game_type, platform_names,
-    first_release_date, provider_updated_at
+    first_release_date, provider_updated_at,
+    summary, genre_names, game_mode_names
 )
 SELECT
     mapping.game_id,
@@ -581,7 +817,10 @@ SELECT
     provider_game.game_type,
     provider_game.platform_names,
     provider_game.first_release_date,
-    provider_game.igdb_updated_at
+    provider_game.igdb_updated_at,
+    provider_game.summary,
+    provider_game.genre_names,
+    provider_game.game_mode_names
 FROM game_external_ids mapping
 JOIN igdb_game_index provider_game
   ON provider_game.generation_id = $1::uuid
@@ -596,6 +835,15 @@ SET cover_image_id = COALESCE(NULLIF(EXCLUDED.cover_image_id, ''), game_igdb_enr
     END,
     first_release_date = COALESCE(EXCLUDED.first_release_date, game_igdb_enrichment.first_release_date),
     provider_updated_at = COALESCE(EXCLUDED.provider_updated_at, game_igdb_enrichment.provider_updated_at),
+    summary = COALESCE(NULLIF(btrim(EXCLUDED.summary), ''), game_igdb_enrichment.summary),
+    genre_names = CASE
+        WHEN cardinality(EXCLUDED.genre_names) > 0 THEN EXCLUDED.genre_names
+        ELSE game_igdb_enrichment.genre_names
+    END,
+    game_mode_names = CASE
+        WHEN cardinality(EXCLUDED.game_mode_names) > 0 THEN EXCLUDED.game_mode_names
+        ELSE game_igdb_enrichment.game_mode_names
+    END,
     updated_at = now()
 `
 
@@ -666,6 +914,8 @@ WITH active_generation AS (
         provider_game.platform_names,
         provider_game.first_release_date,
         provider_game.cover_image_id,
+        provider_game.summary,
+        provider_game.genre_names,
         CASE
             WHEN lower(provider_game.name) = lower($2::text)
               OR EXISTS (
@@ -705,6 +955,8 @@ WITH active_generation AS (
         enrichment.platform_names,
         enrichment.first_release_date,
         enrichment.cover_image_id,
+        enrichment.summary,
+        enrichment.genre_names,
         true::boolean AS materialized,
         (subscription.game_id IS NOT NULL)::boolean AS subscribed,
         provider_matches.match_rank,
@@ -731,6 +983,8 @@ WITH active_generation AS (
         provider_matches.platform_names,
         provider_matches.first_release_date,
         provider_matches.cover_image_id,
+        provider_matches.summary,
+        provider_matches.genre_names,
         false::boolean AS materialized,
         false::boolean AS subscribed,
         provider_matches.match_rank,
@@ -754,6 +1008,8 @@ WITH active_generation AS (
         enrichment.platform_names,
         enrichment.first_release_date,
         enrichment.cover_image_id,
+        enrichment.summary,
+        enrichment.genre_names,
         true::boolean AS materialized,
         (gs.game_id IS NOT NULL)::boolean AS subscribed,
         CASE
@@ -791,21 +1047,22 @@ WITH active_generation AS (
           )
       )
 ), candidates AS (
-    SELECT external_id, local_game_id, name, slug, game_type, platform_names, first_release_date, cover_image_id, materialized, subscribed, match_rank, identity_key FROM local_matches
+    SELECT external_id, local_game_id, name, slug, game_type, platform_names, first_release_date, cover_image_id, summary, genre_names, materialized, subscribed, match_rank, identity_key FROM local_matches
     UNION ALL
-    SELECT external_id, local_game_id, name, slug, game_type, platform_names, first_release_date, cover_image_id, materialized, subscribed, match_rank, identity_key FROM materialized_provider_rows
+    SELECT external_id, local_game_id, name, slug, game_type, platform_names, first_release_date, cover_image_id, summary, genre_names, materialized, subscribed, match_rank, identity_key FROM materialized_provider_rows
     UNION ALL
-    SELECT external_id, local_game_id, name, slug, game_type, platform_names, first_release_date, cover_image_id, materialized, subscribed, match_rank, identity_key FROM unmaterialized_provider_rows
+    SELECT external_id, local_game_id, name, slug, game_type, platform_names, first_release_date, cover_image_id, summary, genre_names, materialized, subscribed, match_rank, identity_key FROM unmaterialized_provider_rows
 ), best AS (
     SELECT DISTINCT ON (identity_key)
         external_id, local_game_id, name, slug, game_type, platform_names,
-        first_release_date, cover_image_id, materialized, subscribed,
-        match_rank, identity_key
+        first_release_date, cover_image_id, summary, genre_names,
+        materialized, subscribed, match_rank, identity_key
     FROM candidates
     ORDER BY identity_key, match_rank
 )
 SELECT external_id, local_game_id, name, slug, game_type, platform_names,
-       first_release_date, cover_image_id, materialized, subscribed
+       first_release_date, cover_image_id, summary, genre_names,
+       materialized, subscribed
 FROM best
 ORDER BY
     match_rank,
@@ -833,6 +1090,8 @@ type SearchDiscoveryGamesRow struct {
 	PlatformNames    []string
 	FirstReleaseDate pgtype.Timestamptz
 	CoverImageID     pgtype.Text
+	Summary          pgtype.Text
+	GenreNames       []string
 	Materialized     bool
 	Subscribed       bool
 }
@@ -890,6 +1149,8 @@ func (q *Queries) SearchDiscoveryGames(ctx context.Context, arg SearchDiscoveryG
 			&i.PlatformNames,
 			&i.FirstReleaseDate,
 			&i.CoverImageID,
+			&i.Summary,
+			&i.GenreNames,
 			&i.Materialized,
 			&i.Subscribed,
 		); err != nil {
@@ -903,11 +1164,93 @@ func (q *Queries) SearchDiscoveryGames(ctx context.Context, arg SearchDiscoveryG
 	return items, nil
 }
 
+const storeIGDBMultiplayerModes = `-- name: StoreIGDBMultiplayerModes :exec
+WITH generation AS (
+    SELECT id
+    FROM igdb_sync_generations
+    WHERE id = $2::uuid
+      AND status = 'syncing'
+    FOR SHARE
+), modes AS (
+    -- One jsonb parameter carries the mode rows of a single provider
+    -- record; array order is the ordinal. Each field is cast explicitly
+    -- because sqlc cannot infer types through a record-function column
+    -- definition list, and JSON null casts to SQL NULL for the nullable
+    -- platform reference and unreported player limits.
+    SELECT (row_number() OVER ())::int - 1 AS ordinal,
+           (entry.m ->> 'platform_igdb_id')::bigint AS platform_igdb_id,
+           (entry.m ->> 'platform_name')::text AS platform_name,
+           (entry.m ->> 'campaign_coop')::boolean AS campaign_coop,
+           (entry.m ->> 'drop_in')::boolean AS drop_in,
+           (entry.m ->> 'lan_coop')::boolean AS lan_coop,
+           (entry.m ->> 'offline_coop')::boolean AS offline_coop,
+           (entry.m ->> 'online_coop')::boolean AS online_coop,
+           (entry.m ->> 'split_screen')::boolean AS split_screen,
+           (entry.m ->> 'split_screen_online')::boolean AS split_screen_online,
+           (entry.m ->> 'offline_coop_max')::int AS offline_coop_max,
+           (entry.m ->> 'offline_max')::int AS offline_max,
+           (entry.m ->> 'online_coop_max')::int AS online_coop_max,
+           (entry.m ->> 'online_max')::int AS online_max
+    FROM jsonb_array_elements($3::jsonb) AS entry(m)
+)
+INSERT INTO igdb_game_index_multiplayer_modes (
+    generation_id,
+    igdb_id,
+    ordinal,
+    platform_igdb_id,
+    platform_name,
+    campaign_coop,
+    drop_in,
+    lan_coop,
+    offline_coop,
+    online_coop,
+    split_screen,
+    split_screen_online,
+    offline_coop_max,
+    offline_max,
+    online_coop_max,
+    online_max
+)
+SELECT generation.id,
+       $1,
+       modes.ordinal,
+       modes.platform_igdb_id,
+       modes.platform_name,
+       modes.campaign_coop,
+       modes.drop_in,
+       modes.lan_coop,
+       modes.offline_coop,
+       modes.online_coop,
+       modes.split_screen,
+       modes.split_screen_online,
+       modes.offline_coop_max,
+       modes.offline_max,
+       modes.online_coop_max,
+       modes.online_max
+FROM generation
+CROSS JOIN modes
+`
+
+type StoreIGDBMultiplayerModesParams struct {
+	IgdbID       int64
+	GenerationID pgtype.UUID
+	Modes        []byte
+}
+
+// Stages the platform-specific multiplayer modes of one provider record
+// inside the still-syncing generation. Called only for records that have
+// modes; the composite FK to igdb_game_index ties every row to its parent
+// record, so generation cleanup removes them together.
+func (q *Queries) StoreIGDBMultiplayerModes(ctx context.Context, arg StoreIGDBMultiplayerModesParams) error {
+	_, err := q.db.Exec(ctx, storeIGDBMultiplayerModes, arg.IgdbID, arg.GenerationID, arg.Modes)
+	return err
+}
+
 const storeIGDBProviderGame = `-- name: StoreIGDBProviderGame :execrows
 WITH generation AS (
     SELECT id
     FROM igdb_sync_generations
-    WHERE id = $14::uuid
+    WHERE id = $17::uuid
       AND status = 'syncing'
     FOR SHARE
 )
@@ -925,7 +1268,10 @@ INSERT INTO igdb_game_index (
     cover_image_id,
     igdb_updated_at,
     checksum,
-    search_text
+    search_text,
+    summary,
+    genre_names,
+    game_mode_names
 ) SELECT
     generation.id,
     $1,
@@ -940,7 +1286,10 @@ INSERT INTO igdb_game_index (
     $10,
     $11,
     $12,
-    $13
+    $13,
+    $14,
+    $15,
+    $16
 FROM generation
 `
 
@@ -958,6 +1307,9 @@ type StoreIGDBProviderGameParams struct {
 	IgdbUpdatedAt       pgtype.Timestamptz
 	Checksum            pgtype.UUID
 	SearchText          string
+	Summary             pgtype.Text
+	GenreNames          []string
+	GameModeNames       []string
 	GenerationID        pgtype.UUID
 }
 
@@ -976,6 +1328,9 @@ func (q *Queries) StoreIGDBProviderGame(ctx context.Context, arg StoreIGDBProvid
 		arg.IgdbUpdatedAt,
 		arg.Checksum,
 		arg.SearchText,
+		arg.Summary,
+		arg.GenreNames,
+		arg.GameModeNames,
 		arg.GenerationID,
 	)
 	if err != nil {
@@ -987,7 +1342,8 @@ func (q *Queries) StoreIGDBProviderGame(ctx context.Context, arg StoreIGDBProvid
 const upsertIGDBEnrichmentForExternalID = `-- name: UpsertIGDBEnrichmentForExternalID :exec
 INSERT INTO game_igdb_enrichment (
     game_id, external_id, cover_image_id, game_type, platform_names,
-    first_release_date, provider_updated_at
+    first_release_date, provider_updated_at,
+    summary, genre_names, game_mode_names
 )
 SELECT
     mapping.game_id,
@@ -996,7 +1352,10 @@ SELECT
     provider_game.game_type,
     provider_game.platform_names,
     provider_game.first_release_date,
-    provider_game.igdb_updated_at
+    provider_game.igdb_updated_at,
+    provider_game.summary,
+    provider_game.genre_names,
+    provider_game.game_mode_names
 FROM game_external_ids mapping
 JOIN igdb_provider_state state ON state.singleton
 JOIN igdb_game_index provider_game
@@ -1013,6 +1372,15 @@ SET cover_image_id = COALESCE(NULLIF(EXCLUDED.cover_image_id, ''), game_igdb_enr
     END,
     first_release_date = COALESCE(EXCLUDED.first_release_date, game_igdb_enrichment.first_release_date),
     provider_updated_at = COALESCE(EXCLUDED.provider_updated_at, game_igdb_enrichment.provider_updated_at),
+    summary = COALESCE(NULLIF(btrim(EXCLUDED.summary), ''), game_igdb_enrichment.summary),
+    genre_names = CASE
+        WHEN cardinality(EXCLUDED.genre_names) > 0 THEN EXCLUDED.genre_names
+        ELSE game_igdb_enrichment.genre_names
+    END,
+    game_mode_names = CASE
+        WHEN cardinality(EXCLUDED.game_mode_names) > 0 THEN EXCLUDED.game_mode_names
+        ELSE game_igdb_enrichment.game_mode_names
+    END,
     updated_at = now()
 `
 

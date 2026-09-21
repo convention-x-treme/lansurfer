@@ -142,8 +142,10 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 		authenticated.Get("/auth/login", authenticationHandler.Login)
 		authenticated.Get("/auth/oidc", authenticationHandler.BeginFor("oidc"))
 		authenticated.Get("/auth/discord", authenticationHandler.BeginFor("discord"))
+		authenticated.Get("/auth/twitch", authenticationHandler.BeginFor("twitch"))
 		authenticated.Get("/auth/callback", authenticationHandler.CallbackFor("oidc"))
 		authenticated.Get("/auth/discord/callback", authenticationHandler.CallbackFor("discord"))
+		authenticated.Get("/auth/twitch/callback", authenticationHandler.CallbackFor("twitch"))
 		authenticated.Route("/onboarding", func(onboarding chi.Router) {
 			onboarding.Get("/", onboardingHandler.ShowExisting)
 			onboarding.Post("/", onboardingHandler.SubmitExisting)
@@ -156,6 +158,7 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 			account.Post("/game-nick", accountHandler.RenameGameNick)
 			account.Post("/link/oidc", authenticationHandler.LinkFor("oidc"))
 			account.Post("/link/discord", authenticationHandler.LinkFor("discord"))
+			account.Post("/link/twitch", authenticationHandler.LinkFor("twitch"))
 			account.Post("/identities/{identityID}/unlink", accountHandler.Unlink)
 		})
 		if dependencies.Discovery != nil {

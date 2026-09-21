@@ -128,6 +128,19 @@ In the [Discord Developer Portal](https://discord.com/developers/applications), 
 
 OIDC and Discord identities resolve to the same local User only through an explicit, signed-in `/account` link, or by proving an existing account through the other configured provider during onboarding. LANsurfer never merges accounts by matching email address, name, or Game Nick.
 
+### Configure Twitch login and IGDB discovery
+
+Twitch login and IGDB discovery share one Twitch Developer Application but are independently enabled:
+
+```sh
+LANSURFER_TWITCH_CLIENT_ID=
+LANSURFER_TWITCH_CLIENT_SECRET=
+LANSURFER_TWITCH_AUTH_ENABLED=false
+LANSURFER_IGDB_ENABLED=false
+```
+
+Set either enable flag to `true` only after configuring both credentials. Register `<base URL>/auth/twitch/callback` as the Twitch OAuth redirect URI when Twitch login is enabled. Twitch login requests only OpenID Connect identity and a display username; it does not request email. The old `LANSURFER_IGDB_CLIENT_ID` and `LANSURFER_IGDB_CLIENT_SECRET` variables no longer work.
+
 When LANsurfer runs behind a reverse proxy, set `LANSURFER_BASE_URL` to the
 public HTTPS origin. Set `LANSURFER_TRUSTED_PROXIES` to a comma-separated list
 of the proxy IP addresses or CIDR ranges only when client-IP logging should use
