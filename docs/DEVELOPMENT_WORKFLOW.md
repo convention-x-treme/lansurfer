@@ -8,13 +8,14 @@ The workflow is tool-neutral. A planning agent may be ChatGPT in a web chat, ano
 
 Use the smallest authoritative source that answers the question:
 
-1. `docs/PRODUCT.md` — durable product behavior, terminology, and release scope.
-2. `docs/ARCHITECTURE.md` — durable technical decisions, module boundaries, and cross-module contracts.
-3. `AGENTS.md` — repository rules, coding guardrails, and approval boundaries.
-4. `docs/ROADMAP.md` — delivery tracks, dependencies, and release gates. It is not a live progress log.
-5. GitHub tracking issues — current status, remaining checklists, and delivery progress.
-6. Feature design/spec — bounded decisions for one change.
-7. Feature implementation plan — temporary execution instructions.
+1. `docs/DOMAIN_LANGUAGE.md` — canonical domain terms and distinctions.
+2. `docs/PRODUCT.md` — durable product behavior and release scope.
+3. `docs/ARCHITECTURE.md` — durable technical decisions, module boundaries, and cross-module contracts.
+4. `AGENTS.md` — repository rules, coding guardrails, and approval boundaries.
+5. `docs/ROADMAP.md` — delivery tracks, dependencies, and release gates. It is not a live progress log.
+6. GitHub tracking issues — current status, remaining checklists, and delivery progress.
+7. Feature design/spec — bounded decisions for one change.
+8. Feature implementation plan — temporary execution instructions.
 
 An issue, old plan, or historical design never overrides PRODUCT, ARCHITECTURE, or AGENTS.
 
@@ -32,7 +33,7 @@ The planning phase produces an implementation-ready handoff and does not impleme
 
 Before designing the change:
 
-- read the relevant PRODUCT, ARCHITECTURE, AGENTS, ROADMAP, and tracking-issue sections;
+- read the relevant DOMAIN_LANGUAGE, PRODUCT, ARCHITECTURE, AGENTS, ROADMAP, and tracking-issue sections;
 - inspect the existing implementation and tests;
 - confirm that the requested work belongs in current scope;
 - identify generated files, migrations, shared contracts, and verification requirements that the implementation may affect.
@@ -141,7 +142,7 @@ Before declaring implementation complete:
 - run the relevant Taskfile workflows;
 - review generated diffs;
 - record what was and was not verified;
-- identify any affected cross-track contract;
+- identify any affected domain/architecture contract;
 - keep the PR description aligned with the implementation that actually exists.
 
 A draft PR becomes ready for review only after the implementation and required verification are complete, unless the PR explicitly represents a planning/design review only.
@@ -155,16 +156,17 @@ Before merge:
 1. Promote durable product behavior into `PRODUCT.md` when needed.
 2. Promote durable architecture decisions/contracts into `ARCHITECTURE.md` when needed.
 3. Update the relevant GitHub tracker for current delivery status.
-4. Delete temporary implementation plans unless they still provide concrete long-term value.
+4. Delete temporary implementation plans unless they are intentionally retained as historical references from merged PRs/issues or still provide concrete long-term value.
 5. Retain a feature design only when its rationale remains useful beyond PRODUCT/ARCHITECTURE; otherwise delete it as well.
 6. Keep validation/review artifacts only when they are real release or quality evidence.
 
-Git history and the merged PR are the normal execution record. Old plans and agent prompts should not be retained merely as historical proof that work happened.
+Git history and the merged PR are the normal execution record. Old plans should not be retained merely as proof that work happened; retain them only when existing merged PRs/issues intentionally reference them as part of the historical record. Tool-specific agent prompts should not be retained.
 
 ## Documentation ownership summary
 
 | Information | Canonical home |
 | --- | --- |
+| Canonical domain terminology | `docs/DOMAIN_LANGUAGE.md` |
 | What the product should do | `docs/PRODUCT.md` |
 | How the system is structured / durable contracts | `docs/ARCHITECTURE.md` |
 | Repository and agent rules | `AGENTS.md` |
