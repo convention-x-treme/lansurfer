@@ -54,8 +54,7 @@ func TestTwitchAuthorizationURLRequestsOnlyOpenIDAndUsername(t *testing.T) {
 		t.Fatal(err)
 	}
 	query := parsed.Query()
-	if query.Get("scope") != "openid" || strings.Contains(query.Get("scope"), "email") ||
-		!strings.Contains(query.Get("claims"), "preferred_username") {
+	if query.Get("scope") != "openid" || query.Get("claims") != `{"id_token":{"preferred_username":null}}` {
 		t.Fatalf("authorization query = %v", query)
 	}
 }

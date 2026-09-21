@@ -2,14 +2,26 @@ package app
 
 import (
 	"context"
+	"log/slog"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/convention-x-treme/lansurfer/internal/platform/config"
 )
 
 type countingSyncStarter struct {
 	calls chan struct{}
 	count atomic.Int64
+}
+
+func TestNewIGDBSyncRequiresIGDBEnablement(t *testing.T) {
+	if _, ok := newIGDBSync(t.Context(), &config.Twitch{AuthEnabled: true}, nil, slog.Default()).(disabledIGDBSync); !ok {
+		t.Fatal("Twitch authentication unexpectedly enabled IGDB synchronization")
+	}
+	if _, ok := newIGDBSync(t.Context(), &config.Twitch{ClientID: "client", ClientSecret: "secret", IGDBEnabled: true}, nil, slog.Default()).(appBoundIGDBSync); !ok {
+		t.Fatal("IGDB enablement did not create synchronization service")
+	}
 }
 
 func (c *countingSyncStarter) TryStart(context.Context) bool {

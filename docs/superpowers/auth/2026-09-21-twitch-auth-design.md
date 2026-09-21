@@ -1,6 +1,6 @@
 # Twitch Authentication Design
 
-Status: Approved design, not yet implemented
+Status: Historical supporting design — implemented by #40
 Date: 2026-09-21
 Tracking issue: #40
 

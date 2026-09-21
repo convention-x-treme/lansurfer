@@ -3462,6 +3462,15 @@ func TestForwardMigrationIntroducesGameNickAndAuthFlows(t *testing.T) {
 	`, userID); err == nil {
 		t.Fatal("unknown provider kind unexpectedly succeeded")
 	}
+	unknownStateHash := sha256.Sum256([]byte("unknown-oauth-state"))
+	if _, err := pool.Exec(t.Context(), `
+		INSERT INTO auth_flows (
+			phase, operation, provider_kind, provider_key, state_hash, browser_binding_hash,
+			nonce, pkce_verifier, expires_at
+		) VALUES ('oauth', 'login', 'unknown', 'unknown', $1, $2, 'nonce', 'verifier', now() + interval '10 minutes')
+	`, unknownStateHash[:], browserHash[:]); err == nil {
+		t.Fatal("unknown auth flow provider kind unexpectedly succeeded")
+	}
 }
 
 type prototypeFixture struct {

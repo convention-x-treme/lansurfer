@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"testing"
 )
@@ -25,6 +26,23 @@ func TestOAuthServiceListsTwitchAfterExistingProviders(t *testing.T) {
 func TestValidateProfileAcceptsTwitch(t *testing.T) {
 	if err := validateProfile(Profile{ProviderKind: "twitch", ProviderKey: "twitch", Subject: "123"}); err != nil {
 		t.Fatalf("validateProfile() error = %v", err)
+	}
+}
+
+func TestOAuthServiceRejectsForgedTwitchProfileNamespace(t *testing.T) {
+	provider := &stubOAuthProvider{kind: "twitch", key: "twitch", profile: Profile{
+		ProviderKind: "oidc", ProviderKey: "https://identity.example", Subject: "subject",
+	}}
+	resolver := &stubIdentityResolver{}
+	service := NewOAuthService([]ConfiguredProvider{{Adapter: provider}}, &stubOAuthFlows{consumed: OAuthFlow{
+		Operation: FlowLogin, ProviderKind: "twitch", ProviderKey: "twitch", Nonce: "nonce", PKCEVerifier: "verifier",
+	}}, resolver)
+
+	_, err := service.Complete(t.Context(), OAuthCompletion{
+		ProviderKind: "twitch", State: "state", BrowserBinding: "browser", Code: "code",
+	})
+	if !errors.Is(err, ErrInvalidProfile) || resolver.called != "" {
+		t.Fatalf("Complete() error/resolver = %v, %q", err, resolver.called)
 	}
 }
 
