@@ -5,6 +5,13 @@ import (
 	"testing"
 )
 
+// Generated once for these tests only; not a real operator key.
+const (
+	validVAPIDPublicKeyForTests    = "BAPXjly0gRlUqDTh973k-L9pQbfuajNHt-75lr18ZrG1R9cW6wU9xZ62F7Ndf_nQW7FSAEP2-LXZldrFzngmFhQ"
+	validVAPIDPrivateKeyForTests   = "QUs8zCpDK_x4zKsunw_iz-nahUva_gFm-jekct86r70"
+	validDataEncryptionKeyForTests = "o4ZMRhaYDlsJEjb7ZiQp6np7sptQwfpQQ8W8a+WgrGo="
+)
+
 func TestLoadRequiresDatabaseURL(t *testing.T) {
 	clearOptionalEnvironment(t)
 	t.Setenv("LANSURFER_DATABASE_URL", "")
@@ -303,6 +310,107 @@ func TestLoadAllowsInstanceNameAtMaxLength(t *testing.T) {
 	}
 }
 
+func TestLoadWebPushRequiresBothVAPIDKeysTogether(t *testing.T) {
+	clearOptionalEnvironment(t)
+	t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
+	t.Setenv("LANSURFER_WEBPUSH_PUBLIC_KEY", validVAPIDPublicKeyForTests)
+	t.Setenv("LANSURFER_WEBPUSH_PRIVATE_KEY", "")
+
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "LANSURFER_WEBPUSH_PUBLIC_KEY") {
+		t.Fatalf("Load() error = %v, want a paired-configuration error", err)
+	}
+}
+
+func TestLoadWebPushRejectsMalformedVAPIDKey(t *testing.T) {
+	clearOptionalEnvironment(t)
+	t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
+	t.Setenv("LANSURFER_WEBPUSH_PUBLIC_KEY", "not-a-valid-key")
+	t.Setenv("LANSURFER_WEBPUSH_PRIVATE_KEY", validVAPIDPrivateKeyForTests)
+	t.Setenv("LANSURFER_WEBPUSH_SUBJECT", "mailto:ops@example.test")
+	t.Setenv("LANSURFER_DATA_ENCRYPTION_KEY", validDataEncryptionKeyForTests)
+
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "VAPID") {
+		t.Fatalf("Load() error = %v, want an invalid VAPID key error", err)
+	}
+}
+
+func TestLoadWebPushRequiresSubject(t *testing.T) {
+	clearOptionalEnvironment(t)
+	t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
+	t.Setenv("LANSURFER_WEBPUSH_PUBLIC_KEY", validVAPIDPublicKeyForTests)
+	t.Setenv("LANSURFER_WEBPUSH_PRIVATE_KEY", validVAPIDPrivateKeyForTests)
+	t.Setenv("LANSURFER_WEBPUSH_SUBJECT", "")
+	t.Setenv("LANSURFER_DATA_ENCRYPTION_KEY", validDataEncryptionKeyForTests)
+
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "LANSURFER_WEBPUSH_SUBJECT") {
+		t.Fatalf("Load() error = %v, want a missing-subject error", err)
+	}
+}
+
+func TestLoadWebPushRequiresDataEncryptionKey(t *testing.T) {
+	clearOptionalEnvironment(t)
+	t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
+	t.Setenv("LANSURFER_WEBPUSH_PUBLIC_KEY", validVAPIDPublicKeyForTests)
+	t.Setenv("LANSURFER_WEBPUSH_PRIVATE_KEY", validVAPIDPrivateKeyForTests)
+	t.Setenv("LANSURFER_WEBPUSH_SUBJECT", "mailto:ops@example.test")
+	t.Setenv("LANSURFER_DATA_ENCRYPTION_KEY", "")
+
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "LANSURFER_DATA_ENCRYPTION_KEY") {
+		t.Fatalf("Load() error = %v, want a missing-encryption-key error", err)
+	}
+}
+
+func TestLoadWebPushDisabledWithoutEitherVAPIDKey(t *testing.T) {
+	clearOptionalEnvironment(t)
+	t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.WebPush != nil {
+		t.Fatalf("WebPush = %#v, want nil when both VAPID keys are absent", cfg.WebPush)
+	}
+}
+
+func TestLoadWebPushAvailableWithValidConfiguration(t *testing.T) {
+	clearOptionalEnvironment(t)
+	t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
+	t.Setenv("LANSURFER_WEBPUSH_PUBLIC_KEY", validVAPIDPublicKeyForTests)
+	t.Setenv("LANSURFER_WEBPUSH_PRIVATE_KEY", validVAPIDPrivateKeyForTests)
+	t.Setenv("LANSURFER_WEBPUSH_SUBJECT", "mailto:ops@example.test")
+	t.Setenv("LANSURFER_DATA_ENCRYPTION_KEY", validDataEncryptionKeyForTests)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.WebPush == nil || cfg.WebPush.Subject != "mailto:ops@example.test" {
+		t.Fatalf("WebPush = %#v, want a populated config with the given subject", cfg.WebPush)
+	}
+	if len(cfg.DataEncryptionKey) != 32 {
+		t.Fatalf("DataEncryptionKey length = %d, want 32", len(cfg.DataEncryptionKey))
+	}
+}
+
+func TestLoadDataEncryptionKeyIndependentOfWebPush(t *testing.T) {
+	clearOptionalEnvironment(t)
+	t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
+	t.Setenv("LANSURFER_DATA_ENCRYPTION_KEY", validDataEncryptionKeyForTests)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if len(cfg.DataEncryptionKey) != 32 {
+		t.Fatalf("DataEncryptionKey length = %d, want 32 even without Web Push configured", len(cfg.DataEncryptionKey))
+	}
+}
+
 func clearOptionalEnvironment(t *testing.T) {
 	t.Helper()
 	for _, name := range []string{
@@ -318,6 +426,10 @@ func clearOptionalEnvironment(t *testing.T) {
 		"LANSURFER_IGDB_CLIENT_ID",
 		"LANSURFER_IGDB_CLIENT_SECRET",
 		"LANSURFER_INSTANCE_NAME",
+		"LANSURFER_WEBPUSH_PUBLIC_KEY",
+		"LANSURFER_WEBPUSH_PRIVATE_KEY",
+		"LANSURFER_WEBPUSH_SUBJECT",
+		"LANSURFER_DATA_ENCRYPTION_KEY",
 	} {
 		t.Setenv(name, "")
 	}
