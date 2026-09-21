@@ -126,14 +126,14 @@ Game Request transaction
   └── game_request_activity row when applicable
           |
           v
-Track E delivery state / notification worker
+Notification delivery state / worker
   ├── Web Push adapter
   └── Discord webhook adapter
 ```
 
-Game Request writes and the corresponding live `game_request_activity` row must be transactionally consistent. That row is the current Track A → E notification-intent handoff as well as request-local history. A failed or rolled-back mutation must not leave successful activity or notification work behind. If Track E later requires delivery-specific state that does not belong in `gamerequest`, add that state on the consumer side or explicitly split the handoff; do not maintain two competing transactional records by default.
+Game Request writes and the corresponding live `game_request_activity` row must be transactionally consistent. That row is the current Game Request → Notification durable handoff as well as request-local history. A failed or rolled-back mutation must not leave successful activity or notification work behind. If notification delivery requires state that does not belong in `gamerequest`, add that state on the consumer side or explicitly split the handoff; do not maintain two competing transactional records by default.
 
-`game_request_activity.sequence` is a stable row identifier and orders activity within one Game Request; it is not a global replay/high-watermark cursor because sequence allocation and transaction commit order can differ. Consumers must not advance one global cursor from it. Rows with `origin=backfill` are reconstructed history and are never deliverable notification intent. Delivery-specific persistence belongs to Track E and must reference/claim work without turning a second record into a competing source of transactional truth.
+`game_request_activity.sequence` is a stable row identifier and orders activity within one Game Request; it is not a global replay/high-watermark cursor because sequence allocation and transaction commit order can differ. Consumers must not advance one global cursor from it. Rows with `origin=backfill` are reconstructed history and are never deliverable notification intent. Delivery-specific persistence belongs to `notification` and must reference/claim work without turning a second record into a competing source of transactional truth.
 
 Persist delivery status, retry schedule, ordering/replay identifiers, and external message references. External transport failure never fails or reverses the originating Game Request action. Honor `Retry-After` for HTTP 429 responses; use capped exponential backoff with jitter for network and 5xx failures; mark permanent or exhausted failures for authorized manual retry.
 
@@ -187,7 +187,7 @@ The approved 1.0 target adds:
 notification
 ```
 
-The prototype `event` module has been removed: Track A's forward migration dropped the Game Request/Event association, so no 1.0 behavior depends on Event selection, membership, lifecycle, or authorization. `clan` is post-1.0 and must not be introduced until that work is explicitly scheduled.
+The prototype `event` module has been removed: the stable-1.0 migration dropped the Game Request/Event association, so no 1.0 behavior depends on Event selection, membership, lifecycle, or authorization. `clan` is post-1.0 and must not be introduced until that work is explicitly scheduled.
 
 Supporting technical areas include:
 
@@ -211,7 +211,7 @@ internal/
 ├── user/
 ├── game/
 ├── gamerequest/
-├── notification/  # Track E
+├── notification/
 ├── query/
 ├── web/
 └── platform/
@@ -297,7 +297,7 @@ Owns:
 - request lifecycle
 - capacity rules
 - durable request-local activity for successful create/join/leave/close/cancel changes
-- the transactional notification-intent record Track E consumes
+- the transactional notification-intent record `notification` consumes
 - per-player reading history of Game Requests
 
 One table, `game_request_activity`, currently serves both of those responsibilities. Every successful change writes its entry inside the same transaction as the change itself, so a rolled-back mutation leaves neither the change nor a notification intent, and a committed one survives a restart before delivery. A second table would duplicate the same write for the same guarantee. This remains provisional until Track E consumes it; if delivery turns out to need state that does not belong to `gamerequest`, splitting the notification record out is the expected change rather than a reversal.
@@ -307,11 +307,11 @@ Two rules govern how a consumer reads it:
 - **`sequence` identifies a row and orders one Game Request's history. It is not a global replay cursor.** The value is assigned when the row is inserted, not when its transaction commits, and creating a Game Request takes no shared lock, so two concurrent changes can commit in the opposite order to their sequence values. A consumer holding a single high-watermark would permanently skip the row that committed late. Ordering within one request is safe because join, leave, close, and cancel serialize on that request's row lock and `created` is always first — which is also the only ordering delivery needs, since stale-update protection is per request. A consumer therefore keeps durable per-row delivery state keyed by `sequence` as an opaque identifier, rather than advancing one cursor.
 - **`origin` separates recorded activity from reconstructed activity.** Rows written while the application is running are `live`. Rows the `00006` migration reconstructed from prototype membership and status are `backfill`: they describe activity that predates the record and must never be delivered. A consumer starting for the first time on an installation that already has `live` history is responsible for its own baseline, so an upgrade does not deliver the archive.
 
-Reading history lives in its own table, `game_request_views`, and is deliberately not `game_request_activity`. Activity is domain history and Track E's notification-intent handoff; opening a detail page is neither, so a view must never be delivered, must never reach the realtime stream, and must never enter the activity table. It is also not transactional with any Game Request change: the write happens while serving a successful read, and losing it costs a navigation entry rather than corrupting a Game Request. One row per (player, request) with the timestamp updated on re-reading keeps the table a set of distinct requests, so it needs no pruning to stay short, and the foreign key to `game_requests` removes the history with the request.
+Reading history lives in its own table, `game_request_views`, and is deliberately not `game_request_activity`. Activity is domain history and the Notification handoff; opening a detail page is neither, so a view must never be delivered, must never reach the realtime stream, and must never enter the activity table. It is also not transactional with any Game Request change: the write happens while serving a successful read, and losing it costs a navigation entry rather than corrupting a Game Request. One row per (player, request) with the timestamp updated on re-reading keeps the table a set of distinct requests, so it needs no pruning to stay short, and the foreign key to `game_requests` removes the history with the request.
 
 Request-local activity is not event sourcing, generic audit logging, chat, or notification delivery history.
 
-### `notification` (Track E)
+### `notification`
 
 Owns:
 
@@ -325,19 +325,19 @@ A module must not directly update another module's tables merely because they ar
 
 ---
 
-## 8. Cross-Module and Cross-Track Communication
+## 8. Cross-Module Communication
 
 When a module needs another module's behavior, prefer a small explicit interface. Cross-module joins are allowed for read-only query models, not business writes.
 
-The main 1.0 cross-track contracts are:
+The main stable-1.0 module/application contracts are:
 
-- **Track A → Track E:** Track A owns Game Request write transactions and outbox creation; Track E consumes durable outbox records. Final persistence belongs inside Track A's transaction boundary.
-- **Track B internal:** OIDC and Discord identities resolve to the same local User. Game Nick onboarding is provider-independent and happens after authentication when required.
-- **Track B → A/E presentation:** public identity consumers use Game Nick rather than provider names/emails. This dependency is for final rendering only, not for core request writes or notification worker construction.
-- **Track D → Track E:** Track D owns service-worker registration/lifecycle. Track E owns push permission, subscriptions, push handling, and payload behavior. Backend Web Push work does not need to wait for Track D.
-- **Track F:** release automation can proceed independently; final migration/backup/restore validation waits for persistent migrations from the feature tracks to settle.
+- **Game Request → Notification:** `gamerequest` owns Game Request write transactions and the durable activity/notification-intent record; `notification` consumes that durable handoff. The intent write stays inside the Game Request transaction boundary.
+- **Authentication → User:** OIDC and Discord identities resolve to the same local User. Game Nick onboarding is provider-independent and happens after authentication when required.
+- **Public identity:** player-facing consumers use Game Nick rather than provider names/emails. This is a presentation/privacy contract, not a dependency of core request writes.
+- **Service worker → Web Push:** the PWA shell owns service-worker registration/lifecycle. Notification behavior owns push permission, subscriptions, push handling, and payload behavior. Web Push extends the existing worker rather than creating a competing registration path.
+- **Release/operations:** release automation can proceed independently; final migration/backup/restore validation waits for persistent feature migrations to settle.
 
-Do not solve these contracts by sharing persistence implementations or creating generic cross-track frameworks.
+Do not solve these contracts by sharing persistence implementations or creating generic coordination frameworks.
 
 ---
 
@@ -415,7 +415,7 @@ Migration failure is fatal. DOWN migrations are never run automatically.
 
 Tracks may add independent forward migrations in parallel. Keep migrations narrowly scoped to the owning module/track and avoid modifying another track's tables except through an explicitly approved migration contract.
 
-Track F's final prototype-to-1.0 upgrade validation runs only after the integrated migration sequence is stable. The selected pilot additionally requires at least one exercised upgrade path with existing data before the Pilot Gate is green.
+Final prototype-to-1.0 upgrade validation runs only after the integrated migration sequence is stable. The selected pilot additionally requires at least one exercised upgrade path with existing data before the Pilot Gate is green.
 
 ---
 
@@ -491,7 +491,7 @@ Stable 1.0 does not require PostgreSQL-backed administrator-managed welcome text
 
 Serve a manifest with a stable application identity/start URL and bundled/default presentation. A minimal service worker supports installation and Web Push; it does not promise offline application behavior.
 
-Track D owns service-worker registration, lifecycle, and update behavior. Track E attaches Web Push behavior to that contract rather than creating a competing service worker or registration path.
+The PWA shell owns service-worker registration, lifecycle, and update behavior. Notification attaches Web Push behavior to that contract rather than creating a competing service worker or registration path.
 
 Pilot validation names platform categories (Desktop, Android, iPhone), while concrete browser/version evidence belongs in the validation artifact rather than being permanently pinned in the architecture.
 
@@ -578,7 +578,7 @@ IGDB covers are the only approved remote content exception. Allow images only fr
 
 TypeScript handles only browser-specific progressive enhancement such as SSE connection handling, toast/dialog helpers, installability/service-worker registration, and Web Push permission/subscription behavior. Do not implement domain decisions in TypeScript.
 
-When Tracks D and E both need browser changes, Track D owns the service-worker shell/lifecycle and Track E owns push-specific behavior.
+When both PWA-shell and notification work need browser changes, the PWA shell owns service-worker lifecycle and notification owns push-specific behavior.
 
 ---
 
@@ -606,7 +606,7 @@ Provide structured logging, `/healthz`, `/readyz`, `lansurfer version`, healthch
 
 Request logging records an `outcome` of `completed`, `client-aborted`, or `timed-out`, derived from the request context's cancellation cause rather than from the status code, which stays `200` for a response the client never received. The cause is attached by the request-timeout middleware, so that middleware must wrap request logging. Realtime stream open and close are logged with the number of streams the instance currently holds and a close reason, because long-lived `EventSource` connections consuming the browser's per-origin connection pool were the root cause in issue #15 and were not visible in the logs at all. This is operator diagnosability through `log/slog`; LANsurfer does not add a metrics or observability stack.
 
-Track F may build release automation and operator tooling in parallel. Stable 1.0 publishes Linux amd64/arm64 binaries and a matching multi-architecture GHCR image using native Go tooling and pinned official Docker/GitHub Actions. Release outputs include checksums, SBOMs, and provenance attestations. Stable releases receive exact, major.minor, major, and `latest` tags; prereleases receive exact tags only.
+Release automation and operator tooling may be built in parallel. Stable 1.0 publishes Linux amd64/arm64 binaries and a matching multi-architecture GHCR image using native Go tooling and pinned official Docker/GitHub Actions. Release outputs include checksums, SBOMs, and provenance attestations. Stable releases receive exact, major.minor, major, and `latest` tags; prereleases receive exact tags only.
 
 The production Compose example pins the LANsurfer image, does not publish PostgreSQL to the host, and retains only application + database as required services. TLS and reverse proxy remain operator responsibilities.
 
