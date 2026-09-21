@@ -7,7 +7,6 @@ import (
 
 	"github.com/convention-x-treme/lansurfer/internal/game"
 	"github.com/convention-x-treme/lansurfer/internal/game/igdb"
-	"github.com/convention-x-treme/lansurfer/internal/platform/config"
 )
 
 // igdbSyncInterval is the daily background refresh cadence described in the
@@ -59,11 +58,20 @@ func (a appBoundIGDBSync) Wait(ctx context.Context) {
 	a.syncer.Wait(ctx)
 }
 
+// igdbCredentials is the narrow slice of shared Twitch application
+// credentials that IGDB synchronization needs. It exists so this game-module
+// constructor does not depend on the auth-flavored config.Twitch type.
+type igdbCredentials struct {
+	Enabled      bool
+	ClientID     string
+	ClientSecret string
+}
+
 // newIGDBSync builds the sync service wired to the application's root
 // context when IGDB credentials are configured, or a disabled adapter
 // otherwise. It never makes a network call.
-func newIGDBSync(ctx context.Context, cfg *config.Twitch, repo game.ProviderIndexRepository, logger *slog.Logger) igdbSync {
-	if cfg == nil || !cfg.IGDBEnabled {
+func newIGDBSync(ctx context.Context, cfg igdbCredentials, repo game.ProviderIndexRepository, logger *slog.Logger) igdbSync {
+	if !cfg.Enabled {
 		return disabledIGDBSync{}
 	}
 	client := igdb.NewClient(cfg.ClientID, cfg.ClientSecret)
