@@ -144,7 +144,8 @@ The repository is a modular Go monolith. These are the most useful entry points 
 - `internal/query/`: read models for UI queries that cross module boundaries
 - `internal/platform/`: PostgreSQL, configuration, SSE, and other technical infrastructure
 - `web/`: frontend source files used to generate embedded production assets
-- `docs/PRODUCT.md`: product behavior, terminology, and approved scope
+- `docs/DOMAIN_LANGUAGE.md`: canonical product/domain terminology
+- `docs/PRODUCT.md`: product behavior and approved scope
 - `docs/ROADMAP.md`: 1.0 delivery tracks, dependencies, and release gates; GitHub trackers carry live status
 - `docs/ARCHITECTURE.md`: technical decisions and module boundaries
 - `docs/DEVELOPMENT_WORKFLOW.md`: planning-to-implementation handoff and artifact lifecycle
@@ -251,7 +252,7 @@ For non-trivial work, plan first and hand off an implementation-ready design/pla
 
 - Keep pull requests focused on one concrete problem.
 - Work only in 1.0 tracks whose declared dependencies are satisfied; do not implement blocked integration work or unscheduled post-1.0 candidates for completeness.
-- Inspect existing code and the relevant product/architecture sections before designing new structures.
+- Inspect existing code plus the relevant domain-language, product, and architecture sections before designing new structures.
 - Add tests where regressions would matter.
 - Do not add dependencies for hypothetical future flexibility.
 - Update documentation when public behavior, configuration, or architecture changes.
