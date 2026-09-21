@@ -362,6 +362,35 @@ func (s *Store) DeleteSubscriptionByDeviceHash(ctx context.Context, userID, devi
 	return deleted > 0, nil
 }
 
+// GetSubscriptionByID returns the full subscription record, ciphertext
+// included, for one Transport send; unlike ListSubscriptions, whose query
+// never selects the ciphertext columns.
+func (s *Store) GetSubscriptionByID(ctx context.Context, id int64) (notification.PushSubscriptionRecord, error) {
+	row, err := s.queries.GetPushSubscriptionByID(ctx, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return notification.PushSubscriptionRecord{}, notification.ErrDeliveryNotFound
+	}
+	if err != nil {
+		return notification.PushSubscriptionRecord{}, fmt.Errorf("get push subscription: %w", err)
+	}
+	return notification.PushSubscriptionRecord{
+		ID: row.ID, UserID: row.UserID, Label: row.Label, DeviceIDHash: row.DeviceIDHash,
+		EndpointFingerprint: row.EndpointFingerprint, EndpointCiphertext: row.EndpointCiphertext,
+		P256dhCiphertext: row.P256dhCiphertext, AuthCiphertext: row.AuthCiphertext,
+		CreatedAt: row.CreatedAt.Time, UpdatedAt: row.UpdatedAt.Time,
+	}, nil
+}
+
+// ListUsersWithAudience returns the IDs of every user with Web Push enabled
+// whose NewRequestAudience preference matches audience.
+func (s *Store) ListUsersWithAudience(ctx context.Context, audience string) ([]string, error) {
+	userIDs, err := s.queries.ListUsersWithAudience(ctx, audience)
+	if err != nil {
+		return nil, fmt.Errorf("list users with audience: %w", err)
+	}
+	return userIDs, nil
+}
+
 // GetPreference returns the zero-value PushPreference's intended default
 // (disabled, followed-only) when userID has no stored row yet. It returns
 // that default explicitly rather than a bare struct literal because

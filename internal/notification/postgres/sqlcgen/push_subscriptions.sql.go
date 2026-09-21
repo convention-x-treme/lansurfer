@@ -65,6 +65,44 @@ func (q *Queries) GetPushPreference(ctx context.Context, userID pgtype.UUID) (Ge
 	return i, err
 }
 
+const getPushSubscriptionByID = `-- name: GetPushSubscriptionByID :one
+SELECT id, user_id::text AS user_id, label, device_id_hash, endpoint_fingerprint,
+       endpoint_ciphertext, p256dh_ciphertext, auth_ciphertext, created_at, updated_at
+FROM notification_push_subscription
+WHERE id = $1
+`
+
+type GetPushSubscriptionByIDRow struct {
+	ID                  int64
+	UserID              string
+	Label               string
+	DeviceIDHash        string
+	EndpointFingerprint string
+	EndpointCiphertext  []byte
+	P256dhCiphertext    []byte
+	AuthCiphertext      []byte
+	CreatedAt           pgtype.Timestamptz
+	UpdatedAt           pgtype.Timestamptz
+}
+
+func (q *Queries) GetPushSubscriptionByID(ctx context.Context, id int64) (GetPushSubscriptionByIDRow, error) {
+	row := q.db.QueryRow(ctx, getPushSubscriptionByID, id)
+	var i GetPushSubscriptionByIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Label,
+		&i.DeviceIDHash,
+		&i.EndpointFingerprint,
+		&i.EndpointCiphertext,
+		&i.P256dhCiphertext,
+		&i.AuthCiphertext,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const listPushSubscriptionsByUser = `-- name: ListPushSubscriptionsByUser :many
 SELECT id, label, device_id_hash, endpoint_fingerprint, created_at, updated_at
 FROM notification_push_subscription
@@ -101,6 +139,31 @@ func (q *Queries) ListPushSubscriptionsByUser(ctx context.Context, userID pgtype
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listUsersWithAudience = `-- name: ListUsersWithAudience :many
+SELECT user_id::text FROM notification_push_preference
+WHERE web_push_enabled = true AND new_request_audience = $1
+`
+
+func (q *Queries) ListUsersWithAudience(ctx context.Context, newRequestAudience string) ([]string, error) {
+	rows, err := q.db.Query(ctx, listUsersWithAudience, newRequestAudience)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var user_id string
+		if err := rows.Scan(&user_id); err != nil {
+			return nil, err
+		}
+		items = append(items, user_id)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

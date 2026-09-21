@@ -202,6 +202,14 @@ type SubscriptionRepository interface {
 	DeleteSubscriptionByDeviceHash(ctx context.Context, userID, deviceIDHash string) (bool, error)
 }
 
+// DeliveryReadRepository is the durable state a Transport needs to resolve
+// full subscription material for one send, and to find users who opted
+// into the all-new-requests audience regardless of following.
+type DeliveryReadRepository interface {
+	GetSubscriptionByID(ctx context.Context, id int64) (PushSubscriptionRecord, error)
+	ListUsersWithAudience(ctx context.Context, audience string) ([]string, error)
+}
+
 // PreferenceRepository is the durable state SubscriptionService needs for
 // one user's Web Push preferences.
 type PreferenceRepository interface {

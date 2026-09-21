@@ -3,6 +3,7 @@
 package postgres
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/convention-x-treme/lansurfer/internal/notification"
@@ -200,5 +201,79 @@ func TestPushPreferenceDefaultsToDisabledFollowedWhenUnset(t *testing.T) {
 	preference, err = store.GetPreference(t.Context(), owner.ID)
 	if err != nil || preference.WebPushEnabled || preference.NewRequestAudience != notification.AudienceAll {
 		t.Fatalf("GetPreference() after disabling = %#v, %v, want disabled/all", preference, err)
+	}
+}
+
+func TestGetSubscriptionByIDReturnsFullCiphertextRecord(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+	users := user.NewService(userpostgres.NewStore(pool))
+	owner, err := users.Register(t.Context(), "Subscription Owner")
+	if err != nil {
+		t.Fatalf("register owner: %v", err)
+	}
+	store := notificationpostgres.NewStore(pool)
+	created, err := store.UpsertSubscription(t.Context(), notification.PushSubscriptionRecord{
+		UserID: owner.ID, Label: "This device", DeviceIDHash: "device-hash-x",
+		EndpointFingerprint: "fingerprint-x", EndpointCiphertext: []byte("endpoint-cipher"),
+		P256dhCiphertext: []byte("p256dh-cipher"), AuthCiphertext: []byte("auth-cipher"),
+	})
+	if err != nil {
+		t.Fatalf("UpsertSubscription() error = %v", err)
+	}
+
+	fetched, err := store.GetSubscriptionByID(t.Context(), created.ID)
+	if err != nil {
+		t.Fatalf("GetSubscriptionByID() error = %v", err)
+	}
+	if string(fetched.EndpointCiphertext) != "endpoint-cipher" || string(fetched.P256dhCiphertext) != "p256dh-cipher" || string(fetched.AuthCiphertext) != "auth-cipher" {
+		t.Fatalf("GetSubscriptionByID() = %#v, want the stored ciphertext back", fetched)
+	}
+	if fetched.UserID != owner.ID {
+		t.Fatalf("GetSubscriptionByID() UserID = %q, want %q", fetched.UserID, owner.ID)
+	}
+
+	if _, err := store.GetSubscriptionByID(t.Context(), created.ID+9999); !errors.Is(err, notification.ErrDeliveryNotFound) {
+		t.Fatalf("GetSubscriptionByID() for a missing ID error = %v, want %v", err, notification.ErrDeliveryNotFound)
+	}
+}
+
+func TestListUsersWithAudienceReturnsOnlyMatchingEnabledUsers(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+	users := user.NewService(userpostgres.NewStore(pool))
+	allAudienceEnabled, err := users.Register(t.Context(), "All Audience Enabled")
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	allAudienceDisabled, err := users.Register(t.Context(), "All Audience Disabled")
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	followedOnly, err := users.Register(t.Context(), "Followed Only")
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	store := notificationpostgres.NewStore(pool)
+	if err := store.SetPreference(t.Context(), allAudienceEnabled.ID, notification.PushPreference{WebPushEnabled: true, NewRequestAudience: notification.AudienceAll}); err != nil {
+		t.Fatalf("SetPreference() error = %v", err)
+	}
+	if err := store.SetPreference(t.Context(), allAudienceDisabled.ID, notification.PushPreference{WebPushEnabled: false, NewRequestAudience: notification.AudienceAll}); err != nil {
+		t.Fatalf("SetPreference() error = %v", err)
+	}
+	if err := store.SetPreference(t.Context(), followedOnly.ID, notification.PushPreference{WebPushEnabled: true, NewRequestAudience: notification.AudienceFollowed}); err != nil {
+		t.Fatalf("SetPreference() error = %v", err)
+	}
+
+	userIDs, err := store.ListUsersWithAudience(t.Context(), notification.AudienceAll)
+	if err != nil {
+		t.Fatalf("ListUsersWithAudience() error = %v", err)
+	}
+	if len(userIDs) != 1 || userIDs[0] != allAudienceEnabled.ID {
+		t.Fatalf("ListUsersWithAudience(all) = %#v, want exactly [%s] (enabled-and-matching only)", userIDs, allAudienceEnabled.ID)
 	}
 }

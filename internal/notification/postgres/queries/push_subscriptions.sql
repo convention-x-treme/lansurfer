@@ -34,6 +34,16 @@ WHERE id = sqlc.arg(id) AND user_id = sqlc.arg(user_id)::uuid;
 DELETE FROM notification_push_subscription
 WHERE user_id = sqlc.arg(user_id)::uuid AND device_id_hash = sqlc.arg(device_id_hash);
 
+-- name: GetPushSubscriptionByID :one
+SELECT id, user_id::text AS user_id, label, device_id_hash, endpoint_fingerprint,
+       endpoint_ciphertext, p256dh_ciphertext, auth_ciphertext, created_at, updated_at
+FROM notification_push_subscription
+WHERE id = sqlc.arg(id);
+
+-- name: ListUsersWithAudience :many
+SELECT user_id::text FROM notification_push_preference
+WHERE web_push_enabled = true AND new_request_audience = sqlc.arg(new_request_audience);
+
 -- name: GetPushPreference :one
 SELECT web_push_enabled, new_request_audience
 FROM notification_push_preference
