@@ -75,6 +75,7 @@ type SubscriptionRepository interface {
 	MyGames(context.Context, string) ([]SubscriptionGame, error)
 	Follow(context.Context, string, string) error
 	Unfollow(context.Context, string, string) error
+	ListFollowers(context.Context, string) ([]string, error)
 }
 
 type SubscriptionService struct {
@@ -103,6 +104,12 @@ func (s *SubscriptionService) Follow(ctx context.Context, userID, gameID string)
 
 func (s *SubscriptionService) Unfollow(ctx context.Context, userID, gameID string) error {
 	return s.repository.Unfollow(ctx, userID, gameID)
+}
+
+// ListFollowers returns the user IDs following gameID, for Track E2's
+// notification recipient materialization (Task 4).
+func (s *SubscriptionService) ListFollowers(ctx context.Context, gameID string) ([]string, error) {
+	return s.repository.ListFollowers(ctx, gameID)
 }
 
 func (s *Service) List(ctx context.Context, search string) ([]Game, error) {

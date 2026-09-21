@@ -114,6 +114,10 @@ func (f *fakeSubscriptions) Unfollow(_ context.Context, userID, gameID string) e
 	return f.unfollowErr
 }
 
+func (f *fakeSubscriptions) ListFollowers(context.Context, string) ([]string, error) {
+	return nil, nil
+}
+
 type fakeMaterializer struct {
 	result    Game
 	err       error

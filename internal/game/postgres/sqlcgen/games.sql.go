@@ -242,6 +242,30 @@ func (q *Queries) ListGameAliases(ctx context.Context, gameID pgtype.UUID) ([]Li
 	return items, nil
 }
 
+const listGameFollowers = `-- name: ListGameFollowers :many
+SELECT user_id::text FROM game_subscriptions WHERE game_id = $1::uuid
+`
+
+func (q *Queries) ListGameFollowers(ctx context.Context, gameID pgtype.UUID) ([]string, error) {
+	rows, err := q.db.Query(ctx, listGameFollowers, gameID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var user_id string
+		if err := rows.Scan(&user_id); err != nil {
+			return nil, err
+		}
+		items = append(items, user_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listGames = `-- name: ListGames :many
 SELECT g.id::text, g.name, g.slug, g.active, g.created_at, g.updated_at
 FROM games g

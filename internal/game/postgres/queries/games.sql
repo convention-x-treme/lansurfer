@@ -116,3 +116,6 @@ SELECT EXISTS (
 DELETE FROM game_subscriptions
 WHERE user_id = sqlc.arg(user_id)::uuid
   AND game_id = sqlc.arg(game_id)::uuid;
+
+-- name: ListGameFollowers :many
+SELECT user_id::text FROM game_subscriptions WHERE game_id = sqlc.arg(game_id)::uuid;

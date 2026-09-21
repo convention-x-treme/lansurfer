@@ -2791,6 +2791,46 @@ func TestGameSubscriptionPersistence(t *testing.T) {
 	}
 }
 
+// TestGameListFollowers covers Task 1 of Track E2 Delivery: the recipient
+// materialization step (Task 4) needs the set of user IDs following a Game
+// to fan a notification out to. It must return exactly the followers of the
+// given Game, never a user who followed a different Game.
+func TestGameListFollowers(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+
+	users := user.NewService(userpostgres.NewStore(pool))
+	follower, err := users.Register(t.Context(), "Follower")
+	if err != nil {
+		t.Fatalf("register follower: %v", err)
+	}
+	nonFollower, err := users.Register(t.Context(), "Non-Follower")
+	if err != nil {
+		t.Fatalf("register non-follower: %v", err)
+	}
+	gameStore := gamepostgres.NewStore(pool)
+	catalog := game.NewService(gameStore)
+	subscriptions := game.NewSubscriptionService(gameStore)
+	warcraft, err := catalog.Create(t.Context(), "Warcraft III", "warcraft-3")
+	if err != nil {
+		t.Fatalf("create game: %v", err)
+	}
+
+	if err := subscriptions.Follow(t.Context(), follower.ID, warcraft.ID); err != nil {
+		t.Fatalf("follow game: %v", err)
+	}
+
+	followers, err := subscriptions.ListFollowers(t.Context(), warcraft.ID)
+	if err != nil {
+		t.Fatalf("ListFollowers() error = %v", err)
+	}
+	if len(followers) != 1 || followers[0] != follower.ID {
+		t.Fatalf("ListFollowers() = %#v, want exactly [%s], not %s", followers, follower.ID, nonFollower.ID)
+	}
+}
+
 func TestGameRequestWorkflowAndConcurrentCapacity(t *testing.T) {
 	pool := newTestPool(t)
 	if err := Migrate(t.Context(), pool, testLogger()); err != nil {

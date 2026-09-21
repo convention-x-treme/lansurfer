@@ -195,6 +195,13 @@ func (s *DiscoveryService) Unfollow(ctx context.Context, userID, gameID string) 
 	return s.subscriptions.Unfollow(ctx, userID, gameID)
 }
 
+// ListFollowers returns the user IDs following gameID, for Track E2's
+// notification recipient materialization (Task 4): the composition root
+// wires the notification module's Game-followers dependency to this method.
+func (s *DiscoveryService) ListFollowers(ctx context.Context, gameID string) ([]string, error) {
+	return s.subscriptions.ListFollowers(ctx, gameID)
+}
+
 func discoveryItemFromLocal(local SubscriptionGame) DiscoveryItem {
 	return DiscoveryItem{
 		LocalGameID:      local.ID,
