@@ -246,6 +246,29 @@ func TestAccountLinkStartBindsSignedInUserAndRedirectsToProvider(t *testing.T) {
 	}
 }
 
+func TestTwitchAuthRoutesUseTwitchProvider(t *testing.T) {
+	authentication := &routerAuthentication{start: auth.OAuthStart{AuthorizationURL: "https://id.twitch.tv/oauth2/authorize"}}
+	router := NewRouter(RouterDependencies{
+		Ready:          func(context.Context) error { return nil },
+		Authentication: authentication,
+		Sessions:       authentication,
+	})
+
+	beginResponse := httptest.NewRecorder()
+	router.ServeHTTP(beginResponse, httptest.NewRequest(http.MethodGet, "/auth/twitch", nil))
+	if beginResponse.Code != http.StatusFound || authentication.began.ProviderKind != "twitch" {
+		t.Fatalf("begin status/input = %d, %#v", beginResponse.Code, authentication.began)
+	}
+
+	callbackRequest := httptest.NewRequest(http.MethodGet, "/auth/twitch/callback?code=code&state=state", nil)
+	callbackRequest.AddCookie(&http.Cookie{Name: "lansurfer_auth_binding", Value: "binding"})
+	callbackResponse := httptest.NewRecorder()
+	router.ServeHTTP(callbackResponse, callbackRequest)
+	if authentication.completed.ProviderKind != "twitch" {
+		t.Fatalf("completion input = %#v", authentication.completed)
+	}
+}
+
 func TestAuthCallbackRoutesSignedInIdentityConflictToAccount(t *testing.T) {
 	authentication := &routerAuthentication{
 		account:     user.User{ID: "user-1", Role: user.RoleUser},
@@ -1145,6 +1168,7 @@ type routerAuthentication struct {
 	start       auth.OAuthStart
 	began       auth.OAuthStartInput
 	result      auth.OAuthResult
+	completed   auth.OAuthCompletion
 	completeErr error
 }
 
@@ -1415,7 +1439,8 @@ func (a *routerAuthentication) Begin(_ context.Context, input auth.OAuthStartInp
 	return a.start, nil
 }
 
-func (a *routerAuthentication) Complete(context.Context, auth.OAuthCompletion) (auth.OAuthResult, error) {
+func (a *routerAuthentication) Complete(_ context.Context, completion auth.OAuthCompletion) (auth.OAuthResult, error) {
+	a.completed = completion
 	return a.result, a.completeErr
 }
 

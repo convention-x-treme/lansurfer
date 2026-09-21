@@ -77,8 +77,8 @@ func NewOAuthService(providers []ConfiguredProvider, flows oauthFlowService, res
 func (s *OAuthService) Available() bool { return s != nil && len(s.providers) > 0 }
 
 func (s *OAuthService) Providers() []ProviderAvailability {
-	result := make([]ProviderAvailability, 0, 2)
-	for _, kind := range []string{"oidc", "discord"} {
+	result := make([]ProviderAvailability, 0, 3)
+	for _, kind := range []string{"oidc", "discord", "twitch"} {
 		if provider, ok := s.providers[kind]; ok {
 			result = append(result, ProviderAvailability{Kind: kind, DisplayName: provider.DisplayName})
 		}
