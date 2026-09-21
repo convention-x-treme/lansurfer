@@ -18,7 +18,7 @@ import (
 func TestLoginRendersProviderChoice(t *testing.T) {
 	handler := NewAuthentication(&stubAuthentication{available: true, providers: []auth.ProviderAvailability{
 		{Kind: "oidc", DisplayName: "CXT account"}, {Kind: "discord", DisplayName: "Discord"},
-	}}, &stubSessions{}, branding.Default(), true, nil, nil)
+	}}, &stubSessions{}, branding.Default(), true, nil)
 	response := httptest.NewRecorder()
 
 	handler.Login(response, httptest.NewRequest(http.MethodGet, "/auth/login", nil))
@@ -33,7 +33,7 @@ func TestLoginRendersProviderChoice(t *testing.T) {
 
 func TestBeginForIssuesBrowserBindingAndRedirects(t *testing.T) {
 	authentication := &stubAuthentication{available: true, start: auth.OAuthStart{AuthorizationURL: "https://identity.example/authorize"}}
-	handler := NewAuthentication(authentication, &stubSessions{}, branding.Default(), true, nil, nil)
+	handler := NewAuthentication(authentication, &stubSessions{}, branding.Default(), true, nil)
 	response := httptest.NewRecorder()
 
 	handler.BeginFor("oidc")(response, httptest.NewRequest(http.MethodGet, "/auth/oidc", nil))
@@ -54,7 +54,7 @@ func TestBeginForIssuesBrowserBindingAndRedirects(t *testing.T) {
 
 func TestBeginForReusesExistingBrowserBinding(t *testing.T) {
 	authentication := &stubAuthentication{available: true}
-	handler := NewAuthentication(authentication, &stubSessions{}, branding.Default(), false, nil, nil)
+	handler := NewAuthentication(authentication, &stubSessions{}, branding.Default(), false, nil)
 	request := httptest.NewRequest(http.MethodGet, "/auth/discord", nil)
 	request.AddCookie(&http.Cookie{Name: browserBindingCookieName, Value: "existing-binding"})
 	response := httptest.NewRecorder()
@@ -73,7 +73,7 @@ func TestBeginForReusesExistingBrowserBinding(t *testing.T) {
 
 func TestBeginForStartsResolutionWhenResolveParameterPresent(t *testing.T) {
 	authentication := &stubAuthentication{available: true}
-	handler := NewAuthentication(authentication, &stubSessions{}, branding.Default(), false, nil, nil)
+	handler := NewAuthentication(authentication, &stubSessions{}, branding.Default(), false, nil)
 	request := httptest.NewRequest(http.MethodGet, "/auth/oidc?resolve=pending-1", nil)
 	response := httptest.NewRecorder()
 
@@ -92,7 +92,7 @@ func TestBeginForStartsResolutionWhenResolveParameterPresent(t *testing.T) {
 // internal/web/router_test.go rather than as handler unit tests here.
 
 func TestLinkForRejectsAnonymousRequest(t *testing.T) {
-	handler := NewAuthentication(&stubAuthentication{available: true}, &stubSessions{}, branding.Default(), false, nil, nil)
+	handler := NewAuthentication(&stubAuthentication{available: true}, &stubSessions{}, branding.Default(), false, nil)
 	response := httptest.NewRecorder()
 
 	handler.LinkFor("discord")(response, httptest.NewRequest(http.MethodPost, "/account/link/discord", nil))
@@ -109,7 +109,7 @@ func TestLinkForRejectsAnonymousRequest(t *testing.T) {
 // same-origin page that navigates onward itself.
 func TestLinkForRendersRedirectPageInsteadOfHTTPRedirect(t *testing.T) {
 	authentication := &stubAuthentication{available: true, start: auth.OAuthStart{AuthorizationURL: "https://discord.example/authorize"}}
-	handler := NewAuthentication(authentication, &stubSessions{}, branding.Default(), false, nil, nil)
+	handler := NewAuthentication(authentication, &stubSessions{}, branding.Default(), false, nil)
 	request := withCurrentUser(httptest.NewRequest(http.MethodPost, "/account/link/discord", nil), user.User{ID: "user-1"})
 	response := httptest.NewRecorder()
 
@@ -128,7 +128,7 @@ func TestCallbackForCompletesLoginAndCreatesSession(t *testing.T) {
 	authentication := &stubAuthentication{available: true, result: auth.OAuthResult{
 		Operation: auth.FlowLogin, Resolution: auth.Resolution{Session: auth.BrowserSession{Token: "opaque-session", ExpiresAt: expiresAt}},
 	}}
-	handler := NewAuthentication(authentication, &stubSessions{}, branding.Default(), true, nil, nil)
+	handler := NewAuthentication(authentication, &stubSessions{}, branding.Default(), true, nil)
 	request := httptest.NewRequest(http.MethodGet, "/auth/callback?code=code&state=state", nil)
 	request.AddCookie(&http.Cookie{Name: browserBindingCookieName, Value: "binding"})
 	response := httptest.NewRecorder()
@@ -154,7 +154,7 @@ func TestCallbackForRedirectsUnknownIdentityToOnboarding(t *testing.T) {
 	authentication := &stubAuthentication{available: true, result: auth.OAuthResult{
 		Operation: auth.FlowLogin, Resolution: auth.Resolution{Pending: auth.PendingIdentity{ID: "pending-1"}},
 	}}
-	handler := NewAuthentication(authentication, &stubSessions{}, branding.Default(), false, nil, nil)
+	handler := NewAuthentication(authentication, &stubSessions{}, branding.Default(), false, nil)
 	request := httptest.NewRequest(http.MethodGet, "/auth/discord/callback?code=code&state=state", nil)
 	request.AddCookie(&http.Cookie{Name: browserBindingCookieName, Value: "binding"})
 	response := httptest.NewRecorder()
@@ -168,7 +168,7 @@ func TestCallbackForRedirectsUnknownIdentityToOnboarding(t *testing.T) {
 
 func TestCallbackForRedirectsSuccessfulLinkToAccount(t *testing.T) {
 	authentication := &stubAuthentication{available: true, result: auth.OAuthResult{Operation: auth.FlowLink}}
-	handler := NewAuthentication(authentication, &stubSessions{}, branding.Default(), false, nil, nil)
+	handler := NewAuthentication(authentication, &stubSessions{}, branding.Default(), false, nil)
 	request := httptest.NewRequest(http.MethodGet, "/auth/discord/callback?code=code&state=state", nil)
 	request.AddCookie(&http.Cookie{Name: browserBindingCookieName, Value: "binding"})
 	response := httptest.NewRecorder()
@@ -182,7 +182,7 @@ func TestCallbackForRedirectsSuccessfulLinkToAccount(t *testing.T) {
 
 func TestCallbackForRejectsMissingBrowserBindingBeforeExchange(t *testing.T) {
 	authentication := &stubAuthentication{available: true}
-	handler := NewAuthentication(authentication, &stubSessions{}, branding.Default(), false, nil, nil)
+	handler := NewAuthentication(authentication, &stubSessions{}, branding.Default(), false, nil)
 	request := httptest.NewRequest(http.MethodGet, "/auth/callback?code=code&state=state", nil)
 	response := httptest.NewRecorder()
 
@@ -213,7 +213,7 @@ func TestCallbackForMapsFlowAndPersistenceFailures(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			authentication := &stubAuthentication{available: true, completeErr: test.err}
-			handler := NewAuthentication(authentication, &stubSessions{}, branding.Default(), false, nil, nil)
+			handler := NewAuthentication(authentication, &stubSessions{}, branding.Default(), false, nil)
 			request := httptest.NewRequest(http.MethodGet, "/auth/callback?code=code&state=state", nil)
 			request.AddCookie(&http.Cookie{Name: browserBindingCookieName, Value: "binding"})
 			response := httptest.NewRecorder()
@@ -232,7 +232,7 @@ func TestCallbackForMapsFlowAndPersistenceFailures(t *testing.T) {
 
 func TestCallbackForRejectsProviderDeclinedBeforeCompletion(t *testing.T) {
 	authentication := &stubAuthentication{available: true}
-	handler := NewAuthentication(authentication, &stubSessions{}, branding.Default(), false, nil, nil)
+	handler := NewAuthentication(authentication, &stubSessions{}, branding.Default(), false, nil)
 	request := httptest.NewRequest(http.MethodGet, "/auth/callback?error=access_denied", nil)
 	response := httptest.NewRecorder()
 
@@ -245,7 +245,7 @@ func TestCallbackForRejectsProviderDeclinedBeforeCompletion(t *testing.T) {
 
 func TestLogoutRevokesAndExpiresSession(t *testing.T) {
 	sessions := &stubSessions{}
-	handler := NewAuthentication(&stubAuthentication{available: true}, sessions, branding.Default(), false, nil, nil)
+	handler := NewAuthentication(&stubAuthentication{available: true}, sessions, branding.Default(), false, nil)
 	request := httptest.NewRequest(http.MethodPost, "/auth/logout", nil)
 	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
 	response := httptest.NewRecorder()
@@ -264,15 +264,15 @@ func TestLogoutRevokesAndExpiresSession(t *testing.T) {
 
 func TestLogoutRemovesPushDeviceForCurrentUser(t *testing.T) {
 	remover := &stubPushDeviceRemover{}
-	handler := NewAuthentication(&stubAuthentication{available: true}, &stubSessions{}, branding.Default(), false, remover, []byte("0123456789abcdef0123456789abcdef"))
+	handler := NewAuthentication(&stubAuthentication{available: true}, &stubSessions{}, branding.Default(), false, remover)
 	request := withCurrentUser(httptest.NewRequest(http.MethodPost, "/auth/logout", nil), user.User{ID: "user-1"})
 	request.AddCookie(&http.Cookie{Name: webmiddleware.DeviceCookieName, Value: "device-1"})
 	response := httptest.NewRecorder()
 
 	handler.Logout(response, request)
 
-	if remover.userID != "user-1" || remover.deviceIDHash == "" {
-		t.Fatalf("remove call = %#v", remover)
+	if remover.userID != "user-1" || remover.deviceID != "device-1" {
+		t.Fatalf("remove call = %#v, want the raw device cookie value passed straight through", remover)
 	}
 	result := response.Result()
 	defer result.Body.Close()
@@ -282,7 +282,7 @@ func TestLogoutRemovesPushDeviceForCurrentUser(t *testing.T) {
 }
 
 func TestLogoutToleratesMissingDeviceCookieAndNilSubscriptions(t *testing.T) {
-	handler := NewAuthentication(&stubAuthentication{available: true}, &stubSessions{}, branding.Default(), false, nil, nil)
+	handler := NewAuthentication(&stubAuthentication{available: true}, &stubSessions{}, branding.Default(), false, nil)
 	request := withCurrentUser(httptest.NewRequest(http.MethodPost, "/auth/logout", nil), user.User{ID: "user-1"})
 	response := httptest.NewRecorder()
 
@@ -294,11 +294,11 @@ func TestLogoutToleratesMissingDeviceCookieAndNilSubscriptions(t *testing.T) {
 }
 
 type stubPushDeviceRemover struct {
-	userID, deviceIDHash string
+	userID, deviceID string
 }
 
-func (s *stubPushDeviceRemover) RemoveDeviceByHash(_ context.Context, userID, deviceIDHash string) error {
-	s.userID, s.deviceIDHash = userID, deviceIDHash
+func (s *stubPushDeviceRemover) RemoveDeviceByHash(_ context.Context, userID, deviceID string) error {
+	s.userID, s.deviceID = userID, deviceID
 	return nil
 }
 

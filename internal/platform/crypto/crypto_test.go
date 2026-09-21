@@ -89,3 +89,36 @@ func TestFingerprintIsDeterministicAndKeyed(t *testing.T) {
 		t.Fatal("Fingerprint() did not change with the input")
 	}
 }
+
+func TestDeriveKeyIsDeterministicAndPurposeKeyed(t *testing.T) {
+	key := make([]byte, KeySize)
+	for i := range key {
+		key[i] = byte(i * 7)
+	}
+
+	first, err := DeriveKey(key, "notification.push.endpoint-fingerprint")
+	if err != nil {
+		t.Fatalf("DeriveKey() error = %v", err)
+	}
+	second, err := DeriveKey(key, "notification.push.endpoint-fingerprint")
+	if err != nil {
+		t.Fatalf("DeriveKey() error = %v", err)
+	}
+	if string(first) != string(second) {
+		t.Fatal("DeriveKey() is not deterministic for the same key and purpose")
+	}
+	if len(first) != KeySize {
+		t.Fatalf("DeriveKey() length = %d, want %d", len(first), KeySize)
+	}
+
+	other, err := DeriveKey(key, "notification.push.device-hash")
+	if err != nil {
+		t.Fatalf("DeriveKey() error = %v", err)
+	}
+	if string(other) == string(first) {
+		t.Fatal("DeriveKey() produced the same subkey for two different purposes")
+	}
+	if string(first) == string(key) || string(other) == string(key) {
+		t.Fatal("DeriveKey() returned the raw input key unchanged")
+	}
+}

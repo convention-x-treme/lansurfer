@@ -7,6 +7,7 @@ package crypto
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/hkdf"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
@@ -74,6 +75,20 @@ func Fingerprint(key []byte, data string) string {
 	mac := hmac.New(sha256.New, key)
 	mac.Write([]byte(data))
 	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+}
+
+// DeriveKey derives a fixed-length (KeySize) subkey from key for one
+// specific purpose (e.g. "notification.push.endpoint-fingerprint",
+// "notification.push.device-hash"), so a single data-encryption key never
+// signs two different things with the same key material. key is treated as
+// already-strong keying material (it is itself an AES-256 key), so it is
+// used directly as HKDF's pseudorandom key; purpose is HKDF's "info" input.
+func DeriveKey(key []byte, purpose string) ([]byte, error) {
+	derived, err := hkdf.Expand(sha256.New, key, purpose, KeySize)
+	if err != nil {
+		return nil, fmt.Errorf("derive key for %q: %w", purpose, err)
+	}
+	return derived, nil
 }
 
 func newAEAD(key []byte) (cipher.AEAD, error) {

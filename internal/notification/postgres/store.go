@@ -216,8 +216,8 @@ func (s *Store) RecordSuppressed(ctx context.Context, deliveryID int64, reason s
 }
 
 // ListProblemDeliveries returns every delivery in a terminal problem state
-// (exhausted, permanent, or uncertain), most recently updated first, for
-// authorized diagnostics.
+// (exhausted, permanent, uncertain, or suppressed), most recently updated
+// first, for authorized diagnostics.
 func (s *Store) ListProblemDeliveries(ctx context.Context) ([]notification.ProblemDelivery, error) {
 	rows, err := s.queries.ListProblemDeliveries(ctx)
 	if err != nil {

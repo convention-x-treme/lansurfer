@@ -219,6 +219,25 @@ func TestAuthLoginStartRedirectsSignedInUserToAccount(t *testing.T) {
 	}
 }
 
+// /auth/logout lives in the authenticated middleware group (so Logout can
+// read CurrentUser to best-effort remove the signed-out device's Push
+// subscription), but RequireAuthentication is never applied to it: an
+// anonymous request (no session cookie) must still succeed as a no-op
+// logout, not be rejected as unauthenticated.
+func TestAuthLogoutSucceedsForAnonymousRequest(t *testing.T) {
+	request := httptest.NewRequest(http.MethodPost, "/auth/logout", nil)
+	addCSRF(request)
+	response := httptest.NewRecorder()
+
+	NewRouter(RouterDependencies{
+		Ready: func(context.Context) error { return nil },
+	}).ServeHTTP(response, request)
+
+	if response.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want %d (anonymous logout must succeed as a no-op, not be rejected)", response.Code, http.StatusSeeOther)
+	}
+}
+
 func TestAccountLinkStartBindsSignedInUserAndRedirectsToProvider(t *testing.T) {
 	authentication := &routerAuthentication{
 		account: user.User{ID: "user-1", GameNick: "NightOtter", Role: user.RoleUser},

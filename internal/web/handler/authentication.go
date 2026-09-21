@@ -12,7 +12,6 @@ import (
 
 	"github.com/a-h/templ"
 	"github.com/convention-x-treme/lansurfer/internal/auth"
-	platformcrypto "github.com/convention-x-treme/lansurfer/internal/platform/crypto"
 	"github.com/convention-x-treme/lansurfer/internal/web/branding"
 	webmiddleware "github.com/convention-x-treme/lansurfer/internal/web/middleware"
 	"github.com/convention-x-treme/lansurfer/internal/web/pages"
@@ -44,9 +43,12 @@ type Sessions interface {
 // PushDeviceRemover is the narrow interface Logout needs to best-effort
 // remove one browser's Push subscription on sign-out. It is satisfied by
 // *notification.SubscriptionService, the same concrete type
-// SubscriptionManager (notification_settings.go) wraps.
+// SubscriptionManager (notification_settings.go) wraps. deviceID is the
+// raw, opaque device cookie value: SubscriptionService is the only place
+// that hashes it, using its own derived key, so this handler never needs
+// the data-encryption key.
 type PushDeviceRemover interface {
-	RemoveDeviceByHash(ctx context.Context, userID, deviceIDHash string) error
+	RemoveDeviceByHash(ctx context.Context, userID, deviceID string) error
 }
 
 type AuthenticationHandler struct {
@@ -55,16 +57,15 @@ type AuthenticationHandler struct {
 	brand          branding.Brand
 	secureCookies  bool
 	subscriptions  PushDeviceRemover
-	encryptionKey  []byte
 }
 
-// NewAuthentication constructs the handler. subscriptions/encryptionKey may
-// be nil, which makes Logout's Push-device cleanup a no-op (Web Push not
-// configured on this instance).
-func NewAuthentication(authentication Authentication, sessions Sessions, brand branding.Brand, secureCookies bool, subscriptions PushDeviceRemover, encryptionKey []byte) *AuthenticationHandler {
+// NewAuthentication constructs the handler. subscriptions may be nil, which
+// makes Logout's Push-device cleanup a no-op (Web Push not configured on
+// this instance).
+func NewAuthentication(authentication Authentication, sessions Sessions, brand branding.Brand, secureCookies bool, subscriptions PushDeviceRemover) *AuthenticationHandler {
 	return &AuthenticationHandler{
 		authentication: authentication, sessions: sessions, brand: brand, secureCookies: secureCookies,
-		subscriptions: subscriptions, encryptionKey: encryptionKey,
+		subscriptions: subscriptions,
 	}
 }
 
@@ -265,8 +266,7 @@ func (h *AuthenticationHandler) removePushDevice(w http.ResponseWriter, r *http.
 		return
 	}
 	if account, ok := webmiddleware.CurrentUser(r.Context()); ok {
-		deviceHash := platformcrypto.Fingerprint(h.encryptionKey, deviceCookie.Value)
-		if err := h.subscriptions.RemoveDeviceByHash(r.Context(), account.ID, deviceHash); err != nil {
+		if err := h.subscriptions.RemoveDeviceByHash(r.Context(), account.ID, deviceCookie.Value); err != nil {
 			webmiddleware.LogError(r, "remove push device on logout", err)
 		}
 	}

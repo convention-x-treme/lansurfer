@@ -2,11 +2,13 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"net/http"
+	"net/url"
 	"strconv"
+	"unicode/utf8"
 
 	"github.com/convention-x-treme/lansurfer/internal/notification"
-	platformcrypto "github.com/convention-x-treme/lansurfer/internal/platform/crypto"
 	"github.com/convention-x-treme/lansurfer/internal/web/branding"
 	"github.com/convention-x-treme/lansurfer/internal/web/components"
 	webmiddleware "github.com/convention-x-treme/lansurfer/internal/web/middleware"
@@ -14,10 +16,24 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+// Real Web Push subscription material is small (an endpoint URL, a
+// base64-encoded P-256 public key, and a base64-encoded 16-byte auth
+// secret); these caps are generous but real, so a malformed or hostile
+// submission is rejected long before it reaches encryption or storage.
+// maxLabelLength matches the repo's existing convention for a human-entered
+// display string (see internal/game's maxNameLength/maxAliasLength).
+const (
+	maxEndpointBytes = 2048
+	maxP256dhBytes   = 256
+	maxAuthBytes     = 256
+	maxLabelLength   = 120
+)
+
 // SubscriptionManager is the narrow interface this handler needs from
-// *notification.SubscriptionService.
+// *notification.SubscriptionService. deviceID is the raw, opaque device
+// cookie value: SubscriptionService is the only place that hashes it.
 type SubscriptionManager interface {
-	Enable(ctx context.Context, userID, deviceIDHash, label, endpoint, p256dh, auth string) error
+	Enable(ctx context.Context, userID, deviceID, label, endpoint, p256dh, auth string) error
 	Disable(ctx context.Context, userID string) error
 	SetAudience(ctx context.Context, userID, audience string) error
 	RemoveDevice(ctx context.Context, userID string, subscriptionID int64) error
@@ -27,16 +43,15 @@ type SubscriptionManager interface {
 
 type NotificationSettingsHandler struct {
 	subscriptions  SubscriptionManager
-	encryptionKey  []byte
 	vapidPublicKey string
 	webPushEnabled bool // whether Web Push is configured at all (VAPID present)
 	brand          branding.Brand
 	secureCookies  bool
 }
 
-func NewNotificationSettings(subscriptions SubscriptionManager, encryptionKey []byte, vapidPublicKey string, webPushConfigured bool, brand branding.Brand, secureCookies bool) *NotificationSettingsHandler {
+func NewNotificationSettings(subscriptions SubscriptionManager, vapidPublicKey string, webPushConfigured bool, brand branding.Brand, secureCookies bool) *NotificationSettingsHandler {
 	return &NotificationSettingsHandler{
-		subscriptions: subscriptions, encryptionKey: encryptionKey, vapidPublicKey: vapidPublicKey,
+		subscriptions: subscriptions, vapidPublicKey: vapidPublicKey,
 		webPushEnabled: webPushConfigured, brand: brand, secureCookies: secureCookies,
 	}
 }
@@ -66,9 +81,21 @@ func (h *NotificationSettingsHandler) Subscribe(w http.ResponseWriter, r *http.R
 		h.render(w, r, http.StatusUnprocessableEntity, "The browser subscription was incomplete.")
 		return
 	}
+	if len(endpoint) > maxEndpointBytes || len(p256dh) > maxP256dhBytes || len(auth) > maxAuthBytes {
+		h.render(w, r, http.StatusUnprocessableEntity, "The browser subscription was incomplete.")
+		return
+	}
+	normalizedEndpoint, ok := validPushEndpoint(endpoint)
+	if !ok {
+		h.render(w, r, http.StatusUnprocessableEntity, "The browser subscription was incomplete.")
+		return
+	}
 	label := r.FormValue("label")
 	if label == "" {
 		label = "This device"
+	} else if utf8.RuneCountInString(label) > maxLabelLength {
+		h.render(w, r, http.StatusUnprocessableEntity, "The browser subscription was incomplete.")
+		return
 	}
 	deviceID, err := webmiddleware.CurrentOrNewDeviceID(r)
 	if err != nil {
@@ -76,14 +103,30 @@ func (h *NotificationSettingsHandler) Subscribe(w http.ResponseWriter, r *http.R
 		http.Error(w, "enable Web Push", http.StatusInternalServerError)
 		return
 	}
-	deviceHash := platformcrypto.Fingerprint(h.encryptionKey, deviceID)
-	if err := h.subscriptions.Enable(r.Context(), account.ID, deviceHash, label, endpoint, p256dh, auth); err != nil {
+	if err := h.subscriptions.Enable(r.Context(), account.ID, deviceID, label, normalizedEndpoint, p256dh, auth); err != nil {
 		webmiddleware.LogError(r, "enable Web Push", err)
 		http.Error(w, "enable Web Push", http.StatusInternalServerError)
 		return
 	}
 	http.SetCookie(w, webmiddleware.DeviceCookie(deviceID, h.secureCookies))
 	h.redirect(w, r, "/account/notifications?notice=push-enabled")
+}
+
+// validPushEndpoint reports whether endpoint is a parseable absolute HTTPS
+// URL with a host and no userinfo component, mirroring the shape check
+// config.Load applies to LANSURFER_BASE_URL. It returns the endpoint
+// normalized by a Parse/String round-trip (which normalizes things like
+// scheme/host case), so the value used for fingerprinting and later
+// delivery is never the raw, unnormalized form the browser submitted -
+// serving the "one endpoint belongs to at most one user" uniqueness
+// invariant and guarding against the delivery worker later being pointed
+// at an arbitrary non-HTTPS or private-network URL (SSRF).
+func validPushEndpoint(endpoint string) (string, bool) {
+	parsed, err := url.Parse(endpoint)
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil {
+		return "", false
+	}
+	return parsed.String(), true
 }
 
 func (h *NotificationSettingsHandler) Disable(w http.ResponseWriter, r *http.Request) {
@@ -111,7 +154,12 @@ func (h *NotificationSettingsHandler) SetAudience(w http.ResponseWriter, r *http
 		return
 	}
 	if err := h.subscriptions.SetAudience(r.Context(), account.ID, r.FormValue("audience")); err != nil {
-		h.render(w, r, http.StatusUnprocessableEntity, "Choose a valid audience.")
+		if errors.Is(err, notification.ErrInvalidAudience) {
+			h.render(w, r, http.StatusUnprocessableEntity, "Choose a valid audience.")
+			return
+		}
+		webmiddleware.LogError(r, "set notification audience", err)
+		http.Error(w, "set notification audience", http.StatusInternalServerError)
 		return
 	}
 	h.redirect(w, r, "/account/notifications?notice=audience-updated")

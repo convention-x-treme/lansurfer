@@ -170,9 +170,12 @@ type PushSubscriptionRecord struct {
 	UpdatedAt           time.Time
 }
 
-// PushPreference is one user's Web Push preferences. The zero value is the
-// correct default for a user who has never touched Push settings: disabled,
-// followed-only audience.
+// PushPreference is one user's Web Push preferences. The zero value is NOT
+// a safe default to use directly: NewRequestAudience zero-values to "",
+// neither AudienceFollowed nor AudienceAll. Callers must go through
+// PreferenceRepository.GetPreference, which returns the actual safe
+// default (disabled, followed-only audience) for a user who has never
+// touched Push settings.
 type PushPreference struct {
 	WebPushEnabled     bool
 	NewRequestAudience string // "followed" or "all"
@@ -202,8 +205,10 @@ type SubscriptionRepository interface {
 // PreferenceRepository is the durable state SubscriptionService needs for
 // one user's Web Push preferences.
 type PreferenceRepository interface {
-	// GetPreference returns the zero-value PushPreference (disabled,
-	// followed-only) when the user has no stored row yet.
+	// GetPreference returns the safe default PushPreference (disabled,
+	// followed-only) when the user has no stored row yet. Callers must call
+	// this rather than use a zero-value PushPreference directly: the zero
+	// value's NewRequestAudience is "", not a valid audience.
 	GetPreference(ctx context.Context, userID string) (PushPreference, error)
 	SetPreference(ctx context.Context, userID string, preference PushPreference) error
 }

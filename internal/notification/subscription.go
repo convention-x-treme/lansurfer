@@ -10,26 +10,52 @@ import (
 
 var ErrInvalidAudience = errors.New("audience must be \"followed\" or \"all\"")
 
-// SubscriptionService is the only place plaintext Push subscription material
-// and the data-encryption key meet: it encrypts on the way into
-// SubscriptionRepository and never decrypts, since the settings surface
-// never displays raw endpoint/p256dh/auth. It also owns the product rules
+// endpointFingerprintPurpose and deviceHashPurpose are the HKDF "info"
+// labels the two subkeys derived from the data-encryption key are each
+// bound to, so a subkey minted for one purpose can never be reused as the
+// other (see platformcrypto.DeriveKey).
+const (
+	endpointFingerprintPurpose = "notification.push.endpoint-fingerprint"
+	deviceHashPurpose          = "notification.push.device-hash"
+)
+
+// SubscriptionService is the only place plaintext Push subscription
+// material, the raw device cookie ID, and the data-encryption key meet: it
+// encrypts on the way into SubscriptionRepository and never decrypts, since
+// the settings surface never displays raw endpoint/p256dh/auth, and it is
+// the only place a raw device ID is hashed. It also owns the product rules
 // around enable/disable/device removal that keep "web_push_enabled",
 // "has at least one device", and "audience preference" independent states.
 type SubscriptionService struct {
-	subscriptions SubscriptionRepository
-	preferences   PreferenceRepository
-	encryptionKey []byte
+	subscriptions  SubscriptionRepository
+	preferences    PreferenceRepository
+	encryptionKey  []byte
+	fingerprintKey []byte
+	deviceHashKey  []byte
 }
 
-func NewSubscriptionService(subscriptions SubscriptionRepository, preferences PreferenceRepository, encryptionKey []byte) *SubscriptionService {
-	return &SubscriptionService{subscriptions: subscriptions, preferences: preferences, encryptionKey: encryptionKey}
+func NewSubscriptionService(subscriptions SubscriptionRepository, preferences PreferenceRepository, encryptionKey []byte) (*SubscriptionService, error) {
+	fingerprintKey, err := platformcrypto.DeriveKey(encryptionKey, endpointFingerprintPurpose)
+	if err != nil {
+		return nil, fmt.Errorf("derive endpoint fingerprint key: %w", err)
+	}
+	deviceHashKey, err := platformcrypto.DeriveKey(encryptionKey, deviceHashPurpose)
+	if err != nil {
+		return nil, fmt.Errorf("derive device hash key: %w", err)
+	}
+	return &SubscriptionService{
+		subscriptions: subscriptions, preferences: preferences, encryptionKey: encryptionKey,
+		fingerprintKey: fingerprintKey, deviceHashKey: deviceHashKey,
+	}, nil
 }
 
 // Enable runs the complete enable sequence for one browser subscription:
 // persist (or reassign) it, and set web_push_enabled=true while preserving
-// whatever audience preference the user already had.
-func (s *SubscriptionService) Enable(ctx context.Context, userID, deviceIDHash, label, endpoint, p256dh, auth string) error {
+// whatever audience preference the user already had. deviceID is the raw,
+// opaque device cookie value; it is hashed here with the service's own
+// derived device-hash key, so no caller outside this package ever needs the
+// data-encryption key just to identify a device.
+func (s *SubscriptionService) Enable(ctx context.Context, userID, deviceID, label, endpoint, p256dh, auth string) error {
 	endpointCiphertext, err := platformcrypto.Encrypt(s.encryptionKey, endpoint)
 	if err != nil {
 		return fmt.Errorf("encrypt endpoint: %w", err)
@@ -42,7 +68,8 @@ func (s *SubscriptionService) Enable(ctx context.Context, userID, deviceIDHash, 
 	if err != nil {
 		return fmt.Errorf("encrypt auth: %w", err)
 	}
-	fingerprint := platformcrypto.Fingerprint(s.encryptionKey, endpoint)
+	fingerprint := platformcrypto.Fingerprint(s.fingerprintKey, endpoint)
+	deviceIDHash := platformcrypto.Fingerprint(s.deviceHashKey, deviceID)
 
 	if _, err := s.subscriptions.UpsertSubscription(ctx, PushSubscriptionRecord{
 		UserID: userID, Label: label, DeviceIDHash: deviceIDHash, EndpointFingerprint: fingerprint,
@@ -94,8 +121,11 @@ func (s *SubscriptionService) RemoveDevice(ctx context.Context, userID string, s
 }
 
 // RemoveDeviceByHash deletes the caller's subscription for one browser
-// device, identified by the opaque device cookie's hash. Used by logout.
-func (s *SubscriptionService) RemoveDeviceByHash(ctx context.Context, userID, deviceIDHash string) error {
+// device. deviceID is the raw, opaque device cookie value; it is hashed
+// here with the service's own derived device-hash key before matching
+// stored subscriptions by their hash. Used by logout.
+func (s *SubscriptionService) RemoveDeviceByHash(ctx context.Context, userID, deviceID string) error {
+	deviceIDHash := platformcrypto.Fingerprint(s.deviceHashKey, deviceID)
 	if _, err := s.subscriptions.DeleteSubscriptionByDeviceHash(ctx, userID, deviceIDHash); err != nil {
 		return fmt.Errorf("delete push subscription by device hash: %w", err)
 	}

@@ -26,7 +26,7 @@ func newNotificationWorker(store *notificationpostgres.Store, logger *slog.Logge
 // service the settings handler and logout hook consume. store satisfies
 // both notification.SubscriptionRepository and notification.
 // PreferenceRepository, matching SubscriptionService's constructor.
-func newSubscriptionService(store *notificationpostgres.Store, encryptionKey []byte) *notification.SubscriptionService {
+func newSubscriptionService(store *notificationpostgres.Store, encryptionKey []byte) (*notification.SubscriptionService, error) {
 	return notification.NewSubscriptionService(store, store, encryptionKey)
 }
 

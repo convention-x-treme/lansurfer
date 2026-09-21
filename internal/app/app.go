@@ -103,7 +103,10 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	gameRequests := gamerequest.NewService(gamerequestpostgres.NewStore(pool), gameService, realtime)
 	gameRequestQueries := gamerequestquery.NewStore(pool)
 	notificationWorker := newNotificationWorker(notificationStore, logger)
-	subscriptionService := newSubscriptionService(notificationStore, cfg.DataEncryptionKey)
+	subscriptionService, err := newSubscriptionService(notificationStore, cfg.DataEncryptionKey)
+	if err != nil {
+		return fmt.Errorf("construct Web Push subscription service: %w", err)
+	}
 	var vapidPublicKey string
 	if cfg.WebPush != nil {
 		vapidPublicKey = cfg.WebPush.PublicKey
@@ -131,7 +134,6 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 			ProviderSync:        igdbSyncService,
 			Subscriptions:       subscriptionService,
 			PushDevices:         subscriptionService,
-			EncryptionKey:       cfg.DataEncryptionKey,
 			VAPIDPublicKey:      vapidPublicKey,
 			WebPushConfigured:   cfg.WebPush != nil,
 			SecureCookies:       strings.HasPrefix(cfg.BaseURL, "https://"),

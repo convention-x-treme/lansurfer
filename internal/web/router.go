@@ -76,10 +76,6 @@ type RouterDependencies struct {
 	// interface, and this composition root is where it is fine to say one
 	// concrete type backs both.
 	PushDevices handler.PushDeviceRemover
-	// EncryptionKey is config.Config.DataEncryptionKey, used to hash the
-	// opaque device cookie into the device_id_hash SubscriptionManager
-	// consumes. Only meaningful when Subscriptions/PushDevices is non-nil.
-	EncryptionKey []byte
 	// VAPIDPublicKey is config.Config.WebPush.PublicKey, rendered into the
 	// notification settings page for the browser's Push subscription call.
 	VAPIDPublicKey string
@@ -107,7 +103,7 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 	}
 	authenticationHandler := handler.NewAuthentication(
 		dependencies.Authentication, dependencies.Sessions, brand, dependencies.SecureCookies,
-		dependencies.PushDevices, dependencies.EncryptionKey,
+		dependencies.PushDevices,
 	)
 	onboardingHandler := handler.NewOnboarding(
 		dependencies.PendingIdentities, dependencies.AccountRegistration, dependencies.GameNickClaims,
@@ -124,7 +120,7 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 	var notificationSettingsHandler *handler.NotificationSettingsHandler
 	if dependencies.Subscriptions != nil {
 		notificationSettingsHandler = handler.NewNotificationSettings(
-			dependencies.Subscriptions, dependencies.EncryptionKey, dependencies.VAPIDPublicKey,
+			dependencies.Subscriptions, dependencies.VAPIDPublicKey,
 			dependencies.WebPushConfigured, brand, dependencies.SecureCookies,
 		)
 	}
