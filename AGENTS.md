@@ -9,12 +9,13 @@ Use the smallest authoritative source that answers the task:
 - `README.md`: what LANsurfer is and how to run it.
 - `docs/PRODUCT.md`: intended user-visible behavior, terminology, and release scope.
 - `docs/ARCHITECTURE.md`: technical architecture, module ownership, and durable invariants.
-- `docs/ROADMAP.md`: remaining work, track status, dependencies, Pilot/Integration/Release gates.
+- `docs/ROADMAP.md`: delivery tracks, dependencies, and Pilot/Integration/Release gates; GitHub tracking issues carry live progress.
+- `docs/DEVELOPMENT_WORKFLOW.md`: planning-to-implementation handoff, implementation-ready definition, and artifact lifecycle.
 - `docs/BRANDING.md` and `docs/ui-kit/`: approved presentation system.
 - `Taskfile.yml`: authoritative development commands.
-- `docs/superpowers/`: supporting feature designs, implementation plans, and historical verification records. These never override PRODUCT, ARCHITECTURE, ROADMAP, or this file.
+- `docs/superpowers/`: bounded feature designs and temporary implementation plans. These never override PRODUCT, ARCHITECTURE, ROADMAP, or this file.
 
-Read only the sections relevant to the task. An open issue or retained implementation plan is not by itself evidence that work belongs in the current release or is still unimplemented.
+Read only the sections relevant to the task. An open issue, implementation plan, or historical design is not by itself evidence that work belongs in the current release or is still unimplemented.
 
 ## Commands
 
@@ -34,7 +35,7 @@ Run the checks relevant to the files and behavior changed. Do not substitute bro
 
 ## Architecture and coding guardrails
 
-- Keep the modular monolith organized by business capability. Current business modules are `auth`, `user`, `game`, and `gamerequest`; `notification` is the approved Track E addition. The prototype `event` module is removed. Do not introduce `event`, `clan`, a generic parent/context abstraction, or other post-1.0 modules unless ROADMAP explicitly schedules them.
+- Keep the modular monolith organized by business capability. Current business modules are `auth`, `user`, `game`, and `gamerequest`; `notification` is the approved Track E addition. The prototype `event` module is removed. Do not introduce `event`, `clan`, a generic parent/context abstraction, or other post-1.0 modules unless current PRODUCT/ROADMAP scope explicitly schedules them.
 - A business module owns its behavior and writes. Never reach into another module's persistence implementation or write its tables directly. Call a small explicit interface or publish an application/domain event.
 - Define narrow interfaces in the consuming package and wire concrete dependencies explicitly in the composition root. Do not use a dependency-injection framework or service locator.
 - Cross-module joins belong in dedicated read/query models. Query packages do not perform domain writes.
@@ -61,12 +62,31 @@ Run the checks relevant to the files and behavior changed. Do not substitute bro
 
 ## Scope and workflow
 
+Follow `docs/DEVELOPMENT_WORKFLOW.md` for the planning-to-implementation handoff.
+
 - Inspect existing implementation and tests before designing a change.
-- Use ROADMAP for current status and dependencies. Work may proceed in parallel where its stated dependencies are satisfied, but do not implement post-1.0 candidates merely because an issue or historical design exists.
-- Prefer one coherent branch/PR per feature, fix, or cross-track contract. Coordinate a shared schema, route, template, or composition-root contract before parallel changes touch it.
-- PRODUCT owns durable behavior/scope; ARCHITECTURE owns durable technical decisions. If either changes, update the other canonical documents that make the same promise. ROADMAP should describe remaining work, not completed implementation history.
-- Specifications/designs are for bounded decisions that need more detail than PRODUCT/ARCHITECTURE. Implementation plans are execution aids, not permanent status documents. After merge, move durable decisions into canonical docs and delete or retain the plan only as clearly historical supporting evidence.
+- Use PRODUCT for release scope, ROADMAP for delivery dependencies/gates, and GitHub tracking issues for current progress. Do not implement post-1.0 candidates merely because an issue or historical design exists.
+- For non-trivial work, separate planning from implementation: planning resolves product/architecture questions and prepares an implementation-ready design/plan; the coding agent executes that handoff rather than rediscovering or silently redesigning the feature.
+- The planning phase does not implement application code. Small local fixes with already-unambiguous behavior may skip a formal design/plan.
+- Prefer one coherent branch/PR per feature, fix, or cross-track contract. A planning draft PR should normally continue into implementation rather than spawning a second implementation PR.
+- PRODUCT owns durable behavior/scope; ARCHITECTURE owns durable technical decisions. If either changes, update the canonical documents that make the same promise.
+- ROADMAP is a compact delivery map, not a historical status database. Track current checklists and progress in GitHub issues/PRs.
+- Specifications/designs are bounded decision aids. Implementation plans are temporary execution aids. Before merge, promote durable decisions into PRODUCT/ARCHITECTURE and remove temporary plans unless they still provide concrete long-term value.
 - Summarize implementation decisions, verification performed/omitted, and any affected cross-track contract in the PR.
+
+### Implementation-ready handoff
+
+Do not label a non-trivial handoff implementation-ready until:
+
+- scope is confirmed;
+- goals and non-goals are explicit;
+- product/architecture questions are resolved or explicitly approved;
+- acceptance criteria are testable;
+- affected areas and generated-output requirements are identified;
+- tests and verification commands are specified;
+- the coding agent is not being asked to make new product or architecture decisions.
+
+If repository evidence discovered during implementation contradicts a plan, do not force the plan. Preserve the approved intent where unambiguous; return to planning/approval when a genuinely new product or architecture decision is required.
 
 ## Changes requiring approval
 
