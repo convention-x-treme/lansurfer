@@ -2,7 +2,7 @@
 
 Thanks for helping make LANsurfer useful and maintainable.
 
-This guide is the starting point for a new developer. Before changing code, read [AGENTS.md](AGENTS.md). Consult the relevant [roadmap track and declared dependencies](docs/ROADMAP.md), plus the sections of [the architecture](docs/ARCHITECTURE.md) and [product definition](docs/PRODUCT.md) relevant to your task.
+This guide is the starting point for a new developer. Before changing code, read [AGENTS.md](AGENTS.md). For non-trivial changes, also follow the planning-to-implementation handoff in [docs/DEVELOPMENT_WORKFLOW.md](docs/DEVELOPMENT_WORKFLOW.md). Consult the relevant [roadmap track and declared dependencies](docs/ROADMAP.md), plus the sections of [the architecture](docs/ARCHITECTURE.md) and [product definition](docs/PRODUCT.md) relevant to your task.
 
 ## Development prerequisites
 
@@ -145,12 +145,13 @@ The repository is a modular Go monolith. These are the most useful entry points 
 - `internal/platform/`: PostgreSQL, configuration, SSE, and other technical infrastructure
 - `web/`: frontend source files used to generate embedded production assets
 - `docs/PRODUCT.md`: product behavior, terminology, and approved scope
-- `docs/ROADMAP.md`: current 1.0 development tracks, readiness, and dependencies
+- `docs/ROADMAP.md`: 1.0 delivery tracks, dependencies, and release gates; GitHub trackers carry live status
 - `docs/ARCHITECTURE.md`: technical decisions and module boundaries
+- `docs/DEVELOPMENT_WORKFLOW.md`: planning-to-implementation handoff and artifact lifecycle
 - `AGENTS.md`: repository-wide development rules and approval boundaries
 - `Taskfile.yml`: authoritative development commands
 
-Do not infer that a feature is implemented merely because it is described in the product or architecture target. Check the roadmap status and the existing code before designing a change.
+Do not infer that a feature is implemented merely because it is described in the product or architecture target. Check the relevant GitHub tracker and the existing code before designing a change.
 
 ## Generate code and frontend assets
 
@@ -245,6 +246,8 @@ docker compose down --volumes
 Database migrations run automatically before HTTP startup. A migration failure prevents the application from starting, so startup failures after schema changes should be investigated in the application logs rather than bypassing migrations.
 
 ## Making changes
+
+For non-trivial work, plan first and hand off an implementation-ready design/plan as described in [docs/DEVELOPMENT_WORKFLOW.md](docs/DEVELOPMENT_WORKFLOW.md). Small local fixes with unambiguous behavior may go directly to implementation.
 
 - Keep pull requests focused on one concrete problem.
 - Work only in 1.0 tracks whose declared dependencies are satisfied; do not implement blocked integration work or unscheduled post-1.0 candidates for completeness.
