@@ -1,0 +1,123 @@
+package pages
+
+import (
+	"strconv"
+
+	"github.com/convention-x-treme/lansurfer/internal/notification"
+	"github.com/convention-x-treme/lansurfer/internal/web/branding"
+	"github.com/convention-x-treme/lansurfer/internal/web/components"
+)
+
+// NotificationSettingsView deliberately never carries EndpointCiphertext or
+// any other decrypted subscription material — Devices only ever exposes
+// ID/Label/DeviceIDHash/timestamps, matching PushSubscriptionRecord's
+// already-ciphertext-only shape from SubscriptionManager.ListDevices.
+type NotificationSettingsView struct {
+	WebPushAvailable bool
+	VAPIDPublicKey   string
+	Preference       notification.PushPreference
+	Devices          []notification.PushSubscriptionRecord
+	Notice           string
+	FormError        string
+}
+
+templ NotificationSettings(brand branding.Brand, navigation components.NavigationState, view NotificationSettingsView) {
+	@components.Layout(brand, "Notifications", navigation) {
+		<header class="app-topbar">
+			<h1 class="app-title">Notifications</h1>
+		</header>
+		<div class="content-page grid gap-6">
+			if view.Notice != "" {
+				<div role="alert" class="alert alert-success">
+					<span>{ view.Notice }</span>
+				</div>
+			}
+			if view.FormError != "" {
+				<div role="alert" class="alert alert-error text-sm">
+					<span>{ view.FormError }</span>
+				</div>
+			}
+			if !view.WebPushAvailable {
+				<div role="alert" class="alert alert-warning">
+					<span>Web Push is not configured on this instance.</span>
+				</div>
+			} else {
+				<section class="auth-panel" data-vapid-public-key={ view.VAPIDPublicKey }>
+					<h2 class="text-xl font-bold">Push notifications</h2>
+					if view.Preference.WebPushEnabled {
+						<p class="mt-1 text-sm text-base-content/70">Push notifications are enabled on at least one of your devices.</p>
+						<form method="post" action="/account/notifications/disable" class="mt-4">
+							@components.CSRFInput()
+							<button class="btn btn-ghost btn-sm w-fit" type="submit">Disable</button>
+						</form>
+					} else {
+						<p class="mt-1 text-sm text-base-content/70">Turn on push notifications to hear about Game Request activity on this device.</p>
+						<form method="post" action="/account/notifications/subscribe" class="mt-4 grid max-w-sm gap-3" data-subscribe-form>
+							@components.CSRFInput()
+							<input type="hidden" name="endpoint" data-subscribe-endpoint/>
+							<input type="hidden" name="p256dh" data-subscribe-p256dh/>
+							<input type="hidden" name="auth" data-subscribe-auth/>
+							<button class="btn btn-primary btn-sm w-fit" type="submit" data-subscribe-button>Enable on this device</button>
+						</form>
+					}
+				</section>
+				<section class="auth-panel">
+					<h2 class="text-xl font-bold">Notify me about</h2>
+					<form method="post" action="/account/notifications/audience" class="mt-4 grid gap-2">
+						@components.CSRFInput()
+						<label class="flex items-center gap-2">
+							<input
+								type="radio"
+								name="audience"
+								value="followed"
+								class="radio radio-sm"
+								checked?={ view.Preference.NewRequestAudience != notification.AudienceAll }
+							/>
+							<span>Game Requests for games I follow</span>
+						</label>
+						<label class="flex items-center gap-2">
+							<input
+								type="radio"
+								name="audience"
+								value="all"
+								class="radio radio-sm"
+								checked?={ view.Preference.NewRequestAudience == notification.AudienceAll }
+							/>
+							<span>All Game Requests</span>
+						</label>
+						<button class="btn btn-quiet btn-sm w-fit" type="submit">Save</button>
+					</form>
+				</section>
+				<section class="auth-panel">
+					<h2 class="text-xl font-bold">Devices</h2>
+					if len(view.Devices) == 0 {
+						<p class="mt-1 text-sm text-base-content/70">No devices are registered for push notifications.</p>
+					} else {
+						<ul class="mt-4 grid gap-3">
+							for _, device := range view.Devices {
+								<li class="flex items-center justify-between gap-3 rounded-field border border-base-300 p-3">
+									<p class="font-semibold">{ deviceLabel(device) }</p>
+									<form method="post" action={ templ.SafeURL(deviceRemovePath(device)) }>
+										@components.CSRFInput()
+										<button class="btn btn-ghost btn-sm" type="submit">Remove</button>
+									</form>
+								</li>
+							}
+						</ul>
+					}
+				</section>
+			}
+		</div>
+	}
+}
+
+func deviceLabel(device notification.PushSubscriptionRecord) string {
+	if device.Label != "" {
+		return device.Label
+	}
+	return "Unnamed device"
+}
+
+func deviceRemovePath(device notification.PushSubscriptionRecord) string {
+	return "/account/notifications/devices/" + strconv.FormatInt(device.ID, 10) + "/remove"
+}

@@ -35,6 +35,11 @@ templ Account(brand branding.Brand, navigation components.NavigationState, curre
 				</div>
 			}
 			<section class="auth-panel">
+				<h2 class="text-xl font-bold">Notifications</h2>
+				<p class="mt-1 text-sm text-base-content/70">Manage push notifications and which devices receive them.</p>
+				<a class="btn btn-quiet btn-sm mt-4 w-fit" href="/account/notifications">Notification settings</a>
+			</section>
+			<section class="auth-panel">
 				<h2 class="text-xl font-bold">Game Nick</h2>
 				<p class="mt-1 text-sm text-base-content/70">Your public name on Game Requests and request activity.</p>
 				<form method="post" action="/account/game-nick" class="mt-4 grid max-w-sm gap-3">

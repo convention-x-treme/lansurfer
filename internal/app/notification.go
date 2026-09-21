@@ -22,6 +22,14 @@ func newNotificationWorker(store *notificationpostgres.Store, logger *slog.Logge
 	return notification.NewWorker(store, notificationTransports(), logger, time.Now)
 }
 
+// newSubscriptionService constructs the Web Push subscription/preference
+// service the settings handler and logout hook consume. store satisfies
+// both notification.SubscriptionRepository and notification.
+// PreferenceRepository, matching SubscriptionService's constructor.
+func newSubscriptionService(store *notificationpostgres.Store, encryptionKey []byte) *notification.SubscriptionService {
+	return notification.NewSubscriptionService(store, store, encryptionKey)
+}
+
 // notificationTransports is the single place every notification.Transport
 // this application registers is listed. newNotificationWorker and the CLI
 // diagnostics/retry helpers below all call this rather than passing nil

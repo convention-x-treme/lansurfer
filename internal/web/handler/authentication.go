@@ -12,6 +12,7 @@ import (
 
 	"github.com/a-h/templ"
 	"github.com/convention-x-treme/lansurfer/internal/auth"
+	platformcrypto "github.com/convention-x-treme/lansurfer/internal/platform/crypto"
 	"github.com/convention-x-treme/lansurfer/internal/web/branding"
 	webmiddleware "github.com/convention-x-treme/lansurfer/internal/web/middleware"
 	"github.com/convention-x-treme/lansurfer/internal/web/pages"
@@ -40,15 +41,31 @@ type Sessions interface {
 	Logout(context.Context, string) error
 }
 
+// PushDeviceRemover is the narrow interface Logout needs to best-effort
+// remove one browser's Push subscription on sign-out. It is satisfied by
+// *notification.SubscriptionService, the same concrete type
+// SubscriptionManager (notification_settings.go) wraps.
+type PushDeviceRemover interface {
+	RemoveDeviceByHash(ctx context.Context, userID, deviceIDHash string) error
+}
+
 type AuthenticationHandler struct {
 	authentication Authentication
 	sessions       Sessions
 	brand          branding.Brand
 	secureCookies  bool
+	subscriptions  PushDeviceRemover
+	encryptionKey  []byte
 }
 
-func NewAuthentication(authentication Authentication, sessions Sessions, brand branding.Brand, secureCookies bool) *AuthenticationHandler {
-	return &AuthenticationHandler{authentication: authentication, sessions: sessions, brand: brand, secureCookies: secureCookies}
+// NewAuthentication constructs the handler. subscriptions/encryptionKey may
+// be nil, which makes Logout's Push-device cleanup a no-op (Web Push not
+// configured on this instance).
+func NewAuthentication(authentication Authentication, sessions Sessions, brand branding.Brand, secureCookies bool, subscriptions PushDeviceRemover, encryptionKey []byte) *AuthenticationHandler {
+	return &AuthenticationHandler{
+		authentication: authentication, sessions: sessions, brand: brand, secureCookies: secureCookies,
+		subscriptions: subscriptions, encryptionKey: encryptionKey,
+	}
 }
 
 func (h *AuthenticationHandler) Login(w http.ResponseWriter, r *http.Request) {
@@ -228,7 +245,32 @@ func (h *AuthenticationHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	http.SetCookie(w, webmiddleware.ExpiredSessionCookie(h.secureCookies))
+	h.removePushDevice(w, r)
 	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+// removePushDevice best-effort removes this browser's Push subscription so a
+// signed-out device stops receiving notifications for the account that just
+// logged out. It never fails logout: Web Push not configured
+// (h.subscriptions nil), no device cookie present, no known current user
+// (Logout runs behind webmiddleware.Authentication, so this is only unset for
+// an already-expired/invalid session), or a delete error are all silently
+// tolerated beyond a log line.
+func (h *AuthenticationHandler) removePushDevice(w http.ResponseWriter, r *http.Request) {
+	if h.subscriptions == nil {
+		return
+	}
+	deviceCookie, err := r.Cookie(webmiddleware.DeviceCookieName)
+	if err != nil || deviceCookie.Value == "" {
+		return
+	}
+	if account, ok := webmiddleware.CurrentUser(r.Context()); ok {
+		deviceHash := platformcrypto.Fingerprint(h.encryptionKey, deviceCookie.Value)
+		if err := h.subscriptions.RemoveDeviceByHash(r.Context(), account.ID, deviceHash); err != nil {
+			webmiddleware.LogError(r, "remove push device on logout", err)
+		}
+	}
+	http.SetCookie(w, webmiddleware.ExpiredDeviceCookie(h.secureCookies))
 }
 
 func (h *AuthenticationHandler) providers() []auth.ProviderAvailability {

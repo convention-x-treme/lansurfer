@@ -67,9 +67,29 @@ type RouterDependencies struct {
 	GameRequests        handler.GameRequestCommands
 	RequestQueries      handler.GameRequestQueries
 	Realtime            handler.GameRequestEvents
-	SecureCookies       bool
-	Logger              *slog.Logger
-	TrustedProxies      []netip.Prefix
+	Subscriptions       handler.SubscriptionManager
+	// PushDevices is the same concrete *notification.SubscriptionService as
+	// Subscriptions, exposed through the handler.PushDeviceRemover interface
+	// Logout needs. Two fields (rather than widening either handler
+	// package's narrower interface) because AuthenticationHandler and
+	// NotificationSettingsHandler each declare their own narrow consuming
+	// interface, and this composition root is where it is fine to say one
+	// concrete type backs both.
+	PushDevices handler.PushDeviceRemover
+	// EncryptionKey is config.Config.DataEncryptionKey, used to hash the
+	// opaque device cookie into the device_id_hash SubscriptionManager
+	// consumes. Only meaningful when Subscriptions/PushDevices is non-nil.
+	EncryptionKey []byte
+	// VAPIDPublicKey is config.Config.WebPush.PublicKey, rendered into the
+	// notification settings page for the browser's Push subscription call.
+	VAPIDPublicKey string
+	// WebPushConfigured is config.Config.WebPush != nil: whether Web Push is
+	// configured at all on this instance, independent of Subscriptions being
+	// wired (which also requires DataEncryptionKey).
+	WebPushConfigured bool
+	SecureCookies     bool
+	Logger            *slog.Logger
+	TrustedProxies    []netip.Prefix
 	// InstanceName is the raw, already-trimmed config.Config.InstanceName
 	// value. Empty means unset; NewRouter resolves the display fallback.
 	InstanceName string
@@ -85,7 +105,10 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 	if instanceName == "" {
 		instanceName = brand.Name
 	}
-	authenticationHandler := handler.NewAuthentication(dependencies.Authentication, dependencies.Sessions, brand, dependencies.SecureCookies)
+	authenticationHandler := handler.NewAuthentication(
+		dependencies.Authentication, dependencies.Sessions, brand, dependencies.SecureCookies,
+		dependencies.PushDevices, dependencies.EncryptionKey,
+	)
 	onboardingHandler := handler.NewOnboarding(
 		dependencies.PendingIdentities, dependencies.AccountRegistration, dependencies.GameNickClaims,
 		dependencies.Identities, dependencies.Authentication, brand, dependencies.SecureCookies,
@@ -98,6 +121,13 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 	gamesHandler := handler.NewGames(dependencies.Discovery, brand)
 	gameRequestsHandler := handler.NewGameRequests(dependencies.GameRequests, dependencies.RequestQueries, dependencies.GameResolver, dependencies.Discovery, brand)
 	realtimeHandler := handler.NewRealtime(dependencies.Realtime)
+	var notificationSettingsHandler *handler.NotificationSettingsHandler
+	if dependencies.Subscriptions != nil {
+		notificationSettingsHandler = handler.NewNotificationSettings(
+			dependencies.Subscriptions, dependencies.EncryptionKey, dependencies.VAPIDPublicKey,
+			dependencies.WebPushConfigured, brand, dependencies.SecureCookies,
+		)
+	}
 	router := chi.NewRouter()
 	router.Use(middleware.RequestID)
 	// RequestTimeout wraps RequestLogging so the logger sees the context the
@@ -129,6 +159,14 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 		authenticated.Get("/auth/discord", authenticationHandler.BeginFor("discord"))
 		authenticated.Get("/auth/callback", authenticationHandler.CallbackFor("oidc"))
 		authenticated.Get("/auth/discord/callback", authenticationHandler.CallbackFor("discord"))
+		// Logout is registered here rather than on the top-level router, like
+		// every other /auth/* route, so webmiddleware.Authentication resolves
+		// CurrentUser before the handler runs. It needs the current account's
+		// ID to remove exactly that account's device subscription on sign-out
+		// (see AuthenticationHandler.removePushDevice); it does not require
+		// authentication (RequireAuthentication is never applied here), so an
+		// already-signed-out request still succeeds as a no-op.
+		authenticated.Post("/auth/logout", authenticationHandler.Logout)
 		authenticated.Route("/onboarding", func(onboarding chi.Router) {
 			onboarding.Get("/", onboardingHandler.ShowExisting)
 			onboarding.Post("/", onboardingHandler.SubmitExisting)
@@ -142,6 +180,15 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 			account.Post("/link/oidc", authenticationHandler.LinkFor("oidc"))
 			account.Post("/link/discord", authenticationHandler.LinkFor("discord"))
 			account.Post("/identities/{identityID}/unlink", accountHandler.Unlink)
+			if notificationSettingsHandler != nil {
+				account.Route("/notifications", func(notifications chi.Router) {
+					notifications.Get("/", notificationSettingsHandler.Show)
+					notifications.Post("/subscribe", notificationSettingsHandler.Subscribe)
+					notifications.Post("/disable", notificationSettingsHandler.Disable)
+					notifications.Post("/audience", notificationSettingsHandler.SetAudience)
+					notifications.Post("/devices/{subscriptionID}/remove", notificationSettingsHandler.RemoveDevice)
+				})
+			}
 		})
 		if dependencies.Discovery != nil {
 			authenticated.Route("/games", func(games chi.Router) {
@@ -190,7 +237,6 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 			})
 		}
 	})
-	router.Post("/auth/logout", authenticationHandler.Logout)
 	router.Get("/ui/patterns/empty", componentHandler(components.EmptyState(brand)))
 	router.Get("/ui/patterns/error", componentHandler(components.ErrorState()))
 	router.Get("/healthz", healthHandler)
