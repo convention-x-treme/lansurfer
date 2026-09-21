@@ -108,7 +108,7 @@ The stable 1.0 release delivers these capabilities through parallel roadmap trac
 
 The 1.0 product UI is English-only. Internationalization/localization is not a stable-1.0 prerequisite.
 
-The authoritative track scope, dependencies, acceptance criteria, Pilot Gate, Integration Gate, and release gates are in the [roadmap](ROADMAP.md#development-model). A planned feature is not implemented merely because it is described here.
+This document is the canonical source for stable product behavior and release scope. The [roadmap](ROADMAP.md#development-model) maps that scope into delivery tracks, integration dependencies, and release gates; linked GitHub trackers carry live progress. A planned capability is not implemented merely because it is specified here.
 
 ### Explicitly deferred beyond 1.0
 
@@ -421,7 +421,7 @@ The stable 1.0 distribution includes:
 
 TLS and the reverse proxy remain operator responsibilities. The project documents each release's supported upgrade path rather than guaranteeing arbitrary direct upgrades across all 1.x versions. Migrations are forward-only, and the populated prototype-to-1.0 path is tested.
 
-The selected LAN pilot has a narrower release-artifact requirement than stable 1.0, but it still requires a production deployment path, clean-host installation, an exercised backup/restore, and at least one exercised upgrade path with existing data. The roadmap's Pilot Gate owns those validation requirements.
+The selected LAN pilot has a narrower release-artifact requirement than stable 1.0, but it still requires a production deployment path, clean-host installation, an exercised backup/restore, and at least one exercised upgrade path with existing data. The roadmap's Pilot Gate defines the integration/validation evidence required to declare that bounded pilot ready.
 
 ## 16. 1.0 Success Criteria
 
@@ -441,4 +441,4 @@ A 1.0 release must not require Event switching, Open Play, Clans, a generic Game
 
 ## 17. Product Decisions Left to Implementation
 
-Layout, copy, pagination, route shape, migration mechanics, exact browser versions used as validation evidence, exact provider-index schema, stale-state thresholds, and validation helpers are implementation details unless the roadmap explicitly promotes them to release criteria. Follow the [approval rules](../AGENTS.md#constraints-requiring-approval) for changes to technology, security, module boundaries, deployment, domain terminology, or approved 1.0 scope.
+Layout, copy, pagination, route shape, migration mechanics, exact browser versions used as validation evidence, exact provider-index schema, stale-state thresholds, and validation helpers are implementation details unless a canonical product requirement or release gate explicitly constrains them. Follow the [approval rules](../AGENTS.md#changes-requiring-approval) for changes to technology, security, module boundaries, deployment, domain terminology, or approved 1.0 scope.
