@@ -3214,8 +3214,8 @@ func TestMigrateAndReadyCheck(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get migration version: %v", err)
 	}
-	if version != 10 {
-		t.Errorf("migration version = %d, want 10", version)
+	if version != 11 {
+		t.Errorf("migration version = %d, want 11", version)
 	}
 
 	if err := migrateFS(t.Context(), pool, migrationFS, logger); err != nil {
@@ -4387,5 +4387,151 @@ func TestNavigationReadingHistoryAndCountsPersistence(t *testing.T) {
 	// rather than silently stored.
 	if err := requests.RecordView(t.Context(), second.ID, reader.ID); !errors.Is(err, gamerequest.ErrNotFound) {
 		t.Fatalf("record view of deleted request = %v, want ErrNotFound", err)
+	}
+}
+
+// TestIGDBMultiplayerMetadataPersistence covers issue #46 at the persistence
+// layer: summary, genre and game mode names, and platform-specific
+// multiplayer modes survive staging, materialization, and refresh; an
+// unreported player limit stays NULL instead of reading as zero; an empty
+// newer generation keeps the last-known-good snapshot; and removing a
+// retired generation removes its multiplayer rows with it.
+func TestIGDBMultiplayerMetadataPersistence(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+	gameStore := gamepostgres.NewStore(pool)
+	discovery := game.NewDiscoveryService(gameStore, gameStore, gameStore, storeProviderStatus{store: gameStore})
+
+	activateIGDBGeneration(t, gameStore, []game.ProviderGame{{
+		Reference:     game.ProviderReference{Provider: "igdb", ExternalID: "100"},
+		Name:          "Metadata Quest",
+		Slug:          "metadata-quest",
+		GameType:      "Main Game",
+		Summary:       "A co-op adventure.",
+		GenreNames:    []string{"Strategy"},
+		GameModeNames: []string{"Multiplayer"},
+		PlatformNames: []string{"PC", "Linux"},
+		MultiplayerModes: []game.MultiplayerMode{
+			{PlatformIGDBID: 6, PlatformName: "PC", CampaignCoop: true, LanCoop: true, OnlineCoopMax: new(4)},
+			{PlatformIGDBID: 49, PlatformName: "Linux", OnlineCoop: true},
+		},
+	}})
+
+	var summary string
+	var genreNames, gameModeNames []string
+	if err := pool.QueryRow(t.Context(), `
+		SELECT summary, genre_names, game_mode_names FROM igdb_game_index WHERE igdb_id = 100
+	`).Scan(&summary, &genreNames, &gameModeNames); err != nil {
+		t.Fatalf("load provider metadata: %v", err)
+	}
+	if summary != "A co-op adventure." || !slices.Equal(genreNames, []string{"Strategy"}) || !slices.Equal(gameModeNames, []string{"Multiplayer"}) {
+		t.Fatalf("provider metadata = %q, %#v, %#v", summary, genreNames, gameModeNames)
+	}
+	var modeCount, unreportedMaxCount int
+	if err := pool.QueryRow(t.Context(), `
+		SELECT count(*), count(*) FILTER (WHERE online_max IS NULL)
+		FROM igdb_game_index_multiplayer_modes WHERE igdb_id = 100
+	`).Scan(&modeCount, &unreportedMaxCount); err != nil {
+		t.Fatalf("count provider modes: %v", err)
+	}
+	if modeCount != 2 || unreportedMaxCount != 2 {
+		t.Fatalf("provider modes = %d rows, %d unreported maxima, want 2 and 2", modeCount, unreportedMaxCount)
+	}
+	var providerModePlatforms []string
+	if err := pool.QueryRow(t.Context(), `
+		SELECT array_agg(platform_name ORDER BY ordinal)
+		FROM igdb_game_index_multiplayer_modes WHERE igdb_id = 100
+	`).Scan(&providerModePlatforms); err != nil {
+		t.Fatalf("load provider mode platforms: %v", err)
+	}
+	if !slices.Equal(providerModePlatforms, []string{"PC", "Linux"}) {
+		t.Fatalf("provider mode platforms = %#v, want provider order preserved", providerModePlatforms)
+	}
+
+	materialized, err := discovery.Resolve(t.Context(), game.ProviderReference{Provider: "igdb", ExternalID: "100"})
+	if err != nil {
+		t.Fatalf("materialize provider record 100: %v", err)
+	}
+	var enrichmentSummary string
+	if err := pool.QueryRow(t.Context(), `SELECT summary FROM game_igdb_enrichment WHERE game_id = $1`, materialized.ID).Scan(&enrichmentSummary); err != nil {
+		t.Fatalf("load enrichment summary: %v", err)
+	}
+	if enrichmentSummary != "A co-op adventure." {
+		t.Fatalf("enrichment summary = %q, want the materialized snapshot value", enrichmentSummary)
+	}
+	var enrichmentModes int
+	if err := pool.QueryRow(t.Context(), `SELECT count(*) FROM game_igdb_enrichment_multiplayer_modes WHERE game_id = $1`, materialized.ID).Scan(&enrichmentModes); err != nil {
+		t.Fatalf("count enrichment modes: %v", err)
+	}
+	if enrichmentModes != 2 {
+		t.Fatalf("enrichment modes = %d, want 2", enrichmentModes)
+	}
+
+	// A newer successful generation with mode data replaces the snapshot;
+	// online_max carries a real value, distinct from unreported.
+	activateIGDBGeneration(t, gameStore, []game.ProviderGame{{
+		Reference: game.ProviderReference{Provider: "igdb", ExternalID: "100"},
+		Name:      "Metadata Quest",
+		Slug:      "metadata-quest",
+		GameType:  "Main Game",
+		Summary:   "Updated summary.",
+		MultiplayerModes: []game.MultiplayerMode{
+			{PlatformIGDBID: 6, PlatformName: "PC", OnlineCoop: true, OnlineMax: new(8)},
+		},
+	}})
+	var onlineMax *int
+	if err := pool.QueryRow(t.Context(), `
+		SELECT modes.online_max
+		FROM game_igdb_enrichment_multiplayer_modes modes
+		JOIN game_igdb_enrichment enrichment ON enrichment.game_id = modes.game_id
+		WHERE enrichment.external_id = '100'
+	`).Scan(&onlineMax); err != nil {
+		t.Fatalf("load refreshed mode limit: %v", err)
+	}
+	if onlineMax == nil || *onlineMax != 8 {
+		t.Fatalf("refreshed online_max = %v, want 8", onlineMax)
+	}
+
+	// A newer generation reporting no modes and an empty summary keeps the
+	// last-known-good snapshot instead of blanking it.
+	activateIGDBGeneration(t, gameStore, []game.ProviderGame{{
+		Reference: game.ProviderReference{Provider: "igdb", ExternalID: "100"},
+		Name:      "Metadata Quest",
+		Slug:      "metadata-quest",
+		GameType:  "Main Game",
+	}})
+	if err := pool.QueryRow(t.Context(), `
+		SELECT summary FROM game_igdb_enrichment WHERE external_id = '100'
+	`).Scan(&enrichmentSummary); err != nil {
+		t.Fatalf("reload enrichment summary: %v", err)
+	}
+	if enrichmentSummary != "Updated summary." {
+		t.Fatalf("enrichment summary after empty generation = %q, want the previous snapshot", enrichmentSummary)
+	}
+	if err := pool.QueryRow(t.Context(), `
+		SELECT count(*) FROM game_igdb_enrichment_multiplayer_modes modes
+		JOIN game_igdb_enrichment enrichment ON enrichment.game_id = modes.game_id
+		WHERE enrichment.external_id = '100'
+	`).Scan(&enrichmentModes); err != nil {
+		t.Fatalf("recount enrichment modes: %v", err)
+	}
+	if enrichmentModes != 1 {
+		t.Fatalf("enrichment modes after empty generation = %d, want the previous snapshot of 1", enrichmentModes)
+	}
+
+	// Only the active generation remains after cleanup. It reports no
+	// multiplayer modes, so the provider mode table has no generation rows
+	// at all -- every retired generation's rows are gone with it.
+	var indexGenerations, modeGenerations int
+	if err := pool.QueryRow(t.Context(), `SELECT count(DISTINCT generation_id) FROM igdb_game_index`).Scan(&indexGenerations); err != nil {
+		t.Fatalf("count index generations: %v", err)
+	}
+	if err := pool.QueryRow(t.Context(), `SELECT count(DISTINCT generation_id) FROM igdb_game_index_multiplayer_modes`).Scan(&modeGenerations); err != nil {
+		t.Fatalf("count mode generations: %v", err)
+	}
+	if indexGenerations != 1 || modeGenerations != 0 {
+		t.Fatalf("surviving generations = %d index / %d modes, want 1 / 0 after cleanup", indexGenerations, modeGenerations)
 	}
 }

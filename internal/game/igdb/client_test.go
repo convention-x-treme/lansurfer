@@ -54,7 +54,7 @@ func TestGamesGetsOneTokenAndPagesByLastID(t *testing.T) {
 			switch requestNumber {
 			case 1:
 				_, _ = io.WriteString(w, `[
-					{"id":1,"name":"Alpha","slug":"alpha","game_type":{"type":"Main Game"},"first_release_date":100,"parent_game":9,"version_parent":8,"platforms":[{"name":"PC"},{"name":"Linux"}],"alternative_names":[{"name":"A"}],"cover":{"image_id":"cover-a"},"updated_at":200,"checksum":"checksum-a"},
+					{"id":1,"name":"Alpha","slug":"alpha","game_type":{"type":"Main Game"},"first_release_date":100,"parent_game":9,"version_parent":8,"platforms":[{"id":6,"name":"PC"},{"id":49,"name":"Linux"}],"alternative_names":[{"name":"A"}],"cover":{"image_id":"cover-a"},"updated_at":200,"checksum":"checksum-a","summary":"Alpha summary","genres":[{"name":"Strategy"}],"game_modes":[{"name":"Single player"},{"name":"Multiplayer"}],"multiplayer_modes":[{"platform":6,"campaigncoop":true,"lancoop":true,"onlinecoopmax":4,"onlinemax":0},{"platform":49,"splitscreen":true,"onlinecoop":true}]},
 					{"id":2,"name":"Beta","slug":"beta","game_type":{"type":"DLC / Add-on"},"platforms":[],"alternative_names":[]}
 				]`)
 			case 2:
@@ -86,6 +86,9 @@ func TestGamesGetsOneTokenAndPagesByLastID(t *testing.T) {
 
 	firstRelease := time.Unix(100, 0).UTC()
 	providerUpdated := time.Unix(200, 0).UTC()
+	// onlinemax:0 and the absent offline limits must map to nil ("not
+	// reported"), never to a zero-player cap (issue #46 decision).
+	alphaOnlineCoopMax := 4
 	want := []game.ProviderGame{
 		{
 			Reference:         game.ProviderReference{Provider: "igdb", ExternalID: "1"},
@@ -100,6 +103,20 @@ func TestGamesGetsOneTokenAndPagesByLastID(t *testing.T) {
 			CoverImageID:      "cover-a",
 			ProviderUpdatedAt: &providerUpdated,
 			Checksum:          "checksum-a",
+			Summary:           "Alpha summary",
+			GenreNames:        []string{"Strategy"},
+			GameModeNames:     []string{"Single player", "Multiplayer"},
+			MultiplayerModes: []game.MultiplayerMode{
+				{
+					PlatformIGDBID: 6, PlatformName: "PC",
+					CampaignCoop: true, LanCoop: true,
+					OnlineCoopMax: new(alphaOnlineCoopMax),
+				},
+				{
+					PlatformIGDBID: 49, PlatformName: "Linux",
+					OnlineCoop: true, SplitScreen: true,
+				},
+			},
 		},
 		{
 			Reference:        game.ProviderReference{Provider: "igdb", ExternalID: "2"},
@@ -130,8 +147,8 @@ func TestGamesGetsOneTokenAndPagesByLastID(t *testing.T) {
 		t.Fatalf("games requests = %d, want 2", len(requests))
 	}
 	wantBodies := []string{
-		"fields id,name,slug,game_type.type,first_release_date,parent_game,version_parent,platforms.name,alternative_names.name,cover.image_id,updated_at,checksum;\nwhere id > 0;\nsort id asc;\nlimit 2;",
-		"fields id,name,slug,game_type.type,first_release_date,parent_game,version_parent,platforms.name,alternative_names.name,cover.image_id,updated_at,checksum;\nwhere id > 2;\nsort id asc;\nlimit 2;",
+		"fields id,name,slug,game_type.type,first_release_date,parent_game,version_parent,platforms.id,platforms.name,alternative_names.name,cover.image_id,updated_at,checksum,summary,genres.name,game_modes.name,multiplayer_modes.*;\nwhere id > 0;\nsort id asc;\nlimit 2;",
+		"fields id,name,slug,game_type.type,first_release_date,parent_game,version_parent,platforms.id,platforms.name,alternative_names.name,cover.image_id,updated_at,checksum,summary,genres.name,game_modes.name,multiplayer_modes.*;\nwhere id > 2;\nsort id asc;\nlimit 2;",
 	}
 	for i, request := range requests {
 		if request.method != http.MethodPost {

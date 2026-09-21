@@ -20,14 +20,43 @@ func (s *Store) SearchIGDB(ctx context.Context, search string) ([]game.AdminProv
 		return nil, fmt.Errorf("search active IGDB catalog: %w", err)
 	}
 	result := make([]game.AdminProviderGame, 0, min(len(rows), adminIGDBSearchLimit))
+	modeRows, err := s.providerModesForResults(ctx, rows)
+	if err != nil {
+		return nil, err
+	}
 	for _, row := range rows {
 		result = append(result, game.AdminProviderGame{
 			ExternalID: row.ExternalID, Name: row.Name, GameType: row.GameType,
 			PlatformNames: nonNilStrings(row.PlatformNames), FirstReleaseDate: timestamptzPointer(row.FirstReleaseDate),
 			CoverImageID: row.CoverImageID, LinkedGameID: row.LinkedGameID, LinkedGameName: row.LinkedGameName,
+			Summary: row.Summary, GenreNames: nonNilStrings(row.GenreNames), GameModeNames: nonNilStrings(row.GameModeNames),
+			MultiplayerModes: modeRows[row.ExternalID],
 		})
 	}
 	return result, nil
+}
+
+// providerModesForResults loads the active generation's multiplayer modes
+// for the search results in one query. Numeric IGDB IDs parse back from the
+// text external IDs the search returned; a failure here is a programming
+// error, not user input.
+func (s *Store) providerModesForResults(ctx context.Context, rows []sqlcgen.SearchActiveIGDBGamesForAdminRow) (map[string][]game.MultiplayerMode, error) {
+	ids := make([]int64, 0, len(rows))
+	for _, row := range rows {
+		id, err := strconv.ParseInt(row.ExternalID, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("parse external ID %s: %w", row.ExternalID, err)
+		}
+		ids = append(ids, id)
+	}
+	if len(ids) == 0 {
+		return map[string][]game.MultiplayerMode{}, nil
+	}
+	modeRows, err := s.queries.IGDBMultiplayerModesForExternalIDs(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("load IGDB multiplayer modes: %w", err)
+	}
+	return providerModeRows(modeRows), nil
 }
 
 // LinkIGDB links only an identity selected by the administrator. All provider
@@ -89,6 +118,12 @@ func (s *Store) linkIGDB(ctx context.Context, databaseGameID pgtype.UUID, gameID
 		if err := queries.UpsertIGDBEnrichmentForExternalID(ctx, externalID); err != nil {
 			return fmt.Errorf("refresh IGDB enrichment: %w", err)
 		}
+		if err := queries.ClearIGDBEnrichmentMultiplayerModesForExternalID(ctx, externalID); err != nil {
+			return fmt.Errorf("clear IGDB multiplayer modes: %w", err)
+		}
+		if err := queries.InsertIGDBEnrichmentMultiplayerModesForExternalID(ctx, externalID); err != nil {
+			return fmt.Errorf("insert IGDB multiplayer modes: %w", err)
+		}
 		return commitReconciliation(ctx, transaction, "link IGDB record")
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
@@ -109,6 +144,12 @@ func (s *Store) linkIGDB(ctx context.Context, databaseGameID pgtype.UUID, gameID
 	}
 	if err := queries.UpsertIGDBEnrichmentForExternalID(ctx, externalID); err != nil {
 		return fmt.Errorf("store IGDB enrichment: %w", err)
+	}
+	if err := queries.ClearIGDBEnrichmentMultiplayerModesForExternalID(ctx, externalID); err != nil {
+		return fmt.Errorf("clear IGDB multiplayer modes: %w", err)
+	}
+	if err := queries.InsertIGDBEnrichmentMultiplayerModesForExternalID(ctx, externalID); err != nil {
+		return fmt.Errorf("insert IGDB multiplayer modes: %w", err)
 	}
 	return commitReconciliation(ctx, transaction, "link IGDB record")
 }

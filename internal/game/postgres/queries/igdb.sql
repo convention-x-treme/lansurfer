@@ -56,7 +56,10 @@ INSERT INTO igdb_game_index (
     cover_image_id,
     igdb_updated_at,
     checksum,
-    search_text
+    search_text,
+    summary,
+    genre_names,
+    game_mode_names
 ) SELECT
     generation.id,
     sqlc.arg(igdb_id),
@@ -71,8 +74,81 @@ INSERT INTO igdb_game_index (
     sqlc.narg(cover_image_id),
     sqlc.narg(igdb_updated_at),
     sqlc.narg(checksum),
-    sqlc.arg(search_text)
+    sqlc.arg(search_text),
+    sqlc.narg(summary),
+    sqlc.arg(genre_names),
+    sqlc.arg(game_mode_names)
 FROM generation;
+
+-- name: StoreIGDBMultiplayerModes :exec
+-- Stages the platform-specific multiplayer modes of one provider record
+-- inside the still-syncing generation. Called only for records that have
+-- modes; the composite FK to igdb_game_index ties every row to its parent
+-- record, so generation cleanup removes them together.
+WITH generation AS (
+    SELECT id
+    FROM igdb_sync_generations
+    WHERE id = sqlc.arg(generation_id)::uuid
+      AND status = 'syncing'
+    FOR SHARE
+), modes AS (
+    -- One jsonb parameter carries the mode rows of a single provider
+    -- record; array order is the ordinal. Each field is cast explicitly
+    -- because sqlc cannot infer types through a record-function column
+    -- definition list, and JSON null casts to SQL NULL for the nullable
+    -- platform reference and unreported player limits.
+    SELECT (row_number() OVER ())::int - 1 AS ordinal,
+           (entry.m ->> 'platform_igdb_id')::bigint AS platform_igdb_id,
+           (entry.m ->> 'platform_name')::text AS platform_name,
+           (entry.m ->> 'campaign_coop')::boolean AS campaign_coop,
+           (entry.m ->> 'drop_in')::boolean AS drop_in,
+           (entry.m ->> 'lan_coop')::boolean AS lan_coop,
+           (entry.m ->> 'offline_coop')::boolean AS offline_coop,
+           (entry.m ->> 'online_coop')::boolean AS online_coop,
+           (entry.m ->> 'split_screen')::boolean AS split_screen,
+           (entry.m ->> 'split_screen_online')::boolean AS split_screen_online,
+           (entry.m ->> 'offline_coop_max')::int AS offline_coop_max,
+           (entry.m ->> 'offline_max')::int AS offline_max,
+           (entry.m ->> 'online_coop_max')::int AS online_coop_max,
+           (entry.m ->> 'online_max')::int AS online_max
+    FROM jsonb_array_elements(sqlc.arg(modes)::jsonb) AS entry(m)
+)
+INSERT INTO igdb_game_index_multiplayer_modes (
+    generation_id,
+    igdb_id,
+    ordinal,
+    platform_igdb_id,
+    platform_name,
+    campaign_coop,
+    drop_in,
+    lan_coop,
+    offline_coop,
+    online_coop,
+    split_screen,
+    split_screen_online,
+    offline_coop_max,
+    offline_max,
+    online_coop_max,
+    online_max
+)
+SELECT generation.id,
+       sqlc.arg(igdb_id),
+       modes.ordinal,
+       modes.platform_igdb_id,
+       modes.platform_name,
+       modes.campaign_coop,
+       modes.drop_in,
+       modes.lan_coop,
+       modes.offline_coop,
+       modes.online_coop,
+       modes.split_screen,
+       modes.split_screen_online,
+       modes.offline_coop_max,
+       modes.offline_max,
+       modes.online_coop_max,
+       modes.online_max
+FROM generation
+CROSS JOIN modes;
 
 -- name: CompleteIGDBGeneration :execrows
 UPDATE igdb_sync_generations
@@ -374,7 +450,8 @@ VALUES (sqlc.arg(game_id)::uuid, 'igdb', sqlc.arg(external_id)::text);
 -- one, only a genuinely non-empty new value replaces it.
 INSERT INTO game_igdb_enrichment (
     game_id, external_id, cover_image_id, game_type, platform_names,
-    first_release_date, provider_updated_at
+    first_release_date, provider_updated_at,
+    summary, genre_names, game_mode_names
 )
 SELECT
     mapping.game_id,
@@ -383,7 +460,10 @@ SELECT
     provider_game.game_type,
     provider_game.platform_names,
     provider_game.first_release_date,
-    provider_game.igdb_updated_at
+    provider_game.igdb_updated_at,
+    provider_game.summary,
+    provider_game.genre_names,
+    provider_game.game_mode_names
 FROM game_external_ids mapping
 JOIN igdb_provider_state state ON state.singleton
 JOIN igdb_game_index provider_game
@@ -400,6 +480,15 @@ SET cover_image_id = COALESCE(NULLIF(EXCLUDED.cover_image_id, ''), game_igdb_enr
     END,
     first_release_date = COALESCE(EXCLUDED.first_release_date, game_igdb_enrichment.first_release_date),
     provider_updated_at = COALESCE(EXCLUDED.provider_updated_at, game_igdb_enrichment.provider_updated_at),
+    summary = COALESCE(NULLIF(btrim(EXCLUDED.summary), ''), game_igdb_enrichment.summary),
+    genre_names = CASE
+        WHEN cardinality(EXCLUDED.genre_names) > 0 THEN EXCLUDED.genre_names
+        ELSE game_igdb_enrichment.genre_names
+    END,
+    game_mode_names = CASE
+        WHEN cardinality(EXCLUDED.game_mode_names) > 0 THEN EXCLUDED.game_mode_names
+        ELSE game_igdb_enrichment.game_mode_names
+    END,
     updated_at = now();
 
 -- name: RefreshIGDBEnrichmentFromGeneration :exec
@@ -412,7 +501,8 @@ SET cover_image_id = COALESCE(NULLIF(EXCLUDED.cover_image_id, ''), game_igdb_enr
 -- ON CONFLICT semantics as UpsertIGDBEnrichmentForExternalID.
 INSERT INTO game_igdb_enrichment (
     game_id, external_id, cover_image_id, game_type, platform_names,
-    first_release_date, provider_updated_at
+    first_release_date, provider_updated_at,
+    summary, genre_names, game_mode_names
 )
 SELECT
     mapping.game_id,
@@ -421,7 +511,10 @@ SELECT
     provider_game.game_type,
     provider_game.platform_names,
     provider_game.first_release_date,
-    provider_game.igdb_updated_at
+    provider_game.igdb_updated_at,
+    provider_game.summary,
+    provider_game.genre_names,
+    provider_game.game_mode_names
 FROM game_external_ids mapping
 JOIN igdb_game_index provider_game
   ON provider_game.generation_id = sqlc.arg(generation_id)::uuid
@@ -436,6 +529,15 @@ SET cover_image_id = COALESCE(NULLIF(EXCLUDED.cover_image_id, ''), game_igdb_enr
     END,
     first_release_date = COALESCE(EXCLUDED.first_release_date, game_igdb_enrichment.first_release_date),
     provider_updated_at = COALESCE(EXCLUDED.provider_updated_at, game_igdb_enrichment.provider_updated_at),
+    summary = COALESCE(NULLIF(btrim(EXCLUDED.summary), ''), game_igdb_enrichment.summary),
+    genre_names = CASE
+        WHEN cardinality(EXCLUDED.genre_names) > 0 THEN EXCLUDED.genre_names
+        ELSE game_igdb_enrichment.genre_names
+    END,
+    game_mode_names = CASE
+        WHEN cardinality(EXCLUDED.game_mode_names) > 0 THEN EXCLUDED.game_mode_names
+        ELSE game_igdb_enrichment.game_mode_names
+    END,
     updated_at = now();
 
 -- name: SearchDiscoveryGames :many
@@ -629,3 +731,141 @@ ORDER BY
     lower(name),
     identity_key
 LIMIT sqlc.arg(fetch_limit)::int;
+
+-- name: ClearIGDBEnrichmentMultiplayerModesForExternalID :exec
+-- Deletes one linked Game's last-known-good multiplayer snapshot, but only
+-- when the active generation reports mode rows for that provider record.
+-- Paired with InsertIGDBEnrichmentMultiplayerModesForExternalID in the same
+-- transaction: clear-then-insert in two statements, because data-modifying
+-- CTEs in one statement share one snapshot and the insert would collide
+-- with rows the delete in the same statement has not removed yet. A
+-- provider record with no mode rows never clears anything (the same
+-- last-known-good rule the scalar/array columns use).
+DELETE FROM game_igdb_enrichment_multiplayer_modes child
+WHERE EXISTS (
+    SELECT 1
+    FROM igdb_game_index_multiplayer_modes m
+    JOIN igdb_provider_state state ON state.singleton
+    JOIN igdb_game_index provider_game
+      ON provider_game.generation_id = state.active_generation_id
+     AND provider_game.igdb_id = m.igdb_id
+    WHERE provider_game.igdb_id::text = sqlc.arg(external_id)::text
+) AND child.game_id = (
+    SELECT mapping.game_id
+    FROM game_external_ids mapping
+    WHERE lower(btrim(mapping.provider)) = 'igdb'
+      AND mapping.external_id = sqlc.arg(external_id)::text
+);
+
+-- name: InsertIGDBEnrichmentMultiplayerModesForExternalID :exec
+-- Copies the active generation's mode rows into one linked Game's
+-- last-known-good snapshot. Runs after the matching Clear... query; inserts
+-- nothing when the provider record has no mode rows.
+INSERT INTO game_igdb_enrichment_multiplayer_modes (
+    game_id, ordinal, platform_igdb_id, platform_name,
+    campaign_coop, drop_in, lan_coop, offline_coop, online_coop,
+    split_screen, split_screen_online,
+    offline_coop_max, offline_max, online_coop_max, online_max
+)
+SELECT mapping.game_id,
+       m.ordinal,
+       m.platform_igdb_id,
+       m.platform_name,
+       m.campaign_coop,
+       m.drop_in,
+       m.lan_coop,
+       m.offline_coop,
+       m.online_coop,
+       m.split_screen,
+       m.split_screen_online,
+       m.offline_coop_max,
+       m.offline_max,
+       m.online_coop_max,
+       m.online_max
+FROM game_external_ids mapping
+JOIN igdb_provider_state state ON state.singleton
+JOIN igdb_game_index provider_game
+  ON provider_game.generation_id = state.active_generation_id
+ AND provider_game.igdb_id::text = mapping.external_id
+JOIN igdb_game_index_multiplayer_modes m
+  ON m.generation_id = provider_game.generation_id
+ AND m.igdb_id = provider_game.igdb_id
+WHERE lower(btrim(mapping.provider)) = 'igdb'
+  AND mapping.external_id = sqlc.arg(external_id)::text;
+
+-- name: ClearIGDBEnrichmentMultiplayerModesFromGeneration :exec
+-- Same clear rule as ClearIGDBEnrichmentMultiplayerModesForExternalID for
+-- every IGDB mapping at once, from the generation just activated: per game,
+-- snapshot rows are removed only when that generation reports modes for the
+-- record. Paired with InsertIGDBEnrichmentMultiplayerModesFromGeneration.
+DELETE FROM game_igdb_enrichment_multiplayer_modes child
+USING game_external_ids mapping
+WHERE lower(btrim(mapping.provider)) = 'igdb'
+  AND mapping.game_id = child.game_id
+  AND EXISTS (
+      SELECT 1
+      FROM igdb_game_index_multiplayer_modes m
+      WHERE m.generation_id = sqlc.arg(generation_id)::uuid
+        AND m.igdb_id::text = mapping.external_id
+  );
+
+-- name: InsertIGDBEnrichmentMultiplayerModesFromGeneration :exec
+-- Copies the just-activated generation's mode rows into the last-known-good
+-- snapshot of every mapped Game. Runs after the matching Clear... query;
+-- games whose provider record has no mode rows are untouched.
+INSERT INTO game_igdb_enrichment_multiplayer_modes (
+    game_id, ordinal, platform_igdb_id, platform_name,
+    campaign_coop, drop_in, lan_coop, offline_coop, online_coop,
+    split_screen, split_screen_online,
+    offline_coop_max, offline_max, online_coop_max, online_max
+)
+SELECT mapping.game_id,
+       m.ordinal,
+       m.platform_igdb_id,
+       m.platform_name,
+       m.campaign_coop,
+       m.drop_in,
+       m.lan_coop,
+       m.offline_coop,
+       m.online_coop,
+       m.split_screen,
+       m.split_screen_online,
+       m.offline_coop_max,
+       m.offline_max,
+       m.online_coop_max,
+       m.online_max
+FROM game_external_ids mapping
+JOIN igdb_game_index provider_game
+  ON provider_game.generation_id = sqlc.arg(generation_id)::uuid
+ AND provider_game.igdb_id::text = mapping.external_id
+JOIN igdb_game_index_multiplayer_modes m
+  ON m.generation_id = provider_game.generation_id
+ AND m.igdb_id = provider_game.igdb_id
+WHERE lower(btrim(mapping.provider)) = 'igdb';
+
+-- name: IGDBMultiplayerModesForExternalIDs :many
+-- Read-only: the active generation's multiplayer modes for the given
+-- provider records, used by the Admin UI. Rows are ordered by igdb_id and
+-- ordinal; the caller groups them by external ID.
+SELECT m.igdb_id::text AS external_id,
+       m.ordinal,
+       m.platform_igdb_id,
+       m.platform_name,
+       m.campaign_coop,
+       m.drop_in,
+       m.lan_coop,
+       m.offline_coop,
+       m.online_coop,
+       m.split_screen,
+       m.split_screen_online,
+       m.offline_coop_max,
+       m.offline_max,
+       m.online_coop_max,
+       m.online_max
+FROM igdb_game_index_multiplayer_modes m
+JOIN igdb_provider_state state
+  ON state.singleton
+ AND state.active_generation_id = m.generation_id
+JOIN unnest(sqlc.arg(external_ids)::bigint[]) AS wanted(igdb_id)
+  ON wanted.igdb_id = m.igdb_id
+ORDER BY m.igdb_id, m.ordinal;

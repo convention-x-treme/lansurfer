@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/convention-x-treme/lansurfer/internal/game"
 	"github.com/convention-x-treme/lansurfer/internal/web/branding"
@@ -109,6 +110,7 @@ templ AdminGameCard(item game.Game) {
 				<a class="btn btn-quiet btn-sm" href={ "/admin/games/" + item.ID + "/merge" }>Merge duplicate</a>
 			</div>
 		</div>
+		@AdminIGDBMetadata(item.IGDBSummary, item.IGDBGenreNames, item.IGDBGameModeNames, item.IGDBMultiplayerModes)
 		<div class="divider my-1">Aliases</div>
 		<div class="flex flex-wrap gap-2">
 			for _, alias := range item.Aliases {
@@ -227,6 +229,7 @@ templ AdminIGDBLinkResult(target game.Game, result game.AdminProviderGame) {
 					<p class="mt-1 break-words text-sm text-base-content/70">{ metadata }</p>
 				}
 				<p class="data-text mt-1 break-words text-xs text-base-content/65">IGDB #{ result.ExternalID }</p>
+			@AdminIGDBMetadata(result.Summary, result.GenreNames, result.GameModeNames, result.MultiplayerModes)
 			</div>
 			if result.LinkedGameID == "" {
 				<form class="justify-self-end" method="post" action={ "/admin/games/" + target.ID + "/igdb" }>
@@ -251,6 +254,98 @@ func adminProviderPresentation(result game.AdminProviderGame) game.GamePresentat
 		Name: result.Name, GameType: result.GameType, PlatformNames: result.PlatformNames,
 		FirstReleaseDate: result.FirstReleaseDate, CoverImageID: result.CoverImageID,
 	}
+}
+
+// AdminIGDBMetadata renders the synchronized IGDB metadata (issue #46) as a
+// functional inspection block: summary, genre and game mode badges, and one
+// line per platform-specific multiplayer mode. It renders nothing when no
+// metadata is present, so local-only Games and missing enrichment snapshots
+// need no special casing at the call sites.
+templ AdminIGDBMetadata(summary string, genreNames, gameModeNames []string, modes []game.MultiplayerMode) {
+	if summary != "" || len(genreNames) > 0 || len(gameModeNames) > 0 || len(modes) > 0 {
+		<div class="mt-2 grid gap-1">
+			if summary != "" {
+				<p class="break-words text-xs text-base-content/70">{ adminMetadataSummary(summary) }</p>
+			}
+			if len(genreNames) > 0 || len(gameModeNames) > 0 {
+				<div class="flex flex-wrap gap-1">
+					for _, name := range genreNames {
+						<span class="badge badge-ghost badge-sm">{ name }</span>
+					}
+					for _, name := range gameModeNames {
+						<span class="badge badge-outline badge-sm">{ name }</span>
+					}
+				</div>
+			}
+			if len(modes) > 0 {
+				<ul class="grid gap-1">
+					for _, mode := range modes {
+						<li class="break-words text-xs text-base-content/70">{ multiplayerModeText(mode) }</li>
+					}
+				</ul>
+			}
+		</div>
+	}
+}
+
+func adminMetadataSummary(summary string) string {
+	value := strings.Join(strings.Fields(summary), " ")
+	if utf8.RuneCountInString(value) <= 400 {
+		return value
+	}
+	return string([]rune(value)[:400]) + "…"
+}
+
+// multiplayerModeText describes one platform-specific multiplayer mode in
+// operator-facing prose. Absent player limits are omitted rather than shown
+// as zero; they were never reported by IGDB.
+func multiplayerModeText(mode game.MultiplayerMode) string {
+	label := mode.PlatformName
+	if label == "" {
+		if mode.PlatformIGDBID > 0 {
+			label = "IGDB platform #" + strconv.FormatInt(mode.PlatformIGDBID, 10)
+		} else {
+			label = "Platform unspecified"
+		}
+	}
+	var parts []string
+	if mode.CampaignCoop {
+		parts = append(parts, "campaign co-op")
+	}
+	if mode.DropIn {
+		parts = append(parts, "drop-in")
+	}
+	if mode.LanCoop {
+		parts = append(parts, "LAN co-op")
+	}
+	if mode.OfflineCoop {
+		parts = append(parts, "offline co-op")
+	}
+	if mode.OfflineCoopMax != nil {
+		parts = append(parts, "offline co-op max "+strconv.Itoa(*mode.OfflineCoopMax))
+	}
+	if mode.OfflineMax != nil {
+		parts = append(parts, "offline max "+strconv.Itoa(*mode.OfflineMax))
+	}
+	if mode.OnlineCoop {
+		parts = append(parts, "online co-op")
+	}
+	if mode.OnlineCoopMax != nil {
+		parts = append(parts, "online co-op max "+strconv.Itoa(*mode.OnlineCoopMax))
+	}
+	if mode.OnlineMax != nil {
+		parts = append(parts, "online max "+strconv.Itoa(*mode.OnlineMax))
+	}
+	if mode.SplitScreen {
+		parts = append(parts, "split-screen")
+	}
+	if mode.SplitScreenOnline {
+		parts = append(parts, "split-screen online")
+	}
+	if len(parts) == 0 {
+		return label
+	}
+	return label + ": " + strings.Join(parts, " · ")
 }
 
 templ AdminGameMerge(brand branding.Brand, navigation components.NavigationState, target, source game.Game, games []game.Game, sourceID, formError, notice string) {

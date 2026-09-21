@@ -14,7 +14,7 @@ Status: plan (execution aid). Source: GitHub issue #46. Scope: ingestion, persis
 
 ## Plan
 
-### 1. Migration `00009_igdb_metadata.sql` (forward-only)
+### 1. Migration `00011_igdb_metadata.sql` (forward-only)
 
 - `igdb_game_index`: `summary text NULL`, `genre_names text[] NOT NULL DEFAULT '{}'`, `game_mode_names text[] NOT NULL DEFAULT '{}'`.
 - New `igdb_game_index_multiplayer_modes`:
@@ -24,7 +24,6 @@ Status: plan (execution aid). Source: GitHub issue #46. Scope: ingestion, persis
   - `offline_coop_max, offline_max, online_coop_max, online_max` integer NULL (NULL ≠ 0 in queries)
   - PK `(generation_id, igdb_id, ordinal)`
 - `game_igdb_enrichment`: same three columns.
-- New `game_igdb_enrichment_multiplayer_modes`: `game_id` FK → `games(id) ON DELETE CASCADE` (or enrichment PK) + same shape minus generation columns.
 - Generation cleanup needs no change: `DeleteInactiveIGDBGenerations` → cascade → `igdb_game_index` → mode rows.
 
 ### 2. Provider model + IGDB client
