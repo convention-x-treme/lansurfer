@@ -44,6 +44,8 @@ SELECT g.id::text, g.name, g.slug,
        enrichment.game_type,
        enrichment.platform_names,
        enrichment.first_release_date,
+       enrichment.summary,
+       enrichment.genre_names,
        EXISTS (
            SELECT 1
            FROM game_subscriptions gs
@@ -87,6 +89,8 @@ type BrowseSubscriptionGamesRow struct {
 	GameType         pgtype.Text
 	PlatformNames    []string
 	FirstReleaseDate pgtype.Timestamptz
+	Summary          pgtype.Text
+	GenreNames       []string
 	Subscribed       bool
 }
 
@@ -115,6 +119,8 @@ func (q *Queries) BrowseSubscriptionGames(ctx context.Context, arg BrowseSubscri
 			&i.GameType,
 			&i.PlatformNames,
 			&i.FirstReleaseDate,
+			&i.Summary,
+			&i.GenreNames,
 			&i.Subscribed,
 		); err != nil {
 			return nil, err
@@ -559,6 +565,8 @@ SELECT g.id::text, g.name, g.slug,
        enrichment.game_type,
        enrichment.platform_names,
        enrichment.first_release_date,
+       enrichment.summary,
+       enrichment.genre_names,
        true AS subscribed
 FROM game_subscriptions gs
 JOIN games g ON g.id = gs.game_id
@@ -576,6 +584,8 @@ type ListSubscribedGamesRow struct {
 	GameType         pgtype.Text
 	PlatformNames    []string
 	FirstReleaseDate pgtype.Timestamptz
+	Summary          pgtype.Text
+	GenreNames       []string
 	Subscribed       bool
 }
 
@@ -596,6 +606,8 @@ func (q *Queries) ListSubscribedGames(ctx context.Context, userID pgtype.UUID) (
 			&i.GameType,
 			&i.PlatformNames,
 			&i.FirstReleaseDate,
+			&i.Summary,
+			&i.GenreNames,
 			&i.Subscribed,
 		); err != nil {
 			return nil, err

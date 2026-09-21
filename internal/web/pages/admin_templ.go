@@ -1124,7 +1124,7 @@ func AdminIGDBMetadata(summary string, genreNames, gameModeNames []string, modes
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var49 string
-				templ_7745c5c3_Var49, templ_7745c5c3_Err = templ.JoinStringErrs(adminMetadataSummary(summary))
+				templ_7745c5c3_Var49, templ_7745c5c3_Err = templ.JoinStringErrs(truncateSummary(summary, 400))
 				if templ_7745c5c3_Err != nil {
 					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 268, Col: 87}
 				}
@@ -1223,12 +1223,18 @@ func AdminIGDBMetadata(summary string, genreNames, gameModeNames []string, modes
 	})
 }
 
-func adminMetadataSummary(summary string) string {
+// truncateSummary collapses a provider summary's own line breaks and runs of
+// whitespace into single spaces and caps it at limit runes, appending an
+// ellipsis when it had to cut. The cut counts runes rather than bytes so a
+// multi-byte character is never split into invalid UTF-8. Operator-facing
+// and player-facing surfaces share the helper but not the limit: the admin
+// block inspects the snapshot, a game card only previews it.
+func truncateSummary(summary string, limit int) string {
 	value := strings.Join(strings.Fields(summary), " ")
-	if utf8.RuneCountInString(value) <= 400 {
+	if utf8.RuneCountInString(value) <= limit {
 		return value
 	}
-	return string([]rune(value)[:400]) + "…"
+	return string([]rune(value)[:limit]) + "…"
 }
 
 // multiplayerModeText describes one platform-specific multiplayer mode in
@@ -1323,7 +1329,7 @@ func AdminGameMerge(brand branding.Brand, navigation components.NavigationState,
 			var templ_7745c5c3_Var55 string
 			templ_7745c5c3_Var55, templ_7745c5c3_Err = templ.JoinStringErrs(target.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 357, Col: 62}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 363, Col: 62}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var55))
 			if templ_7745c5c3_Err != nil {
@@ -1341,7 +1347,7 @@ func AdminGameMerge(brand branding.Brand, navigation components.NavigationState,
 				var templ_7745c5c3_Var56 string
 				templ_7745c5c3_Var56, templ_7745c5c3_Err = templ.JoinStringErrs(notice)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 359, Col: 68}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 365, Col: 68}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var56))
 				if templ_7745c5c3_Err != nil {
@@ -1360,7 +1366,7 @@ func AdminGameMerge(brand branding.Brand, navigation components.NavigationState,
 				var templ_7745c5c3_Var57 string
 				templ_7745c5c3_Var57, templ_7745c5c3_Err = templ.JoinStringErrs(formError)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 362, Col: 71}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 368, Col: 71}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var57))
 				if templ_7745c5c3_Err != nil {
@@ -1378,7 +1384,7 @@ func AdminGameMerge(brand branding.Brand, navigation components.NavigationState,
 			var templ_7745c5c3_Var58 templ.SafeURL
 			templ_7745c5c3_Var58, templ_7745c5c3_Err = templ.JoinURLErrs("/admin/games/" + target.ID + "/merge")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 367, Col: 71}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 373, Col: 71}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var58))
 			if templ_7745c5c3_Err != nil {
@@ -1397,7 +1403,7 @@ func AdminGameMerge(brand branding.Brand, navigation components.NavigationState,
 					var templ_7745c5c3_Var59 string
 					templ_7745c5c3_Var59, templ_7745c5c3_Err = templ.ResolveAttributeValue(candidate.ID)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 373, Col: 38}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 379, Col: 38}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var59)
 					if templ_7745c5c3_Err != nil {
@@ -1420,7 +1426,7 @@ func AdminGameMerge(brand branding.Brand, navigation components.NavigationState,
 					var templ_7745c5c3_Var60 string
 					templ_7745c5c3_Var60, templ_7745c5c3_Err = templ.JoinStringErrs(candidate.Name)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 373, Col: 96}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 379, Col: 96}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var60))
 					if templ_7745c5c3_Err != nil {
@@ -1433,7 +1439,7 @@ func AdminGameMerge(brand branding.Brand, navigation components.NavigationState,
 					var templ_7745c5c3_Var61 string
 					templ_7745c5c3_Var61, templ_7745c5c3_Err = templ.JoinStringErrs(candidate.Slug)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 373, Col: 118}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 379, Col: 118}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var61))
 					if templ_7745c5c3_Err != nil {
@@ -1457,7 +1463,7 @@ func AdminGameMerge(brand branding.Brand, navigation components.NavigationState,
 				var templ_7745c5c3_Var62 string
 				templ_7745c5c3_Var62, templ_7745c5c3_Err = templ.JoinStringErrs(source.Name)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 385, Col: 114}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 391, Col: 114}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var62))
 				if templ_7745c5c3_Err != nil {
@@ -1470,7 +1476,7 @@ func AdminGameMerge(brand branding.Brand, navigation components.NavigationState,
 				var templ_7745c5c3_Var63 string
 				templ_7745c5c3_Var63, templ_7745c5c3_Err = templ.JoinStringErrs(source.Slug)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 385, Col: 164}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 391, Col: 164}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var63))
 				if templ_7745c5c3_Err != nil {
@@ -1483,7 +1489,7 @@ func AdminGameMerge(brand branding.Brand, navigation components.NavigationState,
 				var templ_7745c5c3_Var64 string
 				templ_7745c5c3_Var64, templ_7745c5c3_Err = templ.JoinStringErrs(gameRelationshipSummary(source))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 385, Col: 250}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 391, Col: 250}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var64))
 				if templ_7745c5c3_Err != nil {
@@ -1496,7 +1502,7 @@ func AdminGameMerge(brand branding.Brand, navigation components.NavigationState,
 				var templ_7745c5c3_Var65 string
 				templ_7745c5c3_Var65, templ_7745c5c3_Err = templ.JoinStringErrs(target.Name)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 386, Col: 111}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 392, Col: 111}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var65))
 				if templ_7745c5c3_Err != nil {
@@ -1509,7 +1515,7 @@ func AdminGameMerge(brand branding.Brand, navigation components.NavigationState,
 				var templ_7745c5c3_Var66 string
 				templ_7745c5c3_Var66, templ_7745c5c3_Err = templ.JoinStringErrs(target.Slug)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 386, Col: 161}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 392, Col: 161}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var66))
 				if templ_7745c5c3_Err != nil {
@@ -1522,7 +1528,7 @@ func AdminGameMerge(brand branding.Brand, navigation components.NavigationState,
 				var templ_7745c5c3_Var67 string
 				templ_7745c5c3_Var67, templ_7745c5c3_Err = templ.JoinStringErrs(gameRelationshipSummary(target))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 386, Col: 247}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 392, Col: 247}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var67))
 				if templ_7745c5c3_Err != nil {
@@ -1545,7 +1551,7 @@ func AdminGameMerge(brand branding.Brand, navigation components.NavigationState,
 					var templ_7745c5c3_Var68 templ.SafeURL
 					templ_7745c5c3_Var68, templ_7745c5c3_Err = templ.JoinURLErrs("/admin/games/" + target.ID + "/merge")
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 391, Col: 74}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 397, Col: 74}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var68))
 					if templ_7745c5c3_Err != nil {
@@ -1558,7 +1564,7 @@ func AdminGameMerge(brand branding.Brand, navigation components.NavigationState,
 					var templ_7745c5c3_Var69 string
 					templ_7745c5c3_Var69, templ_7745c5c3_Err = templ.ResolveAttributeValue("Merge " + source.Name + " into " + target.Name + "? The source Game will be permanently removed.")
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 391, Col: 220}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 397, Col: 220}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var69)
 					if templ_7745c5c3_Err != nil {
@@ -1579,7 +1585,7 @@ func AdminGameMerge(brand branding.Brand, navigation components.NavigationState,
 					var templ_7745c5c3_Var70 string
 					templ_7745c5c3_Var70, templ_7745c5c3_Err = templ.ResolveAttributeValue(source.ID)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 393, Col: 63}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 399, Col: 63}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var70)
 					if templ_7745c5c3_Err != nil {
@@ -1664,7 +1670,7 @@ func AdminIGDB(brand branding.Brand, navigation components.NavigationState, stat
 				var templ_7745c5c3_Var73 string
 				templ_7745c5c3_Var73, templ_7745c5c3_Err = templ.JoinStringErrs(notice)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 422, Col: 67}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 428, Col: 67}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var73))
 				if templ_7745c5c3_Err != nil {
@@ -1690,7 +1696,7 @@ func AdminIGDB(brand branding.Brand, navigation components.NavigationState, stat
 			var templ_7745c5c3_Var74 string
 			templ_7745c5c3_Var74, templ_7745c5c3_Err = templ.JoinStringErrs(igdbTimestamp(status.LastAttempt))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 432, Col: 63}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 438, Col: 63}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var74))
 			if templ_7745c5c3_Err != nil {
@@ -1703,7 +1709,7 @@ func AdminIGDB(brand branding.Brand, navigation components.NavigationState, stat
 			var templ_7745c5c3_Var75 string
 			templ_7745c5c3_Var75, templ_7745c5c3_Err = templ.JoinStringErrs(igdbTimestamp(status.LastSuccess))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 436, Col: 63}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 442, Col: 63}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var75))
 			if templ_7745c5c3_Err != nil {
@@ -1716,7 +1722,7 @@ func AdminIGDB(brand branding.Brand, navigation components.NavigationState, stat
 			var templ_7745c5c3_Var76 string
 			templ_7745c5c3_Var76, templ_7745c5c3_Err = templ.JoinStringErrs(strconv.FormatInt(status.RecordCount, 10))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 440, Col: 71}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 446, Col: 71}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var76))
 			if templ_7745c5c3_Err != nil {
@@ -1734,7 +1740,7 @@ func AdminIGDB(brand branding.Brand, navigation components.NavigationState, stat
 				var templ_7745c5c3_Var77 string
 				templ_7745c5c3_Var77, templ_7745c5c3_Err = templ.JoinStringErrs(status.LastError)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 444, Col: 78}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 450, Col: 78}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var77))
 				if templ_7745c5c3_Err != nil {
@@ -1928,7 +1934,7 @@ func AdminPWA(brand branding.Brand, navigation components.NavigationState, diagn
 			var templ_7745c5c3_Var83 string
 			templ_7745c5c3_Var83, templ_7745c5c3_Err = templ.JoinStringErrs(diagnostics.InstanceName)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 506, Col: 117}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 512, Col: 117}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var83))
 			if templ_7745c5c3_Err != nil {
@@ -1941,7 +1947,7 @@ func AdminPWA(brand branding.Brand, navigation components.NavigationState, diagn
 			var templ_7745c5c3_Var84 string
 			templ_7745c5c3_Var84, templ_7745c5c3_Err = templ.JoinStringErrs(diagnostics.BaseURL)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 507, Col: 107}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 513, Col: 107}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var84))
 			if templ_7745c5c3_Err != nil {
@@ -1954,7 +1960,7 @@ func AdminPWA(brand branding.Brand, navigation components.NavigationState, diagn
 			var templ_7745c5c3_Var85 string
 			templ_7745c5c3_Var85, templ_7745c5c3_Err = templ.JoinStringErrs(diagnostics.ManifestURL)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 508, Col: 115}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 514, Col: 115}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var85))
 			if templ_7745c5c3_Err != nil {
@@ -1967,7 +1973,7 @@ func AdminPWA(brand branding.Brand, navigation components.NavigationState, diagn
 			var templ_7745c5c3_Var86 string
 			templ_7745c5c3_Var86, templ_7745c5c3_Err = templ.JoinStringErrs(diagnostics.ServiceWorkerURL)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 509, Col: 126}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 515, Col: 126}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var86))
 			if templ_7745c5c3_Err != nil {
@@ -1980,7 +1986,7 @@ func AdminPWA(brand branding.Brand, navigation components.NavigationState, diagn
 			var templ_7745c5c3_Var87 string
 			templ_7745c5c3_Var87, templ_7745c5c3_Err = templ.JoinStringErrs(secureContextLabel(diagnostics.SecureContext))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 510, Col: 148}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 516, Col: 148}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var87))
 			if templ_7745c5c3_Err != nil {
@@ -1993,7 +1999,7 @@ func AdminPWA(brand branding.Brand, navigation components.NavigationState, diagn
 			var templ_7745c5c3_Var88 string
 			templ_7745c5c3_Var88, templ_7745c5c3_Err = templ.ResolveAttributeValue(brand.Assets.AdminPWADiagnostics)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 525, Col: 48}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin.templ`, Line: 531, Col: 48}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var88)
 			if templ_7745c5c3_Err != nil {

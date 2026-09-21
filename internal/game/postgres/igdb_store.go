@@ -258,7 +258,7 @@ func (s *Store) Search(ctx context.Context, userID, search string, limit int, in
 		items = append(items, game.DiscoveryItem{
 			LocalGameID:      row.LocalGameID,
 			Reference:        reference,
-			GamePresentation: presentation(row.Name, row.Slug, row.GameType, row.CoverImageID, row.PlatformNames, row.FirstReleaseDate),
+			GamePresentation: presentation(row.Name, row.Slug, row.GameType, row.CoverImageID, row.PlatformNames, row.FirstReleaseDate, row.Summary, row.GenreNames),
 			Subscribed:       row.Subscribed,
 			Materialized:     row.Materialized,
 		})
@@ -293,7 +293,7 @@ func (s *Store) FindLocal(ctx context.Context, userID, localGameID string) (game
 	}
 	return game.DiscoveryItem{
 		LocalGameID:      row.GID,
-		GamePresentation: presentation(row.Name, row.Slug, row.GameType, row.CoverImageID, row.PlatformNames, row.FirstReleaseDate),
+		GamePresentation: presentation(row.Name, row.Slug, row.GameType, row.CoverImageID, row.PlatformNames, row.FirstReleaseDate, row.Summary, row.GenreNames),
 		Subscribed:       row.Subscribed,
 		Materialized:     true,
 	}, nil
@@ -340,7 +340,7 @@ func (s *Store) FindProvider(ctx context.Context, userID string, reference game.
 	return game.DiscoveryItem{
 		LocalGameID:      row.LocalGameID,
 		Reference:        rowReference,
-		GamePresentation: presentation(row.Name, row.Slug, row.GameType, row.CoverImageID, row.PlatformNames, row.FirstReleaseDate),
+		GamePresentation: presentation(row.Name, row.Slug, row.GameType, row.CoverImageID, row.PlatformNames, row.FirstReleaseDate, row.Summary, row.GenreNames),
 		Subscribed:       row.Subscribed,
 		Materialized:     row.Materialized,
 	}, nil

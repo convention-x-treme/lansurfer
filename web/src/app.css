@@ -504,6 +504,30 @@
     color: var(--ink-abbreviation);
   }
 
+  /* The genre sits opposite the follow tag so the two chips can never
+     collide on a followed card. Its colours are the fixed brand pair rather
+     than theme tokens: it always lies on cover art, which is its own
+     arbitrary image in either theme, so a theme-following chip would be
+     legible on neither reliably. Sea Foam on Ocean Depth clears 10.2:1. */
+  .game-card-genre {
+    position: absolute;
+    top: 0.625rem;
+    left: 0.625rem;
+    max-width: calc(100% - 1.25rem);
+    overflow: hidden;
+    border-radius: var(--radius-selector);
+    background: var(--brand-ocean-depth);
+    padding: 0.25rem 0.5rem;
+    color: var(--brand-sea-foam);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-overflow: ellipsis;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
   .game-card-tag {
     position: absolute;
     top: 0.625rem;
@@ -545,10 +569,18 @@
     color: color-mix(in srgb, var(--color-base-content) 65%, transparent);
   }
 
+  /* The summary is variable-length prose on a fluid-width card, so the line
+     clamp -- not the server-side rune cap -- is what actually holds every
+     card in a row to the same height. */
   .game-card-meta {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
     font-size: 0.8125rem;
     color: color-mix(in srgb, var(--color-base-content) 70%, transparent);
     line-height: 1.45;
+    overflow-wrap: anywhere;
   }
 
   /* The follow action is the card's point, so it gets the remaining width and

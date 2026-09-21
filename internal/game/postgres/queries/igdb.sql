@@ -316,6 +316,8 @@ SELECT g.id::text, g.name, g.slug,
        enrichment.game_type,
        enrichment.platform_names,
        enrichment.first_release_date,
+       enrichment.summary,
+       enrichment.genre_names,
        EXISTS (
            SELECT 1
            FROM game_subscriptions gs
@@ -363,7 +365,9 @@ WITH active_generation AS (
            provider_game.game_type,
            provider_game.platform_names,
            provider_game.first_release_date,
-           provider_game.cover_image_id
+           provider_game.cover_image_id,
+           provider_game.summary,
+           provider_game.genre_names
     FROM igdb_game_index provider_game
     JOIN active_generation ON active_generation.id = provider_game.generation_id
     WHERE provider_game.igdb_id = sqlc.arg(igdb_id)
@@ -377,6 +381,8 @@ WITH active_generation AS (
         enrichment.platform_names,
         enrichment.first_release_date,
         enrichment.cover_image_id,
+        enrichment.summary,
+        enrichment.genre_names,
         true::boolean AS materialized,
         (subscription.game_id IS NOT NULL)::boolean AS subscribed
     FROM provider_row
@@ -401,6 +407,8 @@ WITH active_generation AS (
         provider_row.platform_names,
         provider_row.first_release_date,
         provider_row.cover_image_id,
+        provider_row.summary,
+        provider_row.genre_names,
         false::boolean AS materialized,
         false::boolean AS subscribed
     FROM provider_row
@@ -413,11 +421,13 @@ WITH active_generation AS (
     )
 )
 SELECT external_id, local_game_id, name, slug, game_type, platform_names,
-       first_release_date, cover_image_id, materialized, subscribed
+       first_release_date, cover_image_id, summary, genre_names,
+       materialized, subscribed
 FROM materialized_row
 UNION ALL
 SELECT external_id, local_game_id, name, slug, game_type, platform_names,
-       first_release_date, cover_image_id, materialized, subscribed
+       first_release_date, cover_image_id, summary, genre_names,
+       materialized, subscribed
 FROM unmaterialized_row;
 
 -- name: GameSlugTaken :one
@@ -583,6 +593,8 @@ WITH active_generation AS (
         provider_game.platform_names,
         provider_game.first_release_date,
         provider_game.cover_image_id,
+        provider_game.summary,
+        provider_game.genre_names,
         CASE
             WHEN lower(provider_game.name) = lower(sqlc.arg(search)::text)
               OR EXISTS (
@@ -622,6 +634,8 @@ WITH active_generation AS (
         enrichment.platform_names,
         enrichment.first_release_date,
         enrichment.cover_image_id,
+        enrichment.summary,
+        enrichment.genre_names,
         true::boolean AS materialized,
         (subscription.game_id IS NOT NULL)::boolean AS subscribed,
         provider_matches.match_rank,
@@ -648,6 +662,8 @@ WITH active_generation AS (
         provider_matches.platform_names,
         provider_matches.first_release_date,
         provider_matches.cover_image_id,
+        provider_matches.summary,
+        provider_matches.genre_names,
         false::boolean AS materialized,
         false::boolean AS subscribed,
         provider_matches.match_rank,
@@ -671,6 +687,8 @@ WITH active_generation AS (
         enrichment.platform_names,
         enrichment.first_release_date,
         enrichment.cover_image_id,
+        enrichment.summary,
+        enrichment.genre_names,
         true::boolean AS materialized,
         (gs.game_id IS NOT NULL)::boolean AS subscribed,
         CASE
@@ -716,13 +734,14 @@ WITH active_generation AS (
 ), best AS (
     SELECT DISTINCT ON (identity_key)
         external_id, local_game_id, name, slug, game_type, platform_names,
-        first_release_date, cover_image_id, materialized, subscribed,
-        match_rank, identity_key
+        first_release_date, cover_image_id, summary, genre_names,
+        materialized, subscribed, match_rank, identity_key
     FROM candidates
     ORDER BY identity_key, match_rank
 )
 SELECT external_id, local_game_id, name, slug, game_type, platform_names,
-       first_release_date, cover_image_id, materialized, subscribed
+       first_release_date, cover_image_id, summary, genre_names,
+       materialized, subscribed
 FROM best
 ORDER BY
     match_rank,

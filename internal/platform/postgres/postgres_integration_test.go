@@ -4535,3 +4535,90 @@ func TestIGDBMultiplayerMetadataPersistence(t *testing.T) {
 		t.Fatalf("surviving generations = %d index / %d modes, want 1 / 0 after cleanup", indexGenerations, modeGenerations)
 	}
 }
+
+// The player-facing card renders a summary and a genre badge for a provider
+// record whether or not it has been materialized yet, so the card does not
+// change shape the moment someone follows it. Both discovery projections
+// therefore have to carry the enrichment columns: the materialized row from
+// game_igdb_enrichment, the unmaterialized row straight from the active
+// generation's igdb_game_index.
+func TestIGDBDiscoverySearchCarriesSummaryAndGenresForBothProjections(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+
+	users := user.NewService(userpostgres.NewStore(pool))
+	viewer, err := users.Register(t.Context(), "Card Metadata Viewer")
+	if err != nil {
+		t.Fatalf("register viewer: %v", err)
+	}
+
+	gameStore := gamepostgres.NewStore(pool)
+	discovery := game.NewDiscoveryService(gameStore, gameStore, gameStore, storeProviderStatus{store: gameStore})
+
+	activateIGDBGeneration(t, gameStore, []game.ProviderGame{
+		{
+			Reference: game.ProviderReference{Provider: "igdb", ExternalID: "7001"},
+			Name:      "Cardmeta Alpha", Slug: "cardmeta-alpha", GameType: "Main Game",
+			Summary: "Alpha braces for war.", GenreNames: []string{"Strategy", "Simulator"},
+		},
+		{
+			Reference: game.ProviderReference{Provider: "igdb", ExternalID: "7002"},
+			Name:      "Cardmeta Beta", Slug: "cardmeta-beta", GameType: "Main Game",
+			Summary: "Beta braces for war.", GenreNames: []string{"Shooter"},
+		},
+	})
+	// Only Alpha is materialized; Beta stays a pure provider result.
+	if _, err := discovery.Resolve(t.Context(), game.ProviderReference{Provider: "igdb", ExternalID: "7001"}); err != nil {
+		t.Fatalf("materialize provider record 7001: %v", err)
+	}
+
+	page, err := discovery.Browse(t.Context(), viewer.ID, "cardmeta")
+	if err != nil {
+		t.Fatalf("Browse: %v", err)
+	}
+	found := map[string]game.DiscoveryItem{}
+	for _, item := range page.Items {
+		found[item.Name] = item
+	}
+	if len(found) != 2 {
+		t.Fatalf("Browse = %#v, want both Cardmeta records", page.Items)
+	}
+	for name, want := range map[string]struct {
+		summary      string
+		genres       []string
+		materialized bool
+	}{
+		"Cardmeta Alpha": {summary: "Alpha braces for war.", genres: []string{"Strategy", "Simulator"}, materialized: true},
+		"Cardmeta Beta":  {summary: "Beta braces for war.", genres: []string{"Shooter"}, materialized: false},
+	} {
+		item := found[name]
+		if item.Materialized != want.materialized {
+			t.Errorf("%s materialized = %t, want %t", name, item.Materialized, want.materialized)
+		}
+		if item.Summary != want.summary {
+			t.Errorf("%s summary = %q, want %q", name, item.Summary, want.summary)
+		}
+		if !slices.Equal(item.GenreNames, want.genres) {
+			t.Errorf("%s genre names = %#v, want %#v in provider order", name, item.GenreNames, want.genres)
+		}
+	}
+
+	// A local Game that never materialized via IGDB has no snapshot to show
+	// and must come back with empty metadata rather than a NULL scan error.
+	local, err := game.NewService(gameStore).Create(t.Context(), "Handmade Cardmeta", "handmade-cardmeta")
+	if err != nil {
+		t.Fatalf("create local game: %v", err)
+	}
+	page, err = discovery.Browse(t.Context(), viewer.ID, "handmade cardmeta")
+	if err != nil {
+		t.Fatalf("Browse local-only game: %v", err)
+	}
+	if len(page.Items) != 1 || page.Items[0].LocalGameID != local.ID {
+		t.Fatalf("Browse = %#v, want the local-only Game", page.Items)
+	}
+	if page.Items[0].Summary != "" || len(page.Items[0].GenreNames) != 0 {
+		t.Errorf("local-only Game carries enrichment metadata: %#v", page.Items[0])
+	}
+}

@@ -67,6 +67,8 @@ SELECT g.id::text, g.name, g.slug,
        enrichment.game_type,
        enrichment.platform_names,
        enrichment.first_release_date,
+       enrichment.summary,
+       enrichment.genre_names,
        EXISTS (
            SELECT 1
            FROM game_subscriptions gs
@@ -102,6 +104,8 @@ SELECT g.id::text, g.name, g.slug,
        enrichment.game_type,
        enrichment.platform_names,
        enrichment.first_release_date,
+       enrichment.summary,
+       enrichment.genre_names,
        true AS subscribed
 FROM game_subscriptions gs
 JOIN games g ON g.id = gs.game_id

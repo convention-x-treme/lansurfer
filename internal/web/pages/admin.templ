@@ -265,7 +265,7 @@ templ AdminIGDBMetadata(summary string, genreNames, gameModeNames []string, mode
 	if summary != "" || len(genreNames) > 0 || len(gameModeNames) > 0 || len(modes) > 0 {
 		<div class="mt-2 grid gap-1">
 			if summary != "" {
-				<p class="break-words text-xs text-base-content/70">{ adminMetadataSummary(summary) }</p>
+				<p class="break-words text-xs text-base-content/70">{ truncateSummary(summary, 400) }</p>
 			}
 			if len(genreNames) > 0 || len(gameModeNames) > 0 {
 				<div class="flex flex-wrap gap-1">
@@ -288,12 +288,18 @@ templ AdminIGDBMetadata(summary string, genreNames, gameModeNames []string, mode
 	}
 }
 
-func adminMetadataSummary(summary string) string {
+// truncateSummary collapses a provider summary's own line breaks and runs of
+// whitespace into single spaces and caps it at limit runes, appending an
+// ellipsis when it had to cut. The cut counts runes rather than bytes so a
+// multi-byte character is never split into invalid UTF-8. Operator-facing
+// and player-facing surfaces share the helper but not the limit: the admin
+// block inspects the snapshot, a game card only previews it.
+func truncateSummary(summary string, limit int) string {
 	value := strings.Join(strings.Fields(summary), " ")
-	if utf8.RuneCountInString(value) <= 400 {
+	if utf8.RuneCountInString(value) <= limit {
 		return value
 	}
-	return string([]rune(value)[:400]) + "…"
+	return string([]rune(value)[:limit]) + "…"
 }
 
 // multiplayerModeText describes one platform-specific multiplayer mode in

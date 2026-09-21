@@ -787,6 +787,8 @@ func TestGameCatalogRendersUnmaterializedProviderResultWithFollowAction(t *testi
 		PlatformNames:    []string{"PC (Microsoft Windows)"},
 		FirstReleaseDate: &releaseDate,
 		CoverImageID:     "co1abc",
+		Summary:          "Azeroth braces for war.",
+		GenreNames:       []string{"Real Time Strategy (RTS)"},
 		Materialized:     false,
 	}}}
 	router := gameTestRouter(discovery)
@@ -802,9 +804,8 @@ func TestGameCatalogRendersUnmaterializedProviderResultWithFollowAction(t *testi
 	body := response.Body.String()
 	for _, want := range []string{
 		"Warcraft III: Reign of Chaos",
-		"Main Game",
-		"PC (Microsoft Windows)",
-		"2002",
+		"2002 · Azeroth braces for war.",
+		">RTS<",
 		"https://images.igdb.com/igdb/image/upload/t_cover_big/co1abc.jpg",
 		"Follow Game",
 		`hx-post="/games/providers/igdb/42/follow"`,
