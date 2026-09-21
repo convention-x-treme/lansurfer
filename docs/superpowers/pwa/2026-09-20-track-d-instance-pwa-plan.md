@@ -1,5 +1,7 @@
 # Track D — Minimum Instance Identity & PWA Implementation Plan
 
+> **Historical execution record:** Track D implementation merged via PR #42. This file is retained because that merged PR explicitly references the design/plan pair. It is not current status, not an implementation queue, and must not override DOMAIN_LANGUAGE, PRODUCT, ARCHITECTURE, ROADMAP, or AGENTS.
+
 For the coding agent: execute this plan task-by-task. The approved design is docs/superpowers/pwa/2026-09-20-track-d-instance-pwa-design.md. Do not reopen settled design choices. Prefer failing test -> minimal implementation -> passing test. Keep commits coherent and reviewable.
 
 Goal: implement issue #27 without expanding stable-1.0 scope.
