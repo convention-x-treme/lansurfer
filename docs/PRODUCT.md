@@ -165,6 +165,8 @@ LANsurfer owns a local User record. External identities authenticate that user b
 
 Discord authentication and Discord notification delivery are separate integrations.
 
+Post-1.0, Twitch is an optional third authentication provider. Twitch login reuses the same local identity, explicit linking, onboarding, and session model as OIDC and Discord. It requests only a stable Twitch subject and display username, never Twitch email; a Twitch account may be explicitly linked to the same local User as the other providers. Twitch login and IGDB discovery share optional Twitch application credentials but remain independently enabled features.
+
 ## 7. Roles and Management Boundaries
 
 Global application roles remain intentionally small:
@@ -364,7 +366,7 @@ Possible future work may include:
 - Event-scoped Game Requests
 - Clans with ownership, membership, invitations, rosters, and primary-Clan display
 - Clan-aware Game Request discovery or scoping when a concrete need exists
-- authentication providers beyond OIDC and Discord
+- authentication providers beyond OIDC, Discord, and Twitch
 
 These features must not shape 1.0 through speculative generic abstractions. If they become scheduled, their concrete domain model should be designed against the actual use case at that time.
 

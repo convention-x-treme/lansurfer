@@ -458,6 +458,8 @@ Linking and unlinking are explicit authenticated account operations, and an acco
 
 Both providers resolve to the same local User/session model. Required Game Nick selection is provider-independent. A Discord display name may seed the Game Nick form but does not become LANsurfer public identity automatically.
 
+Post-1.0 Twitch authentication is a third provider adapter in the same registry. It reuses OIDC discovery, PKCE, nonce, authorization-code exchange, ID-token validation, and the existing OAuth flow service. Its fixed `provider_kind` and `provider_key` are both `twitch`; its verified Twitch `sub` remains the external identity subject. It requests `openid` and the `preferred_username` ID-token claim, never email. The same local identity, linking, onboarding, and session paths apply unchanged.
+
 Provider names and email addresses are private account data. Normal player and global administrator views must not expose them to anyone except the account owner.
 
 ---
@@ -489,13 +491,17 @@ LANSURFER_DATA_ENCRYPTION_KEY
 LANSURFER_WEBPUSH_PUBLIC_KEY
 LANSURFER_WEBPUSH_PRIVATE_KEY
 LANSURFER_WEBPUSH_SUBJECT
-LANSURFER_IGDB_CLIENT_ID
-LANSURFER_IGDB_CLIENT_SECRET
+LANSURFER_TWITCH_CLIENT_ID
+LANSURFER_TWITCH_CLIENT_SECRET
+LANSURFER_TWITCH_AUTH_ENABLED
+LANSURFER_IGDB_ENABLED
 ```
 
 `LANSURFER_OIDC_CLIENT_SECRET` is optional for public clients using PKCE and required when the provider configures LANsurfer as a confidential client.
 
 Discord authentication and Discord delivery use separate configuration pairs; an operator may point both at the same Discord application, but configuring one does not enable the other. Web Push is disabled when both VAPID keys are absent; partial/invalid VAPID configuration is an error, and configured Web Push also requires `LANSURFER_WEBPUSH_SUBJECT` plus a valid data-encryption key. Configured Discord delivery likewise requires a valid data-encryption key.
+
+Twitch application credentials are shared only by Twitch authentication and IGDB discovery. Each capability is disabled by default and enabled with its own strict boolean flag; enabling either requires both shared credentials. The two capabilities do not share access tokens, clients, retries, or runtime state. Legacy `LANSURFER_IGDB_CLIENT_ID` and `LANSURFER_IGDB_CLIENT_SECRET` are not supported.
 
 Provider credentials, the 32-byte data-encryption key, VAPID private key, and Discord-delivery OAuth secret remain operator configuration and must not be stored as ordinary product settings.
 
