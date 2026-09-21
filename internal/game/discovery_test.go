@@ -3,6 +3,7 @@ package game
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -76,17 +77,20 @@ func enabledProviderStatus() *fakeProviderStatus {
 }
 
 type fakeSubscriptions struct {
-	browse       []SubscriptionGame
-	browseErr    error
-	myGames      []SubscriptionGame
-	myGamesErr   error
-	followErr    error
-	unfollowErr  error
-	followedUser string
-	followedGame string
-	unfollowUser string
-	unfollowGame string
-	browseCalls  int
+	browse        []SubscriptionGame
+	browseErr     error
+	myGames       []SubscriptionGame
+	myGamesErr    error
+	followErr     error
+	unfollowErr   error
+	followedUser  string
+	followedGame  string
+	unfollowUser  string
+	unfollowGame  string
+	browseCalls   int
+	followers     []string
+	followersErr  error
+	followersGame string
 }
 
 func (f *fakeSubscriptions) Browse(_ context.Context, _, _ string) ([]SubscriptionGame, error) {
@@ -114,8 +118,12 @@ func (f *fakeSubscriptions) Unfollow(_ context.Context, userID, gameID string) e
 	return f.unfollowErr
 }
 
-func (f *fakeSubscriptions) ListFollowers(context.Context, string) ([]string, error) {
-	return nil, nil
+func (f *fakeSubscriptions) ListFollowers(_ context.Context, gameID string) ([]string, error) {
+	f.followersGame = gameID
+	if f.followersErr != nil {
+		return nil, f.followersErr
+	}
+	return f.followers, nil
 }
 
 type fakeMaterializer struct {
@@ -410,6 +418,21 @@ func TestDiscoveryUnfollowDelegatesToSubscriptions(t *testing.T) {
 	}
 	if subs.unfollowUser != "user-1" || subs.unfollowGame != "local-1" {
 		t.Fatalf("unfollowUser=%q unfollowGame=%q", subs.unfollowUser, subs.unfollowGame)
+	}
+}
+
+func TestDiscoveryListFollowersDelegatesToSubscriptions(t *testing.T) {
+	subs := &fakeSubscriptions{followers: []string{"user-1", "user-2"}}
+	service := NewDiscoveryService(&fakeDiscoveryRepository{}, nil, subs, enabledProviderStatus())
+	got, err := service.ListFollowers(t.Context(), "local-1")
+	if err != nil {
+		t.Fatalf("ListFollowers: %v", err)
+	}
+	if subs.followersGame != "local-1" {
+		t.Fatalf("followersGame=%q, want local-1", subs.followersGame)
+	}
+	if !slices.Equal(got, subs.followers) {
+		t.Fatalf("got=%#v, want=%#v", got, subs.followers)
 	}
 }
 
