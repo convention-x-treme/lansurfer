@@ -99,6 +99,24 @@ func TestNotificationSettingsSubscribeRejectsAnonymousRequest(t *testing.T) {
 	}
 }
 
+func TestNotificationSettingsSubscribeReturnsNotFoundWhenWebPushNotConfigured(t *testing.T) {
+	subscriptions := &stubSubscriptionManager{}
+	handler := NewNotificationSettings(subscriptions, []byte("key"), "vapid-public-key", false, branding.Default(), true)
+	form := strings.NewReader("endpoint=https://push.example/endpoint&p256dh=p256dh-value&auth=auth-value")
+	request := withCurrentUser(httptest.NewRequest(http.MethodPost, "/account/notifications/subscribe", form), user.User{ID: "user-1"})
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	response := httptest.NewRecorder()
+
+	handler.Subscribe(response, request)
+
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusNotFound)
+	}
+	if subscriptions.enableCalls != 0 {
+		t.Fatalf("enable calls = %d, want 0", subscriptions.enableCalls)
+	}
+}
+
 func TestNotificationSettingsDisableCallsThroughAndRedirects(t *testing.T) {
 	subscriptions := &stubSubscriptionManager{}
 	handler := NewNotificationSettings(subscriptions, []byte("key"), "vapid-public-key", true, branding.Default(), true)

@@ -48,6 +48,10 @@ func (h *NotificationSettingsHandler) Show(w http.ResponseWriter, r *http.Reques
 // Subscribe is the complete enable action: persist the browser-created
 // PushSubscription and set web_push_enabled=true.
 func (h *NotificationSettingsHandler) Subscribe(w http.ResponseWriter, r *http.Request) {
+	if !h.webPushEnabled {
+		http.Error(w, "Web Push is not configured", http.StatusNotFound)
+		return
+	}
 	account, ok := webmiddleware.CurrentUser(r.Context())
 	if !ok {
 		http.Error(w, "authentication required", http.StatusUnauthorized)
