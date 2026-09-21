@@ -289,6 +289,113 @@ func (s *Store) ReopenUncertainDelivery(ctx context.Context, deliveryID int64) (
 	return true, nil
 }
 
+// UpsertSubscription persists sub, atomically reassigning ownership if
+// EndpointFingerprint already belongs to a different user (the ON CONFLICT
+// clause on the unique endpoint_fingerprint column).
+func (s *Store) UpsertSubscription(ctx context.Context, sub notification.PushSubscriptionRecord) (notification.PushSubscriptionRecord, error) {
+	userID, err := parseUUID(sub.UserID)
+	if err != nil {
+		return notification.PushSubscriptionRecord{}, fmt.Errorf("parse user ID: %w", err)
+	}
+	row, err := s.queries.UpsertPushSubscription(ctx, sqlcgen.UpsertPushSubscriptionParams{
+		UserID: userID, Label: sub.Label, DeviceIDHash: sub.DeviceIDHash,
+		EndpointFingerprint: sub.EndpointFingerprint, EndpointCiphertext: sub.EndpointCiphertext,
+		P256dhCiphertext: sub.P256dhCiphertext, AuthCiphertext: sub.AuthCiphertext,
+	})
+	if err != nil {
+		return notification.PushSubscriptionRecord{}, fmt.Errorf("upsert push subscription: %w", err)
+	}
+	sub.ID, sub.CreatedAt, sub.UpdatedAt = row.ID, row.CreatedAt.Time, row.UpdatedAt.Time
+	return sub, nil
+}
+
+// ListSubscriptions returns userID's subscriptions without ciphertext (the
+// query never selects it; only UpsertSubscription round-trips it, and only
+// SubscriptionService ever decrypts it).
+func (s *Store) ListSubscriptions(ctx context.Context, userID string) ([]notification.PushSubscriptionRecord, error) {
+	parsedUserID, err := parseUUID(userID)
+	if err != nil {
+		return nil, fmt.Errorf("parse user ID: %w", err)
+	}
+	rows, err := s.queries.ListPushSubscriptionsByUser(ctx, parsedUserID)
+	if err != nil {
+		return nil, fmt.Errorf("list push subscriptions: %w", err)
+	}
+	subs := make([]notification.PushSubscriptionRecord, 0, len(rows))
+	for _, row := range rows {
+		subs = append(subs, notification.PushSubscriptionRecord{
+			ID: row.ID, UserID: userID, Label: row.Label, DeviceIDHash: row.DeviceIDHash,
+			EndpointFingerprint: row.EndpointFingerprint, CreatedAt: row.CreatedAt.Time, UpdatedAt: row.UpdatedAt.Time,
+		})
+	}
+	return subs, nil
+}
+
+// DeleteSubscription removes one subscription scoped to its owner; the
+// WHERE clause's user_id match means a non-owner's delete affects zero rows
+// rather than another user's subscription.
+func (s *Store) DeleteSubscription(ctx context.Context, subscriptionID int64, userID string) (bool, error) {
+	parsedUserID, err := parseUUID(userID)
+	if err != nil {
+		return false, fmt.Errorf("parse user ID: %w", err)
+	}
+	deleted, err := s.queries.DeletePushSubscription(ctx, sqlcgen.DeletePushSubscriptionParams{
+		ID: subscriptionID, UserID: parsedUserID,
+	})
+	if err != nil {
+		return false, fmt.Errorf("delete push subscription: %w", err)
+	}
+	return deleted > 0, nil
+}
+
+func (s *Store) DeleteSubscriptionByDeviceHash(ctx context.Context, userID, deviceIDHash string) (bool, error) {
+	parsedUserID, err := parseUUID(userID)
+	if err != nil {
+		return false, fmt.Errorf("parse user ID: %w", err)
+	}
+	deleted, err := s.queries.DeletePushSubscriptionByDeviceHash(ctx, sqlcgen.DeletePushSubscriptionByDeviceHashParams{
+		UserID: parsedUserID, DeviceIDHash: deviceIDHash,
+	})
+	if err != nil {
+		return false, fmt.Errorf("delete push subscription by device hash: %w", err)
+	}
+	return deleted > 0, nil
+}
+
+// GetPreference returns the zero-value PushPreference's intended default
+// (disabled, followed-only) when userID has no stored row yet. It returns
+// that default explicitly rather than a bare struct literal because
+// PushPreference's Go zero value for NewRequestAudience is "", not
+// "followed": returning notification.PushPreference{} here would leak that
+// empty string as the caller-visible default instead of AudienceFollowed.
+func (s *Store) GetPreference(ctx context.Context, userID string) (notification.PushPreference, error) {
+	parsedUserID, err := parseUUID(userID)
+	if err != nil {
+		return notification.PushPreference{}, fmt.Errorf("parse user ID: %w", err)
+	}
+	row, err := s.queries.GetPushPreference(ctx, parsedUserID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return notification.PushPreference{NewRequestAudience: notification.AudienceFollowed}, nil
+	}
+	if err != nil {
+		return notification.PushPreference{}, fmt.Errorf("get push preference: %w", err)
+	}
+	return notification.PushPreference{WebPushEnabled: row.WebPushEnabled, NewRequestAudience: row.NewRequestAudience}, nil
+}
+
+func (s *Store) SetPreference(ctx context.Context, userID string, preference notification.PushPreference) error {
+	parsedUserID, err := parseUUID(userID)
+	if err != nil {
+		return fmt.Errorf("parse user ID: %w", err)
+	}
+	if err := s.queries.UpsertPushPreference(ctx, sqlcgen.UpsertPushPreferenceParams{
+		UserID: parsedUserID, WebPushEnabled: preference.WebPushEnabled, NewRequestAudience: preference.NewRequestAudience,
+	}); err != nil {
+		return fmt.Errorf("set push preference: %w", err)
+	}
+	return nil
+}
+
 func parseUUID(value string) (pgtype.UUID, error) {
 	var id pgtype.UUID
 	if err := id.Scan(value); err != nil {
