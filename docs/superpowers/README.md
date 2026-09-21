@@ -4,6 +4,7 @@
 
 Canonical ownership is:
 
+- `docs/DOMAIN_LANGUAGE.md` — canonical domain terms and distinctions.
 - `docs/PRODUCT.md` — durable product behavior and release scope.
 - `docs/ARCHITECTURE.md` — durable architecture and cross-module contracts.
 - `AGENTS.md` — repository rules and approval boundaries.
@@ -46,7 +47,7 @@ Do not add global `specs/`, `plans/`, tracked `.superpowers/sdd/`, or tool-speci
 - Promote durable product decisions into PRODUCT.
 - Promote durable architecture/contracts into ARCHITECTURE.
 - Keep current progress in the GitHub tracker/PR.
-- Delete implementation plans that have served their purpose.
+- Delete implementation plans that have served their purpose unless merged PRs/issues intentionally reference them as part of the historical record.
 - Delete tool-specific implementation prompts.
 - Retain a design only when its rationale remains useful beyond the canonical docs.
 - Retain review/validation evidence only when it remains meaningful evidence for release, quality, or a future decision.
@@ -73,5 +74,6 @@ Some older designs predate this stricter lifecycle and remain because they conta
 ### PWA
 
 - `pwa/2026-09-20-track-d-instance-pwa-design.md` — retained rationale for minimum instance identity and the PWA/service-worker boundary.
+- `pwa/2026-09-20-track-d-instance-pwa-plan.md` — retained historical exception because merged PR #42 explicitly references this plan.
 
 When a retained design no longer adds information beyond PRODUCT/ARCHITECTURE, prefer deleting it rather than maintaining a parallel source of truth.
