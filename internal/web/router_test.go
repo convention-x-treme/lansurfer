@@ -464,6 +464,88 @@ func TestAdminGameCatalogFiltersLiveToUnlinkedGames(t *testing.T) {
 	}
 }
 
+// Adding an alias from an opened Game must not reload the screen: the
+// answer is that Game's own entry, re-read and still open, so the panel the
+// administrator is working in stays open and in place.
+func TestAdminAliasAdditionSwapsTheOpenedEntry(t *testing.T) {
+	games := &routerGames{items: []game.Game{
+		{ID: "game-1", Name: "Warcraft III", Slug: "warcraft-3", Active: true, Aliases: []game.Alias{{ID: "alias-1", Value: "wc3"}}},
+		{ID: "game-2", Name: "Quake III Arena", Slug: "quake-3", Active: true},
+	}}
+	form := url.Values{"alias": {"wc3"}}
+	request := httptest.NewRequest(http.MethodPost, "/admin/games/game-1/aliases", strings.NewReader(form.Encode()))
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	request.Header.Set("HX-Request", "true")
+	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	addCSRF(request)
+	response := httptest.NewRecorder()
+
+	adminTestRouter(games).ServeHTTP(response, request)
+
+	body := response.Body.String()
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
+	}
+	if strings.Contains(body, "<html") || strings.Contains(body, "app-sidebar") {
+		t.Error("alias addition reloaded the whole screen instead of swapping the entry")
+	}
+	if !strings.Contains(body, `id="game-game-1"`) || !strings.Contains(body, "open") {
+		t.Errorf("response is not the opened entry: %q", body)
+	}
+	if strings.Contains(body, "Quake III Arena") {
+		t.Error("response carries entries other than the Game that changed")
+	}
+}
+
+// A rejected change has to come back as the same swap: htmx leaves a
+// non-2xx response unswapped, so answering with an error status would drop
+// the message that explains the rejection.
+func TestAdminRejectedAliasKeepsTheEntryAndStatesWhy(t *testing.T) {
+	games := &routerGames{
+		items:    []game.Game{{ID: "game-1", Name: "Warcraft III", Slug: "warcraft-3", Active: true}},
+		aliasErr: game.ErrAlreadyExists,
+	}
+	form := url.Values{"alias": {"wc3"}}
+	request := httptest.NewRequest(http.MethodPost, "/admin/games/game-1/aliases", strings.NewReader(form.Encode()))
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	request.Header.Set("HX-Request", "true")
+	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	addCSRF(request)
+	response := httptest.NewRecorder()
+
+	adminTestRouter(games).ServeHTTP(response, request)
+
+	body := response.Body.String()
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d so htmx swaps the message in", response.Code, http.StatusOK)
+	}
+	if !strings.Contains(body, "already in use") {
+		t.Errorf("response does not state why the alias was rejected: %q", body)
+	}
+	if !strings.Contains(body, `id="game-game-1"`) {
+		t.Error("response is not the entry the change was made in")
+	}
+}
+
+// Without scripting the same route still posts and redirects, and the
+// redirect names the entry so the reload lands on the Game being edited.
+func TestAdminAliasAdditionRedirectsToTheEntryWithoutScripting(t *testing.T) {
+	games := &routerGames{items: []game.Game{{ID: "game-1", Name: "Warcraft III", Slug: "warcraft-3", Active: true}}}
+	form := url.Values{"alias": {"wc3"}}
+	request := httptest.NewRequest(http.MethodPost, "/admin/games/game-1/aliases", strings.NewReader(form.Encode()))
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	addCSRF(request)
+	response := httptest.NewRecorder()
+
+	adminTestRouter(games).ServeHTTP(response, request)
+
+	want := "/admin/games?notice=alias-added#game-game-1"
+	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != want {
+		t.Fatalf("status/location = %d, %q", response.Code, response.Header().Get("Location"))
+	}
+}
+
 func TestAdminIGDBLinkSearchGuidesExistingMappingToMerge(t *testing.T) {
 	release := time.Date(2024, time.January, 1, 0, 0, 0, 0, time.UTC)
 	games := &routerGames{
@@ -1394,6 +1476,7 @@ type routerGames struct {
 	linkErr        error
 	mergeErr       error
 	deleteErr      error
+	aliasErr       error
 }
 
 func (r *routerGames) List(_ context.Context, search string) ([]game.Game, error) {
@@ -1407,8 +1490,8 @@ func (*routerGames) Update(context.Context, string, string, string) (game.Game, 
 	return game.Game{}, nil
 }
 func (*routerGames) SetActive(context.Context, string, bool) error { return nil }
-func (*routerGames) AddAlias(context.Context, string, string) (game.Alias, error) {
-	return game.Alias{}, nil
+func (r *routerGames) AddAlias(context.Context, string, string) (game.Alias, error) {
+	return game.Alias{}, r.aliasErr
 }
 func (*routerGames) RemoveAlias(context.Context, string, string) error { return nil }
 func (r *routerGames) SearchIGDB(_ context.Context, search string) ([]game.AdminProviderGame, error) {

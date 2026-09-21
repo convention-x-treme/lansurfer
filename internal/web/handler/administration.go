@@ -115,20 +115,16 @@ func (h *Administration) CreateGame(w http.ResponseWriter, r *http.Request) {
 
 func (h *Administration) UpdateGame(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		h.renderGamesWithError(w, r, errInvalidAdminForm)
+		h.renderGameEntry(w, r, errInvalidAdminForm, "game-updated")
 		return
 	}
 	_, err := h.games.Update(r.Context(), chi.URLParam(r, "gameID"), r.FormValue("name"), r.FormValue("slug"))
-	if err != nil {
-		h.renderGamesWithError(w, r, err)
-		return
-	}
-	h.redirect(w, r, "/admin/games?notice=game-updated")
+	h.renderGameEntry(w, r, err, "game-updated")
 }
 
 func (h *Administration) SetGameActive(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		h.renderGamesWithError(w, r, errInvalidAdminForm)
+		h.renderGameEntry(w, r, errInvalidAdminForm, "game-status-updated")
 		return
 	}
 	active, err := strconv.ParseBool(r.FormValue("active"))
@@ -137,33 +133,21 @@ func (h *Administration) SetGameActive(w http.ResponseWriter, r *http.Request) {
 	} else {
 		err = errInvalidAdminForm
 	}
-	if err != nil {
-		h.renderGamesWithError(w, r, err)
-		return
-	}
-	h.redirect(w, r, "/admin/games?notice=game-status-updated")
+	h.renderGameEntry(w, r, err, "game-status-updated")
 }
 
 func (h *Administration) AddGameAlias(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		h.renderGamesWithError(w, r, errInvalidAdminForm)
+		h.renderGameEntry(w, r, errInvalidAdminForm, "alias-added")
 		return
 	}
 	_, err := h.games.AddAlias(r.Context(), chi.URLParam(r, "gameID"), r.FormValue("alias"))
-	if err != nil {
-		h.renderGamesWithError(w, r, err)
-		return
-	}
-	h.redirect(w, r, "/admin/games?notice=alias-added")
+	h.renderGameEntry(w, r, err, "alias-added")
 }
 
 func (h *Administration) RemoveGameAlias(w http.ResponseWriter, r *http.Request) {
 	err := h.games.RemoveAlias(r.Context(), chi.URLParam(r, "gameID"), chi.URLParam(r, "aliasID"))
-	if err != nil {
-		h.renderGamesWithError(w, r, err)
-		return
-	}
-	h.redirect(w, r, "/admin/games?notice=alias-removed")
+	h.renderGameEntry(w, r, err, "alias-removed")
 }
 
 func (h *Administration) GameIGDB(w http.ResponseWriter, r *http.Request) {
@@ -278,6 +262,43 @@ func (h *Administration) SyncIGDB(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.redirect(w, r, "/admin/igdb?notice=igdb-sync-already-running")
+}
+
+// renderGameEntry answers one change made inside an opened catalog entry.
+// With scripting the response is that entry alone, re-read and still open,
+// so the screen neither reloads nor scrolls and the administrator stays in
+// the Game they were editing. A rejected change comes back the same way
+// with the complaint inside the panel: htmx leaves a non-2xx response
+// unswapped, so an error status here would discard the very message that
+// explains it.
+//
+// Without scripting the request is an ordinary form post, so it still
+// redirects -- to the entry's own fragment, so the reload at least lands on
+// the Game that was being edited.
+func (h *Administration) renderGameEntry(w http.ResponseWriter, r *http.Request, cause error, notice string) {
+	gameID := chi.URLParam(r, "gameID")
+	if r.Header.Get("HX-Request") != "true" {
+		if cause != nil {
+			h.renderGamesWithError(w, r, cause)
+			return
+		}
+		h.redirect(w, r, "/admin/games?notice="+notice+"#"+pages.AdminEntryID(gameID))
+		return
+	}
+	if cause != nil && adminErrorStatus(cause) == http.StatusInternalServerError {
+		h.renderAdminError(w, r, cause)
+		return
+	}
+	item, err := h.gameByID(r.Context(), gameID)
+	if err != nil {
+		h.renderAdminError(w, r, err)
+		return
+	}
+	message := ""
+	if cause != nil {
+		message = adminMessage(cause)
+	}
+	render(w, r, http.StatusOK, pages.AdminGameEntry(item, true, message))
 }
 
 func (h *Administration) renderGamesWithError(w http.ResponseWriter, r *http.Request, cause error) {

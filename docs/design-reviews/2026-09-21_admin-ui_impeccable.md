@@ -76,6 +76,18 @@ Administration states the stored summary in full. The 400-rune cap `AdminIGDBMet
 
 `.catalog-decision` is a `2fr 1fr` grid from 40rem up: the sentence takes two thirds, the control one third and right-aligned, so both rows' buttons share a column edge. Below 40rem the row stacks and the control keeps its natural width (`justify-self: start`) rather than stretching into a full-width bar, which is what a grid item does by default. The 62ch measure on the text is gone — the column governs the line length now.
 
+### Panel changes no longer reload the screen
+
+Adding an alias posted the form and redirected, which reloaded `/admin/games`, collapsed the `<details>` the administrator was working in, and threw away the scroll position. Every mutation inside a panel now targets its own entry instead:
+
+- the name/slug form, the alias add and remove forms, and the activation form carry `hx-post` with `hx-target="closest .catalog-entry"` and `hx-swap="outerHTML"`, plus the product's usual `hx-sync="this:drop"` / `hx-disabled-elt` rapid-click guards
+- `AdminGameEntry(item, expanded, message)` renders the re-read Game, still open, so the swap puts back what was replaced; a rejected change comes back the same way with the complaint inside its own panel, answered 200 because htmx leaves a non-2xx response unswapped
+- without scripting the same routes still post and redirect, now to `#game-<id>`, so a reload at least lands on the Game being edited
+- `app.ts` returns the caret to the alias field after the swap, so several aliases can be added in a row
+- the two confirmed actions use `hx-confirm` alone. Carrying `data-confirm` as well prompted twice, since htmx ships in the same bundle as that handler and there is no scripting-off path where only one of them runs
+
+Driven in Chromium against the real router: scroll unchanged (520 → 520), entry still open, only that entry swapped, focus back in the alias field, duplicate alias answered inline, deactivation flipping the chip and the button in place, one confirmation dialog.
+
 ## Verification
 
 - `go test -race ./...`, `task test:integration` (the modified `ListGames` runs against real PostgreSQL), `task lint`: all pass.

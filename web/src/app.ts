@@ -313,6 +313,24 @@ document.addEventListener("submit", (event) => {
   window.setTimeout(() => releaseSubmitGuard(form), submitRecoveryDelay);
 });
 
+// Adding an alias replaces the whole catalog entry it belongs to, which takes
+// the caret with it: the field that was being typed in no longer exists. The
+// replacement carries the same id, so the caret goes back into it and several
+// aliases can be added in a row without reaching for the mouse again.
+let aliasFieldToRefocus = "";
+
+document.addEventListener("submit", (event) => {
+  const form = event.target;
+  if (!(form instanceof HTMLFormElement) || !form.classList.contains("alias-add")) return;
+  aliasFieldToRefocus = form.querySelector<HTMLInputElement>(".alias-input")?.id ?? "";
+});
+
+document.addEventListener("htmx:afterSettle", () => {
+  if (!aliasFieldToRefocus) return;
+  document.getElementById(aliasFieldToRefocus)?.focus();
+  aliasFieldToRefocus = "";
+});
+
 // A page restored from the back/forward cache keeps the DOM it was frozen with,
 // including a submit guard whose navigation has long since finished.
 window.addEventListener("pageshow", () => {
