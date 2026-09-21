@@ -182,7 +182,7 @@ func TestGameCardRendersUnifiedPresentationForMaterializedAndProviderItems(t *te
 				t.Errorf("%s card unexpectedly still contains %q: %s", name, unwanted, markup)
 			}
 		}
-		if !strings.Contains(markup, "Follow Game") && !strings.Contains(markup, "Following") {
+		if !strings.Contains(markup, ">Follow<") && !strings.Contains(markup, "Following") {
 			t.Errorf("%s card does not offer a follow control: %s", name, markup)
 		}
 		// Materialization origin, sync-generation terminology, and Local/IGDB

@@ -420,14 +420,147 @@ func TestAdminGameCatalogShowsIdentityAndDeletionGuards(t *testing.T) {
 
 	body := response.Body.String()
 	for _, want := range []string{
-		"IGDB #100", "Enrichment snapshot available", "Manage IGDB link",
+		"IGDB #100", "enrichment snapshot available", "Manage IGDB link",
 		"This game has Game Requests and cannot be deleted", "This game is followed by users",
 		"Permanently delete Unused Game?",
-		"A linked adventure.", "Strategy", "Multiplayer", "PC: online co-op · online max 4",
+		"A linked adventure.", "Strategy", "Multiplayer", "PC", "Online co-op", "Up to 4 online",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("body does not contain %q", want)
 		}
+	}
+}
+
+// The catalog filters apply live, like every other list in the product: an
+// htmx request must swap the result list alone, and the "not linked to IGDB"
+// filter must narrow it to the Games that still need a provider identity.
+func TestAdminGameCatalogFiltersLiveToUnlinkedGames(t *testing.T) {
+	games := &routerGames{items: []game.Game{
+		{ID: "linked", Name: "Linked Game", Slug: "linked-game", Active: true, IGDBExternalID: "100"},
+		{ID: "local", Name: "Local Game", Slug: "local-game", Active: true},
+	}}
+	request := httptest.NewRequest(http.MethodGet, "/admin/games?local=1", nil)
+	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	request.Header.Set("HX-Request", "true")
+	response := httptest.NewRecorder()
+
+	adminTestRouter(games).ServeHTTP(response, request)
+
+	body := response.Body.String()
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
+	}
+	if strings.Contains(body, "<html") || strings.Contains(body, "app-sidebar") {
+		t.Error("htmx response re-rendered the whole page instead of the result list")
+	}
+	if !strings.Contains(body, "Local Game") {
+		t.Error("filtered list does not contain the unlinked game")
+	}
+	if strings.Contains(body, "Linked Game") {
+		t.Error("filtered list still contains a game linked to IGDB")
+	}
+	if !strings.Contains(body, "1 game · 1 active · 0 linked to IGDB") {
+		t.Errorf("count line does not describe the filtered list: %q", body)
+	}
+}
+
+// The top bar's shortcut and the composer it opens are one contract: the
+// link is useless if the fragment does not name the composer.
+func TestAdminCatalogLinksTheTopBarShortcutToTheComposer(t *testing.T) {
+	games := &routerGames{items: []game.Game{{ID: "game-1", Name: "Warcraft III", Slug: "warcraft-3", Active: true}}}
+	request := httptest.NewRequest(http.MethodGet, "/admin/games", nil)
+	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	response := httptest.NewRecorder()
+
+	adminTestRouter(games).ServeHTTP(response, request)
+
+	body := response.Body.String()
+	for _, want := range []string{`href="#add-game"`, `id="add-game"`, "Add a game manually"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("body does not contain %q", want)
+		}
+	}
+}
+
+// Adding an alias from an opened Game must not reload the screen: the
+// answer is that Game's own entry, re-read and still open, so the panel the
+// administrator is working in stays open and in place.
+func TestAdminAliasAdditionSwapsTheOpenedEntry(t *testing.T) {
+	games := &routerGames{items: []game.Game{
+		{ID: "game-1", Name: "Warcraft III", Slug: "warcraft-3", Active: true, Aliases: []game.Alias{{ID: "alias-1", Value: "wc3"}}},
+		{ID: "game-2", Name: "Quake III Arena", Slug: "quake-3", Active: true},
+	}}
+	form := url.Values{"alias": {"wc3"}}
+	request := httptest.NewRequest(http.MethodPost, "/admin/games/game-1/aliases", strings.NewReader(form.Encode()))
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	request.Header.Set("HX-Request", "true")
+	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	addCSRF(request)
+	response := httptest.NewRecorder()
+
+	adminTestRouter(games).ServeHTTP(response, request)
+
+	body := response.Body.String()
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
+	}
+	if strings.Contains(body, "<html") || strings.Contains(body, "app-sidebar") {
+		t.Error("alias addition reloaded the whole screen instead of swapping the entry")
+	}
+	if !strings.Contains(body, `id="game-game-1"`) || !strings.Contains(body, "open") {
+		t.Errorf("response is not the opened entry: %q", body)
+	}
+	if strings.Contains(body, "Quake III Arena") {
+		t.Error("response carries entries other than the Game that changed")
+	}
+}
+
+// A rejected change has to come back as the same swap: htmx leaves a
+// non-2xx response unswapped, so answering with an error status would drop
+// the message that explains the rejection.
+func TestAdminRejectedAliasKeepsTheEntryAndStatesWhy(t *testing.T) {
+	games := &routerGames{
+		items:    []game.Game{{ID: "game-1", Name: "Warcraft III", Slug: "warcraft-3", Active: true}},
+		aliasErr: game.ErrAlreadyExists,
+	}
+	form := url.Values{"alias": {"wc3"}}
+	request := httptest.NewRequest(http.MethodPost, "/admin/games/game-1/aliases", strings.NewReader(form.Encode()))
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	request.Header.Set("HX-Request", "true")
+	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	addCSRF(request)
+	response := httptest.NewRecorder()
+
+	adminTestRouter(games).ServeHTTP(response, request)
+
+	body := response.Body.String()
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d so htmx swaps the message in", response.Code, http.StatusOK)
+	}
+	if !strings.Contains(body, "already in use") {
+		t.Errorf("response does not state why the alias was rejected: %q", body)
+	}
+	if !strings.Contains(body, `id="game-game-1"`) {
+		t.Error("response is not the entry the change was made in")
+	}
+}
+
+// Without scripting the same route still posts and redirects, and the
+// redirect names the entry so the reload lands on the Game being edited.
+func TestAdminAliasAdditionRedirectsToTheEntryWithoutScripting(t *testing.T) {
+	games := &routerGames{items: []game.Game{{ID: "game-1", Name: "Warcraft III", Slug: "warcraft-3", Active: true}}}
+	form := url.Values{"alias": {"wc3"}}
+	request := httptest.NewRequest(http.MethodPost, "/admin/games/game-1/aliases", strings.NewReader(form.Encode()))
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	addCSRF(request)
+	response := httptest.NewRecorder()
+
+	adminTestRouter(games).ServeHTTP(response, request)
+
+	want := "/admin/games?notice=alias-added#game-game-1"
+	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != want {
+		t.Fatalf("status/location = %d, %q", response.Code, response.Header().Get("Location"))
 	}
 }
 
@@ -458,8 +591,11 @@ func TestAdminIGDBLinkSearchGuidesExistingMappingToMerge(t *testing.T) {
 	}
 	for _, want := range []string{
 		"Provider Name", "2024", "co-admin.jpg", "Linked to IGDB Game", "/admin/games/target/merge?source=source",
-		"grid-cols-[auto_minmax(0,1fr)_auto]", "aspect-[3/4]", "max-w-[100px]", "break-words",
-		"Provider summary.", "RPG", "Co-op", "PC: offline co-op",
+		// The candidate renders in the product's own row and cover
+		// vocabulary rather than in a layout of its own, so a long provider
+		// name wraps in the row instead of widening the page.
+		"catalog-entry", "catalog-cover", "catalog-entry-title",
+		"Provider summary.", "RPG", "Co-op", "PC", "Offline co-op",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("body does not contain %q", want)
@@ -840,7 +976,7 @@ func TestAuthenticatedUserCanBrowseAndFollowGames(t *testing.T) {
 	if response.Code != http.StatusOK || subscriptions.search != "wc3" {
 		t.Fatalf("browse response = %d, search = %q", response.Code, subscriptions.search)
 	}
-	for _, want := range []string{"Warcraft III", "Follow Game", `hx-post="/games/game-1/follow"`, "Followed"} {
+	for _, want := range []string{"Warcraft III", ">Follow<", `hx-post="/games/game-1/follow"`, "Followed"} {
 		if !strings.Contains(response.Body.String(), want) {
 			t.Errorf("body does not contain %q", want)
 		}
@@ -938,7 +1074,7 @@ func TestGameCatalogRendersUnmaterializedProviderResultWithFollowAction(t *testi
 		"2002 · Azeroth braces for war.",
 		">RTS<",
 		"https://images.igdb.com/igdb/image/upload/t_cover_big/co1abc.jpg",
-		"Follow Game",
+		">Follow<",
 		`hx-post="/games/providers/igdb/42/follow"`,
 	} {
 		if !strings.Contains(body, want) {
@@ -1358,6 +1494,7 @@ type routerGames struct {
 	linkErr        error
 	mergeErr       error
 	deleteErr      error
+	aliasErr       error
 }
 
 func (r *routerGames) List(_ context.Context, search string) ([]game.Game, error) {
@@ -1371,8 +1508,8 @@ func (*routerGames) Update(context.Context, string, string, string) (game.Game, 
 	return game.Game{}, nil
 }
 func (*routerGames) SetActive(context.Context, string, bool) error { return nil }
-func (*routerGames) AddAlias(context.Context, string, string) (game.Alias, error) {
-	return game.Alias{}, nil
+func (r *routerGames) AddAlias(context.Context, string, string) (game.Alias, error) {
+	return game.Alias{}, r.aliasErr
 }
 func (*routerGames) RemoveAlias(context.Context, string, string) error { return nil }
 func (r *routerGames) SearchIGDB(_ context.Context, search string) ([]game.AdminProviderGame, error) {

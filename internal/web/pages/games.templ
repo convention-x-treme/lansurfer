@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/convention-x-treme/lansurfer/internal/game"
 	"github.com/convention-x-treme/lansurfer/internal/web/branding"
@@ -203,7 +204,7 @@ templ GameCardFollowControl(item game.DiscoveryItem, followedOnly bool) {
 		<form class="game-card-follow" method="post" action={ "/games/" + item.LocalGameID + "/unfollow" } hx-post={ "/games/" + item.LocalGameID + "/unfollow" } hx-target="closest article" hx-swap="outerHTML" hx-sync="this:drop" hx-disabled-elt="find button">
 			@components.CSRFInput()
 			@followedViewInput(followedOnly)
-			<button class="btn btn-quiet btn-sm" type="submit">Unfollow</button>
+			<button class="btn btn-ghost btn-sm text-[var(--ink-accent)]" type="submit">Unfollow</button>
 		</form>
 	} else if item.Subscribed {
 		<span class="status-chip status-chip-joined">Following</span>
@@ -211,13 +212,13 @@ templ GameCardFollowControl(item game.DiscoveryItem, followedOnly bool) {
 		<form class="game-card-follow" method="post" action={ "/games/" + item.LocalGameID + "/follow" } hx-post={ "/games/" + item.LocalGameID + "/follow" } hx-target="closest article" hx-swap="outerHTML" hx-sync="this:drop" hx-disabled-elt="find button">
 			@components.CSRFInput()
 			@followedViewInput(followedOnly)
-			<button class="btn btn-primary btn-sm" type="submit">Follow Game</button>
+			<button class="btn btn-primary btn-sm" type="submit">Follow</button>
 		</form>
 	} else {
 		<form class="game-card-follow" method="post" action={ providerFollowAction(item.Reference) } hx-post={ providerFollowAction(item.Reference) } hx-target="closest article" hx-swap="outerHTML" hx-sync="this:drop" hx-disabled-elt="find button">
 			@components.CSRFInput()
 			@followedViewInput(followedOnly)
-			<button class="btn btn-primary btn-sm" type="submit">Follow Game</button>
+			<button class="btn btn-primary btn-sm" type="submit">Follow</button>
 		</form>
 	}
 }
@@ -281,12 +282,26 @@ func shortGenre(name string) string {
 	return name
 }
 
+// truncateSummary collapses a provider summary's own line breaks and runs of
+// whitespace into single spaces and caps it at limit runes, appending an
+// ellipsis when it had to cut. The cut counts runes rather than bytes so a
+// multi-byte character is never split into invalid UTF-8. Only the player
+// card previews a summary this way; the administration snapshot states the
+// stored text in full.
+func truncateSummary(summary string, limit int) string {
+	value := strings.Join(strings.Fields(summary), " ")
+	if utf8.RuneCountInString(value) <= limit {
+		return value
+	}
+	return string([]rune(value)[:limit]) + "…"
+}
+
 // gameCardSummaryLimit caps the summary a card previews. A card's width is
 // fluid, so no rune count can promise a constant height -- .game-card-meta
 // clamps the visible lines and this only bounds how much provider prose a
-// full grid ships. It is sized so a widened card still fills roughly the
-// clamped three lines rather than running out of text.
-const gameCardSummaryLimit = 200
+// full grid ships. It is sized so a widened card still fills the clamped
+// five lines rather than running out of text.
+const gameCardSummaryLimit = 400
 
 // gameCardMeta is the card's own secondary line: release year, then the
 // IGDB summary. Unlike presentationSecondary -- which the composer and Game

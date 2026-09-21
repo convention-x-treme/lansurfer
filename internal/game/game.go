@@ -42,13 +42,19 @@ type Alias struct {
 }
 
 type Game struct {
-	ID                   string
-	Name                 string
-	Slug                 string
-	Active               bool
-	Aliases              []Alias
-	IGDBExternalID       string
-	IGDBEnriched         bool
+	ID             string
+	Name           string
+	Slug           string
+	Active         bool
+	Aliases        []Alias
+	IGDBExternalID string
+	IGDBEnriched   bool
+	// IGDBSlug addresses the canonical igdb.com page for the linked record.
+	// It comes from the active synchronized provider index rather than from
+	// the enrichment snapshot, so it is empty whenever that index cannot
+	// currently confirm the record.
+	IGDBSlug             string
+	IGDBCoverImageID     string
 	IGDBSummary          string
 	IGDBGenreNames       []string
 	IGDBGameModeNames    []string
@@ -66,6 +72,7 @@ type Game struct {
 type AdminProviderGame struct {
 	ExternalID       string
 	Name             string
+	Slug             string
 	GameType         string
 	PlatformNames    []string
 	FirstReleaseDate *time.Time

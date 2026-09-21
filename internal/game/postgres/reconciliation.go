@@ -26,7 +26,7 @@ func (s *Store) SearchIGDB(ctx context.Context, search string) ([]game.AdminProv
 	}
 	for _, row := range rows {
 		result = append(result, game.AdminProviderGame{
-			ExternalID: row.ExternalID, Name: row.Name, GameType: row.GameType,
+			ExternalID: row.ExternalID, Name: row.Name, Slug: row.Slug, GameType: row.GameType,
 			PlatformNames: nonNilStrings(row.PlatformNames), FirstReleaseDate: timestamptzPointer(row.FirstReleaseDate),
 			CoverImageID: row.CoverImageID, LinkedGameID: row.LinkedGameID, LinkedGameName: row.LinkedGameName,
 			Summary: row.Summary, GenreNames: nonNilStrings(row.GenreNames), GameModeNames: nonNilStrings(row.GameModeNames),
