@@ -191,3 +191,24 @@ func TestFooterOmitsImprintWhenUnset(t *testing.T) {
 		t.Error("footer renders an Imprint link without a configured imprint URL")
 	}
 }
+
+func TestAuthenticatedLayoutCreditsOperatorOnlyInFooter(t *testing.T) {
+	var rendered bytes.Buffer
+	navigation := NavigationState{Viewer: &Viewer{ID: "u1", GameNick: "Ada"}}
+	if err := Layout(branding.Default(), "Game Requests", navigation).Render(legalContext(webmiddleware.LegalIdentity{}), &rendered); err != nil {
+		t.Fatalf("render Layout: %v", err)
+	}
+	if got := strings.Count(rendered.String(), "Powered by"); got != 1 {
+		t.Errorf("operator attribution count = %d, want 1", got)
+	}
+}
+
+func TestFooterUsesFullViewportWidth(t *testing.T) {
+	var rendered bytes.Buffer
+	if err := Footer(branding.Default()).Render(legalContext(webmiddleware.LegalIdentity{}), &rendered); err != nil {
+		t.Fatalf("render Footer: %v", err)
+	}
+	if body := rendered.String(); !strings.Contains(body, `class="w-full `) {
+		t.Errorf("footer content is not full-width: %s", body)
+	}
+}

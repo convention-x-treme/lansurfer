@@ -177,7 +177,6 @@ templ DesktopNavigation(brand branding.Brand, state NavigationState) {
 				@LogoutControl()
 				@ThemeToggle()
 			</div>
-			@OperatorAttribution("px-2 text-xs text-base-content/65")
 		</div>
 	</aside>
 }
@@ -205,7 +204,6 @@ templ MobileNavigation(brand branding.Brand, state NavigationState) {
 						@LogoutControl()
 						@ThemeToggle()
 					</div>
-					@OperatorAttribution("px-2 text-xs text-base-content/65")
 				</div>
 			</nav>
 		</details>
@@ -361,9 +359,9 @@ templ CSRFInput() {
 
 // OperatorAttribution renders the fixed "Powered by …" credit that links to the
 // operating community's site. class carries the surrounding context's text
-// styling, because the sidebar, mobile drawer, and login panel each differ.
+// styling.
 templ OperatorAttribution(class string) {
-	<p class={ class }>Powered by <a class="link whitespace-nowrap text-base-content/75" href={ branding.OperatorURL } target="_blank" rel="noopener noreferrer">{ branding.OperatorName }</a></p>
+	<p class={ class }>Powered by <a class="link whitespace-nowrap text-base-content/75 link-hover" href={ branding.OperatorURL } target="_blank" rel="noopener noreferrer">{ branding.OperatorName }</a></p>
 }
 
 // FontPreloads starts the webfont requests while the parser is still in the
@@ -381,16 +379,26 @@ templ FontPreloads(brand branding.Brand) {
 // without covering content or the live-notice toasts on long ones.
 templ Footer(brand branding.Brand) {
 	<footer class="border-t border-base-300 bg-base-200">
-		<div class="page-shell flex flex-col gap-2 py-4 text-sm text-base-content/70 sm:flex-row sm:items-center sm:justify-between">
-			<nav class="flex flex-wrap gap-x-4 gap-y-1" aria-label="Legal">
+		<div class="w-full flex flex-wrap items-center justify-end gap-x-3 gap-y-1 px-4 py-4 text-right text-sm text-base-content/70 lg:px-6">
+			<nav class="flex flex-wrap items-center justify-end gap-x-2 gap-y-1" aria-label="Legal">
 				<a class="link link-hover" href="/terms">Terms</a>
+				<span aria-hidden="true">·</span>
 				<a class="link link-hover" href="/privacy">Privacy</a>
+				<span aria-hidden="true">·</span>
 				<a class="link link-hover" href="/terms#contact">Contact &amp; reporting</a>
 				if imprint := webmiddleware.LegalInfo(ctx).ImprintURL; imprint != "" {
+					<span aria-hidden="true">·</span>
 					<a class="link link-hover" href={ templ.URL(imprint) } rel="noopener noreferrer">Imprint</a>
 				}
 			</nav>
-			@OperatorAttribution("")
+			<div class="flex items-center gap-3 font-medium">
+				<span class="text-base-content/50" aria-hidden="true">│</span>
+				<p><a class="link link-hover" href="https://github.com/convention-x-treme/lansurfer" target="_blank" rel="noopener noreferrer">Github</a></p>
+			</div>
+			<div class="flex items-center gap-3 font-medium">
+				<span class="text-base-content/50" aria-hidden="true">│</span>
+				@OperatorAttribution("")
+			</div>
 		</div>
 	</footer>
 }
