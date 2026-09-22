@@ -40,4 +40,9 @@ Track C is implemented. These retained files are historical supporting records:
 4. `igdb/2026-09-18-discovery-ux-refinement-plan.md` — historical implementation plan for that refinement.
 5. `igdb/2026-09-19-ux-final-review-fix-report.md` — final UX review/fix report and verification evidence.
 
+## Legal pages
+
+1. `legal/2026-09-22-legal-pages-design.md` — public Terms, Privacy, and contact/reporting surface for issue #39 section 1.
+2. `legal/2026-09-22-legal-pages-plan.md` — execution checklist for that design.
+
 When adding another durable artifact, place it in the relevant feature directory and link related documents with repository-relative paths.

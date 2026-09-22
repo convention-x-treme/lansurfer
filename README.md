@@ -166,6 +166,26 @@ typography, or other fixed branding. LANsurfer also serves `/manifest.webmanifes
 whether the deployment is a secure context (required for installation and Web Push), at
 `/admin/pwa`.
 
+### Configure legal identity
+
+```sh
+LANSURFER_LEGAL_ENTITY_NAME=
+LANSURFER_LEGAL_ADDRESS=
+LANSURFER_LEGAL_CONTACT_EMAIL=
+LANSURFER_IMPRINT_URL=
+```
+
+LANsurfer serves a public Terms of Service at `/terms` and Privacy Policy at `/privacy`, linked
+from the footer of every screen. These values fill in the operator (data controller) on both
+pages; unset values show as "not configured" and the imprint link is hidden. Entity name and
+address are single-line (200 and 300 characters), the contact email must be a bare address, and
+the imprint must be an absolute `http(s)` URL. **Discord login requires the entity name and
+contact email**; LANsurfer refuses to start without them, because Discord requires a privacy
+policy with a responsible contact. Register `<base URL>/terms` and `<base URL>/privacy` in the
+Discord Developer Portal. The page text describes the reference deployment (30-day log retention,
+self-operated server in a colocation data center); another operator edits
+`internal/web/pages/legal.templ` to match theirs and has both texts legally reviewed.
+
 ### Promote the first administrator
 
 Every new account starts with the `user` role. Log in once to create your local
