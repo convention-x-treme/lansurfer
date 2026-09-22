@@ -94,13 +94,14 @@ templ Layout(brand branding.Brand, title string, navigation NavigationState) {
 			if navigation.Viewer != nil {
 				<div class="app-shell" data-authenticated-shell>
 					@DesktopNavigation(brand, navigation)
-					<div class="min-w-0">
+					<div class="flex min-h-dvh min-w-0 flex-col">
 						@MobileNavigation(brand, navigation)
 						<div data-realtime-url="/events/game-requests"></div>
 						<div id="live-notices" class="pointer-events-none fixed bottom-4 right-4 z-50 grid w-[min(24rem,calc(100%-2rem))] gap-3 [&>*]:pointer-events-auto" aria-live="polite"></div>
-						<main id="main-content" class="min-w-0">
+						<main id="main-content" class="min-w-0 flex-1">
 							{ children... }
 						</main>
+						@Footer(brand)
 					</div>
 				</div>
 			} else {
@@ -136,7 +137,10 @@ templ AuthLayout(brand branding.Brand, title string) {
 				@InstanceLabel(brand)
 				@ThemeToggle()
 			</header>
-			<main id="main-content">{ children... }</main>
+			<div class="flex min-h-dvh flex-col">
+				<main id="main-content" class="flex flex-1 flex-col">{ children... }</main>
+				@Footer(brand)
+			</div>
 		</body>
 	</html>
 }
@@ -371,11 +375,22 @@ templ FontPreloads(brand branding.Brand) {
 	<link rel="preload" as="font" type="font/woff2" crossorigin="anonymous" href={ templ.SafeURL(brand.Assets.DataFont) }/>
 }
 
+// Footer links the Terms, Privacy, and contact/reporting surfaces on every
+// shell. It is ordinary flow content, not fixed or sticky: each shell is a
+// full-height flex column, so it rests at the viewport bottom on short pages
+// without covering content or the live-notice toasts on long ones.
 templ Footer(brand branding.Brand) {
 	<footer class="border-t border-base-300 bg-base-200">
-		<div class="page-shell flex flex-col gap-1 py-6 text-sm text-base-content/70 sm:flex-row sm:items-center sm:justify-between">
-			<p><span class="brand-wordmark text-base-content">{ brand.Name }</span> · Open-source LFG for LAN events.</p>
-			<p>{ brand.Tagline }</p>
+		<div class="page-shell flex flex-col gap-2 py-4 text-sm text-base-content/70 sm:flex-row sm:items-center sm:justify-between">
+			<nav class="flex flex-wrap gap-x-4 gap-y-1" aria-label="Legal">
+				<a class="link link-hover" href="/terms">Terms</a>
+				<a class="link link-hover" href="/privacy">Privacy</a>
+				<a class="link link-hover" href="/terms#contact">Contact &amp; reporting</a>
+				if imprint := webmiddleware.LegalInfo(ctx).ImprintURL; imprint != "" {
+					<a class="link link-hover" href={ templ.URL(imprint) } rel="noopener noreferrer">Imprint</a>
+				}
+			</nav>
+			@OperatorAttribution("")
 		</div>
 	</footer>
 }

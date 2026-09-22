@@ -119,6 +119,9 @@ func TestRootRendersLoginLandingPage(t *testing.T) {
 		`href="/assets/app.css"`,
 		`src="/assets/app.js"`,
 		`data-theme-toggle`,
+		`href="/terms"`,
+		`href="/privacy"`,
+		"By logging in you agree to the",
 	} {
 		if !strings.Contains(string(body), want) {
 			t.Errorf("body does not contain %q", want)
