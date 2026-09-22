@@ -176,6 +176,7 @@ Close to owning code; fakes only at the three `cover` interfaces and `httptest` 
 ## 9. Out of scope
 
 - A generic remote-asset proxy or other providers.
+- Rate limiting of upstream fetches (deferred pending team discussion; a global token bucket on cache misses was the proposed option).
 - Disk eviction or size caps, cache stats/admin UI, prefetching/bulk warm-up.
 - ETag/conditional requests.
 - Configurable memory cap, timeout, TTL, or size limit.
