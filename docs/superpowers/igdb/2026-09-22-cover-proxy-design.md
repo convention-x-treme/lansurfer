@@ -28,7 +28,7 @@ Success criteria (from #45):
 | Scope | Reverses the "no local cover proxy/cache" decision. Stable 1.0 scope. PRODUCT, ARCHITECTURE, ROADMAP, README are updated in the same PR. |
 | Storage | `LANSURFER_COVER_CACHE_DIR` set → disk cache in that directory. Unset → in-process LRU with a fixed 64 MiB byte cap. No two-tier cache (the OS page cache already covers hot disk files). Memory cap is not configurable. |
 | Allowed IDs | Strict format check **and** the ID must exist in `igdb_game_index.cover_image_id` or `game_igdb_enrichment.cover_image_id`. Lookup runs only on a cache miss. |
-| Auth | Route requires a signed-in session (`RequireAuthentication`). |
+| Auth | Public, no session required, like `/assets/*`. A planned anonymous product homepage will show covers. Abuse is bounded by the known-ID check, negative cache, and `singleflight`. |
 | Sizes | Two: `small` → `t_cover_small`, `big` → `t_cover_big`. Cache key is `(size, imageID)`. |
 | Failures | 5 s upstream timeout. Failed fetches are remembered in memory for 10 min per key and answered `404` immediately. Failures are never persisted. Concurrent misses for one key share one upstream fetch (`singleflight`). |
 | IGDB disabled | Proxy keeps working: hits served, misses fetched. Covers are catalog content; no credentials are needed. |
@@ -39,7 +39,7 @@ Success criteria (from #45):
 
 ```
 GET /media/igdb/{size}/{imageID}
-        │  web/handler/media.go  (RequireAuthentication)
+        │  web/handler/media.go  (public)
         ▼
 internal/game/cover.Service.Get(ctx, size, id)
  ├─ validate size ∈ {small,big}, id ∈ ^[a-z0-9]{1,32}$   → ErrNotFound
@@ -111,7 +111,7 @@ DROP INDEX igdb_game_index_cover_image_id_idx;
 
 ## 4. HTTP
 
-Routes in the authenticated group with `handler.RequireAuthentication` (no Game Nick requirement, since images are not a page):
+Public routes registered next to `/assets/*`, outside the authenticated group (no session lookup):
 
 ```
 GET  /media/igdb/{size}/{imageID}
@@ -120,10 +120,9 @@ HEAD /media/igdb/{size}/{imageID}
 
 | Case | Status | Headers |
 |---|---|---|
-| cache hit or successful fetch | `200` | `Content-Type` (sniffed), `Cache-Control: private, max-age=31536000, immutable` |
+| cache hit or successful fetch | `200` | `Content-Type` (sniffed), `Cache-Control: public, max-age=31536000, immutable` |
 | invalid size/ID, unknown ID, negative-cache hit, upstream failure | `404` | `Cache-Control: no-store` |
 | catalog or store read error | `500` (logged) | `Cache-Control: no-store` |
-| not signed in | existing `RequireAuthentication` behavior | — |
 
 `immutable` assumes IGDB image IDs are content-stable (a new cover gets a new ID). No ETag/conditional handling; add it only if a need appears. The global `X-Content-Type-Options: nosniff` and `Referrer-Policy: no-referrer` headers stay.
 
@@ -170,7 +169,7 @@ Close to owning code; fakes only at the three `cover` interfaces and `httptest` 
   - Disk store round-trip; missing file → miss; unwritable directory → constructor error.
 - **`internal/game/igdb`** (`httptest.Server`): exact request path per size; `302` rejected; non-`200` rejected; HTML body rejected; >1 MiB rejected; slow handler times out.
 - **Integration (PostgreSQL)**: `CoverImageKnown` true for an index ID, true for an enrichment-only ID, false for unknown.
-- **HTTP (`router_test.go`)**: `200` with headers for a cached cover; `404` + `no-store` for invalid/unknown; unauthenticated access rejected; CSP header has no `images.igdb.com`.
+- **HTTP (`router_test.go`)**: `200` with headers for a cached cover; `404` + `no-store` for invalid/unknown; anonymous request (no session cookie) gets `200`; CSP header has no `images.igdb.com`.
 - **Pages**: existing assertions switch to `/media/igdb/{small|big}/{id}`; add an assertion that rendered player-facing pages contain no `images.igdb.com`.
 - No browser test: fallback JS is unchanged.
 
