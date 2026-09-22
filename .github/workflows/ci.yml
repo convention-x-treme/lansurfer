@@ -127,6 +127,17 @@ jobs:
           go run github.com/a-h/templ/cmd/templ@v0.3.1020 generate
           npm run build
 
+      - name: Check generated frontend assets
+        # The committed bundle is what production serves, so a stale
+        # dist/ must fail here rather than drift until someone rebuilds.
+        shell: bash
+        run: |
+          if [[ -n "$(git status --short)" ]]; then
+            git status --short
+            git diff
+            exit 1
+          fi
+
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
