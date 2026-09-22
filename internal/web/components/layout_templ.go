@@ -198,7 +198,7 @@ func Layout(brand branding.Brand, title string, navigation NavigationState) temp
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "<div data-realtime-url=\"/events/game-requests\"></div><div id=\"live-notices\" class=\"pointer-events-none fixed bottom-4 right-4 z-50 grid w-[min(24rem,calc(100%-2rem))] gap-3 [&>*]:pointer-events-auto\" aria-live=\"polite\"></div><main id=\"main-content\" class=\"min-w-0 flex-1\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "<div data-realtime-url=\"/events/game-requests\"></div><div id=\"live-notices\" class=\"pointer-events-none fixed bottom-4 right-4 z-50 grid w-[min(24rem,calc(100%-2rem))] gap-3 [&>*]:pointer-events-auto\" aria-live=\"polite\"></div><main id=\"main-content\" class=\"flex min-w-0 flex-1 flex-col\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
