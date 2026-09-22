@@ -305,12 +305,13 @@ func (s *Store) FindLocal(ctx context.Context, userID, localGameID string) (game
 // active generation. If it already maps to an active local Game, this
 // returns that Game's own presentation and the viewer's Follow state
 // (Materialized=true); otherwise it returns the active generation's own
-// provider presentation, unmaterialized (Materialized=false). A provider
-// record absent from the active generation, or mapped only to a
-// deactivated local Game, reports game.ErrProviderRecordNotFound rather
-// than fabricating or resurrecting a result -- see
-// FindProviderDiscoveryGame's own comment for why those two cases collapse
-// to "no row" together.
+// provider presentation, unmaterialized (Materialized=false) -- but only
+// when game.VisibleProviderRecord allows it. A provider record absent from
+// the active generation, hidden by that policy while unmaterialized, or
+// mapped only to a deactivated local Game, reports
+// game.ErrProviderRecordNotFound rather than fabricating or resurrecting a
+// result -- see FindProviderDiscoveryGame's own comment for why those cases
+// collapse to "no row" together.
 func (s *Store) FindProvider(ctx context.Context, userID string, reference game.ProviderReference) (game.DiscoveryItem, error) {
 	normalized, err := game.NewProviderReference(reference.Provider, reference.ExternalID)
 	if err != nil {
@@ -325,8 +326,9 @@ func (s *Store) FindProvider(ctx context.Context, userID string, reference game.
 		return game.DiscoveryItem{}, game.ErrInvalidProviderReference
 	}
 	row, err := s.queries.FindProviderDiscoveryGame(ctx, sqlcgen.FindProviderDiscoveryGameParams{
-		UserID: databaseUserID,
-		IgdbID: igdbID,
+		UserID:           databaseUserID,
+		IgdbID:           igdbID,
+		VisibleGameTypes: game.VisibleProviderGameTypes(),
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return game.DiscoveryItem{}, game.ErrProviderRecordNotFound

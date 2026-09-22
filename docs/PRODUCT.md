@@ -239,7 +239,7 @@ When configured, LANsurfer synchronizes lightweight IGDB metadata into a local s
 - Operator-visible provider states distinguish at least `disabled`, `not synced`, `syncing`, `current`, `stale`, and `failed`.
 - While a synchronization is running, the administrator status page reports separately how many records the in-progress generation has staged so far, refreshing itself without a manual reload, and keeps reporting the last successful baseline's record count unchanged.
 
-Ordinary player search shows by default the useful playable categories: main games, standalone expansions, remakes, remasters, ports, and independently playable expanded/edition variants. Noise-heavy categories such as DLC/add-ons, bundles, mods, episodes/seasons, packs, and updates remain synchronized but are hidden from ordinary player search by default.
+Ordinary player search shows by default the useful playable categories: main games, expansions, standalone expansions, remakes, remasters, ports, and expanded games. Noise-heavy categories such as DLC/add-ons, bundles, mods, episodes/seasons, packs, and updates remain synchronized but are hidden from ordinary player search by default. Provider records that IGDB marks as a version/edition of another game (for example a deluxe or collector edition) are hidden as well, while expansions that merely have a parent game stay discoverable. The same policy applies to direct selection of a provider record; already materialized local Games are unaffected.
 
 ### Materializing an authoritative Game
 
