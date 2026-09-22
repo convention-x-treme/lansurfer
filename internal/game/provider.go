@@ -178,9 +178,10 @@ func NewProviderReference(provider, externalID string) (ProviderReference, error
 // player-visible Game Type policy (spec: "Player-visible Game Type
 // policy"). Values are normalized (trimmed, lowercase) IGDB semantic
 // game_type.type strings. Unknown or newly introduced types default to
-// hidden until explicitly reviewed here.
+// hidden until explicitly reviewed here. A supported type alone is not
+// enough: VisibleProviderRecord also hides IGDB versions/editions.
 var visibleProviderGameTypes = []string{
-	"main game", "standalone expansion", "remake", "remaster", "port", "expanded game",
+	"main game", "expansion", "standalone expansion", "remake", "remaster", "port", "expanded game",
 }
 
 func VisibleProviderGameType(gameType string) bool {
@@ -191,6 +192,15 @@ func VisibleProviderGameType(gameType string) bool {
 		}
 	}
 	return false
+}
+
+// VisibleProviderRecord is the full player-visible policy for an
+// unmaterialized provider record: a supported Game Type and no IGDB
+// version_parent (a version_parent marks a commercial edition/version of
+// another record). parent_game deliberately plays no part, so expansions stay
+// discoverable. Already materialized local Games are never subject to it.
+func VisibleProviderRecord(gameType string, hasVersionParent bool) bool {
+	return !hasVersionParent && VisibleProviderGameType(gameType)
 }
 
 // VisibleProviderGameTypes returns the normalized (lowercase) Game Type

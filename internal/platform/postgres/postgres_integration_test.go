@@ -2562,6 +2562,105 @@ func TestDiscoveryProviderDisabledAfterSuccessfulSyncOnlyReturnsLocalGames(t *te
 	}
 }
 
+// TestDiscoveryHidesProviderVersionsButKeepsExpansions covers issue #62: an
+// unmaterialized IGDB record is player-visible only with a supported Game
+// Type and no version_parent, across search, direct selection, and
+// materialization. parent_game alone never hides a record, and an edition
+// already materialized locally stays governed by local Game state.
+func TestDiscoveryHidesProviderVersionsButKeepsExpansions(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+
+	users := user.NewService(userpostgres.NewStore(pool))
+	viewer, err := users.Register(t.Context(), "Edition Filter Viewer")
+	if err != nil {
+		t.Fatalf("register viewer: %v", err)
+	}
+	gameStore := gamepostgres.NewStore(pool)
+	catalog := game.NewService(gameStore)
+	discovery := game.NewDiscoveryService(gameStore, gameStore, gameStore, storeProviderStatus{store: gameStore})
+
+	record := func(externalID, name, gameType, parent, versionParent string) game.ProviderGame {
+		return game.ProviderGame{
+			Reference: game.ProviderReference{Provider: "igdb", ExternalID: externalID},
+			Name:      name, Slug: strings.ToLower(strings.ReplaceAll(name, " ", "-")), GameType: gameType,
+			ParentExternalID: parent, VersionParentID: versionParent,
+		}
+	}
+	activateIGDBGeneration(t, gameStore, []game.ProviderGame{
+		record("9701", "Warcrest Reforged", "Main Game", "", ""),
+		record("9702", "Warcrest Frozen Throne", "Expansion", "9701", ""),
+		record("9703", "Warcrest Standalone", "Standalone Expansion", "9701", ""),
+		record("9704", "Warcrest Spoils Edition", "Main Game", "", "9701"),
+		record("9705", "Warcrest Expansion Edition", "Expansion", "9701", "9702"),
+		record("9706", "Warcrest Skin Pack", "DLC Addon", "9701", ""),
+		record("9707", "Warcrest Collector Edition", "Main Game", "", "9701"),
+	})
+
+	// An edition an administrator linked before the policy applied keeps its
+	// local Game: search, selection, and Resolve all still reach it.
+	legacy, err := catalog.Create(t.Context(), "Warcrest Legacy Collector", "warcrest-legacy-collector")
+	if err != nil {
+		t.Fatalf("create legacy game: %v", err)
+	}
+	if err := gameStore.LinkIGDB(t.Context(), legacy.ID, game.ProviderReference{Provider: "igdb", ExternalID: "9707"}); err != nil {
+		t.Fatalf("link legacy edition: %v", err)
+	}
+
+	page, err := discovery.Browse(t.Context(), viewer.ID, "warcrest")
+	if err != nil {
+		t.Fatalf("Browse: %v", err)
+	}
+	var got []string
+	for _, item := range page.Items {
+		if item.Materialized {
+			got = append(got, "local:"+item.LocalGameID)
+		} else {
+			got = append(got, item.Reference.ExternalID)
+		}
+	}
+	slices.Sort(got)
+	want := []string{"9701", "9702", "9703", "local:" + legacy.ID}
+	slices.Sort(want)
+	if !slices.Equal(got, want) {
+		t.Fatalf("Browse identities = %v, want %v", got, want)
+	}
+
+	for _, externalID := range []string{"9701", "9702", "9703"} {
+		reference := game.ProviderReference{Provider: "igdb", ExternalID: externalID}
+		if _, err := discovery.Select(t.Context(), viewer.ID, game.GameSelection{Reference: reference}); err != nil {
+			t.Fatalf("Select visible %s: %v", externalID, err)
+		}
+	}
+	for _, externalID := range []string{"9704", "9705", "9706"} {
+		reference := game.ProviderReference{Provider: "igdb", ExternalID: externalID}
+		if _, err := discovery.Select(t.Context(), viewer.ID, game.GameSelection{Reference: reference}); !errors.Is(err, game.ErrProviderRecordNotFound) {
+			t.Fatalf("Select hidden %s: err = %v, want %v", externalID, err, game.ErrProviderRecordNotFound)
+		}
+		if _, err := discovery.Resolve(t.Context(), reference); !errors.Is(err, game.ErrProviderRecordNotFound) {
+			t.Fatalf("Resolve hidden %s: err = %v, want %v", externalID, err, game.ErrProviderRecordNotFound)
+		}
+		if mappings, _, _ := countMaterializedState(t, pool, externalID); mappings != 0 {
+			t.Fatalf("hidden %s materialized: mappings=%d", externalID, mappings)
+		}
+	}
+	if _, err := discovery.Resolve(t.Context(), game.ProviderReference{Provider: "igdb", ExternalID: "9702"}); err != nil {
+		t.Fatalf("Resolve expansion: %v", err)
+	}
+
+	legacyReference := game.ProviderReference{Provider: "igdb", ExternalID: "9707"}
+	item, err := discovery.Select(t.Context(), viewer.ID, game.GameSelection{Reference: legacyReference})
+	if err != nil || item.LocalGameID != legacy.ID {
+		t.Fatalf("Select legacy edition = %#v, %v; want local Game %s", item, err, legacy.ID)
+	}
+	resolved, err := discovery.Resolve(t.Context(), legacyReference)
+	if err != nil || resolved.ID != legacy.ID {
+		t.Fatalf("Resolve legacy edition = %#v, %v; want local Game %s", resolved, err, legacy.ID)
+	}
+}
+
 func TestIGDBMaterializationPostgreSQL(t *testing.T) {
 	pool := newTestPool(t)
 	if err := Migrate(t.Context(), pool, testLogger()); err != nil {

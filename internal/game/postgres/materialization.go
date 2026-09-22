@@ -127,6 +127,12 @@ func (s *Store) materializeIGDBGame(ctx context.Context, externalID string, igdb
 	if err != nil {
 		return game.Game{}, fmt.Errorf("load active IGDB provider game %s: %w", externalID, err)
 	}
+	// Only a player-visible record may become a new local Game; an edition
+	// that is already materialized took the found path above and stays
+	// authoritative (issue #62).
+	if !game.VisibleProviderRecord(providerRow.GameType.String, providerRow.VersionParentIgdbID.Valid) {
+		return game.Game{}, game.ErrProviderRecordNotFound
+	}
 
 	name, err := materializedGameName(providerRow.Name)
 	if err != nil {

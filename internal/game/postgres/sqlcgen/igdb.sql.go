@@ -49,7 +49,9 @@ func (q *Queries) ActiveIGDBGenerationID(ctx context.Context) (pgtype.UUID, erro
 const activeIGDBProviderGame = `-- name: ActiveIGDBProviderGame :one
 SELECT provider_game.name,
        provider_game.slug,
-       provider_game.alternative_names
+       provider_game.alternative_names,
+       provider_game.game_type,
+       provider_game.version_parent_igdb_id
 FROM igdb_game_index provider_game
 JOIN igdb_provider_state state
   ON state.singleton
@@ -58,9 +60,11 @@ WHERE provider_game.igdb_id = $1
 `
 
 type ActiveIGDBProviderGameRow struct {
-	Name             string
-	Slug             string
-	AlternativeNames []string
+	Name                string
+	Slug                string
+	AlternativeNames    []string
+	GameType            pgtype.Text
+	VersionParentIgdbID pgtype.Int8
 }
 
 // Reloads the authoritative provider row from the ACTIVE generation only.
@@ -72,7 +76,13 @@ type ActiveIGDBProviderGameRow struct {
 func (q *Queries) ActiveIGDBProviderGame(ctx context.Context, igdbID int64) (ActiveIGDBProviderGameRow, error) {
 	row := q.db.QueryRow(ctx, activeIGDBProviderGame, igdbID)
 	var i ActiveIGDBProviderGameRow
-	err := row.Scan(&i.Name, &i.Slug, &i.AlternativeNames)
+	err := row.Scan(
+		&i.Name,
+		&i.Slug,
+		&i.AlternativeNames,
+		&i.GameType,
+		&i.VersionParentIgdbID,
+	)
 	return i, err
 }
 
@@ -443,7 +453,8 @@ WITH active_generation AS (
            provider_game.first_release_date,
            provider_game.cover_image_id,
            provider_game.summary,
-           provider_game.genre_names
+           provider_game.genre_names,
+           provider_game.version_parent_igdb_id
     FROM igdb_game_index provider_game
     JOIN active_generation ON active_generation.id = provider_game.generation_id
     WHERE provider_game.igdb_id = $1
@@ -488,7 +499,11 @@ WITH active_generation AS (
         false::boolean AS materialized,
         false::boolean AS subscribed
     FROM provider_row
-    WHERE NOT EXISTS (
+    -- Same player-visible policy as Search's unmaterialized_provider_rows,
+    -- so a hidden record cannot be selected directly by provider reference.
+    WHERE lower(provider_row.game_type) = ANY($3::text[])
+      AND provider_row.version_parent_igdb_id IS NULL
+      AND NOT EXISTS (
         SELECT 1
         FROM game_external_ids mapping
         WHERE lower(btrim(mapping.provider)) = 'igdb'
@@ -508,8 +523,9 @@ FROM unmaterialized_row
 `
 
 type FindProviderDiscoveryGameParams struct {
-	IgdbID int64
-	UserID pgtype.UUID
+	IgdbID           int64
+	UserID           pgtype.UUID
+	VisibleGameTypes []string
 }
 
 type FindProviderDiscoveryGameRow struct {
@@ -541,10 +557,11 @@ type FindProviderDiscoveryGameRow struct {
 //     returns that Game's own current name/slug plus its retained
 //     game_igdb_enrichment snapshot and the viewer's own Follow state,
 //     mirroring Search's materialized_provider_rows.
-//   - unmaterialized_row exists only when NO non-archived mapping exists
-//     at all (independent of any local Game's active state, same as
-//     Search's unmaterialized_provider_rows exclusion, Track C fix
-//     c2cea97). It returns the active generation's own provider
+//   - unmaterialized_row exists only when the provider record is
+//     player-visible (supported Game Type, no version_parent) and NO
+//     non-archived mapping exists at all (independent of any local
+//     Game's active state, same as Search's unmaterialized_provider_rows
+//     exclusion, Track C fix c2cea97). It returns the active generation's own provider
 //     presentation directly.
 //
 // A mapping that exists but points only at a deactivated local Game
@@ -553,7 +570,7 @@ type FindProviderDiscoveryGameRow struct {
 // own presence, so the deactivated Game's provider record renders as no
 // row at all rather than resurfacing as a duplicate unmaterialized choice.
 func (q *Queries) FindProviderDiscoveryGame(ctx context.Context, arg FindProviderDiscoveryGameParams) (FindProviderDiscoveryGameRow, error) {
-	row := q.db.QueryRow(ctx, findProviderDiscoveryGame, arg.IgdbID, arg.UserID)
+	row := q.db.QueryRow(ctx, findProviderDiscoveryGame, arg.IgdbID, arg.UserID, arg.VisibleGameTypes)
 	var i FindProviderDiscoveryGameRow
 	err := row.Scan(
 		&i.ExternalID,
@@ -931,6 +948,7 @@ WITH active_generation AS (
         provider_game.cover_image_id,
         provider_game.summary,
         provider_game.genre_names,
+        provider_game.version_parent_igdb_id,
         CASE
             WHEN lower(provider_game.name) = lower($2::text)
               OR EXISTS (
@@ -1006,6 +1024,9 @@ WITH active_generation AS (
         ('provider:igdb:' || provider_matches.igdb_id::text) AS identity_key
     FROM provider_matches
     WHERE lower(provider_matches.game_type) = ANY($5::text[])
+      -- A version_parent marks an edition/version of another record (issue
+      -- #62); parent_game is deliberately not a filter so expansions stay.
+      AND provider_matches.version_parent_igdb_id IS NULL
       AND NOT EXISTS (
           SELECT 1
           FROM game_external_ids mapping
@@ -1133,8 +1154,9 @@ type SearchDiscoveryGamesRow struct {
 // live provider fields (spec: "later provider refreshes do not
 // automatically rename the authoritative Game"), and requires the linked
 // local Game to still be active. An unmaterialized provider candidate is
-// filtered to player-visible Game Types and excluded whenever a
-// non-archived game_external_ids mapping already exists for it, independent
+// filtered to player-visible Game Types without a version_parent and
+// excluded whenever a non-archived game_external_ids mapping already exists
+// for it, independent
 // of the mapped local Game's active state (Track C fix, commit c2cea97): an
 // admin deactivating that Game must not make its provider record reappear
 // here as if it were new. Combined with the materialized-candidate active

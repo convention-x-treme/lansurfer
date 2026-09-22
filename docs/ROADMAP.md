@@ -239,11 +239,14 @@ When IGDB is enabled:
 Ordinary player search shows by default:
 
 - main games
+- expansions
 - standalone expansions
 - remakes
 - remasters
 - ports
-- independently playable expanded/edition variants
+- expanded games
+
+Records with an IGDB `version_parent` (commercial editions/versions of another game) are hidden regardless of type; `parent_game` alone does not hide a record.
 
 The following remain synchronized but hidden from ordinary player search by default:
 
