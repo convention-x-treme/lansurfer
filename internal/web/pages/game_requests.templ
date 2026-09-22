@@ -147,7 +147,7 @@ templ TrendingSection(trending []requestquery.TrendingGame, oob bool) {
 // fetched eagerly; every cover in a list stays lazy.
 templ CoverArt(coverImageID, gameName string, priority bool) {
 	if coverImageID != "" {
-		<img class="cover-art-image" src={ providerCoverLargeURL(coverImageID) } alt="" referrerpolicy="no-referrer" { coverLoading(priority)... } data-cover-fallback="true"/>
+		<img class="cover-art-image" src={ providerCoverLargeURL(coverImageID) } alt="" { coverLoading(priority)... } data-cover-fallback="true"/>
 		<span class="cover-art-fallback" aria-hidden="true" hidden>{ components.GameAbbreviation(gameName) }</span>
 	} else {
 		<span class="cover-art-fallback" aria-hidden="true">{ components.GameAbbreviation(gameName) }</span>

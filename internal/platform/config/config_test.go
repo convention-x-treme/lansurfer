@@ -391,3 +391,15 @@ func clearOptionalEnvironment(t *testing.T) {
 		t.Setenv(name, "")
 	}
 }
+
+func TestLoadReadsCoverCacheDir(t *testing.T) {
+	t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
+	t.Setenv("LANSURFER_COVER_CACHE_DIR", " /var/cache/lansurfer/covers ")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.CoverCacheDir != "/var/cache/lansurfer/covers" {
+		t.Errorf("CoverCacheDir = %q", cfg.CoverCacheDir)
+	}
+}

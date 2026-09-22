@@ -73,4 +73,7 @@ func TestSecurityHeaders(t *testing.T) {
 			t.Errorf("Content-Security-Policy = %q, want it to contain %q", csp, directive)
 		}
 	}
+	if !strings.Contains(csp, "img-src 'self' data:;") || strings.Contains(csp, "images.igdb.com") {
+		t.Errorf("Content-Security-Policy = %q, want same-origin images only", csp)
+	}
 }

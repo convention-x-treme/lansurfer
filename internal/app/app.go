@@ -12,6 +12,8 @@ import (
 	"github.com/convention-x-treme/lansurfer/internal/auth"
 	authpostgres "github.com/convention-x-treme/lansurfer/internal/auth/postgres"
 	"github.com/convention-x-treme/lansurfer/internal/game"
+	"github.com/convention-x-treme/lansurfer/internal/game/cover"
+	"github.com/convention-x-treme/lansurfer/internal/game/igdb"
 	gamepostgres "github.com/convention-x-treme/lansurfer/internal/game/postgres"
 	"github.com/convention-x-treme/lansurfer/internal/gamerequest"
 	gamerequestpostgres "github.com/convention-x-treme/lansurfer/internal/gamerequest/postgres"
@@ -105,6 +107,15 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 
 	gameStore := gamepostgres.NewStore(pool)
 	gameService := game.NewService(gameStore)
+	var coverStore cover.Store = cover.NewMemoryStore(cover.MemoryCapacity)
+	if cfg.CoverCacheDir != "" {
+		diskStore, err := cover.NewDiskStore(cfg.CoverCacheDir)
+		if err != nil {
+			return fmt.Errorf("open cover cache: %w", err)
+		}
+		coverStore = diskStore
+	}
+	covers := cover.NewService(coverStore, igdb.NewCoverFetcher(), gameStore, logger)
 	realtime := sse.NewBroker()
 	gameRequests := gamerequest.NewService(gamerequestpostgres.NewStore(pool), gameService, realtime)
 	gameRequestQueries := gamerequestquery.NewStore(pool)
@@ -134,6 +145,7 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 			NavigationQueries:   gameRequestQueries,
 			NavigationCatalog:   gameDiscovery,
 			Realtime:            realtime,
+			Covers:              covers,
 			ProviderSync:        igdbSyncService,
 			SecureCookies:       strings.HasPrefix(cfg.BaseURL, "https://"),
 			Logger:              logger,

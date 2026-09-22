@@ -53,6 +53,9 @@ type Config struct {
 	// display fallback ("LANsurfer"), the same way it already owns
 	// branding.Default() rather than config owning product identity.
 	InstanceName string
+	// CoverCacheDir is the trimmed LANSURFER_COVER_CACHE_DIR. Empty means
+	// IGDB covers are cached in a bounded in-process memory store instead.
+	CoverCacheDir string
 }
 
 // Load reads configuration from environment variables.
@@ -109,6 +112,7 @@ func Load() (Config, error) {
 		Twitch:         twitch,
 		TrustedProxies: trustedProxies,
 		InstanceName:   instanceName,
+		CoverCacheDir:  strings.TrimSpace(os.Getenv("LANSURFER_COVER_CACHE_DIR")),
 	}, nil
 }
 

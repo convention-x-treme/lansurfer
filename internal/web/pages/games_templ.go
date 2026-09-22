@@ -472,7 +472,7 @@ func GameCard(item game.DiscoveryItem, followedOnly bool) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "\" alt=\"\" referrerpolicy=\"no-referrer\" loading=\"lazy\" data-cover-fallback=\"true\"> <span class=\"game-card-cover-fallback\" aria-hidden=\"true\" hidden>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "\" alt=\"\" loading=\"lazy\" data-cover-fallback=\"true\"> <span class=\"game-card-cover-fallback\" aria-hidden=\"true\" hidden>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

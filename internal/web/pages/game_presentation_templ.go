@@ -65,7 +65,7 @@ func GameIdentity(p game.GamePresentation) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "\" alt=\"\" referrerpolicy=\"no-referrer\" loading=\"lazy\" data-cover-fallback=\"true\"> <span class=\"game-abbreviation\" aria-hidden=\"true\" hidden>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "\" alt=\"\" loading=\"lazy\" data-cover-fallback=\"true\"> <span class=\"game-abbreviation\" aria-hidden=\"true\" hidden>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -135,20 +135,17 @@ func GameIdentity(p game.GamePresentation) templ.Component {
 	})
 }
 
-// providerCoverURL constructs the approved images.igdb.com cover URL from
-// only the persisted cover_image_id (spec: "Covers"). It never accepts or
-// echoes any other provider-supplied metadata; the CSP img-src allowlist and
-// Referrer-Policy: no-referrer safeguards live in internal/web/middleware.
+// providerCoverURL is the same-origin cover proxy URL for the persisted
+// cover_image_id (spec: "Covers"). LANsurfer fetches the image from IGDB
+// server-side; browsers never contact images.igdb.com.
 func providerCoverURL(coverImageID string) string {
-	return "https://images.igdb.com/igdb/image/upload/t_cover_small/" + coverImageID + ".jpg"
+	return "/media/igdb/small/" + coverImageID
 }
 
 // providerCoverLargeURL is providerCoverURL at the size the Games catalog
-// card's cover band needs. t_cover_small is a thumbnail and visibly blurs
-// when stretched across a card; t_cover_big is the same approved host, the
-// same persisted cover_image_id, and the same CSP allowance.
+// card's cover band needs; t_cover_small visibly blurs when stretched.
 func providerCoverLargeURL(coverImageID string) string {
-	return "https://images.igdb.com/igdb/image/upload/t_cover_big/" + coverImageID + ".jpg"
+	return "/media/igdb/big/" + coverImageID
 }
 
 // presentationSecondary renders type/platform/release disambiguation when

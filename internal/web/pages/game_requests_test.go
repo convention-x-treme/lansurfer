@@ -215,7 +215,7 @@ func TestGameRequestRowUsesCoverWhenAvailable(t *testing.T) {
 		t.Fatalf("render GameRequestRow: %v", err)
 	}
 	body := rendered.String()
-	if !strings.Contains(body, "https://images.igdb.com/igdb/image/upload/t_cover_big/co1abc.jpg") {
+	if !strings.Contains(body, "/media/igdb/big/co1abc") {
 		t.Fatalf("row does not render the cover: %s", body)
 	}
 	if !strings.Contains(body, `class="cover-art-fallback" aria-hidden="true" hidden>`) {
@@ -328,7 +328,7 @@ func TestTrendingRailRendersRankedCoversWithAccessibleNames(t *testing.T) {
 	}
 	body := rendered.String()
 	for _, want := range []string{
-		"https://images.igdb.com/igdb/image/upload/t_cover_big/co1abc.jpg",
+		"/media/igdb/big/co1abc",
 		`aria-label="Warcraft III, 4 activity entries across 2 Game Requests"`,
 		`aria-label="Quake III Arena, 1 activity entry across 1 Game Request"`,
 		"last 6 hours",
@@ -339,7 +339,7 @@ func TestTrendingRailRendersRankedCoversWithAccessibleNames(t *testing.T) {
 	}
 	// The second entry has no cover, so it must fall back rather than request
 	// a cover URL built from an empty image ID.
-	if strings.Contains(body, "/t_cover_big/.jpg") {
+	if strings.Contains(body, `/media/igdb/big/"`) {
 		t.Errorf("Trending rail requested a cover for a Game without one: %s", body)
 	}
 	if !strings.Contains(body, ">Q3A<") {
@@ -482,7 +482,7 @@ func TestNewGameRequestSelectedStateRendersIdentityAndHiddenFields(t *testing.T)
 	body := rendered.String()
 	for _, want := range []string{
 		"Warcraft III: Reign of Chaos",
-		"https://images.igdb.com/igdb/image/upload/t_cover_big/co1abc.jpg",
+		"/media/igdb/big/co1abc",
 		`loading="eager"`,
 		`fetchpriority="high"`,
 		"Change game",
@@ -737,7 +737,7 @@ func TestGameRequestDiscoveryRowIsTheSelectControl(t *testing.T) {
 	for _, want := range []string{
 		`<a class="pick-card" href="/game-requests/new?game_id=local-2"`,
 		`class="pick-cover"`,
-		`cover-2.jpg`,
+		`/media/igdb/big/cover-2`,
 		`Age of Empires`,
 	} {
 		if !strings.Contains(body, want) {
