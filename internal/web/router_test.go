@@ -1923,3 +1923,37 @@ func TestLegalPagesUseAppShellForSignedInPlayer(t *testing.T) {
 		t.Error("signed-in player did not get the application shell on /privacy")
 	}
 }
+
+// Onboarding shows the footer, so a player with a session but no Game Nick
+// yet can open the legal pages. They must not get the application shell,
+// whose links all bounce back to onboarding.
+func TestLegalPagesTreatPlayerWithoutGameNickAsAnonymous(t *testing.T) {
+	authentication := &routerAuthentication{account: user.User{ID: "u1"}}
+	request := httptest.NewRequest(http.MethodGet, "/terms", nil)
+	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	response := httptest.NewRecorder()
+	NewRouter(RouterDependencies{Ready: func(context.Context) error { return nil }, Authentication: authentication, Sessions: authentication}).
+		ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
+	}
+	if strings.Contains(response.Body.String(), "data-authenticated-shell") {
+		t.Error("player without a Game Nick got the application shell on /terms")
+	}
+}
+
+// The policy must describe everything the request log and session store keep.
+func TestPrivacyPolicyDescribesLoggedFieldsAndSessionRetention(t *testing.T) {
+	authentication := &routerAuthentication{}
+	response := httptest.NewRecorder()
+	NewRouter(RouterDependencies{Ready: func(context.Context) error { return nil }, Authentication: authentication, Sessions: authentication}).
+		ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/privacy", nil))
+
+	body := response.Body.String()
+	for _, want := range []string{"response status", "response size", "duration", "Session records remain stored"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("privacy policy does not mention %q", want)
+		}
+	}
+}

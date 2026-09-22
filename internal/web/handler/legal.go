@@ -5,6 +5,7 @@ import (
 
 	"github.com/convention-x-treme/lansurfer/internal/web/branding"
 	"github.com/convention-x-treme/lansurfer/internal/web/components"
+	webmiddleware "github.com/convention-x-treme/lansurfer/internal/web/middleware"
 	"github.com/convention-x-treme/lansurfer/internal/web/pages"
 )
 
@@ -29,6 +30,11 @@ func (h *LegalHandler) Privacy(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *LegalHandler) state(r *http.Request) components.NavigationState {
+	// Onboarding links here too. A player without a Game Nick gets the public
+	// shell: every application-shell link would bounce back to onboarding.
+	if account, ok := webmiddleware.CurrentUser(r.Context()); ok && account.GameNick == "" {
+		return components.NavigationState{}
+	}
 	state := h.navigation.For(r, "")
 	state.LoginAvailable = state.Viewer == nil
 	return state

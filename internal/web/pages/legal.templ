@@ -65,10 +65,10 @@ templ Privacy(brand branding.Brand, navigation components.NavigationState) {
 				<li><strong>Account:</strong> an internal user ID, your Game Nick, your role (player or administrator), and when the account was created and last changed.</li>
 				<li><strong>Linked login accounts:</strong> For each account you log in with (OpenID Connect, Discord, or Twitch), the provider type, the provider's user ID, and the display name the provider reports. The display name is private account information and may be offered as a Game Nick suggestion; it is never shown to other players. An email address is stored only when a generic OpenID Connect provider supplies one.</li>
 				<li><strong>Discord:</strong> when you log in with Discord, LANsurfer requests only the <code>identify</code> scope and stores your Discord user ID and username or global display name. It never requests your Discord email address and does not keep Discord access or refresh tokens after the login completes.</li>
-				<li><strong>Sessions:</strong> a hashed session token with its creation, last-use, and expiry times. A session expires after 7 days.</li>
+				<li><strong>Sessions:</strong> a hashed session token with its creation, last-use, and expiry times. A session expires after 7 days. Session records remain stored until you log out or your account is deleted.</li>
 				<li><strong>Login flows:</strong> short-lived login state, including the provider details above, valid for 10 minutes and removed after it expires.</li>
 				<li><strong>Your activity:</strong> Game Requests you create, the Game Requests you join or leave, the Games you follow, the Game Requests you recently viewed, and the history of changes to each Game Request.</li>
-				<li><strong>Server logs:</strong> For each request, your IP address, the request method and path, and a request ID. Logs are kept for at most 30 days and then deleted.</li>
+				<li><strong>Server logs:</strong> For each request, the time, your IP address, the request method and path, the response status, response size and duration, and a request ID. Error entries may add a technical error message. Logs are kept for at most 30 days and then deleted.</li>
 			</ul>
 			<h2>3. Cookies</h2>
 			<p>LANsurfer sets only cookies it needs to work: a session cookie, a security (CSRF) cookie, a short-lived cookie that binds a login to your browser, and a cookie that remembers your light or dark theme choice. It uses no analytics, advertising, or tracking cookies.</p>
