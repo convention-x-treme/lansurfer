@@ -1853,3 +1853,73 @@ func TestIGDBCoverRouteWritesNothingForCanceledCaller(t *testing.T) {
 		t.Errorf("canceled caller received %d body bytes", response.Body.Len())
 	}
 }
+
+// The Discord Developer Portal needs stable public Terms and Privacy URLs, so
+// both pages must render for an anonymous visitor with the operator's details.
+func TestLegalPagesArePublicAndShowOperatorIdentity(t *testing.T) {
+	authentication := &routerAuthentication{}
+	router := NewRouter(RouterDependencies{
+		Ready: func(context.Context) error { return nil }, Authentication: authentication, Sessions: authentication,
+		Legal: webmiddleware.LegalIdentity{
+			EntityName:   "Computerfreunde Karlsdorf-Neuthard e.V.",
+			Address:      "Example Street 1, 76689 Karlsdorf-Neuthard, Germany",
+			ContactEmail: "datenschutz@convention-x-treme.de",
+			ImprintURL:   "https://www.convention-x-treme.de/impressum",
+		},
+	})
+	for path, wants := range map[string][]string{
+		"/privacy": {"Privacy Policy", "Last updated", "Core-Backbone GmbH", "30 days", "Discord"},
+		"/terms":   {"Terms of Service", "Last updated", `id="contact"`, `href="https://github.com/convention-x-treme/lansurfer/issues"`},
+	} {
+		t.Run(path, func(t *testing.T) {
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+			if response.Code != http.StatusOK {
+				t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
+			}
+			body := response.Body.String()
+			for _, want := range append(wants,
+				"Computerfreunde Karlsdorf-Neuthard e.V.",
+				"Example Street 1, 76689 Karlsdorf-Neuthard, Germany",
+				`href="mailto:datenschutz@convention-x-treme.de"`,
+				`href="/auth/login"`,
+			) {
+				if !strings.Contains(body, want) {
+					t.Errorf("body does not contain %q", want)
+				}
+			}
+		})
+	}
+}
+
+func TestLegalPagesMarkUnconfiguredIdentity(t *testing.T) {
+	authentication := &routerAuthentication{}
+	response := httptest.NewRecorder()
+	NewRouter(RouterDependencies{Ready: func(context.Context) error { return nil }, Authentication: authentication, Sessions: authentication}).
+		ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/privacy", nil))
+
+	body := response.Body.String()
+	if !strings.Contains(body, "not configured") {
+		t.Error("privacy page does not mark missing operator details as not configured")
+	}
+	if strings.Contains(body, "mailto:") {
+		t.Error("privacy page renders a mailto link without a configured contact email")
+	}
+}
+
+func TestLegalPagesUseAppShellForSignedInPlayer(t *testing.T) {
+	authentication := &routerAuthentication{account: user.User{ID: "u1", GameNick: "Ada Player"}}
+	request := httptest.NewRequest(http.MethodGet, "/privacy", nil)
+	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	response := httptest.NewRecorder()
+	NewRouter(RouterDependencies{Ready: func(context.Context) error { return nil }, Authentication: authentication, Sessions: authentication}).
+		ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
+	}
+	body := response.Body.String()
+	if !strings.Contains(body, "data-authenticated-shell") || strings.Contains(body, `href="/auth/login"`) {
+		t.Error("signed-in player did not get the application shell on /privacy")
+	}
+}
