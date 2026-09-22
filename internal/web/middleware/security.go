@@ -109,7 +109,7 @@ func issuesCSRFToken(path string) bool {
 }
 
 func csrfExempt(path string) bool {
-	return strings.HasPrefix(path, "/assets/") || path == "/healthz" || path == "/readyz" ||
+	return strings.HasPrefix(path, "/assets/") || strings.HasPrefix(path, "/media/") || path == "/healthz" || path == "/readyz" ||
 		path == realtimePath || path == manifestPath || path == serviceWorkerJS
 }
 

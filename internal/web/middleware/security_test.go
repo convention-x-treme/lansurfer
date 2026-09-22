@@ -77,3 +77,16 @@ func TestSecurityHeaders(t *testing.T) {
 		t.Errorf("Content-Security-Policy = %q, want same-origin images only", csp)
 	}
 }
+
+// Public, shared-cacheable responses must never carry a per-browser CSRF
+// cookie, or a shared cache could hand one browser's token to everyone.
+func TestCSRFDoesNotIssueCookieOnPublicMedia(t *testing.T) {
+	handler := CSRF(true)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/media/igdb/big/co1abc", nil))
+	if cookies := response.Result().Cookies(); len(cookies) != 0 {
+		t.Errorf("public media response set cookies %v", cookies)
+	}
+}
