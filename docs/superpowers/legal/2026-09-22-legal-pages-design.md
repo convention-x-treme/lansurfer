@@ -49,7 +49,7 @@ The project issue tracker (`https://github.com/convention-x-treme/lansurfer/issu
 ## Routes and pages
 
 - `GET /terms` and `GET /privacy`, public (no session required), rendered with the normal `Layout` so signed-in and anonymous viewers get their usual shell.
-- One `internal/web/pages/legal.templ` holds both documents as fixed English text with configured values interpolated (templ escaping; mailto/imprint links built from validated values).
+- One `internal/web/pages/legal.templ` holds both documents as fixed English text with configured values interpolated (templ escaping; mailto/imprint links built from validated values). Deployment facts that are not configuration (log retention, hosting location) are part of the fixed text; another operator edits the template, as with `branding.OperatorName`.
 - Each page shows a "Last updated" date constant; changing the text means changing that date.
 - Handler lives with other public page handlers in `internal/web/handler`; it only renders.
 
@@ -66,10 +66,10 @@ Sections, grounded in the current schema and code:
    - Sessions: hashed session token with creation, last-seen, and expiry timestamps (7-day lifetime).
    - Login flows: short-lived state (10 minutes) including provider metadata, removed after expiry.
    - Participation: Game Requests you create, memberships, followed Games, recently viewed requests, and request activity history.
-   - Server request logs: client IP address, method, path, request ID. Retention: `<log retention period set by operator>`.
+   - Server request logs: client IP address, method, path, request ID. Kept for at most 30 days, then deleted.
 3. **Cookies** — session, CSRF, login browser binding, theme preference. All strictly necessary or preference; no analytics, advertising, or tracking.
 4. **Purposes and legal bases** — providing the service (GDPR Art. 6(1)(b)); security and abuse prevention via logs and sessions (Art. 6(1)(f)).
-5. **Recipients / third parties** — the identity provider you choose (OIDC provider, Discord, Twitch) during login; hosting `<hosting provider placeholder>`. Game covers are fetched server-side from IGDB; your browser never contacts IGDB and no user data is sent. No sale or advertising use of data.
+5. **Recipients / third parties** — the identity provider you choose (OIDC provider, Discord, Twitch) during login; Hosting: no third-party hosting provider processes the data. LANsurfer runs on the operator's own server, housed in a colocation space at the Nuremberg (Germany) data center of Core Backbone GmbH, which provides space, power, and network connectivity but does not operate the server. Game covers are fetched server-side from IGDB; your browser never contacts IGDB and no user data is sent. No sale or advertising use of data.
 6. **Retention and deletion** — data kept while the account exists; unlinking an identity removes it; account or Discord data deletion on request via the contact email.
 7. **Your rights** — access, rectification, erasure, restriction, portability, objection (Art. 15–21); complaint to a supervisory authority, e.g. the Landesbeauftragter für den Datenschutz und die Informationsfreiheit Baden-Württemberg.
 8. **Security** — TLS in transit (operator reverse proxy), hashed session tokens, no stored OAuth tokens. Encryption at rest is covered by a later #39 section.
