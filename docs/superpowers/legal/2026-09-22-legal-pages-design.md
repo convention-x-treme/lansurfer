@@ -41,8 +41,11 @@ Startup fails when Discord login is configured and `LANSURFER_LEGAL_ENTITY_NAME`
 LANSURFER_LEGAL_ENTITY_NAME=Computerfreunde Karlsdorf-Neuthard e.V.
 LANSURFER_LEGAL_ADDRESS=<Street and number>, <Postal code> Karlsdorf-Neuthard, Germany
 LANSURFER_LEGAL_CONTACT_EMAIL=datenschutz@convention-x-treme.de
-LANSURFER_IMPRINT_URL=<https://www.convention-x-treme.de/impressum>
+# e.g. https://www.convention-x-treme.de/impressum (placeholder: confirm the URL)
+LANSURFER_IMPRINT_URL=
 ```
+
+The imprint stays empty in the example because a `<…>` placeholder would fail URL validation at startup.
 
 The project issue tracker (`https://github.com/convention-x-treme/lansurfer/issues`) is a fixed constant in `internal/web/branding`, because it belongs to the software, not the deployment.
 
