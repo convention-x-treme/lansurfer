@@ -74,9 +74,11 @@ type RouterDependencies struct {
 	NavigationQueries handler.NavigationQueries
 	NavigationCatalog handler.NavigationCatalog
 	Realtime          handler.GameRequestEvents
-	SecureCookies     bool
-	Logger            *slog.Logger
-	TrustedProxies    []netip.Prefix
+	// Covers serves public same-origin IGDB cover images.
+	Covers         handler.CoverImages
+	SecureCookies  bool
+	Logger         *slog.Logger
+	TrustedProxies []netip.Prefix
 	// InstanceName is the raw, already-trimmed config.Config.InstanceName
 	// value. Empty means unset; NewRouter resolves the display fallback.
 	InstanceName string
@@ -127,6 +129,11 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 	router.Use(webmiddleware.Instance(dependencies.InstanceName))
 
 	router.Handle("/assets/*", http.StripPrefix("/assets/", assets.Handler()))
+	// Covers are public like /assets/: an anonymous page may show them, and
+	// the handler never touches the session.
+	media := handler.NewMedia(dependencies.Covers)
+	router.Get("/media/igdb/{size}/{imageID}", media.IGDBCover)
+	router.Head("/media/igdb/{size}/{imageID}", media.IGDBCover)
 	manifest := manifestHandler(brand, resolvedInstanceName)
 	router.Get("/manifest.webmanifest", manifest)
 	router.Head("/manifest.webmanifest", manifest)

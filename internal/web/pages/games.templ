@@ -163,7 +163,7 @@ templ GameCard(item game.DiscoveryItem, followedOnly bool) {
 	<article class={ "game-card", templ.KV("game-card-followed", item.Subscribed) }>
 		<div class="game-card-cover">
 			if item.CoverImageID != "" {
-				<img class="game-card-cover-image" src={ providerCoverLargeURL(item.CoverImageID) } alt="" referrerpolicy="no-referrer" loading="lazy" data-cover-fallback="true"/>
+				<img class="game-card-cover-image" src={ providerCoverLargeURL(item.CoverImageID) } alt="" loading="lazy" data-cover-fallback="true"/>
 				<span class="game-card-cover-fallback" aria-hidden="true" hidden>{ components.GameAbbreviation(item.Name) }</span>
 			} else {
 				<span class="game-card-cover-fallback" aria-hidden="true">{ components.GameAbbreviation(item.Name) }</span>

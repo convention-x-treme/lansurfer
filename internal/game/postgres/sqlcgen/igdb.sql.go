@@ -196,6 +196,21 @@ func (q *Queries) CompleteIGDBGeneration(ctx context.Context, arg CompleteIGDBGe
 	return result.RowsAffected(), nil
 }
 
+const coverImageKnown = `-- name: CoverImageKnown :one
+SELECT EXISTS (
+    SELECT 1 FROM igdb_game_index WHERE cover_image_id = $1::text
+    UNION ALL
+    SELECT 1 FROM game_igdb_enrichment WHERE cover_image_id = $1::text
+) AS known
+`
+
+func (q *Queries) CoverImageKnown(ctx context.Context, coverImageID string) (bool, error) {
+	row := q.db.QueryRow(ctx, coverImageKnown, coverImageID)
+	var known bool
+	err := row.Scan(&known)
+	return known, err
+}
+
 const createIGDBExternalID = `-- name: CreateIGDBExternalID :exec
 INSERT INTO game_external_ids (game_id, provider, external_id)
 VALUES ($1::uuid, 'igdb', $2::text)

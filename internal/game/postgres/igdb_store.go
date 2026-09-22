@@ -547,3 +547,14 @@ func optionalInt(value pgtype.Int4) *int {
 	result := int(value.Int32)
 	return &result
 }
+
+// CoverImageKnown reports whether any synchronized provider record or local
+// enrichment snapshot references imageID, so the cover proxy only ever
+// fetches covers LANsurfer itself renders.
+func (s *Store) CoverImageKnown(ctx context.Context, imageID string) (bool, error) {
+	known, err := s.queries.CoverImageKnown(ctx, imageID)
+	if err != nil {
+		return false, fmt.Errorf("look up IGDB cover image: %w", err)
+	}
+	return known, nil
+}

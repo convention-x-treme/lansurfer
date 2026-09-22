@@ -162,8 +162,11 @@ func TestGameCardRendersUnifiedPresentationForMaterializedAndProviderItems(t *te
 			t.Fatalf("render GameCard for %s: %v", name, err)
 		}
 		markup := rendered.String()
+		if strings.Contains(markup, "images.igdb.com") {
+			t.Errorf("%s card references images.igdb.com: %s", name, markup)
+		}
 		for _, want := range []string{
-			"https://images.igdb.com/igdb/image/upload/t_cover_big/co1abc.jpg",
+			"/media/igdb/big/co1abc",
 			"Warcraft III: Reign of Chaos",
 			"2002 · Azeroth braces for war.",
 			"game-card-genre",

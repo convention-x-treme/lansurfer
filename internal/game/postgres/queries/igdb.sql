@@ -903,3 +903,10 @@ JOIN igdb_provider_state state
 JOIN unnest(sqlc.arg(external_ids)::bigint[]) AS wanted(igdb_id)
   ON wanted.igdb_id = m.igdb_id
 ORDER BY m.igdb_id, m.ordinal;
+
+-- name: CoverImageKnown :one
+SELECT EXISTS (
+    SELECT 1 FROM igdb_game_index WHERE cover_image_id = sqlc.arg(cover_image_id)::text
+    UNION ALL
+    SELECT 1 FROM game_igdb_enrichment WHERE cover_image_id = sqlc.arg(cover_image_id)::text
+) AS known;

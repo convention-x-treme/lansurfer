@@ -3288,8 +3288,8 @@ func TestMigrateAndReadyCheck(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get migration version: %v", err)
 	}
-	if version != 12 {
-		t.Errorf("migration version = %d, want 12", version)
+	if version != 13 {
+		t.Errorf("migration version = %d, want 13", version)
 	}
 
 	if err := migrateFS(t.Context(), pool, migrationFS, logger); err != nil {
@@ -4725,5 +4725,40 @@ func TestIGDBDiscoverySearchCarriesSummaryAndGenresForBothProjections(t *testing
 	}
 	if page.Items[0].Summary != "" || len(page.Items[0].GenreNames) != 0 {
 		t.Errorf("local-only Game carries enrichment metadata: %#v", page.Items[0])
+	}
+}
+
+func TestCoverImageKnown(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+	store := gamepostgres.NewStore(pool)
+	generationID, err := store.BeginGeneration(t.Context())
+	if err != nil {
+		t.Fatalf("BeginGeneration: %v", err)
+	}
+	if err := store.StoreProviderGames(t.Context(), generationID, []game.ProviderGame{{
+		Reference: game.ProviderReference{Provider: "igdb", ExternalID: "100"},
+		Name:      "Indexed", Slug: "indexed", CoverImageID: "coindexed",
+	}}); err != nil {
+		t.Fatalf("StoreProviderGames: %v", err)
+	}
+	var gameID string
+	if err := pool.QueryRow(t.Context(), `INSERT INTO games (name, slug) VALUES ('Enriched', 'enriched') RETURNING id`).Scan(&gameID); err != nil {
+		t.Fatalf("insert game: %v", err)
+	}
+	if _, err := pool.Exec(t.Context(), `INSERT INTO game_igdb_enrichment (game_id, external_id, cover_image_id) VALUES ($1, '77', 'coenriched')`, gameID); err != nil {
+		t.Fatalf("insert enrichment: %v", err)
+	}
+
+	for id, want := range map[string]bool{"coindexed": true, "coenriched": true, "counknown": false} {
+		got, err := store.CoverImageKnown(t.Context(), id)
+		if err != nil {
+			t.Fatalf("CoverImageKnown(%q): %v", id, err)
+		}
+		if got != want {
+			t.Errorf("CoverImageKnown(%q) = %v, want %v", id, got, want)
+		}
 	}
 }

@@ -14,6 +14,7 @@ import (
 
 	"github.com/convention-x-treme/lansurfer/internal/auth"
 	"github.com/convention-x-treme/lansurfer/internal/game"
+	"github.com/convention-x-treme/lansurfer/internal/game/cover"
 	"github.com/convention-x-treme/lansurfer/internal/gamerequest"
 	requestquery "github.com/convention-x-treme/lansurfer/internal/query/gamerequest"
 	"github.com/convention-x-treme/lansurfer/internal/user"
@@ -590,7 +591,7 @@ func TestAdminIGDBLinkSearchGuidesExistingMappingToMerge(t *testing.T) {
 		t.Fatalf("status/search = %d, %q", response.Code, games.igdbSearch)
 	}
 	for _, want := range []string{
-		"Provider Name", "2024", "co-admin.jpg", "Linked to IGDB Game", "/admin/games/target/merge?source=source",
+		"Provider Name", "2024", "/media/igdb/big/co-admin", "Linked to IGDB Game", "/admin/games/target/merge?source=source",
 		// The candidate renders in the product's own row and cover
 		// vocabulary rather than in a layout of its own, so a long provider
 		// name wraps in the row instead of widening the page.
@@ -1073,7 +1074,7 @@ func TestGameCatalogRendersUnmaterializedProviderResultWithFollowAction(t *testi
 		"Warcraft III: Reign of Chaos",
 		"2002 · Azeroth braces for war.",
 		">RTS<",
-		"https://images.igdb.com/igdb/image/upload/t_cover_big/co1abc.jpg",
+		"/media/igdb/big/co1abc",
 		">Follow<",
 		`hx-post="/games/providers/igdb/42/follow"`,
 	} {
@@ -1789,5 +1790,63 @@ func TestInstanceLabelRendersOnlyForAConfiguredInstanceName(t *testing.T) {
 				t.Errorf("page title is missing its instance name: %s", body)
 			}
 		})
+	}
+}
+
+type routerCovers struct {
+	image []byte
+	err   error
+}
+
+func (c routerCovers) Get(ctx context.Context, _, _ string) ([]byte, error) {
+	if c.err != nil {
+		return nil, c.err
+	}
+	return c.image, ctx.Err()
+}
+
+func TestIGDBCoverRoute(t *testing.T) {
+	jpeg := []byte{0xFF, 0xD8, 0xFF, 0xE0, 0, 0, 0, 0}
+	tests := []struct {
+		name         string
+		covers       routerCovers
+		status       int
+		cacheControl string
+	}{
+		{"hit", routerCovers{image: jpeg}, http.StatusOK, "public, max-age=31536000, immutable"},
+		{"not found", routerCovers{err: cover.ErrNotFound}, http.StatusNotFound, "no-store"},
+		{"busy", routerCovers{err: cover.ErrBusy}, http.StatusServiceUnavailable, "no-store"},
+		{"internal", routerCovers{err: errors.New("db down")}, http.StatusInternalServerError, "no-store"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			response := httptest.NewRecorder()
+			// No session cookie: the route is public.
+			NewRouter(RouterDependencies{Covers: test.covers}).
+				ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/media/igdb/big/co1abc", nil))
+			if response.Code != test.status {
+				t.Fatalf("status = %d, want %d", response.Code, test.status)
+			}
+			if got := response.Header().Get("Cache-Control"); got != test.cacheControl {
+				t.Errorf("Cache-Control = %q, want %q", got, test.cacheControl)
+			}
+			if test.status == http.StatusOK && response.Header().Get("Content-Type") != "image/jpeg" {
+				t.Errorf("Content-Type = %q", response.Header().Get("Content-Type"))
+			}
+			if test.status == http.StatusServiceUnavailable && response.Header().Get("Retry-After") != "1" {
+				t.Errorf("Retry-After = %q, want 1", response.Header().Get("Retry-After"))
+			}
+		})
+	}
+}
+
+func TestIGDBCoverRouteWritesNothingForCanceledCaller(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	response := httptest.NewRecorder()
+	NewRouter(RouterDependencies{Covers: routerCovers{image: []byte("x")}}).
+		ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/media/igdb/big/co1abc", nil).WithContext(ctx))
+	if response.Body.Len() != 0 {
+		t.Errorf("canceled caller received %d body bytes", response.Body.Len())
 	}
 }

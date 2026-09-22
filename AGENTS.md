@@ -41,7 +41,7 @@ Run the checks relevant to the files and behavior changed. Do not substitute bro
 - Keep generated sqlc types inside persistence/read infrastructure and map them to domain or explicit read models at boundaries. Generated files are not hand-edited.
 - Keep HTTP handlers limited to transport, authentication context, service/query calls, domain-error translation, and templ rendering. Business rules stay out of handlers and domain packages do not encode HTTP semantics.
 - Prefer a little duplication to generic `shared`, `common`, `utils`, repository/DTO/mapping frameworks, full CQRS, or other abstractions without a concrete current need.
-- Use templ/HTMX server rendering and SSE with TypeScript limited to progressive enhancement. Do not create an internal JSON API solely for the web UI. Production assets are embedded; the IGDB cover host is the only approved remote-content exception.
+- Use templ/HTMX server rendering and SSE with TypeScript limited to progressive enhancement. Do not create an internal JSON API solely for the web UI. Production assets are embedded. IGDB covers are served same-origin by LANsurfer; on a cache miss, the server may fetch only from the fixed IGDB image origin under the bounded cover-proxy contract. Do not introduce a generic remote-asset proxy.
 - Run migrations before HTTP startup; migration failure is fatal. Never run DOWN migrations automatically.
 - Use local user IDs, explicit identity linking, revocable PostgreSQL sessions, and opaque cookies. Do not add local passwords, browser JWT sessions, or identity merging based only on email.
 - Protect important invariants in PostgreSQL with constraints, indexes, transactions, locks, and foreign keys. Joining/capacity, case-insensitive Game Nick claims, identity linking/unlinking, and provider-Game materialization are concurrency-sensitive.
@@ -56,7 +56,7 @@ Run the checks relevant to the files and behavior changed. Do not substitute bro
 
 - Test meaningful domain behavior, PostgreSQL behavior, concurrency-sensitive invariants, and important HTTP behavior close to the owning code. Avoid excessive mocking.
 - PostgreSQL-specific behavior belongs in the integration suite.
-- Browser tests exist only for interaction behavior Go tests cannot exercise: rapid-click guards, realtime stream lifecycle, abort/failure recovery, and SSE-versus-HTMX-swap behavior. Do not grow `web/tests` into a general end-to-end suite.
+- Browser tests exist only for interaction or browser-platform behavior Go tests cannot exercise: rapid-click guards, realtime stream lifecycle, abort/failure recovery, SSE-versus-HTMX-swap behavior, service-worker lifecycle/install behavior, and browser-only Web Push permission/subscription/receipt behavior. Do not grow `web/tests` into a general end-to-end suite.
 - Regenerate committed generated output when its sources change and verify the production build when the change affects generated/runtime assets.
 
 ## Scope and workflow
@@ -70,6 +70,8 @@ Run the checks relevant to the files and behavior changed. Do not substitute bro
 
 ## Changes requiring approval
 
-Stop and request explicit approval before changing the technology stack, module boundaries, database model, authentication/session or security model, deployment model, public domain terminology, approved 1.0 scope, or license.
+Stop and request explicit approval before changing the technology stack, module boundaries, domain relationships/data ownership/invariants in the database model, authentication/session or security model, deployment model, public domain terminology, approved 1.0 scope, or license.
+
+Implementing schema, indexes, constraints, and migrations that realize an already-approved persistence design does not require renewed approval when the approved domain relationships, ownership, and invariants stay unchanged. Changing those semantics does require approval.
 
 In particular, do not introduce an SPA/framework (React/Vue/Svelte/Angular), frontend state framework, GraphQL, an ORM, UI component libraries beyond DaisyUI, Sass/Less, Redis, a message broker, microservices, Kubernetes-specific application architecture, event sourcing, full CQRS, or additional required runtime services without an approved concrete need. Propose significant new direct dependencies before adding them.
