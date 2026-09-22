@@ -11,9 +11,11 @@ const (
 	OperatorURL  = "https://www.convention-x-treme.de"
 )
 
-// IssuesURL is the software project's public issue tracker, where players
-// report LANsurfer bugs. It belongs to the software, not the deployment.
-const IssuesURL = "https://github.com/convention-x-treme/lansurfer/issues"
+// RepositoryURL and IssuesURL belong to the software, not the deployment.
+const (
+	RepositoryURL = "https://github.com/convention-x-treme/lansurfer"
+	IssuesURL     = RepositoryURL + "/issues"
+)
 
 // Brand is the fixed product identity consumed by the web layer and asset
 // generator. It is deliberately application data rather than configuration.

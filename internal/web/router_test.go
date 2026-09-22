@@ -1869,7 +1869,7 @@ func TestLegalPagesArePublicAndShowOperatorIdentity(t *testing.T) {
 	})
 	for path, wants := range map[string][]string{
 		"/privacy": {"Privacy Policy", "Last updated", "Core-Backbone GmbH", "30 days", "Discord"},
-		"/terms":   {"Terms of Service", "Last updated", `id="contact"`, `href="https://github.com/convention-x-treme/lansurfer/issues"`},
+		"/terms":   {"Terms of Service", "Last updated", `id="contact"`, `href="https://github.com/convention-x-treme/lansurfer/issues" target="_blank" rel="noopener noreferrer"`},
 	} {
 		t.Run(path, func(t *testing.T) {
 			response := httptest.NewRecorder()

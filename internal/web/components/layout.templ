@@ -379,8 +379,8 @@ templ FontPreloads(brand branding.Brand) {
 // without covering content or the live-notice toasts on long ones.
 templ Footer(brand branding.Brand) {
 	<footer class="border-t border-base-300 bg-base-200">
-		<div class="w-full flex flex-wrap items-center justify-end gap-x-3 gap-y-1 px-4 py-4 text-right text-sm text-base-content/70 lg:px-6">
-			<nav class="flex flex-wrap items-center justify-end gap-x-2 gap-y-1" aria-label="Legal">
+		<div class="w-full flex flex-col items-center justify-end gap-x-3 gap-y-2 px-4 py-4 text-center text-sm text-base-content/70 sm:flex-row sm:text-right lg:px-6">
+			<nav class="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 sm:justify-end" aria-label="Legal">
 				<a class="link link-hover" href="/terms">Terms</a>
 				<span aria-hidden="true">·</span>
 				<a class="link link-hover" href="/privacy">Privacy</a>
@@ -388,14 +388,12 @@ templ Footer(brand branding.Brand) {
 				<a class="link link-hover" href="/terms#contact">Contact &amp; reporting</a>
 				if imprint := webmiddleware.LegalInfo(ctx).ImprintURL; imprint != "" {
 					<span aria-hidden="true">·</span>
-					<a class="link link-hover" href={ templ.URL(imprint) } rel="noopener noreferrer">Imprint</a>
+					<a class="link link-hover" href={ templ.URL(imprint) } target="_blank" rel="noopener noreferrer">Imprint</a>
 				}
 			</nav>
 			<div class="flex items-center gap-3 font-medium">
-				<span class="text-base-content/50" aria-hidden="true">│</span>
-				<p><a class="link link-hover" href="https://github.com/convention-x-treme/lansurfer" target="_blank" rel="noopener noreferrer">Github</a></p>
-			</div>
-			<div class="flex items-center gap-3 font-medium">
+				<span class="hidden text-base-content/50 sm:inline" aria-hidden="true">│</span>
+				<p><a class="link link-hover" href={ templ.URL(branding.RepositoryURL) } target="_blank" rel="noopener noreferrer">Github</a></p>
 				<span class="text-base-content/50" aria-hidden="true">│</span>
 				@OperatorAttribution("")
 			</div>

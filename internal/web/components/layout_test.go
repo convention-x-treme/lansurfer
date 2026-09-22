@@ -172,7 +172,7 @@ func TestEveryShellLinksLegalPages(t *testing.T) {
 			body := rendered.String()
 			for _, want := range []string{
 				`<footer`, `href="/terms"`, `href="/privacy"`, `href="/terms#contact"`,
-				`href="https://club.example.test/impressum"`,
+				`href="https://club.example.test/impressum" target="_blank" rel="noopener noreferrer"`,
 			} {
 				if !strings.Contains(body, want) {
 					t.Errorf("shell does not contain %q", want)
@@ -208,7 +208,14 @@ func TestFooterUsesFullViewportWidth(t *testing.T) {
 	if err := Footer(branding.Default()).Render(legalContext(webmiddleware.LegalIdentity{}), &rendered); err != nil {
 		t.Fatalf("render Footer: %v", err)
 	}
-	if body := rendered.String(); !strings.Contains(body, `class="w-full `) {
+	body := rendered.String()
+	if !strings.Contains(body, `class="w-full `) {
 		t.Errorf("footer content is not full-width: %s", body)
+	}
+	if !strings.Contains(body, `flex-col`) || !strings.Contains(body, `sm:flex-row`) {
+		t.Errorf("footer does not split metadata onto a mobile row: %s", body)
+	}
+	if !strings.Contains(body, `gap-y-2`) || !strings.Contains(body, `text-center`) || !strings.Contains(body, `sm:text-right`) {
+		t.Errorf("footer mobile rows are not centered with added spacing: %s", body)
 	}
 }

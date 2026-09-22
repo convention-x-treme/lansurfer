@@ -48,7 +48,7 @@ templ legalOperator() {
 		@legalContactEmail()
 	</p>
 	if legal.ImprintURL != "" {
-		<p>Imprint: <a class="link" href={ templ.URL(legal.ImprintURL) } rel="noopener noreferrer">{ legal.ImprintURL }</a></p>
+		<p>Imprint: <a class="link" href={ templ.URL(legal.ImprintURL) } target="_blank" rel="noopener noreferrer">{ legal.ImprintURL }</a></p>
 	}
 }
 
@@ -129,7 +129,7 @@ templ Terms(brand branding.Brand, navigation components.NavigationState) {
 				@legalContactEmail()
 				.
 			</p>
-			<p>To report a bug in the LANsurfer software, open an issue on <a class="link" href={ templ.URL(branding.IssuesURL) } rel="noopener noreferrer">GitHub</a>.</p>
+			<p>To report a bug in the LANsurfer software, open an issue on <a class="link" href={ templ.URL(branding.IssuesURL) } target="_blank" rel="noopener noreferrer">GitHub</a>.</p>
 		}
 	}
 }
