@@ -162,6 +162,9 @@ The handler contains only transport concerns: path params → `Service.Get` → 
 - **ARCHITECTURE §21**: "fixed CSP allowlisting for the IGDB cover exception" → "server-constructed IGDB cover fetch; no third-party requests from player browsers".
 - **ROADMAP Track C "Covers"** and its verification evidence: proxy limits, cache hit without upstream request, CSP without IGDB, fallback.
 - **ROADMAP Track C provider-index storage**: replace the separate "Do not mirror the full provider graph or cover image bytes" statement with the same on-demand-only cover cache rule as PRODUCT §9.
+- **ROADMAP Track G "Shared UI platform"**: replace the "remote-cover exception" wording with the same-origin catalog proxy and retain the prohibition on remote brand assets or a generic remote-asset proxy.
+- **ROADMAP 1.0 Integration Gate**: replace the "remote-cover exception" check with verification that the same-origin IGDB cover proxy coexists with the manifest/service worker and that CSP has no third-party IGDB image allowance.
+- **ROADMAP "Explicitly not planned"**: remove "local caching/proxying of remote covers" because the bounded IGDB cover proxy/cache is now approved stable-1.0 scope.
 - **README**: document `LANSURFER_COVER_CACHE_DIR`, the compose volume, and that deleting the directory resets the cache.
 - **AGENTS.md architecture guardrails**: replace the IGDB cover host's remote-content exception with same-origin covers fetched server-side from the fixed IGDB origin; retain embedded production assets and the prohibition on a generic remote-asset proxy.
 

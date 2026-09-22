@@ -141,6 +141,8 @@ LANSURFER_IGDB_ENABLED=false
 
 Set either enable flag to `true` only after configuring both credentials. Register `<base URL>/auth/twitch/callback` as the Twitch OAuth redirect URI when Twitch login is enabled. Twitch login requests only OpenID Connect identity and a display username; it does not request email. The old `LANSURFER_IGDB_CLIENT_ID` and `LANSURFER_IGDB_CLIENT_SECRET` variables no longer work.
 
+IGDB covers are served same-origin through LANsurfer; player browsers do not contact `images.igdb.com`. On a cache miss LANsurfer fetches a known cover from that fixed origin server-side. `LANSURFER_COVER_CACHE_DIR` selects a persistent disk cache; when it is unset, LANsurfer uses a fixed 64 MiB in-process LRU. The production Compose configuration sets it to `/var/cache/lansurfer/covers` and mounts the `cover-cache` named volume there. Deleting the configured cache directory resets the disk cache; known covers are fetched again on demand.
+
 When LANsurfer runs behind a reverse proxy, set `LANSURFER_BASE_URL` to the
 public HTTPS origin. Set `LANSURFER_TRUSTED_PROXIES` to a comma-separated list
 of the proxy IP addresses or CIDR ranges only when client-IP logging should use

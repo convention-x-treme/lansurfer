@@ -474,11 +474,14 @@ LANSURFER_TWITCH_CLIENT_ID
 LANSURFER_TWITCH_CLIENT_SECRET
 LANSURFER_TWITCH_AUTH_ENABLED
 LANSURFER_IGDB_ENABLED
+LANSURFER_COVER_CACHE_DIR
 ```
 
 `LANSURFER_OIDC_CLIENT_SECRET` is optional for public clients using PKCE and required when the provider configures LANsurfer as a confidential client.
 
 Twitch application credentials are shared only by Twitch authentication and IGDB discovery. Each capability is disabled by default and enabled with its own strict boolean flag; enabling either requires both shared credentials. The two capabilities do not share access tokens, clients, retries, or runtime state. Legacy `LANSURFER_IGDB_CLIENT_ID` and `LANSURFER_IGDB_CLIENT_SECRET` are not supported.
+
+`LANSURFER_COVER_CACHE_DIR` selects the IGDB cover cache store. When set, LANsurfer uses that writable directory as the persistent disk cache; when unset, it uses a fixed 64 MiB in-process LRU. The cache uses one store or the other, not a two-tier cache.
 
 Provider credentials, the 32-byte data-encryption key, and VAPID private key remain operator configuration and must not be stored as ordinary product settings.
 
@@ -537,7 +540,7 @@ When enabled:
 - start the initial synchronization asynchronously after HTTP/application availability
 - synchronize lightweight search/classification metadata for all IGDB game records; do not filter game types at ingestion
 - keep enough provider data to search/disambiguate by name/alias, provider ID, type/category, useful relationships, platform/release context, and cover reference metadata
-- do not mirror the full provider graph or cover image bytes
+- do not mirror the full provider graph or bulk-download cover images; cover bytes are cached on demand only for cover IDs LANsurfer already knows
 - do not expose partially synchronized IGDB results during the first baseline sync
 - after the first successful baseline, run automatic refresh once per day and offer global administrators **Sync now**
 - retry failures independently of core request traffic
@@ -575,7 +578,7 @@ Provider API and synchronization mechanics live behind narrow interfaces. The ex
 
 Do not couple the primary `games` table schema to IGDB-specific fields. Use generic provider/external identity and focused provider-index storage.
 
-IGDB covers are the only approved remote content exception. Allow images only from `images.igdb.com` in Content Security Policy, use `Referrer-Policy: no-referrer`, render a local placeholder on failure, and document viewer IP disclosure. Do not generalize this into a remote-asset system or cover proxy/cache.
+IGDB cover bytes are served same-origin through a bounded LANsurfer proxy/cache; player browsers never contact IGDB directly. The browser supplies only `size` (`small` or `big`) and an image ID matching `^[a-z0-9]{1,32}$`; on a cache miss the ID must also exist in `igdb_game_index.cover_image_id` or `game_igdb_enrichment.cover_image_id`. LANsurfer constructs the upstream URL server-side from a fixed `images.igdb.com` origin and fixed size mapping, with a combined 5-second catalog-and-fetch deadline, a 5-second upstream client timeout, redirects disabled, a 1 MiB response cap, and body-sniffed JPEG/PNG/WebP acceptance. Unknown IDs and failed fetches use a fixed 4,096-entry in-memory negative cache for up to 10 minutes. At most eight shared cold-miss operations run per process; a new cold key receives `503` without queuing when saturated, while cache hits and callers joining an existing singleflight do not consume another slot. The cache is either the configured disk store or the fixed 64 MiB in-process LRU, and missing/failed covers retain the local placeholder. Never accept arbitrary upstream URLs or generalize this into a remote-asset proxy.
 
 ---
 
@@ -595,7 +598,7 @@ When Tracks D and E both need browser changes, Track D owns the service-worker s
 Build frontend assets during development/CI. Production artifacts are embedded using `go:embed`.
 
 The deployed application should not require Node.js, package managers, Tailwind CLI, templ CLI, or esbuild at runtime.
-Icon webfonts and their stylesheet are bundled and embedded like the fonts through `scripts/prepare-assets.mjs`; there is no runtime icon CDN and no CSP change — the IGDB cover host stays the only remote-content exception.
+Icon webfonts and their stylesheet are bundled and embedded like the fonts through `scripts/prepare-assets.mjs`; there is no runtime icon CDN and no remote-content exception in Content Security Policy.
 
 ---
 
@@ -650,7 +653,7 @@ Important baseline controls:
 - careful trusted-proxy configuration
 - one-use, browser-bound authentication/link flow state
 - provider identity privacy
-- fixed CSP allowlisting for the IGDB cover exception
+- server-constructed IGDB cover fetches with no third-party requests from player browsers
 - encrypted Discord webhook credentials with key rotation/backup guidance
 - Web Push payload data minimization and explicit permission/consent
 
@@ -670,6 +673,6 @@ Parallel-track development makes boundaries especially important: contracts may 
 
 ## 23. Architectural Decision Policy
 
-Follow the [approval rules](../AGENTS.md#constraints-requiring-approval). Document approved architectural changes here or in a short ADR, including the reason for the decision. Small internal implementation choices do not need an ADR.
+Follow the [approval rules](../AGENTS.md#changes-requiring-approval). Document approved architectural changes here or in a short ADR, including the reason for the decision. Small internal implementation choices do not need an ADR.
 
 The roadmap's parallel tracks are planning boundaries, not new architectural layers. Do not create track packages, track-specific frameworks, or abstractions whose only purpose is coordinating project management.

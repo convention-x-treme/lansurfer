@@ -141,7 +141,6 @@ Do not create generic abstractions in 1.0 merely to make these possibilities eas
 - guest accounts, passkeys, and account self-deletion
 - full theme customization or white-label branding
 - external catalog providers other than IGDB
-- local caching or proxying of remote covers
 - multi-instance/high-availability architecture
 - WebSockets, native applications, tournaments, ratings, teams, and federation
 
@@ -232,7 +231,7 @@ When configured, LANsurfer synchronizes lightweight IGDB metadata into a local s
 
 - Synchronize lightweight search/classification metadata for all IGDB game records rather than filtering record types during ingestion.
 - Keep enough provider data to search and disambiguate results, including provider ID, names/aliases, type/category information, useful relationship signals, platform/release context, and cover reference metadata where applicable.
-- Do not mirror cover image bytes or the full provider graph.
+- Do not mirror the full provider graph or bulk-download cover images; cover bytes are cached on demand only for cover IDs LANsurfer already knows.
 - The initial sync starts asynchronously after LANsurfer is available and never blocks application startup.
 - Player-facing IGDB results remain unavailable until one complete initial baseline sync succeeds; local Games remain usable while the provider is `not synced` or `syncing`.
 - After the baseline, refresh the provider index automatically once per day and provide global administrators a manual **Sync now** action.
@@ -269,7 +268,7 @@ If an IGDB record disappears during synchronization:
 
 ### Covers and attribution
 
-IGDB attribution and operator setup/terms must be visible in the appropriate UI and documentation. Remote covers may load only from the approved `images.igdb.com` host with a fixed Content Security Policy allowlist, `Referrer-Policy: no-referrer`, and a local placeholder. Documentation must disclose that loading a remote cover exposes the viewer's IP address to IGDB. Local cover caching/proxying is not planned for 1.0.
+IGDB attribution and operator setup/terms must be visible in the appropriate UI and documentation. Covers are served same-origin through LANsurfer, so player browsers never contact IGDB directly. On a cache miss LANsurfer may fetch only a known cover ID from the fixed `images.igdb.com` origin server-side and cache the bytes on demand; missing or failed covers keep the local placeholder. Documentation must disclose that the server-side fetch exposes the LANsurfer server's egress IP address, request timing, and requested cover ID to IGDB. The bounded cover proxy is catalog infrastructure, not a generic remote-asset proxy.
 
 ## 10. Game Following
 
@@ -407,7 +406,7 @@ A deployment may expose the minimum configurable instance identity needed to dis
 
 The web app manifest uses a stable application identity and start URL, and the minimal service-worker shell supports installation plus Web Push integration. Installation does not imply offline application support.
 
-The remote IGDB-cover exception concerns catalog content and does not permit remote instance branding or broader theme customization.
+The IGDB cover proxy concerns catalog content and does not permit remote instance branding or broader theme customization.
 
 ## 15. Self-Hosting and Release Experience
 
@@ -444,4 +443,4 @@ A 1.0 release must not require Event switching, Open Play, Clans, a generic Game
 
 ## 17. Product Decisions Left to Implementation
 
-Layout, copy, pagination, route shape, migration mechanics, exact browser versions used as validation evidence, exact provider-index schema, stale-state thresholds, and validation helpers are implementation details unless the roadmap explicitly promotes them to release criteria. Follow the [approval rules](../AGENTS.md#constraints-requiring-approval) for changes to technology, security, module boundaries, deployment, domain terminology, or approved 1.0 scope.
+Layout, copy, pagination, route shape, migration mechanics, exact browser versions used as validation evidence, exact provider-index schema, stale-state thresholds, and validation helpers are implementation details unless the roadmap explicitly promotes them to release criteria. Follow the [approval rules](../AGENTS.md#changes-requiring-approval) for changes to technology, security, module boundaries, deployment, domain terminology, or approved 1.0 scope.
