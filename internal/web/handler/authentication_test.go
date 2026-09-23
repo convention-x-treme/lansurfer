@@ -31,6 +31,28 @@ func TestLoginRendersProviderChoice(t *testing.T) {
 	}
 }
 
+func TestLoginGroupsProvidersWithoutSeparators(t *testing.T) {
+	handler := NewAuthentication(&stubAuthentication{available: true, providers: []auth.ProviderAvailability{
+		{Kind: "oidc", DisplayName: "CXT account"},
+		{Kind: "discord", DisplayName: "Discord"},
+		{Kind: "twitch", DisplayName: "Twitch"},
+	}}, &stubSessions{}, branding.Default(), true)
+	response := httptest.NewRecorder()
+
+	handler.Login(response, httptest.NewRequest(http.MethodGet, "/auth/login", nil))
+
+	body := response.Body.String()
+	if strings.Contains(body, `class="divider`) {
+		t.Fatalf("login providers are separated by dividers: %q", body)
+	}
+	oidc := strings.Index(body, "Continue with CXT account")
+	discord := strings.Index(body, "Continue with Discord")
+	twitch := strings.Index(body, "Continue with Twitch")
+	if oidc < 0 || discord <= oidc || twitch <= discord {
+		t.Fatalf("provider order = oidc:%d discord:%d twitch:%d", oidc, discord, twitch)
+	}
+}
+
 func TestBeginForIssuesBrowserBindingAndRedirects(t *testing.T) {
 	authentication := &stubAuthentication{available: true, start: auth.OAuthStart{AuthorizationURL: "https://identity.example/authorize"}}
 	handler := NewAuthentication(authentication, &stubSessions{}, branding.Default(), true)
