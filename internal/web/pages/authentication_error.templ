@@ -39,7 +39,7 @@ templ Login(brand branding.Brand, providers []auth.ProviderAvailability) {
 									<span>Continue with { provider.DisplayName }</span>
 								</a>
 							} else {
-								<a class="btn btn-primary w-full justify-between" href={ templ.URL(providerLoginHref(provider.Kind)) }>
+								<a class="btn btn-primary w-full" href={ templ.URL(providerLoginHref(provider.Kind)) }>
 									<span>Continue with { provider.DisplayName }</span>
 								</a>
 							}
