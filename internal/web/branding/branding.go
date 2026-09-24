@@ -11,6 +11,12 @@ const (
 	OperatorURL  = "https://www.convention-x-treme.de"
 )
 
+// RepositoryURL and IssuesURL belong to the software, not the deployment.
+const (
+	RepositoryURL = "https://github.com/convention-x-treme/lansurfer"
+	IssuesURL     = RepositoryURL + "/issues"
+)
+
 // Brand is the fixed product identity consumed by the web layer and asset
 // generator. It is deliberately application data rather than configuration.
 type Brand struct {

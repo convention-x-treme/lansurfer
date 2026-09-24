@@ -24,6 +24,7 @@ import (
 	"github.com/convention-x-treme/lansurfer/internal/user"
 	userpostgres "github.com/convention-x-treme/lansurfer/internal/user/postgres"
 	"github.com/convention-x-treme/lansurfer/internal/web"
+	webmiddleware "github.com/convention-x-treme/lansurfer/internal/web/middleware"
 )
 
 const (
@@ -151,7 +152,11 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 			Logger:              logger,
 			TrustedProxies:      cfg.TrustedProxies,
 			InstanceName:        cfg.InstanceName,
-			BaseURL:             cfg.BaseURL,
+			Legal: webmiddleware.LegalIdentity{
+				EntityName: cfg.Legal.EntityName, Address: cfg.Legal.Address,
+				ContactEmail: cfg.Legal.ContactEmail, ImprintURL: cfg.Legal.ImprintURL,
+			},
+			BaseURL: cfg.BaseURL,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,

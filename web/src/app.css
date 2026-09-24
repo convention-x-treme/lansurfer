@@ -1112,9 +1112,10 @@
     justify-content: center;
   }
 
+  /* Fills the main column above the footer; main is a flex column. */
   .request-shell {
     display: grid;
-    min-height: calc(100dvh - 4.5rem);
+    flex: 1;
   }
 
   .request-main {
@@ -1732,7 +1733,7 @@
   .auth-stage {
     position: relative;
     display: grid;
-    min-height: 100dvh;
+    flex: 1;
     align-items: center;
     justify-items: start;
     overflow: hidden;
