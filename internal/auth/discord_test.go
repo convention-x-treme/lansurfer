@@ -51,6 +51,7 @@ func TestDiscordExchangeFetchesCurrentUserWithoutExposingEmail(t *testing.T) {
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"id": "123456789", "global_name": " NightOtter ", "username": "fallback-user", "email": "alice@example.test",
+				"avatar": "0123456789abcdef0123456789abcdef",
 			})
 		default:
 			http.NotFound(w, r)
@@ -77,6 +78,9 @@ func TestDiscordExchangeFetchesCurrentUserWithoutExposingEmail(t *testing.T) {
 	}
 	if profile.Email != "" {
 		t.Fatalf("profile email = %q, want empty", profile.Email)
+	}
+	if profile.AvatarRef != "0123456789abcdef0123456789abcdef" {
+		t.Fatalf("profile avatar = %q", profile.AvatarRef)
 	}
 }
 

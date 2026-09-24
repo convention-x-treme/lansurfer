@@ -160,12 +160,11 @@ Public routes sit next to `/media/igdb/*`, outside the authenticated group:
 - Add a read-model field `AvatarKey string` (empty means Default) next to `GameNick` wherever an avatar is drawn today:
   - `components.Viewer` (layout)
   - the member list (`game_requests.templ:651`)
-  - the request creator row
 - The `gamerequest` query package joins `user_identities` read-only for the member and creator rows. Per ARCHITECTURE, query packages may join across modules.
 - Add a `components.Avatar(gameNick, avatarKey string)` templ component:
   - With a key, it renders `<img src="/media/avatar/{key}" alt="" loading="lazy" data-cover-fallback="true">` with the initial as its hidden fallback sibling. This follows the existing `games.templ` cover markup.
   - Without one, it renders only the initial span.
-  - It replaces the three inline `avatar-placeholder`/`memberAvatarClass` usages.
+  - It replaces the inline initial in the viewer panel and member list.
 - The existing `data-cover-fallback` TypeScript already hides a failed image and shows its sibling fallback. Reuse it and don't add new JS. If its selector is cover-specific, broaden it.
 
 ## 7. Account UI

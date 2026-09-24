@@ -65,6 +65,7 @@ templ Privacy(brand branding.Brand, navigation components.NavigationState) {
 				<li><strong>Account:</strong> an internal user ID, your Game Nick, your role (player or administrator), and when the account was created and last changed.</li>
 				<li><strong>Linked login accounts:</strong> For each account you log in with (OpenID Connect, Discord, or Twitch), the provider type, the provider's user ID, and the display name the provider reports. The display name is private account information and may be offered as a Game Nick suggestion; it is never shown to other players. An email address is stored only when a generic OpenID Connect provider supplies one.</li>
 				<li><strong>Discord:</strong> when you log in with Discord, LANsurfer requests only the <code>identify</code> scope and stores your Discord user ID and username or global display name. It never requests your Discord email address and does not keep Discord access or refresh tokens after the login completes.</li>
+				<li><strong>Profile pictures:</strong> LANsurfer also stores the profile-picture reference a login provider reports (a Discord avatar ID, or a Twitch or OpenID Connect picture address), and which one you chose as your avatar. If you choose a picture, other players see it next to your Game Nick; otherwise they see your Game Nick initial. The server caches a chosen picture so it does not have to fetch it again.</li>
 				<li><strong>Sessions:</strong> a hashed session token with its creation, last-use, and expiry times. A session expires after 7 days. Session records remain stored until you log out or your account is deleted.</li>
 				<li><strong>Login flows:</strong> short-lived login state, including the provider details above, valid for 10 minutes and removed after it expires.</li>
 				<li><strong>Your activity:</strong> Game Requests you create, the Game Requests you join or leave, the Games you follow, the Game Requests you recently viewed, and the history of changes to each Game Request.</li>
@@ -81,7 +82,7 @@ templ Privacy(brand branding.Brand, navigation components.NavigationState) {
 			<ul>
 				<li><strong>Login providers:</strong> when you log in, you are sent to the provider you choose (the configured OpenID Connect provider, Discord, or Twitch). That provider's own privacy policy applies to its processing.</li>
 				<li><strong>Hosting:</strong> we process all data ourselves on our own server, housed in a colocation space at the Nuremberg (Germany) data center of Core-Backbone GmbH. Core-Backbone provides only space, power, and network connectivity and has no access to the server, its host system, its virtual machines, or the data. Only we have access.</li>
-				<li><strong>Game covers:</strong> the server fetches game cover images from IGDB. Your browser never contacts IGDB, and no data about you is sent to it.</li>
+				<li><strong>Game covers and avatars:</strong> the server fetches game cover images from IGDB and chosen profile pictures from Discord, Twitch, or the OpenID Connect provider. Your browser never contacts these services for images, and nothing is sent to them except the picture address stored for your account.</li>
 			</ul>
 			<p>We do not sell your data or use it for advertising.</p>
 			<h2>6. Retention and deletion</h2>

@@ -11,6 +11,17 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const clearAvatarSelection = `-- name: ClearAvatarSelection :exec
+UPDATE user_identities
+SET avatar_selected = false
+WHERE user_id = $1::uuid AND avatar_selected
+`
+
+func (q *Queries) ClearAvatarSelection(ctx context.Context, userID pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, clearAvatarSelection, userID)
+	return err
+}
+
 const consumeOAuthFlow = `-- name: ConsumeOAuthFlow :one
 WITH matched AS (
     SELECT source.id, source.nonce, source.pkce_verifier
@@ -192,36 +203,45 @@ func (q *Queries) ConsumeProviderCallback(ctx context.Context, arg ConsumeProvid
 }
 
 const createIdentity = `-- name: CreateIdentity :one
-INSERT INTO user_identities (user_id, provider_kind, provider_key, subject, display_name, email)
+INSERT INTO user_identities (user_id, provider_kind, provider_key, subject, display_name, email, avatar_ref, avatar_key, avatar_selected)
 VALUES (
     $1::uuid,
     $2,
     $3,
     $4,
     $5,
-    $6
+    $6,
+    $7,
+    $8,
+    $9
 )
-RETURNING id::text, user_id::text, provider_kind, provider_key, subject, display_name, email, created_at
+RETURNING id::text, user_id::text, provider_kind, provider_key, subject, display_name, email, avatar_ref, avatar_key, avatar_selected, created_at
 `
 
 type CreateIdentityParams struct {
-	UserID       pgtype.UUID
-	ProviderKind string
-	ProviderKey  string
-	Subject      string
-	DisplayName  pgtype.Text
-	Email        pgtype.Text
+	UserID         pgtype.UUID
+	ProviderKind   string
+	ProviderKey    string
+	Subject        string
+	DisplayName    pgtype.Text
+	Email          pgtype.Text
+	AvatarRef      pgtype.Text
+	AvatarKey      pgtype.Text
+	AvatarSelected bool
 }
 
 type CreateIdentityRow struct {
-	ID           string
-	UserID       string
-	ProviderKind string
-	ProviderKey  string
-	Subject      string
-	DisplayName  pgtype.Text
-	Email        pgtype.Text
-	CreatedAt    pgtype.Timestamptz
+	ID             string
+	UserID         string
+	ProviderKind   string
+	ProviderKey    string
+	Subject        string
+	DisplayName    pgtype.Text
+	Email          pgtype.Text
+	AvatarRef      pgtype.Text
+	AvatarKey      pgtype.Text
+	AvatarSelected bool
+	CreatedAt      pgtype.Timestamptz
 }
 
 func (q *Queries) CreateIdentity(ctx context.Context, arg CreateIdentityParams) (CreateIdentityRow, error) {
@@ -232,6 +252,9 @@ func (q *Queries) CreateIdentity(ctx context.Context, arg CreateIdentityParams) 
 		arg.Subject,
 		arg.DisplayName,
 		arg.Email,
+		arg.AvatarRef,
+		arg.AvatarKey,
+		arg.AvatarSelected,
 	)
 	var i CreateIdentityRow
 	err := row.Scan(
@@ -242,6 +265,9 @@ func (q *Queries) CreateIdentity(ctx context.Context, arg CreateIdentityParams) 
 		&i.Subject,
 		&i.DisplayName,
 		&i.Email,
+		&i.AvatarRef,
+		&i.AvatarKey,
+		&i.AvatarSelected,
 		&i.CreatedAt,
 	)
 	return i, err
@@ -323,17 +349,17 @@ const createPendingIdentity = `-- name: CreatePendingIdentity :one
 INSERT INTO auth_flows (
     phase, operation, provider_kind, provider_key, subject, initiating_user_id,
     parent_flow_id, browser_binding_hash, display_name, email,
-    game_nick_suggestion, expires_at
+    game_nick_suggestion, avatar_ref, expires_at
 ) VALUES (
     'pending', $1, $2, $3,
     $4, $5::uuid,
     $6::uuid, $7,
     $8, $9, $10,
-    $11
+    $11, $12
 )
 RETURNING id::text, operation, provider_kind, provider_key, subject,
           initiating_user_id, parent_flow_id, browser_binding_hash,
-          display_name, email, game_nick_suggestion, expires_at
+          display_name, email, game_nick_suggestion, avatar_ref, expires_at
 `
 
 type CreatePendingIdentityParams struct {
@@ -347,6 +373,7 @@ type CreatePendingIdentityParams struct {
 	DisplayName        pgtype.Text
 	Email              pgtype.Text
 	GameNickSuggestion pgtype.Text
+	AvatarRef          pgtype.Text
 	ExpiresAt          pgtype.Timestamptz
 }
 
@@ -362,6 +389,7 @@ type CreatePendingIdentityRow struct {
 	DisplayName        pgtype.Text
 	Email              pgtype.Text
 	GameNickSuggestion pgtype.Text
+	AvatarRef          pgtype.Text
 	ExpiresAt          pgtype.Timestamptz
 }
 
@@ -377,6 +405,7 @@ func (q *Queries) CreatePendingIdentity(ctx context.Context, arg CreatePendingId
 		arg.DisplayName,
 		arg.Email,
 		arg.GameNickSuggestion,
+		arg.AvatarRef,
 		arg.ExpiresAt,
 	)
 	var i CreatePendingIdentityRow
@@ -392,6 +421,7 @@ func (q *Queries) CreatePendingIdentity(ctx context.Context, arg CreatePendingId
 		&i.DisplayName,
 		&i.Email,
 		&i.GameNickSuggestion,
+		&i.AvatarRef,
 		&i.ExpiresAt,
 	)
 	return i, err
@@ -505,7 +535,7 @@ func (q *Queries) GetAuthFlowByState(ctx context.Context, stateHash []byte) (Get
 }
 
 const getIdentity = `-- name: GetIdentity :one
-SELECT id::text, user_id::text, provider_kind, provider_key, subject, display_name, email, created_at
+SELECT id::text, user_id::text, provider_kind, provider_key, subject, display_name, email, avatar_ref, avatar_key, avatar_selected, created_at
 FROM user_identities
 WHERE provider_kind = $1 AND provider_key = $2 AND subject = $3
 `
@@ -517,14 +547,17 @@ type GetIdentityParams struct {
 }
 
 type GetIdentityRow struct {
-	ID           string
-	UserID       string
-	ProviderKind string
-	ProviderKey  string
-	Subject      string
-	DisplayName  pgtype.Text
-	Email        pgtype.Text
-	CreatedAt    pgtype.Timestamptz
+	ID             string
+	UserID         string
+	ProviderKind   string
+	ProviderKey    string
+	Subject        string
+	DisplayName    pgtype.Text
+	Email          pgtype.Text
+	AvatarRef      pgtype.Text
+	AvatarKey      pgtype.Text
+	AvatarSelected bool
+	CreatedAt      pgtype.Timestamptz
 }
 
 func (q *Queries) GetIdentity(ctx context.Context, arg GetIdentityParams) (GetIdentityRow, error) {
@@ -538,6 +571,9 @@ func (q *Queries) GetIdentity(ctx context.Context, arg GetIdentityParams) (GetId
 		&i.Subject,
 		&i.DisplayName,
 		&i.Email,
+		&i.AvatarRef,
+		&i.AvatarKey,
+		&i.AvatarSelected,
 		&i.CreatedAt,
 	)
 	return i, err
@@ -546,7 +582,7 @@ func (q *Queries) GetIdentity(ctx context.Context, arg GetIdentityParams) (GetId
 const getPendingIdentity = `-- name: GetPendingIdentity :one
 SELECT id::text, operation, provider_kind, provider_key, subject,
        initiating_user_id, parent_flow_id, browser_binding_hash,
-       display_name, email, game_nick_suggestion, expires_at, consumed_at
+       display_name, email, game_nick_suggestion, avatar_ref, expires_at, consumed_at
 FROM auth_flows
 WHERE id = $1::uuid AND phase = 'pending'
 `
@@ -563,6 +599,7 @@ type GetPendingIdentityRow struct {
 	DisplayName        pgtype.Text
 	Email              pgtype.Text
 	GameNickSuggestion pgtype.Text
+	AvatarRef          pgtype.Text
 	ExpiresAt          pgtype.Timestamptz
 	ConsumedAt         pgtype.Timestamptz
 }
@@ -582,6 +619,7 @@ func (q *Queries) GetPendingIdentity(ctx context.Context, id pgtype.UUID) (GetPe
 		&i.DisplayName,
 		&i.Email,
 		&i.GameNickSuggestion,
+		&i.AvatarRef,
 		&i.ExpiresAt,
 		&i.ConsumedAt,
 	)
@@ -589,21 +627,24 @@ func (q *Queries) GetPendingIdentity(ctx context.Context, id pgtype.UUID) (GetPe
 }
 
 const listIdentitiesByUser = `-- name: ListIdentitiesByUser :many
-SELECT id::text, user_id::text, provider_kind, provider_key, subject, display_name, email, created_at
+SELECT id::text, user_id::text, provider_kind, provider_key, subject, display_name, email, avatar_ref, avatar_key, avatar_selected, created_at
 FROM user_identities
 WHERE user_id = $1::uuid
 ORDER BY created_at, id
 `
 
 type ListIdentitiesByUserRow struct {
-	ID           string
-	UserID       string
-	ProviderKind string
-	ProviderKey  string
-	Subject      string
-	DisplayName  pgtype.Text
-	Email        pgtype.Text
-	CreatedAt    pgtype.Timestamptz
+	ID             string
+	UserID         string
+	ProviderKind   string
+	ProviderKey    string
+	Subject        string
+	DisplayName    pgtype.Text
+	Email          pgtype.Text
+	AvatarRef      pgtype.Text
+	AvatarKey      pgtype.Text
+	AvatarSelected bool
+	CreatedAt      pgtype.Timestamptz
 }
 
 func (q *Queries) ListIdentitiesByUser(ctx context.Context, userID pgtype.UUID) ([]ListIdentitiesByUserRow, error) {
@@ -623,6 +664,9 @@ func (q *Queries) ListIdentitiesByUser(ctx context.Context, userID pgtype.UUID) 
 			&i.Subject,
 			&i.DisplayName,
 			&i.Email,
+			&i.AvatarRef,
+			&i.AvatarKey,
+			&i.AvatarSelected,
 			&i.CreatedAt,
 		); err != nil {
 			return nil, err
@@ -661,15 +705,88 @@ func (q *Queries) ResolveSession(ctx context.Context, idHash []byte) (ResolveSes
 	return i, err
 }
 
+const selectAvatarIdentity = `-- name: SelectAvatarIdentity :execrows
+UPDATE user_identities
+SET avatar_selected = true
+WHERE id = $1::uuid
+  AND user_id = $2::uuid
+  AND avatar_key IS NOT NULL
+`
+
+type SelectAvatarIdentityParams struct {
+	ID     pgtype.UUID
+	UserID pgtype.UUID
+}
+
+// Only an identity of the same user that currently offers a picture can be
+// selected; the partial unique index keeps at most one selected per user.
+func (q *Queries) SelectAvatarIdentity(ctx context.Context, arg SelectAvatarIdentityParams) (int64, error) {
+	result, err := q.db.Exec(ctx, selectAvatarIdentity, arg.ID, arg.UserID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const selectedAvatarByKey = `-- name: SelectedAvatarByKey :one
+SELECT provider_kind, subject, avatar_ref::text
+FROM user_identities
+WHERE avatar_key = $1 AND avatar_selected
+LIMIT 1
+`
+
+type SelectedAvatarByKeyRow struct {
+	ProviderKind string
+	Subject      string
+	AvatarRef    string
+}
+
+func (q *Queries) SelectedAvatarByKey(ctx context.Context, avatarKey pgtype.Text) (SelectedAvatarByKeyRow, error) {
+	row := q.db.QueryRow(ctx, selectedAvatarByKey, avatarKey)
+	var i SelectedAvatarByKeyRow
+	err := row.Scan(&i.ProviderKind, &i.Subject, &i.AvatarRef)
+	return i, err
+}
+
+const selectedAvatarKeyByUser = `-- name: SelectedAvatarKeyByUser :one
+SELECT COALESCE((
+    SELECT avatar_key FROM user_identities
+    WHERE user_id = $1::uuid AND avatar_selected
+), '')::text
+`
+
+func (q *Queries) SelectedAvatarKeyByUser(ctx context.Context, userID pgtype.UUID) (string, error) {
+	row := q.db.QueryRow(ctx, selectedAvatarKeyByUser, userID)
+	var column_1 string
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const selectedAvatarKnown = `-- name: SelectedAvatarKnown :one
+SELECT EXISTS (
+    SELECT 1 FROM user_identities WHERE avatar_key = $1 AND avatar_selected
+)
+`
+
+func (q *Queries) SelectedAvatarKnown(ctx context.Context, avatarKey pgtype.Text) (bool, error) {
+	row := q.db.QueryRow(ctx, selectedAvatarKnown, avatarKey)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const updateIdentityMetadata = `-- name: UpdateIdentityMetadata :exec
 UPDATE user_identities
-SET display_name = $1, email = $2
-WHERE provider_kind = $3 AND provider_key = $4 AND subject = $5
+SET display_name = $1, email = $2,
+    avatar_ref = $3, avatar_key = $4
+WHERE provider_kind = $5 AND provider_key = $6 AND subject = $7
 `
 
 type UpdateIdentityMetadataParams struct {
 	DisplayName  pgtype.Text
 	Email        pgtype.Text
+	AvatarRef    pgtype.Text
+	AvatarKey    pgtype.Text
 	ProviderKind string
 	ProviderKey  string
 	Subject      string
@@ -679,6 +796,8 @@ func (q *Queries) UpdateIdentityMetadata(ctx context.Context, arg UpdateIdentity
 	_, err := q.db.Exec(ctx, updateIdentityMetadata,
 		arg.DisplayName,
 		arg.Email,
+		arg.AvatarRef,
+		arg.AvatarKey,
 		arg.ProviderKind,
 		arg.ProviderKey,
 		arg.Subject,

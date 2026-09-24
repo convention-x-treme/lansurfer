@@ -1,4 +1,4 @@
-package cover
+package mediaproxy
 
 import (
 	"bytes"
@@ -33,7 +33,7 @@ func TestMemoryStoreEvictsLeastRecentlyUsed(t *testing.T) {
 }
 
 func TestDiskStoreRoundTrip(t *testing.T) {
-	store, err := NewDiskStore(t.TempDir())
+	store, err := NewDiskStore(t.TempDir(), "small", "big")
 	if err != nil {
 		t.Fatalf("NewDiskStore: %v", err)
 	}
@@ -57,7 +57,7 @@ func TestDiskStoreRejectsUnusableDirectory(t *testing.T) {
 	if err := os.WriteFile(file, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := NewDiskStore(file); err == nil {
+	if _, err := NewDiskStore(file, "small"); err == nil {
 		t.Fatal("NewDiskStore(file) error = nil")
 	}
 }

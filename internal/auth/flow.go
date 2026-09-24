@@ -79,6 +79,7 @@ type PendingIdentityInput struct {
 	Operation                              FlowOperation
 	InitiatingUserID, ParentFlowID         string
 	DisplayName, Email, GameNickSuggestion string
+	AvatarRef                              string
 }
 
 type PendingIdentity struct {
@@ -86,6 +87,7 @@ type PendingIdentity struct {
 	Operation                              FlowOperation
 	InitiatingUserID, ParentFlowID         string
 	DisplayName, Email, GameNickSuggestion string
+	AvatarRef                              string
 	BrowserBindingHash                     [sha256.Size]byte
 	ExpiresAt                              time.Time
 }
@@ -138,7 +140,7 @@ func (s *FlowService) CreatePending(ctx context.Context, input PendingIdentityIn
 	pending := PendingIdentity{
 		ProviderKind: input.ProviderKind, ProviderKey: input.ProviderKey, Subject: input.Subject,
 		Operation: input.Operation, InitiatingUserID: input.InitiatingUserID, ParentFlowID: input.ParentFlowID,
-		DisplayName: input.DisplayName, Email: input.Email, GameNickSuggestion: input.GameNickSuggestion,
+		DisplayName: input.DisplayName, Email: input.Email, GameNickSuggestion: input.GameNickSuggestion, AvatarRef: input.AvatarRef,
 		BrowserBindingHash: hashFlowSecret(input.BrowserBinding), ExpiresAt: s.now().Add(authFlowLifetime),
 	}
 	return s.repository.CreatePending(ctx, pending)

@@ -1,4 +1,4 @@
-package cover
+package mediaproxy
 
 import (
 	"errors"
@@ -14,15 +14,15 @@ type DiskStore struct {
 	dir string
 }
 
-func NewDiskStore(dir string) (*DiskStore, error) {
-	for _, size := range []string{"small", "big"} {
-		if err := os.MkdirAll(filepath.Join(dir, size), 0o750); err != nil {
-			return nil, fmt.Errorf("create cover cache directory: %w", err)
+func NewDiskStore(dir string, buckets ...string) (*DiskStore, error) {
+	for _, bucket := range buckets {
+		if err := os.MkdirAll(filepath.Join(dir, bucket), 0o750); err != nil {
+			return nil, fmt.Errorf("create media cache directory: %w", err)
 		}
 	}
 	probe, err := os.CreateTemp(dir, ".probe-*")
 	if err != nil {
-		return nil, fmt.Errorf("cover cache directory is not writable: %w", err)
+		return nil, fmt.Errorf("media cache directory is not writable: %w", err)
 	}
 	_ = probe.Close()
 	_ = os.Remove(probe.Name())

@@ -1,4 +1,4 @@
-package cover
+package mediaproxy
 
 import (
 	"container/list"

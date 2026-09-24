@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
 	"github.com/convention-x-treme/lansurfer/internal/auth"
@@ -18,18 +19,25 @@ type IdentityUnlinker interface {
 	Unlink(context.Context, string, string) error
 }
 
+// AvatarSelector sets the caller's avatar source to one of their own
+// identities, or Default for an empty identity ID.
+type AvatarSelector interface {
+	SelectAvatar(ctx context.Context, userID, identityID string) error
+}
+
 type AccountHandler struct {
 	identities     IdentityLookup
 	unlinker       IdentityUnlinker
+	avatars        AvatarSelector
 	claims         GameNickClaims
 	authentication Authentication
 	navigation     *Navigation
 	brand          branding.Brand
 }
 
-func NewAccount(identities IdentityLookup, unlinker IdentityUnlinker, claims GameNickClaims, authentication Authentication, navigation *Navigation, brand branding.Brand) *AccountHandler {
+func NewAccount(identities IdentityLookup, unlinker IdentityUnlinker, avatars AvatarSelector, claims GameNickClaims, authentication Authentication, navigation *Navigation, brand branding.Brand) *AccountHandler {
 	return &AccountHandler{
-		identities: identities, unlinker: unlinker, claims: claims,
+		identities: identities, unlinker: unlinker, avatars: avatars, claims: claims,
 		authentication: authentication, navigation: navigation, brand: brand,
 	}
 }
@@ -76,6 +84,31 @@ func (h *AccountHandler) Unlink(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/account", http.StatusSeeOther)
 }
 
+// SelectAvatar changes the avatar source. The store only accepts the
+// caller's own identities that offer a picture, so a foreign or stale ID is
+// a 404 and changes nothing.
+func (h *AccountHandler) SelectAvatar(w http.ResponseWriter, r *http.Request) {
+	account, ok := webmiddleware.CurrentUser(r.Context())
+	if !ok {
+		http.Error(w, "authentication required", http.StatusUnauthorized)
+		return
+	}
+	identityID := r.FormValue("identity")
+	if identityID == "default" {
+		identityID = ""
+	}
+	if err := h.avatars.SelectAvatar(r.Context(), account.ID, identityID); err != nil {
+		if errors.Is(err, auth.ErrIdentityNotFound) {
+			http.Error(w, "avatar source not found", http.StatusNotFound)
+			return
+		}
+		webmiddleware.LogError(r, "select avatar", err)
+		http.Error(w, "select avatar", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/account", http.StatusSeeOther)
+}
+
 func (h *AccountHandler) render(w http.ResponseWriter, r *http.Request, status int, gameNickInput, gameNickError string) {
 	account, ok := webmiddleware.CurrentUser(r.Context())
 	if !ok {
@@ -91,7 +124,7 @@ func (h *AccountHandler) render(w http.ResponseWriter, r *http.Request, status i
 	rows, linkable := accountIdentityRows(identities, h.providers())
 	linkError := r.URL.Query().Get("link_error") != ""
 	navigation := h.navigation.For(r, "account")
-	render(w, r, status, pages.Account(h.brand, navigation, account.GameNick, rows, linkable, linkError, gameNickInput, gameNickError))
+	render(w, r, status, pages.Account(h.brand, navigation, account.GameNick, selectedAvatarKey(identities), rows, linkable, linkError, gameNickInput, gameNickError))
 }
 
 func (h *AccountHandler) providers() []auth.ProviderAvailability {
@@ -118,6 +151,7 @@ func accountIdentityRows(identities []auth.Identity, providers []auth.ProviderAv
 		rows = append(rows, pages.AccountIdentityRow{
 			Kind: identity.ProviderKind, Label: label, PrivateName: identity.DisplayName, PrivateEmail: identity.Email,
 			CanUnlink: canUnlink, UnlinkPath: "/account/identities/" + identity.ID + "/unlink",
+			ID: identity.ID, HasAvatar: identity.AvatarKey != "", AvatarSelected: identity.AvatarSelected && identity.AvatarKey != "",
 		})
 	}
 	var linkable []pages.AccountProviderOption
@@ -128,4 +162,13 @@ func accountIdentityRows(identities []auth.Identity, providers []auth.ProviderAv
 		linkable = append(linkable, pages.AccountProviderOption{Kind: provider.Kind, Label: provider.DisplayName, Href: "/account/link/" + provider.Kind})
 	}
 	return rows, linkable
+}
+
+func selectedAvatarKey(identities []auth.Identity) string {
+	for _, identity := range identities {
+		if identity.AvatarSelected {
+			return identity.AvatarKey
+		}
+	}
+	return ""
 }

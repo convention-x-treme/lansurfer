@@ -1,30 +1,65 @@
 -- name: GetIdentity :one
-SELECT id::text, user_id::text, provider_kind, provider_key, subject, display_name, email, created_at
+SELECT id::text, user_id::text, provider_kind, provider_key, subject, display_name, email, avatar_ref, avatar_key, avatar_selected, created_at
 FROM user_identities
 WHERE provider_kind = sqlc.arg(provider_kind) AND provider_key = sqlc.arg(provider_key) AND subject = sqlc.arg(subject);
 
 -- name: ListIdentitiesByUser :many
-SELECT id::text, user_id::text, provider_kind, provider_key, subject, display_name, email, created_at
+SELECT id::text, user_id::text, provider_kind, provider_key, subject, display_name, email, avatar_ref, avatar_key, avatar_selected, created_at
 FROM user_identities
 WHERE user_id = sqlc.arg(user_id)::uuid
 ORDER BY created_at, id;
 
 -- name: CreateIdentity :one
-INSERT INTO user_identities (user_id, provider_kind, provider_key, subject, display_name, email)
+INSERT INTO user_identities (user_id, provider_kind, provider_key, subject, display_name, email, avatar_ref, avatar_key, avatar_selected)
 VALUES (
     sqlc.arg(user_id)::uuid,
     sqlc.arg(provider_kind),
     sqlc.arg(provider_key),
     sqlc.arg(subject),
     sqlc.narg(display_name),
-    sqlc.narg(email)
+    sqlc.narg(email),
+    sqlc.narg(avatar_ref),
+    sqlc.narg(avatar_key),
+    sqlc.arg(avatar_selected)
 )
-RETURNING id::text, user_id::text, provider_kind, provider_key, subject, display_name, email, created_at;
+RETURNING id::text, user_id::text, provider_kind, provider_key, subject, display_name, email, avatar_ref, avatar_key, avatar_selected, created_at;
 
 -- name: UpdateIdentityMetadata :exec
 UPDATE user_identities
-SET display_name = sqlc.narg(display_name), email = sqlc.narg(email)
+SET display_name = sqlc.narg(display_name), email = sqlc.narg(email),
+    avatar_ref = sqlc.narg(avatar_ref), avatar_key = sqlc.narg(avatar_key)
 WHERE provider_kind = sqlc.arg(provider_kind) AND provider_key = sqlc.arg(provider_key) AND subject = sqlc.arg(subject);
+
+-- name: ClearAvatarSelection :exec
+UPDATE user_identities
+SET avatar_selected = false
+WHERE user_id = sqlc.arg(user_id)::uuid AND avatar_selected;
+
+-- name: SelectAvatarIdentity :execrows
+-- Only an identity of the same user that currently offers a picture can be
+-- selected; the partial unique index keeps at most one selected per user.
+UPDATE user_identities
+SET avatar_selected = true
+WHERE id = sqlc.arg(id)::uuid
+  AND user_id = sqlc.arg(user_id)::uuid
+  AND avatar_key IS NOT NULL;
+
+-- name: SelectedAvatarKnown :one
+SELECT EXISTS (
+    SELECT 1 FROM user_identities WHERE avatar_key = sqlc.arg(avatar_key) AND avatar_selected
+);
+
+-- name: SelectedAvatarByKey :one
+SELECT provider_kind, subject, avatar_ref::text
+FROM user_identities
+WHERE avatar_key = sqlc.arg(avatar_key) AND avatar_selected
+LIMIT 1;
+
+-- name: SelectedAvatarKeyByUser :one
+SELECT COALESCE((
+    SELECT avatar_key FROM user_identities
+    WHERE user_id = sqlc.arg(user_id)::uuid AND avatar_selected
+), '')::text;
 
 -- name: DeleteIdentityUnlessLast :execrows
 -- Locks every identity row for this user before deciding whether the target
@@ -138,22 +173,22 @@ WHERE state_hash = sqlc.arg(state_hash);
 INSERT INTO auth_flows (
     phase, operation, provider_kind, provider_key, subject, initiating_user_id,
     parent_flow_id, browser_binding_hash, display_name, email,
-    game_nick_suggestion, expires_at
+    game_nick_suggestion, avatar_ref, expires_at
 ) VALUES (
     'pending', sqlc.arg(operation), sqlc.arg(provider_kind), sqlc.arg(provider_key),
     sqlc.arg(subject), sqlc.narg(initiating_user_id)::uuid,
     sqlc.narg(parent_flow_id)::uuid, sqlc.arg(browser_binding_hash),
     sqlc.narg(display_name), sqlc.narg(email), sqlc.narg(game_nick_suggestion),
-    sqlc.arg(expires_at)
+    sqlc.narg(avatar_ref), sqlc.arg(expires_at)
 )
 RETURNING id::text, operation, provider_kind, provider_key, subject,
           initiating_user_id, parent_flow_id, browser_binding_hash,
-          display_name, email, game_nick_suggestion, expires_at;
+          display_name, email, game_nick_suggestion, avatar_ref, expires_at;
 
 -- name: GetPendingIdentity :one
 SELECT id::text, operation, provider_kind, provider_key, subject,
        initiating_user_id, parent_flow_id, browser_binding_hash,
-       display_name, email, game_nick_suggestion, expires_at, consumed_at
+       display_name, email, game_nick_suggestion, avatar_ref, expires_at, consumed_at
 FROM auth_flows
 WHERE id = sqlc.arg(id)::uuid AND phase = 'pending';
 

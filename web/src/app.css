@@ -338,6 +338,10 @@
     font-weight: 700;
   }
 
+  .avatar-image {
+    object-fit: cover;
+  }
+
   .avatar-placeholder-outline {
     border: 1px solid var(--brand-sunset);
     background: transparent;
