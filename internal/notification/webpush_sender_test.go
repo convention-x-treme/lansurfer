@@ -63,7 +63,7 @@ func TestWebPushSenderMapsProviderOutcomes(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			result := sender.send(context.Background(), "https://push.example/subscription-secret", p256dh, auth, []byte(`{"title":"Test"}`), 3600)
+			result := sender.Send(context.Background(), "https://push.example/subscription-secret", p256dh, auth, []byte(`{"title":"Test"}`), 3600)
 			if calls != 1 || result.Outcome != tc.outcome || result.Expired != tc.expired {
 				t.Fatalf("calls=%d outcome=%+v, want outcome=%v expired=%v", calls, result, tc.outcome, tc.expired)
 			}

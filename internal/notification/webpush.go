@@ -58,13 +58,13 @@ type WebPushTransport struct {
 	baseURL       string
 	instanceName  string
 	encryptionKey []byte
-	sender        webPushSender
+	sender        WebPushSender
 }
 
 func NewWebPushTransport(
 	subscriptions SubscriptionRepository, preferences PreferenceRepository, delivery DeliveryReadRepository,
 	followers GameFollowers, participants RequestParticipants, summaries GameRequestSummaryReader,
-	gameNicks GameNickReader, baseURL, instanceName string, encryptionKey []byte, sender webPushSender,
+	gameNicks GameNickReader, baseURL, instanceName string, encryptionKey []byte, sender WebPushSender,
 ) *WebPushTransport {
 	return &WebPushTransport{
 		subscriptions: subscriptions, preferences: preferences, delivery: delivery,
@@ -176,12 +176,12 @@ func decodeWebPushTarget(key string) (int64, string, error) {
 	return subscriptionID, string(userIDBytes), nil
 }
 
-// webPushSender isolates provider I/O behind a narrow notification-owned contract.
-type webPushSender interface {
-	send(ctx context.Context, endpoint, p256dh, auth string, payload []byte, ttlSeconds int) sendOutcome
+// WebPushSender isolates provider I/O for Web Push delivery.
+type WebPushSender interface {
+	Send(ctx context.Context, endpoint, p256dh, auth string, payload []byte, ttlSeconds int) WebPushSendOutcome
 }
 
-type sendOutcome struct {
+type WebPushSendOutcome struct {
 	Outcome    Outcome
 	RetryAfter *time.Duration
 	Err        error

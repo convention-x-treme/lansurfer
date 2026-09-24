@@ -58,7 +58,7 @@ func (t *WebPushTransport) Send(ctx context.Context, activity Activity, target T
 	if err != nil {
 		return SendResult{Outcome: OutcomeRetryable, Err: errors.New("decrypt push auth failed")}
 	}
-	outcome := t.sender.send(ctx, endpoint, p256dh, auth, payload, 300)
+	outcome := t.sender.Send(ctx, endpoint, p256dh, auth, payload, 300)
 	if outcome.Expired {
 		// Scope deletion to the snapshotted owner: a reassigned row must survive.
 		_, _ = t.subscriptions.DeleteSubscription(ctx, id, owner)

@@ -34,14 +34,14 @@ type recordingPushSender struct {
 	calls                  int
 	payload                []byte
 	endpoint, p256dh, auth string
-	result                 sendOutcome
+	result                 WebPushSendOutcome
 }
 
-func (s *recordingPushSender) send(_ context.Context, endpoint, p256dh, auth string, payload []byte, ttl int) sendOutcome {
+func (s *recordingPushSender) Send(_ context.Context, endpoint, p256dh, auth string, payload []byte, ttl int) WebPushSendOutcome {
 	s.calls++
 	s.endpoint, s.p256dh, s.auth, s.payload = endpoint, p256dh, auth, payload
 	if ttl != 300 {
-		return sendOutcome{Outcome: OutcomePermanent, Err: errors.New("wrong TTL")}
+		return WebPushSendOutcome{Outcome: OutcomePermanent, Err: errors.New("wrong TTL")}
 	}
 	return s.result
 }
@@ -67,7 +67,7 @@ func TestWebPushSendOwnershipEligibilityAndPayload(t *testing.T) {
 		leftGroup bool
 		allowed   bool
 		want      Outcome
-		provider  sendOutcome
+		provider  WebPushSendOutcome
 		deletions int
 	}{
 		{name: "success joined", kind: ActivityJoined, target: encodeWebPushTarget(10, "owner-1"), owner: "owner-1", allowed: true, want: OutcomeSucceeded},
@@ -83,9 +83,9 @@ func TestWebPushSendOwnershipEligibilityAndPayload(t *testing.T) {
 		{name: "left membership", kind: ActivityJoined, target: encodeWebPushTarget(10, "owner-1"), owner: "owner-1", allowed: true, leftGroup: true, want: OutcomePermanent},
 		{name: "actor lookup fails", kind: ActivityJoined, target: encodeWebPushTarget(10, "owner-1"), owner: "owner-1", allowed: true, actorErr: true, want: OutcomeRetryable},
 		{name: "decrypt failure", kind: ActivityJoined, target: encodeWebPushTarget(10, "owner-1"), owner: "owner-1", corrupt: true, allowed: true, want: OutcomeRetryable},
-		{name: "expired", kind: ActivityJoined, target: encodeWebPushTarget(10, "owner-1"), owner: "owner-1", allowed: true, want: OutcomePermanent, provider: sendOutcome{Outcome: OutcomePermanent, Expired: true}, deletions: 1},
-		{name: "non-expiry permanent", kind: ActivityJoined, target: encodeWebPushTarget(10, "owner-1"), owner: "owner-1", allowed: true, want: OutcomePermanent, provider: sendOutcome{Outcome: OutcomePermanent}},
-		{name: "retry after", kind: ActivityJoined, target: encodeWebPushTarget(10, "owner-1"), owner: "owner-1", allowed: true, want: OutcomeRetryable, provider: sendOutcome{Outcome: OutcomeRetryable, RetryAfter: new(17 * time.Minute)}},
+		{name: "expired", kind: ActivityJoined, target: encodeWebPushTarget(10, "owner-1"), owner: "owner-1", allowed: true, want: OutcomePermanent, provider: WebPushSendOutcome{Outcome: OutcomePermanent, Expired: true}, deletions: 1},
+		{name: "non-expiry permanent", kind: ActivityJoined, target: encodeWebPushTarget(10, "owner-1"), owner: "owner-1", allowed: true, want: OutcomePermanent, provider: WebPushSendOutcome{Outcome: OutcomePermanent}},
+		{name: "retry after", kind: ActivityJoined, target: encodeWebPushTarget(10, "owner-1"), owner: "owner-1", allowed: true, want: OutcomeRetryable, provider: WebPushSendOutcome{Outcome: OutcomeRetryable, RetryAfter: new(17 * time.Minute)}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			sub := record

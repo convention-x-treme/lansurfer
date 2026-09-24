@@ -42,10 +42,10 @@ func newWebPushSender(publicKey, privateKey, subject string, httpClient webpush.
 	return &libraryWebPushSender{client: webpush.NewClient(webpush.Config{HTTPClient: httpClient}), keys: keys, subject: subject}, nil
 }
 
-func (s *libraryWebPushSender) send(ctx context.Context, endpoint, p256dh, auth string, payload []byte, ttlSeconds int) sendOutcome {
+func (s *libraryWebPushSender) Send(ctx context.Context, endpoint, p256dh, auth string, payload []byte, ttlSeconds int) WebPushSendOutcome {
 	keys, err := webpush.DecodeSubscriptionKeys(auth, p256dh)
 	if err != nil {
-		return sendOutcome{Outcome: OutcomePermanent, Expired: true, Err: errors.New("invalid Web Push subscription keys")}
+		return WebPushSendOutcome{Outcome: OutcomePermanent, Expired: true, Err: errors.New("invalid Web Push subscription keys")}
 	}
 	result, err := s.client.Send(ctx, payload, &webpush.Subscription{Endpoint: endpoint, Keys: keys}, webpush.SendOptions{
 		Subject: s.subject, VAPIDKeys: &s.keys, TTL: min(ttlSeconds, 300),
@@ -54,11 +54,11 @@ func (s *libraryWebPushSender) send(ctx context.Context, endpoint, p256dh, auth 
 		defer result.Response.Body.Close()
 	}
 	if err == nil {
-		return sendOutcome{Outcome: OutcomeSucceeded}
+		return WebPushSendOutcome{Outcome: OutcomeSucceeded}
 	}
 	var provider *webpush.PushServiceError
 	if errors.As(err, &provider) {
-		out := sendOutcome{Outcome: OutcomePermanent, Expired: provider.SubscriptionExpired, Err: fmt.Errorf("Web Push provider HTTP %d", provider.StatusCode)}
+		out := WebPushSendOutcome{Outcome: OutcomePermanent, Expired: provider.SubscriptionExpired, Err: fmt.Errorf("Web Push provider HTTP %d", provider.StatusCode)}
 		if provider.Temporary || provider.StatusCode == http.StatusTooManyRequests || provider.StatusCode >= 500 {
 			out.Outcome = OutcomeRetryable
 			if value := provider.Header.Get("Retry-After"); value != "" {
@@ -73,5 +73,5 @@ func (s *libraryWebPushSender) send(ctx context.Context, endpoint, p256dh, auth 
 		}
 		return out
 	}
-	return sendOutcome{Outcome: OutcomeRetryable, Err: errors.New("Web Push send failed")}
+	return WebPushSendOutcome{Outcome: OutcomeRetryable, Err: errors.New("Web Push send failed")}
 }
