@@ -82,6 +82,9 @@ type RouterDependencies struct {
 	// InstanceName is the raw, already-trimmed config.Config.InstanceName
 	// value. Empty means unset; NewRouter resolves the display fallback.
 	InstanceName string
+	// Legal is the operator's legal identity from config.Config.Legal,
+	// rendered by the footer and the Terms/Privacy pages.
+	Legal webmiddleware.LegalIdentity
 	// BaseURL is config.Config.BaseURL, used only by /admin/pwa diagnostics
 	// (manifest/worker URLs and the expected secure-context status).
 	BaseURL string
@@ -104,6 +107,7 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 		dependencies.Identities, dependencies.Authentication, brand, dependencies.SecureCookies,
 	)
 	navigation := handler.NewNavigation(dependencies.NavigationQueries, dependencies.NavigationCatalog)
+	legalHandler := handler.NewLegal(navigation, brand)
 	accountHandler := handler.NewAccount(dependencies.Identities, dependencies.IdentityUnlinker, dependencies.GameNickClaims, dependencies.Authentication, navigation, brand)
 	administrationHandler := handler.NewAdministration(
 		dependencies.Games, dependencies.ProviderSync, navigation, brand,
@@ -127,6 +131,7 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 	// reach the layouts as empty, or the secondary instance label renders the
 	// brand name a second time beside the wordmark on every screen.
 	router.Use(webmiddleware.Instance(dependencies.InstanceName))
+	router.Use(webmiddleware.Legal(dependencies.Legal))
 
 	router.Handle("/assets/*", http.StripPrefix("/assets/", assets.Handler()))
 	// Covers are public like /assets/: an anonymous page may show them, and
@@ -146,6 +151,10 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 	router.Group(func(authenticated chi.Router) {
 		authenticated.Use(webmiddleware.Authentication(dependencies.Sessions, dependencies.SecureCookies))
 		authenticated.Get("/", rootHandler(brand, dependencies.Authentication))
+		// Public: no RequireAuthentication, but the session is resolved so a
+		// signed-in player keeps the application shell.
+		authenticated.Get("/terms", legalHandler.Terms)
+		authenticated.Get("/privacy", legalHandler.Privacy)
 		authenticated.Get("/auth/login", authenticationHandler.Login)
 		authenticated.Get("/auth/oidc", authenticationHandler.BeginFor("oidc"))
 		authenticated.Get("/auth/discord", authenticationHandler.BeginFor("discord"))

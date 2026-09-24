@@ -45,6 +45,9 @@ templ Login(brand branding.Brand, providers []auth.ProviderAvailability) {
 							}
 						}
 					</div>
+					<p class="mt-5 text-xs text-base-content/70">
+						By logging in you agree to the <a class="link" href="/terms">Terms of Service</a> and acknowledge the <a class="link" href="/privacy">Privacy Policy</a>.
+					</p>
 				} else {
 					<div role="alert" class="alert alert-warning mt-7"><span>Login is not configured for this LANsurfer instance.</span></div>
 				}

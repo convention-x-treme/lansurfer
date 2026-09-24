@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/a-h/templ"
 	"github.com/convention-x-treme/lansurfer/internal/web/branding"
 	webmiddleware "github.com/convention-x-treme/lansurfer/internal/web/middleware"
 )
@@ -139,5 +140,82 @@ func TestLayoutSecondaryInstanceLabelInAuthenticatedShell(t *testing.T) {
 	}
 	if body := rendered.String(); !strings.Contains(body, `data-instance-name`) || !strings.Contains(body, "Camp Nova") {
 		t.Fatalf("authenticated shell missing instance label, got %q", body[:min(len(body), 800)])
+	}
+}
+
+// legalContext returns a request context carrying the given legal identity,
+// the way NewRouter's Legal middleware does in production.
+func legalContext(identity webmiddleware.LegalIdentity) context.Context {
+	var carried context.Context
+	webmiddleware.Legal(identity)(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		carried = r.Context()
+	})).ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil))
+	return carried
+}
+
+// Discord requires Terms, Privacy, and a reporting path to be reachable from
+// every surface, including the login screen where Discord is offered.
+func TestEveryShellLinksLegalPages(t *testing.T) {
+	brand := branding.Default()
+	shells := map[string]templ.Component{
+		"public":        Layout(brand, "Privacy Policy", NavigationState{}),
+		"authenticated": Layout(brand, "Game Requests", NavigationState{Viewer: &Viewer{ID: "u1", GameNick: "Ada"}}),
+		"auth":          AuthLayout(brand, "Log in"),
+	}
+	for name, shell := range shells {
+		t.Run(name, func(t *testing.T) {
+			var rendered bytes.Buffer
+			ctx := legalContext(webmiddleware.LegalIdentity{ImprintURL: "https://club.example.test/impressum"})
+			if err := shell.Render(ctx, &rendered); err != nil {
+				t.Fatalf("render: %v", err)
+			}
+			body := rendered.String()
+			for _, want := range []string{
+				`<footer`, `href="/terms"`, `href="/privacy"`, `href="/terms#contact"`,
+				`href="https://club.example.test/impressum" target="_blank" rel="noopener noreferrer"`,
+			} {
+				if !strings.Contains(body, want) {
+					t.Errorf("shell does not contain %q", want)
+				}
+			}
+		})
+	}
+}
+
+func TestFooterOmitsImprintWhenUnset(t *testing.T) {
+	var rendered bytes.Buffer
+	if err := Footer(branding.Default()).Render(legalContext(webmiddleware.LegalIdentity{}), &rendered); err != nil {
+		t.Fatalf("render Footer: %v", err)
+	}
+	if strings.Contains(rendered.String(), "Imprint") {
+		t.Error("footer renders an Imprint link without a configured imprint URL")
+	}
+}
+
+func TestAuthenticatedLayoutCreditsOperatorOnlyInFooter(t *testing.T) {
+	var rendered bytes.Buffer
+	navigation := NavigationState{Viewer: &Viewer{ID: "u1", GameNick: "Ada"}}
+	if err := Layout(branding.Default(), "Game Requests", navigation).Render(legalContext(webmiddleware.LegalIdentity{}), &rendered); err != nil {
+		t.Fatalf("render Layout: %v", err)
+	}
+	if got := strings.Count(rendered.String(), "Powered by"); got != 1 {
+		t.Errorf("operator attribution count = %d, want 1", got)
+	}
+}
+
+func TestFooterUsesFullViewportWidth(t *testing.T) {
+	var rendered bytes.Buffer
+	if err := Footer(branding.Default()).Render(legalContext(webmiddleware.LegalIdentity{}), &rendered); err != nil {
+		t.Fatalf("render Footer: %v", err)
+	}
+	body := rendered.String()
+	if !strings.Contains(body, `class="w-full `) {
+		t.Errorf("footer content is not full-width: %s", body)
+	}
+	if !strings.Contains(body, `flex-col`) || !strings.Contains(body, `sm:flex-row`) {
+		t.Errorf("footer does not split metadata onto a mobile row: %s", body)
+	}
+	if !strings.Contains(body, `gap-y-2`) || !strings.Contains(body, `text-center`) || !strings.Contains(body, `sm:text-right`) {
+		t.Errorf("footer mobile rows are not centered with added spacing: %s", body)
 	}
 }

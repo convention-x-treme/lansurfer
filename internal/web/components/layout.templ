@@ -94,13 +94,14 @@ templ Layout(brand branding.Brand, title string, navigation NavigationState) {
 			if navigation.Viewer != nil {
 				<div class="app-shell" data-authenticated-shell>
 					@DesktopNavigation(brand, navigation)
-					<div class="min-w-0">
+					<div class="flex min-h-dvh min-w-0 flex-col">
 						@MobileNavigation(brand, navigation)
 						<div data-realtime-url="/events/game-requests"></div>
 						<div id="live-notices" class="pointer-events-none fixed bottom-4 right-4 z-50 grid w-[min(24rem,calc(100%-2rem))] gap-3 [&>*]:pointer-events-auto" aria-live="polite"></div>
-						<main id="main-content" class="min-w-0">
+						<main id="main-content" class="flex min-w-0 flex-1 flex-col">
 							{ children... }
 						</main>
+						@Footer(brand)
 					</div>
 				</div>
 			} else {
@@ -136,7 +137,10 @@ templ AuthLayout(brand branding.Brand, title string) {
 				@InstanceLabel(brand)
 				@ThemeToggle()
 			</header>
-			<main id="main-content">{ children... }</main>
+			<div class="flex min-h-dvh flex-col">
+				<main id="main-content" class="flex flex-1 flex-col">{ children... }</main>
+				@Footer(brand)
+			</div>
 		</body>
 	</html>
 }
@@ -173,7 +177,6 @@ templ DesktopNavigation(brand branding.Brand, state NavigationState) {
 				@LogoutControl()
 				@ThemeToggle()
 			</div>
-			@OperatorAttribution("px-2 text-xs text-base-content/65")
 		</div>
 	</aside>
 }
@@ -201,7 +204,6 @@ templ MobileNavigation(brand branding.Brand, state NavigationState) {
 						@LogoutControl()
 						@ThemeToggle()
 					</div>
-					@OperatorAttribution("px-2 text-xs text-base-content/65")
 				</div>
 			</nav>
 		</details>
@@ -357,9 +359,9 @@ templ CSRFInput() {
 
 // OperatorAttribution renders the fixed "Powered by …" credit that links to the
 // operating community's site. class carries the surrounding context's text
-// styling, because the sidebar, mobile drawer, and login panel each differ.
+// styling.
 templ OperatorAttribution(class string) {
-	<p class={ class }>Powered by <a class="link whitespace-nowrap text-base-content/75" href={ branding.OperatorURL } target="_blank" rel="noopener noreferrer">{ branding.OperatorName }</a></p>
+	<p class={ class }>Powered by <a class="link whitespace-nowrap text-base-content/75 link-hover" href={ branding.OperatorURL } target="_blank" rel="noopener noreferrer">{ branding.OperatorName }</a></p>
 }
 
 // FontPreloads starts the webfont requests while the parser is still in the
@@ -371,11 +373,30 @@ templ FontPreloads(brand branding.Brand) {
 	<link rel="preload" as="font" type="font/woff2" crossorigin="anonymous" href={ templ.SafeURL(brand.Assets.DataFont) }/>
 }
 
+// Footer links the Terms, Privacy, and contact/reporting surfaces on every
+// shell. It is ordinary flow content, not fixed or sticky: each shell is a
+// full-height flex column, so it rests at the viewport bottom on short pages
+// without covering content or the live-notice toasts on long ones.
 templ Footer(brand branding.Brand) {
 	<footer class="border-t border-base-300 bg-base-200">
-		<div class="page-shell flex flex-col gap-1 py-6 text-sm text-base-content/70 sm:flex-row sm:items-center sm:justify-between">
-			<p><span class="brand-wordmark text-base-content">{ brand.Name }</span> · Open-source LFG for LAN events.</p>
-			<p>{ brand.Tagline }</p>
+		<div class="w-full flex flex-col items-center justify-end gap-x-3 gap-y-2 px-4 py-4 text-center text-sm text-base-content/70 sm:flex-row sm:text-right lg:px-6">
+			<nav class="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 sm:justify-end" aria-label="Legal">
+				<a class="link link-hover" href="/terms">Terms</a>
+				<span aria-hidden="true">·</span>
+				<a class="link link-hover" href="/privacy">Privacy</a>
+				<span aria-hidden="true">·</span>
+				<a class="link link-hover" href="/terms#contact">Contact &amp; reporting</a>
+				if imprint := webmiddleware.LegalInfo(ctx).ImprintURL; imprint != "" {
+					<span aria-hidden="true">·</span>
+					<a class="link link-hover" href={ templ.URL(imprint) } target="_blank" rel="noopener noreferrer">Imprint</a>
+				}
+			</nav>
+			<div class="flex items-center gap-3 font-medium">
+				<span class="hidden text-base-content/50 sm:inline" aria-hidden="true">│</span>
+				<p><a class="link link-hover" href={ templ.URL(branding.RepositoryURL) } target="_blank" rel="noopener noreferrer">Github</a></p>
+				<span class="text-base-content/50" aria-hidden="true">│</span>
+				@OperatorAttribution("")
+			</div>
 		</div>
 	</footer>
 }

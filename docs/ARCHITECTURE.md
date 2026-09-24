@@ -475,6 +475,10 @@ LANSURFER_TWITCH_CLIENT_SECRET
 LANSURFER_TWITCH_AUTH_ENABLED
 LANSURFER_IGDB_ENABLED
 LANSURFER_COVER_CACHE_DIR
+LANSURFER_LEGAL_ENTITY_NAME
+LANSURFER_LEGAL_ADDRESS
+LANSURFER_LEGAL_CONTACT_EMAIL
+LANSURFER_IMPRINT_URL
 ```
 
 `LANSURFER_OIDC_CLIENT_SECRET` is optional for public clients using PKCE and required when the provider configures LANsurfer as a confidential client.
@@ -487,6 +491,8 @@ Provider credentials, the 32-byte data-encryption key, and VAPID private key rem
 
 Minimum instance identity, if configurable, is deployment/product state with a deliberately small surface. Do not reintroduce the removed 1.0 welcome-text/contact/logo/icon branding editor through configuration indirection.
 
+Operator legal identity (`LANSURFER_LEGAL_ENTITY_NAME`, `LANSURFER_LEGAL_ADDRESS`, `LANSURFER_LEGAL_CONTACT_EMAIL`, `LANSURFER_IMPRINT_URL`) is the one contact-bearing exception: it fills the fixed Terms/Privacy text and footer, travels to templates through request-context middleware like the instance name, and is required (entity name and contact email) whenever Discord login is configured.
+
 Do not introduce a config file format unless a concrete requirement appears.
 
 ---
@@ -495,7 +501,7 @@ Do not introduce a config file format unless a concrete requirement appears.
 
 LANsurfer keeps a fixed, accessible visual system and bundled application branding. Templates consume centralized branding values instead of repeating constants. Bundle approved logos/mascot/font assets with the application; do not add a runtime font or branding CDN.
 
-Stable 1.0 does not require PostgreSQL-backed administrator-managed welcome text, contact link, uploaded logo, uploaded application icon, white-labeling, or theme controls. A deployment may expose only the minimum instance identity required to distinguish the installation.
+Stable 1.0 does not require PostgreSQL-backed administrator-managed welcome text, contact link, uploaded logo, uploaded application icon, white-labeling, or theme controls. A deployment may expose only the minimum instance identity required to distinguish the installation, plus the operator legal identity described in §15.
 
 Serve a manifest with a stable application identity/start URL and bundled/default presentation. A minimal service worker supports installation and Web Push; it does not promise offline application behavior.
 
