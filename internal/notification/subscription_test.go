@@ -170,6 +170,30 @@ func TestSubscriptionServiceRemoveDeviceByHashHashesRawDeviceID(t *testing.T) {
 	}
 }
 
+func TestSubscriptionServiceCurrentDeviceID(t *testing.T) {
+	subs := &fakeSubscriptionRepository{}
+	service := newTestSubscriptionService(t, subs, &fakePreferenceRepository{})
+	subs.subs = []PushSubscriptionRecord{
+		{ID: 11, UserID: "user-2", DeviceIDHash: platformcrypto.Fingerprint(service.deviceHashKey, "device-1")},
+		{ID: 12, UserID: "user-1", DeviceIDHash: platformcrypto.Fingerprint(service.deviceHashKey, "device-2")},
+		{ID: 13, UserID: "user-1", DeviceIDHash: platformcrypto.Fingerprint(service.deviceHashKey, "device-1")},
+	}
+	for _, tc := range []struct {
+		user, device string
+		want         int64
+	}{
+		{"user-1", "device-1", 13},
+		{"user-1", "unknown", 0},
+		{"user-1", "", 0},
+		{"user-2", "device-2", 0},
+	} {
+		got, err := service.CurrentDeviceID(t.Context(), tc.user, tc.device)
+		if err != nil || got != tc.want {
+			t.Errorf("CurrentDeviceID(%q, %q) = %d, %v; want %d, nil", tc.user, tc.device, got, err, tc.want)
+		}
+	}
+}
+
 func TestSubscriptionServiceSetAudienceRejectsUnknownValue(t *testing.T) {
 	subs := &fakeSubscriptionRepository{}
 	prefs := &fakePreferenceRepository{}

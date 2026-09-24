@@ -132,6 +132,25 @@ func (s *SubscriptionService) RemoveDeviceByHash(ctx context.Context, userID, de
 	return nil
 }
 
+// CurrentDeviceID returns the active subscription owned by userID for this
+// browser's opaque cookie, without exposing the hash to the caller.
+func (s *SubscriptionService) CurrentDeviceID(ctx context.Context, userID, deviceID string) (int64, error) {
+	if deviceID == "" {
+		return 0, nil
+	}
+	devices, err := s.subscriptions.ListSubscriptions(ctx, userID)
+	if err != nil {
+		return 0, fmt.Errorf("list push subscriptions: %w", err)
+	}
+	hash := platformcrypto.Fingerprint(s.deviceHashKey, deviceID)
+	for _, device := range devices {
+		if device.UserID == userID && device.DeviceIDHash == hash {
+			return device.ID, nil
+		}
+	}
+	return 0, nil
+}
+
 func (s *SubscriptionService) ListDevices(ctx context.Context, userID string) ([]PushSubscriptionRecord, error) {
 	return s.subscriptions.ListSubscriptions(ctx, userID)
 }

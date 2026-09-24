@@ -38,6 +38,7 @@ type SubscriptionManager interface {
 	SetAudience(ctx context.Context, userID, audience string) error
 	RemoveDevice(ctx context.Context, userID string, subscriptionID int64) error
 	ListDevices(ctx context.Context, userID string) ([]notification.PushSubscriptionRecord, error)
+	CurrentDeviceID(ctx context.Context, userID, deviceID string) (int64, error)
 	Preference(ctx context.Context, userID string) (notification.PushPreference, error)
 }
 
@@ -202,12 +203,22 @@ func (h *NotificationSettingsHandler) render(w http.ResponseWriter, r *http.Requ
 		http.Error(w, "load notification settings", http.StatusInternalServerError)
 		return
 	}
+	var currentDeviceID int64
+	if cookie, err := r.Cookie(webmiddleware.DeviceCookieName); err == nil && cookie.Value != "" {
+		currentDeviceID, err = h.subscriptions.CurrentDeviceID(r.Context(), account.ID, cookie.Value)
+		if err != nil {
+			webmiddleware.LogError(r, "find current push device", err)
+			http.Error(w, "load notification settings", http.StatusInternalServerError)
+			return
+		}
+	}
 	navigation := components.NavigationState{Viewer: &components.Viewer{ID: account.ID, GameNick: account.GameNick, Role: string(account.Role)}, Section: "account"}
 	render(w, r, status, pages.NotificationSettings(h.brand, navigation, pages.NotificationSettingsView{
 		WebPushAvailable: h.webPushEnabled,
 		VAPIDPublicKey:   h.vapidPublicKey,
 		Preference:       preference,
 		Devices:          devices,
+		CurrentDeviceID:  currentDeviceID,
 		Notice:           notificationSettingsNotice(r),
 		FormError:        formError,
 	}))

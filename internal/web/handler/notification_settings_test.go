@@ -32,6 +32,51 @@ func TestNotificationSettingsShowRendersForSignedInUser(t *testing.T) {
 		t.Fatalf("query calls = %#v", subscriptions)
 	}
 }
+func TestNotificationSettingsShowMarksOnlyCurrentDeviceWithoutExposingSecrets(t *testing.T) {
+	subscriptions := &stubSubscriptionManager{
+		devices: []notification.PushSubscriptionRecord{
+			{ID: 11, Label: "Other", DeviceIDHash: "other-secret-hash"},
+			{ID: 12, Label: "Current", DeviceIDHash: "current-secret-hash"},
+		},
+		currentDeviceID: 12,
+	}
+	handler := NewNotificationSettings(subscriptions, "vapid-public-key", true, branding.Default(), true)
+	request := withCurrentUser(httptest.NewRequest(http.MethodGet, "/account/notifications", nil), user.User{ID: "user-1"})
+	request.AddCookie(&http.Cookie{Name: "lansurfer_device", Value: "raw-secret-token"})
+	response := httptest.NewRecorder()
+
+	handler.Show(response, request)
+
+	body := response.Body.String()
+	if response.Code != http.StatusOK || !strings.Contains(body, `data-current-device="true"`) {
+		t.Fatalf("current device marker missing: status %d", response.Code)
+	}
+	if strings.Count(body, `data-current-device="true"`) != 1 {
+		t.Fatalf("current device marker count = %d, want 1", strings.Count(body, `data-current-device="true"`))
+	}
+	if !strings.Contains(body, `data-current-subscription-id="12"`) {
+		t.Fatal("current subscription ID missing")
+	}
+	for _, secret := range []string{"raw-secret-token", "other-secret-hash", "current-secret-hash"} {
+		if strings.Contains(body, secret) {
+			t.Fatalf("secret %q rendered", secret)
+		}
+	}
+	if subscriptions.currentUserID != "user-1" || subscriptions.currentToken != "raw-secret-token" {
+		t.Fatal("current device lookup did not use authenticated user and cookie")
+	}
+}
+
+func TestNotificationSettingsShowKeepsEnabledWithZeroDevices(t *testing.T) {
+	subscriptions := &stubSubscriptionManager{preference: notification.PushPreference{WebPushEnabled: true}}
+	handler := NewNotificationSettings(subscriptions, "vapid-public-key", true, branding.Default(), true)
+	request := withCurrentUser(httptest.NewRequest(http.MethodGet, "/account/notifications", nil), user.User{ID: "user-1"})
+	response := httptest.NewRecorder()
+	handler.Show(response, request)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "No devices are registered") {
+		t.Fatalf("status/body = %d, %q", response.Code, response.Body.String())
+	}
+}
 
 func TestNotificationSettingsShowRejectsAnonymousRequest(t *testing.T) {
 	handler := NewNotificationSettings(&stubSubscriptionManager{}, "vapid-public-key", true, branding.Default(), true)
@@ -317,6 +362,9 @@ type stubSubscriptionManager struct {
 	preference notification.PushPreference
 
 	listDevicesUserID string
+	currentDeviceID   int64
+	currentUserID     string
+	currentToken      string
 	preferenceUserID  string
 
 	enableCalls    int
@@ -362,6 +410,10 @@ func (s *stubSubscriptionManager) RemoveDevice(_ context.Context, userID string,
 func (s *stubSubscriptionManager) ListDevices(_ context.Context, userID string) ([]notification.PushSubscriptionRecord, error) {
 	s.listDevicesUserID = userID
 	return s.devices, nil
+}
+func (s *stubSubscriptionManager) CurrentDeviceID(_ context.Context, userID, deviceID string) (int64, error) {
+	s.currentUserID, s.currentToken = userID, deviceID
+	return s.currentDeviceID, nil
 }
 
 func (s *stubSubscriptionManager) Preference(_ context.Context, userID string) (notification.PushPreference, error) {

@@ -8,15 +8,14 @@ import (
 	"github.com/convention-x-treme/lansurfer/internal/web/components"
 )
 
-// NotificationSettingsView deliberately never carries EndpointCiphertext or
-// any other decrypted subscription material — Devices only ever exposes
-// ID/Label/DeviceIDHash/timestamps, matching PushSubscriptionRecord's
-// already-ciphertext-only shape from SubscriptionManager.ListDevices.
+// NotificationSettingsView carries only the numeric current-device ID;
+// subscription ciphertext, device hashes, and raw cookies never enter markup.
 type NotificationSettingsView struct {
 	WebPushAvailable bool
 	VAPIDPublicKey   string
 	Preference       notification.PushPreference
 	Devices          []notification.PushSubscriptionRecord
+	CurrentDeviceID  int64
 	Notice           string
 	FormError        string
 }
@@ -95,8 +94,8 @@ templ NotificationSettings(brand branding.Brand, navigation components.Navigatio
 					} else {
 						<ul class="mt-4 grid gap-3">
 							for _, device := range view.Devices {
-								<li class="flex items-center justify-between gap-3 rounded-field border border-base-300 p-3">
-									<p class="font-semibold">{ deviceLabel(device) }</p>
+								<li class="flex items-center justify-between gap-3 rounded-field border border-base-300 p-3" data-current-device={ strconv.FormatBool(device.ID == view.CurrentDeviceID) }>
+									<p class="font-semibold" data-current-subscription-id={ strconv.FormatInt(device.ID, 10) }>{ deviceLabel(device) }</p>
 									<form method="post" action={ templ.SafeURL(deviceRemovePath(device)) }>
 										@components.CSRFInput()
 										<button class="btn btn-ghost btn-sm" type="submit">Remove</button>
