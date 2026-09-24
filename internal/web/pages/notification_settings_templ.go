@@ -140,20 +140,20 @@ func NotificationSettings(brand branding.Brand, navigation components.Navigation
 						return templ_7745c5c3_Err
 					}
 				} else {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "<p class=\"mt-1 text-sm text-base-content/70\">Turn on push notifications to hear about Game Request activity on this device.</p><form method=\"post\" action=\"/account/notifications/subscribe\" class=\"mt-4 grid max-w-sm gap-3\" data-subscribe-form>")
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					templ_7745c5c3_Err = components.CSRFInput().Render(ctx, templ_7745c5c3_Buffer)
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "<input type=\"hidden\" name=\"endpoint\" data-subscribe-endpoint> <input type=\"hidden\" name=\"p256dh\" data-subscribe-p256dh> <input type=\"hidden\" name=\"auth\" data-subscribe-auth> <button class=\"btn btn-primary btn-sm w-fit\" type=\"submit\" data-subscribe-button>Enable on this device</button></form>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "<p class=\"mt-1 text-sm text-base-content/70\">Turn on push notifications to hear about Game Request activity on this device.</p>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "</section><section class=\"auth-panel\"><h2 class=\"text-xl font-bold\">Notify me about</h2><form method=\"post\" action=\"/account/notifications/audience\" class=\"mt-4 grid gap-2\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "<form method=\"post\" action=\"/account/notifications/subscribe\" class=\"mt-4 grid max-w-sm gap-3\" data-subscribe-form>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = components.CSRFInput().Render(ctx, templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "<input type=\"hidden\" name=\"endpoint\" data-subscribe-endpoint> <input type=\"hidden\" name=\"p256dh\" data-subscribe-p256dh> <input type=\"hidden\" name=\"auth\" data-subscribe-auth> <button class=\"btn btn-primary btn-sm w-fit\" type=\"button\" data-subscribe-button>Enable on this device</button><p role=\"status\" class=\"text-sm\" data-push-status hidden></p></form></section><section class=\"auth-panel\"><h2 class=\"text-xl font-bold\">Notify me about</h2><form method=\"post\" action=\"/account/notifications/audience\" class=\"mt-4 grid gap-2\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -203,7 +203,7 @@ func NotificationSettings(brand branding.Brand, navigation components.Navigation
 						var templ_7745c5c3_Var6 string
 						templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.ResolveAttributeValue(strconv.FormatBool(device.ID == view.CurrentDeviceID))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/notification_settings.templ`, Line: 97, Col: 176}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/notification_settings.templ`, Line: 98, Col: 176}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var6)
 						if templ_7745c5c3_Err != nil {
@@ -216,7 +216,7 @@ func NotificationSettings(brand branding.Brand, navigation components.Navigation
 						var templ_7745c5c3_Var7 string
 						templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.ResolveAttributeValue(strconv.FormatInt(device.ID, 10))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/notification_settings.templ`, Line: 98, Col: 97}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/notification_settings.templ`, Line: 99, Col: 97}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var7)
 						if templ_7745c5c3_Err != nil {
@@ -229,7 +229,7 @@ func NotificationSettings(brand branding.Brand, navigation components.Navigation
 						var templ_7745c5c3_Var8 string
 						templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(deviceLabel(device))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/notification_settings.templ`, Line: 98, Col: 121}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/notification_settings.templ`, Line: 99, Col: 121}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 						if templ_7745c5c3_Err != nil {
@@ -242,7 +242,7 @@ func NotificationSettings(brand branding.Brand, navigation components.Navigation
 						var templ_7745c5c3_Var9 templ.SafeURL
 						templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(deviceRemovePath(device)))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/notification_settings.templ`, Line: 99, Col: 77}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/notification_settings.templ`, Line: 100, Col: 77}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 						if templ_7745c5c3_Err != nil {

@@ -51,14 +51,15 @@ templ NotificationSettings(brand branding.Brand, navigation components.Navigatio
 						</form>
 					} else {
 						<p class="mt-1 text-sm text-base-content/70">Turn on push notifications to hear about Game Request activity on this device.</p>
-						<form method="post" action="/account/notifications/subscribe" class="mt-4 grid max-w-sm gap-3" data-subscribe-form>
-							@components.CSRFInput()
-							<input type="hidden" name="endpoint" data-subscribe-endpoint/>
-							<input type="hidden" name="p256dh" data-subscribe-p256dh/>
-							<input type="hidden" name="auth" data-subscribe-auth/>
-							<button class="btn btn-primary btn-sm w-fit" type="submit" data-subscribe-button>Enable on this device</button>
-						</form>
 					}
+					<form method="post" action="/account/notifications/subscribe" class="mt-4 grid max-w-sm gap-3" data-subscribe-form>
+						@components.CSRFInput()
+						<input type="hidden" name="endpoint" data-subscribe-endpoint/>
+						<input type="hidden" name="p256dh" data-subscribe-p256dh/>
+						<input type="hidden" name="auth" data-subscribe-auth/>
+						<button class="btn btn-primary btn-sm w-fit" type="button" data-subscribe-button>Enable on this device</button>
+						<p role="status" class="text-sm" data-push-status hidden></p>
+					</form>
 				</section>
 				<section class="auth-panel">
 					<h2 class="text-xl font-bold">Notify me about</h2>

@@ -73,7 +73,7 @@ func TestNotificationSettingsShowKeepsEnabledWithZeroDevices(t *testing.T) {
 	request := withCurrentUser(httptest.NewRequest(http.MethodGet, "/account/notifications", nil), user.User{ID: "user-1"})
 	response := httptest.NewRecorder()
 	handler.Show(response, request)
-	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "No devices are registered") {
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "No devices are registered") || !strings.Contains(response.Body.String(), "Enable on this device") {
 		t.Fatalf("status/body = %d, %q", response.Code, response.Body.String())
 	}
 }
