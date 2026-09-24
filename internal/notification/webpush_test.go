@@ -96,7 +96,7 @@ func TestWebPushTargetsForCreatedUnionsFollowersAndAllAudienceExcludingActor(t *
 		},
 		audienceAll: []string{"follower-1", "all-audience-1"},
 	}
-	transport := NewWebPushTransport(subs, subs, subs, followers, &fakeRequestParticipants{}, summaries, nil, "https://lansurfer.example", nil)
+	transport := NewWebPushTransport(subs, subs, subs, followers, &fakeRequestParticipants{}, summaries, nil, "https://lansurfer.example", "", nil, nil)
 
 	targets, err := transport.Targets(t.Context(), Activity{Sequence: 1, GameRequestID: "req-1", ActorID: "actor-1", Kind: ActivityCreated})
 	if err != nil {
@@ -124,7 +124,7 @@ func TestWebPushTargetsForLifecycleUsesCurrentParticipantsRegardlessOfAudience(t
 		subsByUser:  map[string][]PushSubscriptionRecord{"participant-1": {{ID: 30}}},
 		preferences: map[string]PushPreference{"participant-1": {WebPushEnabled: true, NewRequestAudience: AudienceFollowed}},
 	}
-	transport := NewWebPushTransport(subs, subs, subs, &fakeGameFollowers{}, participants, &fakeGameRequestSummaryReader{}, nil, "https://lansurfer.example", nil)
+	transport := NewWebPushTransport(subs, subs, subs, &fakeGameFollowers{}, participants, &fakeGameRequestSummaryReader{}, nil, "https://lansurfer.example", "", nil, nil)
 
 	targets, err := transport.Targets(t.Context(), Activity{Sequence: 2, GameRequestID: "req-1", ActorID: "leaving-actor", Kind: ActivityLeft})
 	if err != nil {
@@ -165,7 +165,7 @@ func TestWebPushTargetsExcludesDisabledUsers(t *testing.T) {
 		subsByUser:  map[string][]PushSubscriptionRecord{"disabled-follower": {{ID: 40}}},
 		preferences: map[string]PushPreference{"disabled-follower": {WebPushEnabled: false, NewRequestAudience: AudienceFollowed}},
 	}
-	transport := NewWebPushTransport(subs, subs, subs, followers, &fakeRequestParticipants{}, summaries, nil, "https://lansurfer.example", nil)
+	transport := NewWebPushTransport(subs, subs, subs, followers, &fakeRequestParticipants{}, summaries, nil, "https://lansurfer.example", "", nil, nil)
 
 	targets, err := transport.Targets(t.Context(), Activity{Sequence: 3, GameRequestID: "req-1", ActorID: "someone-else", Kind: ActivityCreated})
 

@@ -56,18 +56,20 @@ type WebPushTransport struct {
 	summaries     GameRequestSummaryReader
 	gameNicks     GameNickReader
 	baseURL       string
-	sender        webPushSender // set in Task 5; nil is valid here, Send is not implemented yet
+	instanceName  string
+	encryptionKey []byte
+	sender        webPushSender
 }
 
 func NewWebPushTransport(
 	subscriptions SubscriptionRepository, preferences PreferenceRepository, delivery DeliveryReadRepository,
 	followers GameFollowers, participants RequestParticipants, summaries GameRequestSummaryReader,
-	gameNicks GameNickReader, baseURL string, sender webPushSender,
+	gameNicks GameNickReader, baseURL, instanceName string, encryptionKey []byte, sender webPushSender,
 ) *WebPushTransport {
 	return &WebPushTransport{
 		subscriptions: subscriptions, preferences: preferences, delivery: delivery,
 		followers: followers, participants: participants, summaries: summaries,
-		gameNicks: gameNicks, baseURL: baseURL, sender: sender,
+		gameNicks: gameNicks, baseURL: baseURL, instanceName: instanceName, encryptionKey: encryptionKey, sender: sender,
 	}
 }
 
@@ -174,8 +176,7 @@ func decodeWebPushTarget(key string) (int64, string, error) {
 	return subscriptionID, string(userIDBytes), nil
 }
 
-// webPushSender is implemented in webpush_send.go (Task 5). Defined here so
-// WebPushTransport can hold one before Send exists.
+// webPushSender isolates provider I/O behind a narrow notification-owned contract.
 type webPushSender interface {
 	send(ctx context.Context, endpoint, p256dh, auth string, payload []byte, ttlSeconds int) sendOutcome
 }
