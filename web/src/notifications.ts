@@ -11,7 +11,22 @@ function encodeKey(key: ArrayBuffer | null): string {
   return btoa(String.fromCharCode(...new Uint8Array(key)));
 }
 
+async function unsubscribeCurrentBrowser(): Promise<void> {
+  try {
+    const { registration } = await registerServiceWorker();
+    const subscription = await registration?.pushManager?.getSubscription();
+    await subscription?.unsubscribe();
+  } catch {
+    // Browser cleanup must not block the server-side action.
+  }
+}
+
 export function initNotificationSettings(): void {
+  const logoutForm = document.querySelector<HTMLFormElement>("[data-logout-form]");
+  logoutForm?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void unsubscribeCurrentBrowser().then(() => logoutForm.submit());
+  });
   const form = document.querySelector<HTMLFormElement>("[data-subscribe-form]");
   const button = form?.querySelector<HTMLButtonElement>("[data-subscribe-button]");
   const status = form?.querySelector<HTMLElement>("[data-push-status]");
@@ -21,16 +36,7 @@ export function initNotificationSettings(): void {
   document.querySelectorAll<HTMLFormElement>('[data-current-device-remove="true"]').forEach((removeForm) => {
     removeForm.addEventListener("submit", (event) => {
       event.preventDefault();
-      void (async () => {
-        try {
-          const { registration } = await registerServiceWorker();
-          const subscription = await registration?.pushManager.getSubscription();
-          await subscription?.unsubscribe();
-        } catch {
-          // Browser cleanup must not block server-side device removal.
-        }
-        removeForm.submit();
-      })();
+      void unsubscribeCurrentBrowser().then(() => removeForm.submit());
     });
   });
 

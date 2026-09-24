@@ -81,3 +81,60 @@ test("a bfcache restore on an authenticated page forces a fresh navigation", asy
   });
   await navigation;
 });
+
+for (const state of [
+  { name: "unsubscribe succeeds", failure: false, available: true, unsubscribed: true },
+  { name: "unsubscribe fails", failure: true, available: true, unsubscribed: true },
+  { name: "Push APIs are absent", failure: false, available: false, unsubscribed: false },
+]) {
+  test(`logout continues when ${state.name}`, async ({ page }) => {
+    let logoutPosts = 0;
+    await page.route("**/auth/logout", async (route) => {
+      logoutPosts++;
+      expect(route.request().method()).toBe("POST");
+      await route.fulfill({ status: 200, body: "logged out" });
+    });
+    await page.addInitScript((options) => {
+      const container = navigator.serviceWorker;
+      const register = container.register.bind(container);
+      Object.defineProperty(container, "register", {
+        configurable: true,
+        value: async (...args: Parameters<ServiceWorkerContainer["register"]>) => {
+          const registration = await register(...args);
+          return new Proxy(registration, {
+            get(target, property) {
+              if (property === "pushManager") {
+                if (!options.available) return undefined;
+                return {
+                  getSubscription: async () => ({
+                    unsubscribe: async () => {
+                      localStorage.setItem("logout-unsubscribed", "true");
+                      if (options.failure) throw new Error("unsubscribe failed");
+                      return true;
+                    },
+                  }),
+                };
+              }
+              if (property === "unregister") {
+                return async () => {
+                  localStorage.setItem("logout-unregistered", "true");
+                  return target.unregister();
+                };
+              }
+              const value = Reflect.get(target, property, target);
+              return typeof value === "function" ? value.bind(target) : value;
+            },
+          });
+        },
+      });
+    }, state);
+    await page.goto("/game-requests");
+    await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
+    await page.getByRole("button", { name: "Log out" }).click();
+    await expect(page.getByText("logged out")).toBeVisible();
+    expect(logoutPosts).toBe(1);
+    expect(await page.evaluate(() => localStorage.getItem("logout-unsubscribed"))).toBe(state.unsubscribed ? "true" : null);
+    expect(await page.evaluate(() => localStorage.getItem("logout-unregistered"))).toBeNull();
+    expect(await page.evaluate(async () => (await navigator.serviceWorker.getRegistration("/"))?.scope)).toBeTruthy();
+  });
+}

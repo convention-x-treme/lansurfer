@@ -324,7 +324,7 @@ templ ViewerPanel(viewer *Viewer) {
 }
 
 templ LogoutControl() {
-	<form method="post" action="/auth/logout">
+	<form method="post" action="/auth/logout" data-logout-form>
 		@CSRFInput()
 		<button type="submit" class="btn btn-ghost btn-sm px-0 text-sm text-base-content/70">Log out</button>
 	</form>
