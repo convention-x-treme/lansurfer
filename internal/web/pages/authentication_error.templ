@@ -25,21 +25,26 @@ templ Login(brand branding.Brand, providers []auth.ProviderAvailability) {
 				<h1 class="text-[1.75rem] font-black leading-tight tracking-tight">Find your crew.<br/>Catch the next game.</h1>
 				<p class="mt-2.5 text-base-content/70">Sign in with the account you already have. LANsurfer never stores a password.</p>
 				if len(providers) > 0 {
-					for index, provider := range providers {
-						if index > 0 {
-							<div class="divider my-5 text-sm text-base-content/70">or</div>
+					<div class="mt-7 flex flex-col gap-3">
+						for index, provider := range providers {
+							if index == 1 {
+								<div class="divider my-2 text-sm text-base-content/70">or</div>
+							}
+							if provider.Kind == "discord" {
+								<a class="btn btn-provider-discord w-full" href={ templ.URL(providerLoginHref(provider.Kind)) }>
+									<span>Continue with { provider.DisplayName }</span>
+								</a>
+							} else if provider.Kind == "twitch" {
+								<a class="btn btn-provider-twitch w-full" href={ templ.URL(providerLoginHref(provider.Kind)) }>
+									<span>Continue with { provider.DisplayName }</span>
+								</a>
+							} else {
+								<a class="btn btn-primary w-full" href={ templ.URL(providerLoginHref(provider.Kind)) }>
+									<span>Continue with { provider.DisplayName }</span>
+								</a>
+							}
 						}
-						if provider.Kind == "discord" {
-							<a class="btn btn-quiet mt-7 w-full justify-start gap-3" href={ templ.URL(providerLoginHref(provider.Kind)) }>
-								<span class="data-text flex h-6 w-6 items-center justify-center rounded-sm bg-[#5865F2] text-xs font-bold text-white" aria-hidden="true">D</span>
-								<span>Continue with { provider.DisplayName }</span>
-							</a>
-						} else {
-							<a class="btn btn-primary mt-7 w-full justify-between" href={ templ.URL(providerLoginHref(provider.Kind)) }>
-								<span>Continue with { provider.DisplayName }</span>
-							</a>
-						}
-					}
+					</div>
 					<p class="mt-5 text-xs text-base-content/70">
 						By logging in you agree to the <a class="link" href="/terms">Terms of Service</a> and acknowledge the <a class="link" href="/privacy">Privacy Policy</a>.
 					</p>
