@@ -14,6 +14,13 @@ type fakeDiscordDestinationRepository struct {
 	connectCalls         int
 	connectedDestination DiscordDestination
 	connectedCredential  DiscordCredentialCiphertext
+
+	markBrokenErr error
+	brokenCalls   int
+	brokenReason  string
+
+	deleteErr   error
+	deleteCalls int
 }
 
 func (f *fakeDiscordDestinationRepository) GetDiscordDestination(context.Context) (DiscordDestination, DiscordCredentialCiphertext, error) {
@@ -33,12 +40,23 @@ func (f *fakeDiscordDestinationRepository) ConnectDiscordDestination(_ context.C
 	return nil
 }
 
-func (f *fakeDiscordDestinationRepository) MarkDiscordDestinationBroken(context.Context, string) error {
-	return errors.New("not used in this test")
+func (f *fakeDiscordDestinationRepository) MarkDiscordDestinationBroken(_ context.Context, reason string) error {
+	if f.markBrokenErr != nil {
+		return f.markBrokenErr
+	}
+	f.brokenCalls++
+	f.brokenReason = reason
+	f.destination.State, f.credentialCiphertext = DiscordDestinationBroken, nil
+	return nil
 }
 
 func (f *fakeDiscordDestinationRepository) DeleteDiscordDestination(context.Context) error {
-	return errors.New("not used in this test")
+	if f.deleteErr != nil {
+		return f.deleteErr
+	}
+	f.deleteCalls++
+	f.destination, f.credentialCiphertext = DiscordDestination{}, nil
+	return nil
 }
 
 type fakeDiscordWebhookOAuthProvider struct {

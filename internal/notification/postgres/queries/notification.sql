@@ -88,6 +88,16 @@ UPDATE notification_delivery
 SET status = 'suppressed', claimed_until = NULL, last_error = sqlc.narg(last_error), updated_at = now()
 WHERE id = sqlc.arg(id);
 
+-- name: SuppressDeliveriesByTransport :execrows
+-- Bulk-suppresses every still-pending or still-claimed delivery for one
+-- transport, e.g. when a Discord destination disconnects or breaks. It
+-- never touches a delivery already in a terminal state (succeeded,
+-- permanent, exhausted, uncertain, or already suppressed): suppression
+-- only ever intercepts work that has not finished yet.
+UPDATE notification_delivery
+SET status = 'suppressed', claimed_until = NULL, last_error = sqlc.narg(last_error), updated_at = now()
+WHERE transport = sqlc.arg(transport) AND status IN ('pending', 'claimed');
+
 -- name: ListProblemDeliveries :many
 SELECT d.id, d.transport, d.target_key, d.status, d.attempt_count, d.last_error, d.updated_at,
        w.activity_sequence, w.game_request_id::text AS game_request_id, w.actor_id::text AS actor_id,

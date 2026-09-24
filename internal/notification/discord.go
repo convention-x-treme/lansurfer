@@ -17,6 +17,13 @@ const (
 	DiscordDestinationBroken    DiscordDestinationState = "broken"
 )
 
+// DiscordTransportName is the Target.Transport value every Discord
+// delivery uses. It is defined here rather than beside a future
+// DiscordTransport implementation because the disconnect/broken lifecycle
+// transitions (internal/notification/discord_destination.go) already need
+// it to bulk-suppress this transport's still-pending/claimed deliveries.
+const DiscordTransportName = "discord"
+
 // DiscordDestination is the safe, queryable metadata for the instance's
 // single Discord delivery destination. It never carries the webhook
 // credential itself (see DiscordWebhookCredential/DiscordCredentialCiphertext)

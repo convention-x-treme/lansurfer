@@ -420,3 +420,27 @@ func (q *Queries) ReopenUncertainDeliveryForManualRetry(ctx context.Context, id 
 	err := row.Scan(&id_2)
 	return id_2, err
 }
+
+const suppressDeliveriesByTransport = `-- name: SuppressDeliveriesByTransport :execrows
+UPDATE notification_delivery
+SET status = 'suppressed', claimed_until = NULL, last_error = $1, updated_at = now()
+WHERE transport = $2 AND status IN ('pending', 'claimed')
+`
+
+type SuppressDeliveriesByTransportParams struct {
+	LastError pgtype.Text
+	Transport string
+}
+
+// Bulk-suppresses every still-pending or still-claimed delivery for one
+// transport, e.g. when a Discord destination disconnects or breaks. It
+// never touches a delivery already in a terminal state (succeeded,
+// permanent, exhausted, uncertain, or already suppressed): suppression
+// only ever intercepts work that has not finished yet.
+func (q *Queries) SuppressDeliveriesByTransport(ctx context.Context, arg SuppressDeliveriesByTransportParams) (int64, error) {
+	result, err := q.db.Exec(ctx, suppressDeliveriesByTransport, arg.LastError, arg.Transport)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}

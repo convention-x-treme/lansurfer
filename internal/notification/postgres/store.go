@@ -469,29 +469,64 @@ func (s *Store) ConnectDiscordDestination(ctx context.Context, destination notif
 	return nil
 }
 
-// MarkDiscordDestinationBroken transitions a connected destination to
-// broken, deleting its now-unusable credential ciphertext while retaining
-// safe metadata. It returns notification.ErrDiscordDestinationNotFound if
-// no destination is currently connected.
+// MarkDiscordDestinationBroken atomically transitions a connected
+// destination to broken, deleting its now-unusable credential ciphertext
+// while retaining safe metadata, and suppresses this destination's
+// still-pending/claimed Discord deliveries in the same transaction: both
+// happen together, or neither does. It returns
+// notification.ErrDiscordDestinationNotFound if no destination is
+// currently connected.
 func (s *Store) MarkDiscordDestinationBroken(ctx context.Context, reason string) error {
-	affected, err := s.queries.MarkDiscordDestinationBroken(ctx, nullableText(reason))
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin mark discord destination broken transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+	queries := s.queries.WithTx(tx)
+
+	affected, err := queries.MarkDiscordDestinationBroken(ctx, nullableText(reason))
 	if err != nil {
 		return fmt.Errorf("mark discord destination broken: %w", err)
 	}
 	if affected == 0 {
 		return notification.ErrDiscordDestinationNotFound
 	}
+	if _, err := queries.SuppressDeliveriesByTransport(ctx, sqlcgen.SuppressDeliveriesByTransportParams{
+		Transport: notification.DiscordTransportName, LastError: nullableText(reason),
+	}); err != nil {
+		return fmt.Errorf("suppress discord deliveries: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit mark discord destination broken transaction: %w", err)
+	}
 	return nil
 }
 
-// DeleteDiscordDestination removes the destination entirely (disconnect).
+// DeleteDiscordDestination atomically removes the destination entirely
+// (disconnect) and suppresses its still-pending/claimed Discord deliveries
+// in the same transaction: both happen together, or neither does.
 func (s *Store) DeleteDiscordDestination(ctx context.Context) error {
-	affected, err := s.queries.DeleteDiscordDestination(ctx)
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin delete discord destination transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+	queries := s.queries.WithTx(tx)
+
+	affected, err := queries.DeleteDiscordDestination(ctx)
 	if err != nil {
 		return fmt.Errorf("delete discord destination: %w", err)
 	}
 	if affected == 0 {
 		return notification.ErrDiscordDestinationNotFound
+	}
+	if _, err := queries.SuppressDeliveriesByTransport(ctx, sqlcgen.SuppressDeliveriesByTransportParams{
+		Transport: notification.DiscordTransportName, LastError: nullableText("discord destination disconnected"),
+	}); err != nil {
+		return fmt.Errorf("suppress discord deliveries: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit delete discord destination transaction: %w", err)
 	}
 	return nil
 }

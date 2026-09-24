@@ -670,3 +670,308 @@ func TestDiscordConnectServiceRemoteCleanupFailureAgainstRealStoreLeavesNewDesti
 		t.Fatalf("destination = %#v, want the new destination still connected", destination)
 	}
 }
+
+// discordLifecycleDeliveryFixture materializes one real notification_work
+// row (through the real gamerequest/notification pipeline) with one
+// delivery per given (transport, targetKey, status) triple, so lifecycle
+// tests exercise real rows rather than hand-inserted ones disconnected
+// from notification_work's foreign keys.
+func discordLifecycleDeliveryFixture(t *testing.T, pool *pgxpool.Pool, store *notificationpostgres.Store, targets []notification.Target, statuses []string) {
+	t.Helper()
+	if len(targets) != len(statuses) {
+		t.Fatalf("targets/statuses length mismatch: %d vs %d", len(targets), len(statuses))
+	}
+	fixture := newNotificationFixture(t, pool)
+	created, err := fixture.requests.Create(t.Context(), fixture.host.ID, fixture.gameID, nil, time.Now().Add(time.Hour), "Lifecycle round")
+	if err != nil {
+		t.Fatalf("create game request: %v", err)
+	}
+	activities, err := store.DiscoverActivity(t.Context(), 10)
+	if err != nil {
+		t.Fatalf("DiscoverActivity() error = %v", err)
+	}
+	var activity notification.Activity
+	for _, candidate := range activities {
+		if candidate.GameRequestID == created.ID {
+			activity = candidate
+		}
+	}
+	if activity.Sequence == 0 {
+		t.Fatal("DiscoverActivity() did not return the fixture's own activity")
+	}
+	if err := store.MaterializeWork(t.Context(), activity, targets); err != nil {
+		t.Fatalf("MaterializeWork() error = %v", err)
+	}
+	for i, target := range targets {
+		if _, err := pool.Exec(t.Context(), `
+			UPDATE notification_delivery d SET status = $1
+			FROM notification_work w
+			WHERE d.work_id = w.id AND w.game_request_id = $2 AND d.transport = $3 AND d.target_key = $4
+		`, statuses[i], created.ID, target.Transport, target.Key); err != nil {
+			t.Fatalf("seed delivery status %q for %+v: %v", statuses[i], target, err)
+		}
+	}
+}
+
+func deliveryStatus(t *testing.T, pool *pgxpool.Pool, transport, targetKey string) string {
+	t.Helper()
+	var status string
+	if err := pool.QueryRow(t.Context(), `
+		SELECT status FROM notification_delivery WHERE transport = $1 AND target_key = $2
+	`, transport, targetKey).Scan(&status); err != nil {
+		t.Fatalf("read delivery status for %s/%s: %v", transport, targetKey, err)
+	}
+	return status
+}
+
+// Disconnect suppresses this destination's still-pending and still-claimed
+// Discord deliveries, but leaves Web Push deliveries and already-succeeded
+// Discord deliveries completely untouched.
+func TestDiscordLifecycleDisconnectSuppressesOnlyPendingAndClaimedDiscordDeliveries(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+	store := notificationpostgres.NewStore(pool)
+	key := make([]byte, crypto.KeySize)
+	for i := range key {
+		key[i] = byte(i + 19)
+	}
+	ciphertext, err := notification.EncryptDiscordCredential(key, notification.DiscordWebhookCredential{WebhookID: "id", WebhookToken: "token"})
+	if err != nil {
+		t.Fatalf("EncryptDiscordCredential() error = %v", err)
+	}
+	if err := store.ConnectDiscordDestination(t.Context(), notification.DiscordDestination{GuildID: "guild-1", ChannelID: "channel-1"}, ciphertext); err != nil {
+		t.Fatalf("ConnectDiscordDestination() error = %v", err)
+	}
+
+	discordLifecycleDeliveryFixture(t, pool, store, []notification.Target{
+		{Transport: "discord", Key: "pending-target"},
+		{Transport: "discord", Key: "claimed-target"},
+		{Transport: "discord", Key: "succeeded-target"},
+		{Transport: "webpush", Key: "webpush-target"},
+	}, []string{"pending", "claimed", "succeeded", "pending"})
+
+	provider := &fakeDiscordWebhookOAuthProviderForConnect{}
+	lifecycle := notification.NewDiscordLifecycleService(store, provider, key, nil)
+	if err := lifecycle.Disconnect(t.Context()); err != nil {
+		t.Fatalf("Disconnect() error = %v", err)
+	}
+
+	if status := deliveryStatus(t, pool, "discord", "pending-target"); status != "suppressed" {
+		t.Fatalf("pending discord delivery status = %q, want suppressed", status)
+	}
+	if status := deliveryStatus(t, pool, "discord", "claimed-target"); status != "suppressed" {
+		t.Fatalf("claimed discord delivery status = %q, want suppressed", status)
+	}
+	if status := deliveryStatus(t, pool, "discord", "succeeded-target"); status != "succeeded" {
+		t.Fatalf("succeeded discord delivery status = %q, want it untouched (succeeded)", status)
+	}
+	if status := deliveryStatus(t, pool, "webpush", "webpush-target"); status != "pending" {
+		t.Fatalf("webpush delivery status = %q, want it untouched (pending)", status)
+	}
+
+	if _, _, err := store.GetDiscordDestination(t.Context()); !errors.Is(err, notification.ErrDiscordDestinationNotFound) {
+		t.Fatalf("GetDiscordDestination() after disconnect error = %v, want ErrDiscordDestinationNotFound", err)
+	}
+	if provider.deleteCalls != 1 {
+		t.Fatalf("DeleteWebhook calls = %d, want 1", provider.deleteCalls)
+	}
+}
+
+// Local disconnect commits before any remote cleanup is attempted: the
+// destination row is already gone by the time DeleteWebhook is called.
+func TestDiscordLifecycleDisconnectCommitsBeforeRemoteCleanup(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+	store := notificationpostgres.NewStore(pool)
+	key := make([]byte, crypto.KeySize)
+	for i := range key {
+		key[i] = byte(i + 23)
+	}
+	ciphertext, err := notification.EncryptDiscordCredential(key, notification.DiscordWebhookCredential{WebhookID: "id", WebhookToken: "token"})
+	if err != nil {
+		t.Fatalf("EncryptDiscordCredential() error = %v", err)
+	}
+	if err := store.ConnectDiscordDestination(t.Context(), notification.DiscordDestination{GuildID: "guild-1", ChannelID: "channel-1"}, ciphertext); err != nil {
+		t.Fatalf("ConnectDiscordDestination() error = %v", err)
+	}
+
+	var sawRowCountDuringCleanup int64 = -1
+	provider := providerRecordingRowCountOnDelete{
+		DiscordWebhookOAuthProvider: &fakeDiscordWebhookOAuthProviderForConnect{},
+		pool:                        pool,
+		t:                           t,
+		observed:                    &sawRowCountDuringCleanup,
+	}
+	lifecycle := notification.NewDiscordLifecycleService(store, provider, key, nil)
+	if err := lifecycle.Disconnect(t.Context()); err != nil {
+		t.Fatalf("Disconnect() error = %v", err)
+	}
+	if sawRowCountDuringCleanup != 0 {
+		t.Fatalf("destination row count during remote cleanup = %d, want 0 (already committed)", sawRowCountDuringCleanup)
+	}
+}
+
+// providerRecordingRowCountOnDelete records the destination row count seen
+// during DeleteWebhook, proving the local commit already happened.
+type providerRecordingRowCountOnDelete struct {
+	notification.DiscordWebhookOAuthProvider
+	pool     *pgxpool.Pool
+	t        *testing.T
+	observed *int64
+}
+
+func (p providerRecordingRowCountOnDelete) DeleteWebhook(ctx context.Context, credential notification.DiscordWebhookCredential) error {
+	p.t.Helper()
+	var count int64
+	if err := p.pool.QueryRow(ctx, `SELECT count(*) FROM notification_discord_destination`).Scan(&count); err != nil {
+		p.t.Fatalf("count destination rows during cleanup: %v", err)
+	}
+	*p.observed = count
+	return p.DiscordWebhookOAuthProvider.DeleteWebhook(ctx, credential)
+}
+
+// A remote cleanup failure on disconnect never restores local connection
+// state: the destination stays gone.
+func TestDiscordLifecycleDisconnectRemoteCleanupFailureLeavesDestinationDisconnected(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+	store := notificationpostgres.NewStore(pool)
+	key := make([]byte, crypto.KeySize)
+	for i := range key {
+		key[i] = byte(i + 29)
+	}
+	ciphertext, err := notification.EncryptDiscordCredential(key, notification.DiscordWebhookCredential{WebhookID: "id", WebhookToken: "token"})
+	if err != nil {
+		t.Fatalf("EncryptDiscordCredential() error = %v", err)
+	}
+	if err := store.ConnectDiscordDestination(t.Context(), notification.DiscordDestination{GuildID: "guild-1", ChannelID: "channel-1"}, ciphertext); err != nil {
+		t.Fatalf("ConnectDiscordDestination() error = %v", err)
+	}
+
+	provider := &fakeDiscordWebhookOAuthProviderForConnect{deleteErr: errors.New("discord unavailable")}
+	lifecycle := notification.NewDiscordLifecycleService(store, provider, key, nil)
+	if err := lifecycle.Disconnect(t.Context()); err != nil {
+		t.Fatalf("Disconnect() error = %v, want nil even though remote cleanup fails", err)
+	}
+	if _, _, err := store.GetDiscordDestination(t.Context()); !errors.Is(err, notification.ErrDiscordDestinationNotFound) {
+		t.Fatalf("GetDiscordDestination() after failed cleanup error = %v, want ErrDiscordDestinationNotFound", err)
+	}
+}
+
+// The broken transition retains safe metadata, clears the ciphertext, and
+// suppresses still-pending/claimed Discord deliveries while leaving Web
+// Push and unrelated Discord deliveries alone, all atomically.
+func TestDiscordLifecycleBreakRetainsSafeMetadataClearsCiphertextAndSuppresses(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+	store := notificationpostgres.NewStore(pool)
+	key := make([]byte, crypto.KeySize)
+	for i := range key {
+		key[i] = byte(i + 31)
+	}
+	ciphertext, err := notification.EncryptDiscordCredential(key, notification.DiscordWebhookCredential{WebhookID: "id", WebhookToken: "token"})
+	if err != nil {
+		t.Fatalf("EncryptDiscordCredential() error = %v", err)
+	}
+	if err := store.ConnectDiscordDestination(t.Context(), notification.DiscordDestination{
+		GuildID: "guild-broken", ChannelID: "channel-broken", WebhookName: "Broken Destination",
+	}, ciphertext); err != nil {
+		t.Fatalf("ConnectDiscordDestination() error = %v", err)
+	}
+
+	discordLifecycleDeliveryFixture(t, pool, store, []notification.Target{
+		{Transport: "discord", Key: "broken-pending-target"},
+		{Transport: "discord", Key: "broken-succeeded-target"},
+		{Transport: "webpush", Key: "broken-webpush-target"},
+	}, []string{"pending", "succeeded", "pending"})
+
+	provider := &fakeDiscordWebhookOAuthProviderForConnect{}
+	lifecycle := notification.NewDiscordLifecycleService(store, provider, key, nil)
+	if err := lifecycle.Break(t.Context(), "webhook deleted (10015)"); err != nil {
+		t.Fatalf("Break() error = %v", err)
+	}
+
+	destination, storedCiphertext, err := store.GetDiscordDestination(t.Context())
+	if err != nil {
+		t.Fatalf("GetDiscordDestination() after Break() error = %v", err)
+	}
+	if destination.State != notification.DiscordDestinationBroken {
+		t.Fatalf("destination.State = %q, want broken", destination.State)
+	}
+	if destination.GuildID != "guild-broken" || destination.ChannelID != "channel-broken" || destination.WebhookName != "Broken Destination" {
+		t.Fatalf("destination = %#v, want safe metadata retained", destination)
+	}
+	if destination.BrokenReason != "webhook deleted (10015)" {
+		t.Fatalf("destination.BrokenReason = %q, want the given reason", destination.BrokenReason)
+	}
+	if storedCiphertext != nil {
+		t.Fatal("GetDiscordDestination() returned a non-nil ciphertext for a broken destination")
+	}
+
+	if status := deliveryStatus(t, pool, "discord", "broken-pending-target"); status != "suppressed" {
+		t.Fatalf("pending discord delivery status = %q, want suppressed", status)
+	}
+	if status := deliveryStatus(t, pool, "discord", "broken-succeeded-target"); status != "succeeded" {
+		t.Fatalf("succeeded discord delivery status = %q, want it untouched (succeeded)", status)
+	}
+	if status := deliveryStatus(t, pool, "webpush", "broken-webpush-target"); status != "pending" {
+		t.Fatalf("webpush delivery status = %q, want it untouched (pending)", status)
+	}
+
+	if provider.deleteCalls != 0 {
+		t.Fatalf("DeleteWebhook calls = %d, want 0: Break never contacts the provider", provider.deleteCalls)
+	}
+}
+
+// Existing Discord channel messages are never anything this lifecycle
+// service touches: neither Disconnect nor Break references any message ID
+// or calls anything on the provider except (best-effort) DeleteWebhook.
+// This is a structural guarantee already covered by
+// fakeDiscordWebhookOAuthProviderForConnect only implementing
+// AuthorizationURL/Exchange/DeleteWebhook: there is no message-delete
+// method for either lifecycle transition to accidentally call.
+func TestDiscordLifecycleNeverTouchesMessagesOrHistoricalWork(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+	store := notificationpostgres.NewStore(pool)
+	key := make([]byte, crypto.KeySize)
+	for i := range key {
+		key[i] = byte(i + 37)
+	}
+	ciphertext, err := notification.EncryptDiscordCredential(key, notification.DiscordWebhookCredential{WebhookID: "id", WebhookToken: "token"})
+	if err != nil {
+		t.Fatalf("EncryptDiscordCredential() error = %v", err)
+	}
+	if err := store.ConnectDiscordDestination(t.Context(), notification.DiscordDestination{GuildID: "guild-1", ChannelID: "channel-1"}, ciphertext); err != nil {
+		t.Fatalf("ConnectDiscordDestination() error = %v", err)
+	}
+
+	var workCountBefore int
+	if err := pool.QueryRow(t.Context(), `SELECT count(*) FROM notification_work`).Scan(&workCountBefore); err != nil {
+		t.Fatalf("count notification_work before: %v", err)
+	}
+
+	provider := &fakeDiscordWebhookOAuthProviderForConnect{}
+	lifecycle := notification.NewDiscordLifecycleService(store, provider, key, nil)
+	if err := lifecycle.Disconnect(t.Context()); err != nil {
+		t.Fatalf("Disconnect() error = %v", err)
+	}
+
+	var workCountAfter int
+	if err := pool.QueryRow(t.Context(), `SELECT count(*) FROM notification_work`).Scan(&workCountAfter); err != nil {
+		t.Fatalf("count notification_work after: %v", err)
+	}
+	if workCountAfter != workCountBefore {
+		t.Fatalf("notification_work row count changed from %d to %d: disconnect must never touch historical work", workCountBefore, workCountAfter)
+	}
+}
