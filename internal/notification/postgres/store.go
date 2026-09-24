@@ -425,6 +425,77 @@ func (s *Store) SetPreference(ctx context.Context, userID string, preference not
 	return nil
 }
 
+// GetDiscordDestination returns notification.ErrDiscordDestinationNotFound
+// when no destination is configured. The returned ciphertext is nil when
+// the destination is broken; callers decrypt it only immediately before a
+// provider call.
+func (s *Store) GetDiscordDestination(ctx context.Context) (notification.DiscordDestination, notification.DiscordCredentialCiphertext, error) {
+	row, err := s.queries.GetDiscordDestination(ctx)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return notification.DiscordDestination{}, nil, notification.ErrDiscordDestinationNotFound
+	}
+	if err != nil {
+		return notification.DiscordDestination{}, nil, fmt.Errorf("get discord destination: %w", err)
+	}
+	destination := notification.DiscordDestination{
+		State:        notification.DiscordDestinationState(row.State),
+		GuildID:      row.GuildID,
+		ChannelID:    row.ChannelID,
+		WebhookName:  textString(row.WebhookName),
+		ConnectedAt:  row.ConnectedAt.Time,
+		UpdatedAt:    row.UpdatedAt.Time,
+		BrokenAt:     row.BrokenAt.Time,
+		BrokenReason: textString(row.BrokenReason),
+	}
+	var ciphertext notification.DiscordCredentialCiphertext
+	if row.CredentialCiphertext != nil {
+		ciphertext = notification.DiscordCredentialCiphertext(row.CredentialCiphertext)
+	}
+	return destination, ciphertext, nil
+}
+
+// ConnectDiscordDestination atomically installs or replaces the singleton
+// destination as connected; see notification_discord_destination's boolean
+// primary key for the database-enforced singleton invariant.
+func (s *Store) ConnectDiscordDestination(ctx context.Context, destination notification.DiscordDestination, credential notification.DiscordCredentialCiphertext) error {
+	if err := s.queries.UpsertDiscordDestination(ctx, sqlcgen.UpsertDiscordDestinationParams{
+		CredentialCiphertext: []byte(credential),
+		GuildID:              destination.GuildID,
+		ChannelID:            destination.ChannelID,
+		WebhookName:          nullableText(destination.WebhookName),
+	}); err != nil {
+		return fmt.Errorf("connect discord destination: %w", err)
+	}
+	return nil
+}
+
+// MarkDiscordDestinationBroken transitions a connected destination to
+// broken, deleting its now-unusable credential ciphertext while retaining
+// safe metadata. It returns notification.ErrDiscordDestinationNotFound if
+// no destination is currently connected.
+func (s *Store) MarkDiscordDestinationBroken(ctx context.Context, reason string) error {
+	affected, err := s.queries.MarkDiscordDestinationBroken(ctx, nullableText(reason))
+	if err != nil {
+		return fmt.Errorf("mark discord destination broken: %w", err)
+	}
+	if affected == 0 {
+		return notification.ErrDiscordDestinationNotFound
+	}
+	return nil
+}
+
+// DeleteDiscordDestination removes the destination entirely (disconnect).
+func (s *Store) DeleteDiscordDestination(ctx context.Context) error {
+	affected, err := s.queries.DeleteDiscordDestination(ctx)
+	if err != nil {
+		return fmt.Errorf("delete discord destination: %w", err)
+	}
+	if affected == 0 {
+		return notification.ErrDiscordDestinationNotFound
+	}
+	return nil
+}
+
 func parseUUID(value string) (pgtype.UUID, error) {
 	var id pgtype.UUID
 	if err := id.Scan(value); err != nil {

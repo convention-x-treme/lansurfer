@@ -3,10 +3,14 @@
 package postgres
 
 import (
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/convention-x-treme/lansurfer/internal/notification"
+	notificationpostgres "github.com/convention-x-treme/lansurfer/internal/notification/postgres"
 	"github.com/convention-x-treme/lansurfer/internal/notification/postgres/sqlcgen"
+	"github.com/convention-x-treme/lansurfer/internal/platform/crypto"
 	"github.com/convention-x-treme/lansurfer/internal/user"
 	userpostgres "github.com/convention-x-treme/lansurfer/internal/user/postgres"
 	"github.com/jackc/pgx/v5"
@@ -213,5 +217,89 @@ func TestDiscordSetupStateConsumedExactlyOnceAndExpires(t *testing.T) {
 		BrowserBindingHash: browserHash, InitiatingAdminID: adminUUID,
 	}); err != pgx.ErrNoRows {
 		t.Fatalf("expired ConsumeDiscordSetupState() error = %v, want pgx.ErrNoRows", err)
+	}
+}
+
+// A connected destination's persisted row carries only the encrypted
+// credential blob: the plaintext webhook ID/token never appear anywhere in
+// the row, and the safe metadata (guild/channel/display name) stays
+// separately queryable from the ciphertext. The stored ciphertext still
+// decrypts back to the original credential.
+func TestDiscordDestinationPersistsOnlyEncryptedCredential(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+	store := notificationpostgres.NewStore(pool)
+
+	key := make([]byte, crypto.KeySize)
+	for i := range key {
+		key[i] = byte(i + 7)
+	}
+	credential := notification.DiscordWebhookCredential{
+		WebhookID: "123456789012345678", WebhookToken: "super-secret-webhook-token-value",
+	}
+	ciphertext, err := notification.EncryptDiscordCredential(key, credential)
+	if err != nil {
+		t.Fatalf("EncryptDiscordCredential() error = %v", err)
+	}
+
+	if err := store.ConnectDiscordDestination(t.Context(), notification.DiscordDestination{
+		GuildID: "guild-42", ChannelID: "channel-99", WebhookName: "Game Requests",
+	}, ciphertext); err != nil {
+		t.Fatalf("ConnectDiscordDestination() error = %v", err)
+	}
+
+	var rawCiphertext []byte
+	var guildID, channelID string
+	var webhookName pgtype.Text
+	if err := pool.QueryRow(t.Context(), `
+		SELECT credential_ciphertext, guild_id, channel_id, webhook_name
+		FROM notification_discord_destination WHERE id = true
+	`).Scan(&rawCiphertext, &guildID, &channelID, &webhookName); err != nil {
+		t.Fatalf("inspect persisted destination row: %v", err)
+	}
+	if strings.Contains(string(rawCiphertext), credential.WebhookID) || strings.Contains(string(rawCiphertext), credential.WebhookToken) {
+		t.Fatal("persisted row contains the plaintext webhook ID or token")
+	}
+	if guildID != "guild-42" || channelID != "channel-99" || webhookName.String != "Game Requests" {
+		t.Fatalf("safe metadata = %q/%q/%q, want it queryable independent of the ciphertext", guildID, channelID, webhookName.String)
+	}
+
+	destination, storedCiphertext, err := store.GetDiscordDestination(t.Context())
+	if err != nil {
+		t.Fatalf("GetDiscordDestination() error = %v", err)
+	}
+	if destination.State != notification.DiscordDestinationConnected {
+		t.Fatalf("destination.State = %q, want connected", destination.State)
+	}
+	decrypted, err := notification.DecryptDiscordCredential(key, storedCiphertext)
+	if err != nil {
+		t.Fatalf("DecryptDiscordCredential() error = %v", err)
+	}
+	if decrypted != credential {
+		t.Fatalf("decrypted credential = %#v, want %#v", decrypted, credential)
+	}
+
+	// Broken state deletes the ciphertext but keeps the safe metadata and a
+	// diagnostic reason, and the reason itself carries no secret material.
+	if err := store.MarkDiscordDestinationBroken(t.Context(), "webhook deleted (10015)"); err != nil {
+		t.Fatalf("MarkDiscordDestinationBroken() error = %v", err)
+	}
+	broken, _, err := store.GetDiscordDestination(t.Context())
+	if err != nil {
+		t.Fatalf("GetDiscordDestination() after broken transition error = %v", err)
+	}
+	if broken.State != notification.DiscordDestinationBroken || broken.GuildID != "guild-42" {
+		t.Fatalf("broken destination = %#v, want broken state with retained guild ID", broken)
+	}
+	var brokenCiphertext []byte
+	if err := pool.QueryRow(t.Context(), `
+		SELECT credential_ciphertext FROM notification_discord_destination WHERE id = true
+	`).Scan(&brokenCiphertext); err != nil {
+		t.Fatalf("inspect broken destination row: %v", err)
+	}
+	if brokenCiphertext != nil {
+		t.Fatal("broken destination row still has a credential ciphertext")
 	}
 }
