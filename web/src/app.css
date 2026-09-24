@@ -115,6 +115,14 @@
 }
 
 @layer components {
+  /* A Phosphor glyph beside its text label. Icons are sized in em by the
+     webfont itself, so this only aligns the pair on one line. */
+  .icon-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375em;
+  }
+
   /* The only italic in the system. "LAN" is Black, "surfer" Semibold. */
   .brand-wordmark {
     font-style: italic;
@@ -172,6 +180,7 @@
     display: flex;
     min-height: 2.75rem;
     align-items: center;
+    gap: 0.5rem;
     border-radius: var(--radius-field);
     padding-inline: 0.75rem;
     color: color-mix(in srgb, var(--color-base-content) 72%, transparent);
@@ -886,7 +895,7 @@
   }
 
   .alias-chip-remove {
-    font-size: 1rem;
+    font-size: 1em;
     line-height: 1;
     color: color-mix(in srgb, var(--color-base-content) 60%, transparent);
   }
@@ -915,7 +924,7 @@
 
   .external-mark {
     margin-inline-start: 0.125rem;
-    font-size: 0.875rem;
+    font-size: 0.875em;
   }
 
   /* The provider snapshot. It is read-only reference material an

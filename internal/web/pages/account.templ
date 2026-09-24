@@ -9,6 +9,7 @@ import (
 // owner. PrivateName/PrivateEmail are provider-account metadata, never
 // public identity, and this page is the only surface that renders them.
 type AccountIdentityRow struct {
+	Kind         string
 	Label        string
 	PrivateName  string
 	PrivateEmail string
@@ -19,6 +20,7 @@ type AccountIdentityRow struct {
 // AccountProviderOption offers a configured provider the account has not
 // linked yet.
 type AccountProviderOption struct {
+	Kind  string
 	Label string
 	Href  string
 }
@@ -54,7 +56,7 @@ templ Account(brand branding.Brand, navigation components.NavigationState, curre
 					for _, identity := range identities {
 						<li class="flex items-center justify-between gap-3 rounded-field border border-base-300 p-3">
 							<div class="min-w-0">
-								<p class="font-semibold">{ identity.Label }</p>
+								<p class="icon-label font-semibold"><i class={ providerIcon(identity.Kind) } aria-hidden="true"></i>{ identity.Label }</p>
 								if identity.PrivateName != "" {
 									<p class="truncate text-xs text-base-content/70">{ identity.PrivateName }</p>
 								}
@@ -65,7 +67,7 @@ templ Account(brand branding.Brand, navigation components.NavigationState, curre
 							if identity.CanUnlink {
 								<form method="post" action={ templ.SafeURL(identity.UnlinkPath) }>
 									@components.CSRFInput()
-									<button class="btn btn-ghost btn-sm" type="submit">Unlink</button>
+									<button class="btn btn-ghost btn-sm" type="submit"><i class="ph ph-link-break" aria-hidden="true"></i>Unlink</button>
 								</form>
 							} else {
 								<span class="text-xs text-base-content/50">Only sign-in method</span>
@@ -78,7 +80,7 @@ templ Account(brand branding.Brand, navigation components.NavigationState, curre
 						for _, option := range linkable {
 							<form method="post" action={ templ.SafeURL(option.Href) }>
 								@components.CSRFInput()
-								<button class="btn btn-quiet btn-sm w-full justify-start" type="submit">Link { option.Label }</button>
+								<button class="btn btn-quiet btn-sm w-full justify-start" type="submit"><i class={ providerIcon(option.Kind) } aria-hidden="true"></i>Link { option.Label }</button>
 							</form>
 						}
 					</div>

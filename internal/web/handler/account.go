@@ -116,7 +116,7 @@ func accountIdentityRows(identities []auth.Identity, providers []auth.ProviderAv
 			label = identity.ProviderKind
 		}
 		rows = append(rows, pages.AccountIdentityRow{
-			Label: label, PrivateName: identity.DisplayName, PrivateEmail: identity.Email,
+			Kind: identity.ProviderKind, Label: label, PrivateName: identity.DisplayName, PrivateEmail: identity.Email,
 			CanUnlink: canUnlink, UnlinkPath: "/account/identities/" + identity.ID + "/unlink",
 		})
 	}
@@ -125,7 +125,7 @@ func accountIdentityRows(identities []auth.Identity, providers []auth.ProviderAv
 		if linked[provider.Kind] {
 			continue
 		}
-		linkable = append(linkable, pages.AccountProviderOption{Label: provider.DisplayName, Href: "/account/link/" + provider.Kind})
+		linkable = append(linkable, pages.AccountProviderOption{Kind: provider.Kind, Label: provider.DisplayName, Href: "/account/link/" + provider.Kind})
 	}
 	return rows, linkable
 }

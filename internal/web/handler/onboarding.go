@@ -162,6 +162,7 @@ func (h *OnboardingHandler) resolveOptions(pending auth.PendingIdentity) []pages
 			continue
 		}
 		options = append(options, pages.OnboardingResolveOption{
+			Kind:  provider.Kind,
 			Label: "Continue with " + provider.DisplayName,
 			Href:  "/auth/" + provider.Kind + "?" + resolveQueryParam + "=" + pending.ID,
 		})

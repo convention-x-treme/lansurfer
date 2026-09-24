@@ -141,7 +141,7 @@ func AdminGameIGDB(brand branding.Brand, navigation components.NavigationState, 
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "<button class=\"btn btn-step-back btn-sm\" type=\"submit\">Unlink IGDB</button></form>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "<button class=\"btn btn-step-back btn-sm\" type=\"submit\"><i class=\"ph ph-link-break\" aria-hidden=\"true\"></i>Unlink IGDB</button></form>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -374,7 +374,7 @@ func AdminIGDBLinkResult(target game.Game, result game.AdminProviderGame) templ.
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "\"> <button class=\"btn btn-primary btn-sm whitespace-nowrap\" type=\"submit\">Link this record</button></form>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "\"> <button class=\"btn btn-primary btn-sm whitespace-nowrap\" type=\"submit\"><i class=\"ph ph-link\" aria-hidden=\"true\"></i>Link this record</button></form>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -392,7 +392,7 @@ func AdminIGDBLinkResult(target game.Game, result game.AdminProviderGame) templ.
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "\" target=\"_blank\" rel=\"noopener noreferrer\">Open on IGDB <span class=\"sr-only\">(opens in a new tab)</span> <span class=\"external-mark\" aria-hidden=\"true\">↗</span></a>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "\" target=\"_blank\" rel=\"noopener noreferrer\">Open on IGDB <span class=\"sr-only\">(opens in a new tab)</span> <i class=\"ph ph-arrow-square-out external-mark\" aria-hidden=\"true\"></i></a>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -433,7 +433,7 @@ func AdminIGDBLinkResult(target game.Game, result game.AdminProviderGame) templ.
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "\">Review merge</a></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "\"><i class=\"ph ph-git-merge\" aria-hidden=\"true\"></i>Review merge</a></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1108,7 +1108,7 @@ func AdminGameMerge(brand branding.Brand, navigation components.NavigationState,
 					}
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 82, "</select></label> <button class=\"btn btn-quiet\" type=\"submit\">Review merge</button></form></section>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 82, "</select></label> <button class=\"btn btn-quiet\" type=\"submit\"><i class=\"ph ph-git-merge\" aria-hidden=\"true\"></i>Review merge</button></form></section>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1492,7 +1492,7 @@ func AdminIGDBStatus(status game.ProviderStatus) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 114, "<button class=\"btn btn-primary btn-sm\" type=\"submit\">Sync now</button></form>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 114, "<button class=\"btn btn-primary btn-sm\" type=\"submit\"><i class=\"ph ph-arrows-clockwise\" aria-hidden=\"true\"></i>Sync now</button></form>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

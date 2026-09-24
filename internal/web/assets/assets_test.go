@@ -21,7 +21,7 @@ func assetRequest(method, path string) *http.Request {
 func TestHandlerServesCacheValidatedAssets(t *testing.T) {
 	handler := Handler()
 
-	for _, path := range []string{"app.css", "app.js", "fonts/schibsted-grotesk-latin-wght-normal.woff2", "fonts/schibsted-grotesk-latin-wght-italic.woff2", "fonts/jetbrains-mono-latin-wght-normal.woff2"} {
+	for _, path := range []string{"app.css", "app.js", "fonts/schibsted-grotesk-latin-wght-normal.woff2", "fonts/schibsted-grotesk-latin-wght-italic.woff2", "fonts/jetbrains-mono-latin-wght-normal.woff2", "phosphor.css", "fonts/Phosphor.woff2", "fonts/Phosphor-Fill.woff2", "licenses/phosphor-icons-MIT.txt"} {
 		t.Run(path, func(t *testing.T) {
 			response := httptest.NewRecorder()
 			handler.ServeHTTP(response, assetRequest(http.MethodGet, path))
