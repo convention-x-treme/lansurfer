@@ -15,23 +15,50 @@ export function initNotificationSettings(): void {
   const form = document.querySelector<HTMLFormElement>("[data-subscribe-form]");
   const button = form?.querySelector<HTMLButtonElement>("[data-subscribe-button]");
   const status = form?.querySelector<HTMLElement>("[data-push-status]");
-  const publicKey = form?.closest<HTMLElement>("[data-vapid-public-key]")?.dataset.vapidPublicKey;
+  const panel = form?.closest<HTMLElement>("[data-vapid-public-key]");
+  const publicKey = panel?.dataset.vapidPublicKey;
   if (!form || !button || !status || !publicKey) return;
 
-  const showStatus = (message: string) => {
+  const showStatus = (state: string, message: string) => {
+    status.dataset.pushState = state;
     status.hidden = false;
     status.textContent = message;
   };
   if (!window.isSecureContext || !("Notification" in window) || !("PushManager" in window) || !("serviceWorker" in navigator)) {
     button.disabled = true;
-    showStatus("Push notifications are unavailable in this browser.");
+    showStatus("unavailable", "Push notifications are unavailable in this browser.");
     return;
   }
 
-  void registerServiceWorker().then(({ registration }) => {
-    if (!registration) {
+  void registerServiceWorker().then(async ({ registration }) => {
+    const permission = Notification.permission;
+    if (!registration && permission !== "denied") {
       button.disabled = true;
-      showStatus("Push notifications are unavailable in this browser.");
+      showStatus("unavailable", "Push notifications are unavailable in this browser.");
+      return;
+    }
+    try {
+      const subscription = registration ? await registration.pushManager.getSubscription() : null;
+      if (panel?.dataset.currentDeviceId !== "0" && (permission === "denied" || !subscription)) {
+        const csrf = form.elements.namedItem("csrf_token");
+        if (!(csrf instanceof HTMLInputElement)) throw new Error("Missing CSRF token");
+        const response = await fetch("/account/notifications/reconcile", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({ csrf_token: csrf.value }),
+        });
+        if (!response.ok) throw new Error("Device reconciliation failed");
+        window.location.reload();
+        return;
+      }
+      if (permission === "denied") showStatus("blocked", "Notifications are blocked in this browser.");
+      else if (panel?.dataset.pushEnabled === "false") showStatus("disabled", "Push delivery is disabled for your account.");
+      else if (panel?.dataset.deviceCount === "0") showStatus("no-devices", "Push delivery is enabled, but no devices are registered.");
+      else if (panel?.dataset.currentDeviceId !== "0") showStatus("current-device", "This browser is registered for push notifications.");
+      else showStatus("other-devices", "Other devices are registered for push notifications.");
+    } catch {
+      showStatus("unavailable", "Could not check browser push state. Try reloading.");
     }
   });
 
@@ -42,12 +69,12 @@ export function initNotificationSettings(): void {
       let permission = Notification.permission;
       if (permission === "default") permission = await Notification.requestPermission();
       if (permission !== "granted") {
-        showStatus(permission === "denied" ? "Notifications are blocked in this browser." : "Notification permission is required.");
+        showStatus(permission === "denied" ? "blocked" : "permission-required", permission === "denied" ? "Notifications are blocked in this browser." : "Notification permission is required.");
         return;
       }
       const { registration } = await registerServiceWorker();
       if (!registration) {
-        showStatus("Push notifications are unavailable in this browser.");
+        showStatus("unavailable", "Push notifications are unavailable in this browser.");
         return;
       }
       const subscription = await registration.pushManager.subscribe({
@@ -59,7 +86,7 @@ export function initNotificationSettings(): void {
       form.querySelector<HTMLInputElement>("[data-subscribe-auth]")!.value = encodeKey(subscription.getKey("auth"));
       form.requestSubmit();
     } catch {
-      showStatus("Could not enable notifications on this device. Try again.");
+      showStatus("error", "Could not enable notifications on this device. Try again.");
     } finally {
       button.disabled = false;
     }

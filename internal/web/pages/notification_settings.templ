@@ -41,10 +41,10 @@ templ NotificationSettings(brand branding.Brand, navigation components.Navigatio
 					<span>Web Push is not configured on this instance.</span>
 				</div>
 			} else {
-				<section class="auth-panel" data-vapid-public-key={ view.VAPIDPublicKey }>
+				<section class="auth-panel" data-vapid-public-key={ view.VAPIDPublicKey } data-current-device-id={ strconv.FormatInt(view.CurrentDeviceID, 10) } data-device-count={ strconv.Itoa(len(view.Devices)) } data-push-enabled={ strconv.FormatBool(view.Preference.WebPushEnabled) }>
 					<h2 class="text-xl font-bold">Push notifications</h2>
 					if view.Preference.WebPushEnabled {
-						<p class="mt-1 text-sm text-base-content/70">Push notifications are enabled on at least one of your devices.</p>
+						<p class="mt-1 text-sm text-base-content/70">Push delivery is enabled for registered devices.</p>
 						<form method="post" action="/account/notifications/disable" class="mt-4">
 							@components.CSRFInput()
 							<button class="btn btn-ghost btn-sm w-fit" type="submit">Disable</button>
@@ -92,11 +92,20 @@ templ NotificationSettings(brand branding.Brand, navigation components.Navigatio
 					<h2 class="text-xl font-bold">Devices</h2>
 					if len(view.Devices) == 0 {
 						<p class="mt-1 text-sm text-base-content/70">No devices are registered for push notifications.</p>
+						if view.Preference.WebPushEnabled {
+							<p class="text-sm text-base-content/70">Push delivery is enabled, but no devices are registered.</p>
+						}
 					} else {
+						if len(view.Devices) > 1 || view.CurrentDeviceID == 0 {
+							<p class="mt-1 text-sm text-base-content/70">Other devices are registered.</p>
+						}
 						<ul class="mt-4 grid gap-3">
 							for _, device := range view.Devices {
 								<li class="flex items-center justify-between gap-3 rounded-field border border-base-300 p-3" data-current-device={ strconv.FormatBool(device.ID == view.CurrentDeviceID) }>
 									<p class="font-semibold" data-current-subscription-id={ strconv.FormatInt(device.ID, 10) }>{ deviceLabel(device) }</p>
+									if device.ID == view.CurrentDeviceID {
+										<span class="text-sm text-base-content/70">Current browser</span>
+									}
 									<form method="post" action={ templ.SafeURL(deviceRemovePath(device)) }>
 										@components.CSRFInput()
 										<button class="btn btn-ghost btn-sm" type="submit">Remove</button>

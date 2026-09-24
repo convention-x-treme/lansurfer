@@ -66,15 +66,17 @@ func TestNotificationSettingsShowMarksOnlyCurrentDeviceWithoutExposingSecrets(t 
 		t.Fatal("current device lookup did not use authenticated user and cookie")
 	}
 }
-
 func TestNotificationSettingsShowKeepsEnabledWithZeroDevices(t *testing.T) {
 	subscriptions := &stubSubscriptionManager{preference: notification.PushPreference{WebPushEnabled: true}}
 	handler := NewNotificationSettings(subscriptions, "vapid-public-key", true, branding.Default(), true)
 	request := withCurrentUser(httptest.NewRequest(http.MethodGet, "/account/notifications", nil), user.User{ID: "user-1"})
 	response := httptest.NewRecorder()
 	handler.Show(response, request)
-	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "No devices are registered") || !strings.Contains(response.Body.String(), "Enable on this device") {
-		t.Fatalf("status/body = %d, %q", response.Code, response.Body.String())
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "No devices are registered") || !strings.Contains(response.Body.String(), "Enable on this device") || !strings.Contains(response.Body.String(), "Push delivery is enabled") {
+		t.Fatalf("enabled with zero devices not shown: status %d", response.Code)
+	}
+	if strings.Contains(response.Body.String(), "enabled on at least one") {
+		t.Fatal("global enablement wrongly claims a registered device")
 	}
 }
 
