@@ -27,7 +27,7 @@ templ AdminGames(brand branding.Brand, navigation components.NavigationState, ga
 		<header class="app-topbar">
 			<h1 class="app-title sr-only">Manage games</h1>
 			@AdminCatalogFilters(search, localOnly)
-			<a class="btn btn-quiet btn-sm" href={ "#" + adminComposerID }>Add game</a>
+			<a class="btn btn-quiet btn-sm" href={ "#" + adminComposerID }><i class="ph ph-plus" aria-hidden="true"></i>Add game</a>
 		</header>
 		<div class="content-page catalog-shell">
 			if formError != "" {
@@ -120,7 +120,7 @@ templ AdminGameEntry(item game.Game, expanded bool, message string) {
 					<span class="status-chip">Inactive</span>
 				}
 				@adminIdentityChip(item)
-				<span class="catalog-entry-disclosure" aria-hidden="true">Edit</span>
+				<span class="catalog-entry-disclosure icon-label" aria-hidden="true"><i class="ph ph-pencil-simple" aria-hidden="true"></i>Edit</span>
 			</span>
 		</summary>
 		<div class="catalog-panel">
@@ -158,7 +158,7 @@ templ AdminGameEditSection(item game.Game) {
 		<form method="post" action={ "/admin/games/" + item.ID } class="grid gap-4 sm:grid-cols-2" { adminEntrySwap("/admin/games/" + item.ID)... }>
 			@components.CSRFInput()
 			@GameFields(item.Name, item.Slug)
-			<div class="sm:col-span-2 flex justify-end"><button class="btn btn-primary btn-sm" type="submit">Save name and slug</button></div>
+			<div class="sm:col-span-2 flex justify-end"><button class="btn btn-primary btn-sm" type="submit"><i class="ph ph-check" aria-hidden="true"></i>Save name and slug</button></div>
 		</form>
 	</section>
 }
@@ -174,7 +174,7 @@ templ AdminGameAliasSection(item game.Game) {
 			for _, alias := range item.Aliases {
 				<form method="post" action={ "/admin/games/" + item.ID + "/aliases/" + alias.ID + "/remove" } hx-confirm={ "Remove the alias " + alias.Value + "?" } { adminEntrySwap("/admin/games/" + item.ID + "/aliases/" + alias.ID + "/remove")... }>
 					@components.CSRFInput()
-					<button class="alias-chip" type="submit" aria-label={ "Remove alias " + alias.Value }>{ alias.Value } <span class="alias-chip-remove" aria-hidden="true">×</span></button>
+					<button class="alias-chip" type="submit" aria-label={ "Remove alias " + alias.Value }>{ alias.Value } <i class="ph ph-x alias-chip-remove" aria-hidden="true"></i></button>
 				</form>
 			}
 			<form class="alias-add" method="post" action={ "/admin/games/" + item.ID + "/aliases" } { adminEntrySwap("/admin/games/" + item.ID + "/aliases")... }>
@@ -199,17 +199,18 @@ templ AdminGameProviderSection(item game.Game) {
 				<a class="btn btn-quiet btn-sm" href={ igdbGameURL(item.IGDBSlug) } target="_blank" rel="noopener noreferrer">
 					Open on IGDB
 					<span class="sr-only">(opens in a new tab)</span>
-					<span class="external-mark" aria-hidden="true">↗</span>
+					<i class="ph ph-arrow-square-out external-mark" aria-hidden="true"></i>
 				</a>
 			}
 			<a class="btn btn-quiet btn-sm" href={ "/admin/games/" + item.ID + "/igdb" }>
+				<i class="ph ph-link" aria-hidden="true"></i>
 				if item.IGDBExternalID == "" {
 					Link IGDB record
 				} else {
 					Manage IGDB link
 				}
 			</a>
-			<a class="btn btn-quiet btn-sm" href={ "/admin/games/" + item.ID + "/merge" }>Merge duplicate</a>
+			<a class="btn btn-quiet btn-sm" href={ "/admin/games/" + item.ID + "/merge" }><i class="ph ph-git-merge" aria-hidden="true"></i>Merge duplicate</a>
 		</div>
 		@AdminIGDBMetadata(adminGameFacts(item))
 	</section>
@@ -234,24 +235,24 @@ templ AdminGameDangerSection(item game.Game) {
 			<form method="post" action={ "/admin/games/" + item.ID + "/active" } hx-confirm={ gameActiveConfirmation(item.Active) } { adminEntrySwap("/admin/games/" + item.ID + "/active")... }>
 				@components.CSRFInput()
 				if item.Active {
-					<input type="hidden" name="active" value="false"/><button class="btn btn-step-back btn-sm" type="submit">Deactivate game</button>
+					<input type="hidden" name="active" value="false"/><button class="btn btn-step-back btn-sm" type="submit"><i class="ph ph-eye-slash" aria-hidden="true"></i>Deactivate game</button>
 				} else {
-					<input type="hidden" name="active" value="true"/><button class="btn btn-quiet btn-sm" type="submit">Activate game</button>
+					<input type="hidden" name="active" value="true"/><button class="btn btn-quiet btn-sm" type="submit"><i class="ph ph-eye" aria-hidden="true"></i>Activate game</button>
 				}
 			</form>
 		</div>
 		<div class="catalog-decision">
 			if item.GameRequestCount > 0 {
 				<p class="catalog-decision-text">This game has Game Requests and cannot be deleted. Deactivate or merge it instead.</p>
-				<button class="btn btn-danger btn-sm" type="button" disabled>Delete permanently</button>
+				<button class="btn btn-danger btn-sm" type="button" disabled><i class="ph ph-trash" aria-hidden="true"></i>Delete permanently</button>
 			} else if item.SubscriptionCount > 0 {
 				<p class="catalog-decision-text">This game is followed by users. Merge or remove those relationships before deleting.</p>
-				<button class="btn btn-danger btn-sm" type="button" disabled>Delete permanently</button>
+				<button class="btn btn-danger btn-sm" type="button" disabled><i class="ph ph-trash" aria-hidden="true"></i>Delete permanently</button>
 			} else {
 				<p class="catalog-decision-text">Nothing references this game. Permanent deletion also removes its aliases and provider link.</p>
 				<form method="post" action={ "/admin/games/" + item.ID + "/delete" } data-confirm={ "Permanently delete " + item.Name + "? This cannot be undone." }>
 					@components.CSRFInput()
-					<button class="btn btn-danger btn-sm" type="submit">Delete permanently</button>
+					<button class="btn btn-danger btn-sm" type="submit"><i class="ph ph-trash" aria-hidden="true"></i>Delete permanently</button>
 				</form>
 			}
 		</div>
@@ -277,7 +278,7 @@ templ AdminGameComposer() {
 		<form method="post" action="/admin/games" class="mt-4 grid gap-4 sm:grid-cols-2">
 			@components.CSRFInput()
 			@GameFields("", "")
-			<div class="sm:col-span-2 flex justify-end"><button class="btn btn-primary btn-sm" type="submit">Add game</button></div>
+			<div class="sm:col-span-2 flex justify-end"><button class="btn btn-primary btn-sm" type="submit"><i class="ph ph-plus" aria-hidden="true"></i>Add game</button></div>
 		</form>
 	</details>
 }

@@ -87,6 +87,7 @@ templ Layout(brand branding.Brand, title string, navigation NavigationState) {
 			@FontPreloads(brand)
 			@PWAHeadLinks(brand)
 			<link rel="stylesheet" href={ brand.Assets.Stylesheet }/>
+			<link rel="stylesheet" href={ brand.Assets.IconStylesheet }/>
 			<script src={ brand.Assets.Script } defer></script>
 		</head>
 		<body class="bg-base-100 text-base-content antialiased">
@@ -128,6 +129,7 @@ templ AuthLayout(brand branding.Brand, title string) {
 			@FontPreloads(brand)
 			@PWAHeadLinks(brand)
 			<link rel="stylesheet" href={ brand.Assets.Stylesheet }/>
+			<link rel="stylesheet" href={ brand.Assets.IconStylesheet }/>
 			<script src={ brand.Assets.Script } defer></script>
 		</head>
 		<body class="bg-base-100 text-base-content antialiased">
@@ -185,14 +187,14 @@ templ MobileNavigation(brand branding.Brand, state NavigationState) {
 	<header class="mobile-header lg:hidden">
 		<details class="mobile-drawer" data-mobile-navigation>
 			<summary class="btn btn-ghost btn-sm" aria-label="Open navigation">
-				<span aria-hidden="true">☰</span>
+				<i class="ph ph-list" aria-hidden="true"></i>
 				<span class="brand-wordmark">{ brand.Name }</span>
 			</summary>
 			<div class="mobile-drawer-backdrop" data-close-navigation></div>
 			<nav class="mobile-drawer-panel" aria-label="Mobile navigation">
 				<div class="flex items-center justify-between">
 					<span class="brand-wordmark text-xl"><span>LAN</span><span class="text-primary">surfer</span></span>
-					<button class="btn btn-ghost btn-sm" type="button" data-close-navigation aria-label="Close navigation">×</button>
+					<button class="btn btn-ghost btn-sm" type="button" data-close-navigation aria-label="Close navigation"><i class="ph ph-x" aria-hidden="true"></i></button>
 				</div>
 				@InstanceLabel(brand)
 				@NavigationLinks(state)
@@ -214,7 +216,7 @@ templ NavigationLinks(state NavigationState) {
 	<ul class="app-navigation">
 		<li>
 			<a class={ navigationLinkClass(state.Section == "game-requests") } href="/game-requests" aria-current={ navigationCurrent(state.Section == "game-requests") }>
-				<span>Game Requests</span>
+				<i class="ph ph-users-three" aria-hidden="true"></i><span>Game Requests</span>
 				if state.OpenRequests > 0 {
 					<span class={ navigationCountClass(state.Section == "game-requests") }>{ fmt.Sprint(state.OpenRequests) }</span>
 				}
@@ -222,7 +224,7 @@ templ NavigationLinks(state NavigationState) {
 		</li>
 		<li>
 			<a class={ navigationLinkClass(state.Section == "games" || state.Section == "games-followed") } href="/games" aria-current={ navigationCurrent(state.Section == "games") }>
-				<span>Games</span>
+				<i class="ph ph-game-controller" aria-hidden="true"></i><span>Games</span>
 				if state.Games > 0 {
 					<span class={ navigationCountClass(state.Section == "games") }>{ fmt.Sprint(state.Games) }</span>
 				}
@@ -230,7 +232,7 @@ templ NavigationLinks(state NavigationState) {
 		</li>
 		<li>
 			<a class={ navigationSubLinkClass(state.Section == "games-followed") } href="/games?followed=1" aria-current={ navigationCurrent(state.Section == "games-followed") }>
-				<span>Followed</span>
+				<i class="ph ph-heart" aria-hidden="true"></i><span>Followed</span>
 				if state.FollowedGames > 0 {
 					<span class={ navigationCountClass(state.Section == "games-followed") }>{ fmt.Sprint(state.FollowedGames) }</span>
 				}
@@ -239,17 +241,17 @@ templ NavigationLinks(state NavigationState) {
 		if state.Viewer != nil && state.Viewer.Role == "admin" {
 			<li>
 				<a class={ navigationLinkClass(strings.HasPrefix(state.Section, "administration")) } href="/admin/games" aria-current={ navigationCurrent(state.Section == "administration") }>
-					<span>Administration</span><span class="status-chip status-chip-host ml-auto">Orga</span>
+					<i class="ph ph-gear" aria-hidden="true"></i><span>Administration</span><span class="status-chip status-chip-host ml-auto">Orga</span>
 				</a>
 			</li>
 			<li>
 				<a class={ navigationSubLinkClass(state.Section == "administration-igdb") } href="/admin/igdb" aria-current={ navigationCurrent(state.Section == "administration-igdb") }>
-					<span>IGDB sync</span>
+					<i class="ph ph-arrows-clockwise" aria-hidden="true"></i><span>IGDB sync</span>
 				</a>
 			</li>
 			<li>
 				<a class={ navigationSubLinkClass(state.Section == "administration-pwa") } href="/admin/pwa" aria-current={ navigationCurrent(state.Section == "administration-pwa") }>
-					<span>PWA</span>
+					<i class="ph ph-device-mobile" aria-hidden="true"></i><span>PWA</span>
 				</a>
 			</li>
 		}
@@ -294,7 +296,6 @@ templ RecentlyViewedRequests(state NavigationState) {
 				for _, entry := range state.RecentlyViewed {
 					<li>
 						<a class="nav-recent-item" href={ templ.SafeURL("/game-requests/" + entry.ID) }>
-							<span class="data-text w-7 flex-none text-xs text-base-content/70" aria-hidden="true">{ GameAbbreviation(entry.GameName) }</span>
 							<span class="min-w-0 flex-1 truncate text-sm">
 								{ entry.GameName }
 								if entry.Status != "open" {
@@ -326,12 +327,12 @@ templ ViewerPanel(viewer *Viewer) {
 templ LogoutControl() {
 	<form method="post" action="/auth/logout">
 		@CSRFInput()
-		<button type="submit" class="btn btn-ghost btn-sm px-0 text-sm text-base-content/70">Log out</button>
+		<button type="submit" class="btn btn-ghost btn-sm px-0 text-sm text-base-content/70"><i class="ph ph-sign-out" aria-hidden="true"></i>Log out</button>
 	</form>
 }
 
 templ ThemeToggle() {
-	<button type="button" class="btn btn-ghost btn-sm btn-square" data-theme-toggle aria-label="Use light theme" title="Use light theme"><span data-theme-icon aria-hidden="true">☾</span></button>
+	<button type="button" class="btn btn-ghost btn-sm btn-square" data-theme-toggle aria-label="Use light theme" title="Use light theme"><i class="ph ph-moon" data-theme-icon aria-hidden="true"></i></button>
 }
 
 // InstanceLabel renders the minimum-instance-identity secondary label next to
@@ -373,7 +374,7 @@ templ FontPreloads(brand branding.Brand) {
 	<link rel="preload" as="font" type="font/woff2" crossorigin="anonymous" href={ templ.SafeURL(brand.Assets.DataFont) }/>
 }
 
-// Footer links the Terms, Privacy, and contact/reporting surfaces on every
+// Footer links the Terms and Privacy surfaces on every
 // shell. It is ordinary flow content, not fixed or sticky: each shell is a
 // full-height flex column, so it rests at the viewport bottom on short pages
 // without covering content or the live-notice toasts on long ones.
@@ -384,8 +385,6 @@ templ Footer(brand branding.Brand) {
 				<a class="link link-hover" href="/terms">Terms</a>
 				<span aria-hidden="true">·</span>
 				<a class="link link-hover" href="/privacy">Privacy</a>
-				<span aria-hidden="true">·</span>
-				<a class="link link-hover" href="/terms#contact">Contact &amp; reporting</a>
 				if imprint := webmiddleware.LegalInfo(ctx).ImprintURL; imprint != "" {
 					<span aria-hidden="true">·</span>
 					<a class="link link-hover" href={ templ.URL(imprint) } target="_blank" rel="noopener noreferrer">Imprint</a>
@@ -393,7 +392,7 @@ templ Footer(brand branding.Brand) {
 			</nav>
 			<div class="flex items-center gap-3 font-medium">
 				<span class="hidden text-base-content/50 sm:inline" aria-hidden="true">│</span>
-				<p><a class="link link-hover" href={ templ.URL(branding.RepositoryURL) } target="_blank" rel="noopener noreferrer">Github</a></p>
+				<p><a class="link link-hover icon-label" href={ templ.URL(branding.RepositoryURL) } target="_blank" rel="noopener noreferrer"><i class="ph ph-github-logo" aria-hidden="true"></i>Github</a></p>
 				<span class="text-base-content/50" aria-hidden="true">│</span>
 				@OperatorAttribution("")
 			</div>
@@ -518,8 +517,8 @@ func ViewedAgoLabel(viewedAt time.Time) string {
 }
 
 // GameAbbreviation compresses a Game's name to the short mono tag used
-// wherever a full name will not fit: the request rows and the navigation's
-// reading history. Roman numerals become digits, because "Warcraft III" reads
+// wherever a full name will not fit, such as cover fallbacks and request
+// rows. Roman numerals become digits, because "Warcraft III" reads
 // as "W3" to players and "WI" reads as nothing.
 //
 // ponytail: derived from the name, with no per-Game abbreviation field. Add

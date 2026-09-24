@@ -46,8 +46,10 @@ type Colors struct {
 // Assets contains the public paths used by templates and generated styles.
 type Assets struct {
 	Stylesheet string
-	Script     string
-	Mascot     string
+	// IconStylesheet is the bundled Phosphor Regular + Fill webfont stylesheet.
+	IconStylesheet string
+	Script         string
+	Mascot         string
 	// PrimaryFontItalic carries the wordmark, which is the only italic in the
 	// system, so it is preloaded beside the upright face.
 	PrimaryFont       string
@@ -96,6 +98,7 @@ func Default() Brand {
 		},
 		Assets: Assets{
 			Stylesheet:        "/assets/app.css",
+			IconStylesheet:    "/assets/phosphor.css",
 			Script:            "/assets/app.js",
 			Mascot:            "/assets/images/otter.png",
 			PrimaryFont:       "/assets/fonts/schibsted-grotesk-latin-wght-normal.woff2",

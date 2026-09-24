@@ -9,6 +9,7 @@ import (
 // choice: proving the pending identity's owner through a different
 // configured provider than the one that just produced the pending state.
 type OnboardingResolveOption struct {
+	Kind  string
 	Label string
 	Href  string
 }
@@ -37,7 +38,7 @@ templ Onboarding(brand branding.Brand, actionPath, gameNick, errorMessage string
 						<p class="text-sm text-base-content/70">Already have a LANsurfer account?</p>
 						<div class="mt-3 grid gap-2">
 							for _, option := range resolveOptions {
-								<a class="btn btn-quiet btn-sm w-full justify-start" href={ templ.URL(option.Href) }>{ option.Label }</a>
+								<a class="btn btn-quiet btn-sm w-full justify-start" href={ templ.URL(option.Href) }><i class={ providerIcon(option.Kind) } aria-hidden="true"></i>{ option.Label }</a>
 							}
 						</div>
 					</div>

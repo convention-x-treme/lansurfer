@@ -12,6 +12,19 @@ func providerLoginHref(kind string) string {
 	return "/auth/" + kind
 }
 
+// providerIcon is the Phosphor glyph for a configured provider kind. It keys
+// on the kind, never the operator-chosen display name.
+func providerIcon(kind string) string {
+	switch kind {
+	case "discord":
+		return "ph ph-discord-logo"
+	case "twitch":
+		return "ph ph-twitch-logo"
+	default:
+		return "ph ph-key"
+	}
+}
+
 templ Login(brand branding.Brand, providers []auth.ProviderAvailability) {
 	@components.AuthLayout(brand, "Log in") {
 		<section class="auth-stage">
@@ -32,14 +45,17 @@ templ Login(brand branding.Brand, providers []auth.ProviderAvailability) {
 							}
 							if provider.Kind == "discord" {
 								<a class="btn btn-provider-discord w-full" href={ templ.URL(providerLoginHref(provider.Kind)) }>
+									<i class={ providerIcon(provider.Kind) } aria-hidden="true"></i>
 									<span>Continue with { provider.DisplayName }</span>
 								</a>
 							} else if provider.Kind == "twitch" {
 								<a class="btn btn-provider-twitch w-full" href={ templ.URL(providerLoginHref(provider.Kind)) }>
+									<i class={ providerIcon(provider.Kind) } aria-hidden="true"></i>
 									<span>Continue with { provider.DisplayName }</span>
 								</a>
 							} else {
 								<a class="btn btn-primary w-full" href={ templ.URL(providerLoginHref(provider.Kind)) }>
+									<i class={ providerIcon(provider.Kind) } aria-hidden="true"></i>
 									<span>Continue with { provider.DisplayName }</span>
 								</a>
 							}
