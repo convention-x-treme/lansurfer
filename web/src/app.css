@@ -1213,8 +1213,10 @@
     max-width: 22rem;
   }
 
-  /* The scope chips are one exclusive choice, so they are a fieldset for the
-     grouping semantics and laid out as a plain row of chips. */
+  /* One fieldset for every list filter: the exclusive scope chips and the
+     Free places checkbox that narrows any of them. Keeping them in one
+     wrapping row lets a phone fill each line instead of stranding the
+     checkbox on a line of its own. */
   .filter-scope {
     display: inline-flex;
     flex-wrap: wrap;
@@ -1226,12 +1228,13 @@
   }
 
   /* A filter toggle is a control, so it carries the same minimum target size
-     as the buttons beside it and shows focus on the whole label. */
+     as the buttons beside it (44px on coarse pointers, below) and shows focus
+     on the whole label. */
   .filter-toggle {
     display: inline-flex;
     align-items: center;
     gap: 0.4375rem;
-    min-height: 2.75rem;
+    min-height: 2rem;
     border-radius: var(--radius-field);
     padding-inline: 0.5rem;
     font-size: 0.8125rem;
@@ -1605,6 +1608,25 @@
     height: 7.5rem;
     flex: 0 0 auto;
     object-fit: contain;
+  }
+
+  /* The no-match otter is a full-body portrait, so it stands on the panel
+     floor instead of shrinking into the square mascot slot. The artwork
+     gestures to its own right; mirroring it points the open paw at the copy. */
+  .request-empty-miss {
+    align-items: flex-end;
+    padding-block-end: 0;
+  }
+
+  .request-empty-miss img {
+    width: auto;
+    height: 11rem;
+    transform: scaleX(-1);
+  }
+
+  .request-empty-miss > div {
+    align-self: center;
+    padding-block-end: 1.5rem;
   }
 
   .composer-panel {
@@ -2029,8 +2051,20 @@ textarea::placeholder {
     width: 4.5rem;
   }
 
+  /* The Game is what a player scans for, and at phone width a one-line title
+     cuts it off after the Game Nick. Two lines carry both names; anything
+     longer still ends in an ellipsis rather than growing the row. */
   .request-row-title {
+    align-items: flex-start;
     font-size: 1rem;
+  }
+
+  .request-row-title-text {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    white-space: normal;
   }
 
   /* The screen title drops to the top bar's size rather than setting three
@@ -2050,6 +2084,40 @@ textarea::placeholder {
   .request-empty img {
     width: 5rem;
     height: 5rem;
+  }
+
+  /* Phones: copy spans the panel; the action shares the floor row with the
+     otter, whose unmirrored paw now points back at the button. */
+  .request-empty-miss {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0 1rem;
+  }
+
+  .request-empty-miss > div {
+    display: contents;
+  }
+
+  .request-empty-miss h2,
+  .request-empty-miss p {
+    grid-column: 1 / -1;
+  }
+
+  .request-empty-miss a {
+    grid-row: 3;
+    grid-column: 1;
+    align-self: center;
+    justify-self: start;
+    margin-block-start: 0;
+  }
+
+  .request-empty-miss img {
+    grid-row: 3;
+    grid-column: 2;
+    width: auto;
+    height: 7rem;
+    margin-block-start: 0.75rem;
+    transform: none;
   }
 
   .member-row,
@@ -2103,8 +2171,15 @@ textarea::placeholder {
   .alias-chip,
   .input,
   .select,
-  .start-choice span {
+  .start-choice span,
+  .filter-toggle {
     min-height: 2.75rem;
+  }
+
+  /* Below 16px, iOS zooms the page into a focused field and leaves it
+     zoomed after the search is typed. */
+  .request-search {
+    font-size: 1rem;
   }
 
   .btn-sm.btn-square {

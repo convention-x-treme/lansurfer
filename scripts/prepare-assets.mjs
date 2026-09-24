@@ -26,8 +26,14 @@ await cp(
   new URL("../node_modules/@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2", import.meta.url),
   new URL("fonts/jetbrains-mono-latin-wght-normal.woff2", output),
 );
-await cp(new URL("../docs/mascot/initial-mascot.png", import.meta.url), new URL("images/otter.png", output));
-await cp(new URL("../docs/mascot/mascot-welcome-pose.png", import.meta.url), new URL("images/mascot-welcome-pose.png", output));
+// Mascots ship as pre-sized WebP renditions of the masters in docs/mascot, at
+// twice their largest rendered box (otter 240px tall, otter-sad 352px tall and
+// trimmed to its artwork, welcome pose 1040px wide). After replacing a master,
+// regenerate its rendition with Pillow: Image.resize(..., LANCZOS) then
+// save(path, "WEBP", quality=85, method=6).
+await cp(new URL("../docs/mascot/web/otter.webp", import.meta.url), new URL("images/otter.webp", output));
+await cp(new URL("../docs/mascot/web/otter-sad.webp", import.meta.url), new URL("images/otter-sad.webp", output));
+await cp(new URL("../docs/mascot/web/mascot-welcome-pose.webp", import.meta.url), new URL("images/mascot-welcome-pose.webp", output));
 
 // Temporary PWA icon (see docs/superpowers/pwa/2026-09-20-track-d-instance-pwa-design.md).
 // These are finished, pre-generated renditions, copied verbatim like the

@@ -50,6 +50,8 @@ type Assets struct {
 	IconStylesheet string
 	Script         string
 	Mascot         string
+	// MascotSad is shown when a Game Request filter matches nothing.
+	MascotSad string
 	// PrimaryFontItalic carries the wordmark, which is the only italic in the
 	// system, so it is preloaded beside the upright face.
 	PrimaryFont       string
@@ -100,7 +102,8 @@ func Default() Brand {
 			Stylesheet:        "/assets/app.css",
 			IconStylesheet:    "/assets/phosphor.css",
 			Script:            "/assets/app.js",
-			Mascot:            "/assets/images/otter.png",
+			Mascot:            "/assets/images/otter.webp",
+			MascotSad:         "/assets/images/otter-sad.webp",
 			PrimaryFont:       "/assets/fonts/schibsted-grotesk-latin-wght-normal.woff2",
 			PrimaryFontItalic: "/assets/fonts/schibsted-grotesk-latin-wght-italic.woff2",
 			DataFont:          "/assets/fonts/jetbrains-mono-latin-wght-normal.woff2",

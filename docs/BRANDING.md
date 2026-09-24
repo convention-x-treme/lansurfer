@@ -168,6 +168,8 @@ Minimum instance identity is not Event-specific and must not grow into a second 
 
 The LANsurfer otter is a guide, not a decorative pattern. The [initial-mascot.png](mascot/initial-mascot.png) is the original source artwork. Additional poses include [mascot-welcome-pose.png](mascot/mascot-welcome-pose.png) and [mascot-with-surfbord.png](mascot/mascot-with-surfbord.png); [mascot-sprite-sheet.png](mascot/mascot-sprite-sheet.png) contains the mascot sprite sheet.
 
+The app serves pre-sized WebP renditions from [mascot/web/](mascot/web/), not the masters. After replacing a master, regenerate its rendition as described in `scripts/prepare-assets.mjs`.
+
 Use the mascot:
 
 - for a welcome or marketing hero;
