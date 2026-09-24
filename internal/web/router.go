@@ -52,20 +52,24 @@ type Discovery interface {
 }
 
 type RouterDependencies struct {
-	Ready               ReadyCheck
-	Authentication      handler.Authentication
-	Sessions            Sessions
-	PendingIdentities   handler.PendingIdentities
-	AccountRegistration handler.AccountRegistration
-	GameNickClaims      handler.GameNickClaims
-	Identities          handler.IdentityLookup
-	IdentityUnlinker    handler.IdentityUnlinker
-	Games               handler.GameAdministration
-	ProviderSync        handler.ProviderSyncAdministration
-	Discovery           Discovery
-	GameResolver        handler.GameResolver
-	GameRequests        handler.GameRequestCommands
-	RequestQueries      handler.GameRequestQueries
+	Ready                ReadyCheck
+	Authentication       handler.Authentication
+	Sessions             Sessions
+	PendingIdentities    handler.PendingIdentities
+	AccountRegistration  handler.AccountRegistration
+	GameNickClaims       handler.GameNickClaims
+	Identities           handler.IdentityLookup
+	IdentityUnlinker     handler.IdentityUnlinker
+	Games                handler.GameAdministration
+	ProviderSync         handler.ProviderSyncAdministration
+	Discovery            Discovery
+	GameResolver         handler.GameResolver
+	GameRequests         handler.GameRequestCommands
+	DiscordSetup         handler.DiscordDestinationSetup
+	DiscordAuthorization handler.DiscordDestinationAuthorization
+	DiscordConnector     handler.DiscordDestinationConnector
+	DiscordLifecycle     handler.DiscordDestinationLifecycle
+	RequestQueries       handler.GameRequestQueries
 	// NavigationQueries and NavigationCatalog back the shared sidebar every
 	// authenticated screen renders. The same concrete read model and
 	// discovery service behind RequestQueries/Discovery satisfy them; saying
@@ -134,6 +138,14 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 	)
 	gamesHandler := handler.NewGames(dependencies.Discovery, navigation, brand)
 	gameRequestsHandler := handler.NewGameRequests(dependencies.GameRequests, dependencies.RequestQueries, dependencies.GameResolver, dependencies.Discovery, navigation, brand)
+	var discordDeliveryHandler *handler.DiscordDelivery
+	if dependencies.DiscordSetup != nil && dependencies.DiscordAuthorization != nil &&
+		dependencies.DiscordConnector != nil && dependencies.DiscordLifecycle != nil {
+		discordDeliveryHandler = handler.NewDiscordDelivery(
+			dependencies.DiscordSetup, dependencies.DiscordAuthorization, dependencies.DiscordConnector,
+			dependencies.DiscordLifecycle, dependencies.SecureCookies,
+		)
+	}
 	realtimeHandler := handler.NewRealtime(dependencies.Realtime)
 	var notificationSettingsHandler *handler.NotificationSettingsHandler
 	if dependencies.Subscriptions != nil {
@@ -250,27 +262,35 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 		if dependencies.Realtime != nil {
 			authenticated.With(handler.RequireAuthentication, handler.RequireGameNick).Get("/events/game-requests", realtimeHandler.GameRequests)
 		}
-		if dependencies.Games != nil {
+		if dependencies.Games != nil || discordDeliveryHandler != nil {
 			authenticated.Route("/admin", func(admin chi.Router) {
 				admin.Use(handler.RequireAdmin, handler.RequireGameNick)
-				admin.Get("/games", administrationHandler.Games)
-				admin.Post("/games", administrationHandler.CreateGame)
-				admin.Post("/games/{gameID}", administrationHandler.UpdateGame)
-				admin.Post("/games/{gameID}/active", administrationHandler.SetGameActive)
-				admin.Post("/games/{gameID}/aliases", administrationHandler.AddGameAlias)
-				admin.Post("/games/{gameID}/aliases/{aliasID}/remove", administrationHandler.RemoveGameAlias)
-				admin.Get("/games/{gameID}/igdb", administrationHandler.GameIGDB)
-				admin.Post("/games/{gameID}/igdb", administrationHandler.LinkGameIGDB)
-				admin.Post("/games/{gameID}/igdb/unlink", administrationHandler.UnlinkGameIGDB)
-				admin.Get("/games/{gameID}/merge", administrationHandler.MergeGamePage)
-				admin.Post("/games/{gameID}/merge", administrationHandler.MergeGame)
-				admin.Post("/games/{gameID}/delete", administrationHandler.DeleteGame)
-				if dependencies.ProviderSync != nil {
-					admin.Get("/igdb", administrationHandler.IGDB)
-					admin.Get("/igdb/status", administrationHandler.IGDBStatus)
-					admin.Post("/igdb/sync", administrationHandler.SyncIGDB)
+				if dependencies.Games != nil {
+					admin.Get("/games", administrationHandler.Games)
+					admin.Post("/games", administrationHandler.CreateGame)
+					admin.Post("/games/{gameID}", administrationHandler.UpdateGame)
+					admin.Post("/games/{gameID}/active", administrationHandler.SetGameActive)
+					admin.Post("/games/{gameID}/aliases", administrationHandler.AddGameAlias)
+					admin.Post("/games/{gameID}/aliases/{aliasID}/remove", administrationHandler.RemoveGameAlias)
+					admin.Get("/games/{gameID}/igdb", administrationHandler.GameIGDB)
+					admin.Post("/games/{gameID}/igdb", administrationHandler.LinkGameIGDB)
+					admin.Post("/games/{gameID}/igdb/unlink", administrationHandler.UnlinkGameIGDB)
+					admin.Get("/games/{gameID}/merge", administrationHandler.MergeGamePage)
+					admin.Post("/games/{gameID}/merge", administrationHandler.MergeGame)
+					admin.Post("/games/{gameID}/delete", administrationHandler.DeleteGame)
+					if dependencies.ProviderSync != nil {
+						admin.Get("/igdb", administrationHandler.IGDB)
+						admin.Get("/igdb/status", administrationHandler.IGDBStatus)
+						admin.Post("/igdb/sync", administrationHandler.SyncIGDB)
+					}
+					admin.Get("/pwa", administrationHandler.PWA)
 				}
-				admin.Get("/pwa", administrationHandler.PWA)
+				if discordDeliveryHandler != nil {
+					admin.Post("/discord/connect", discordDeliveryHandler.Start)
+					admin.Post("/discord/reconnect", discordDeliveryHandler.Start)
+					admin.Get("/discord/callback", discordDeliveryHandler.Callback)
+					admin.Post("/discord/disconnect", discordDeliveryHandler.Disconnect)
+				}
 			})
 		}
 	})

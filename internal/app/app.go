@@ -138,6 +138,19 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		return err
 	}
 	notificationWorker := newNotificationWorker(notificationStore, transports, logger)
+	var discordSetup *notification.DiscordSetupService
+	var discordAuthorization *notification.DiscordWebhookOAuthClient
+	var discordConnector *notification.DiscordConnectService
+	var discordLifecycle *notification.DiscordLifecycleService
+	if cfg.DiscordDelivery != nil {
+		discordAuthorization = notification.NewDiscordWebhookOAuthClient(notification.DiscordWebhookOAuthConfig{
+			ClientID: cfg.DiscordDelivery.ClientID, ClientSecret: cfg.DiscordDelivery.ClientSecret,
+			RedirectURL: cfg.BaseURL + "/admin/discord/callback",
+		})
+		discordSetup = notification.NewDiscordSetupService(notificationStore)
+		discordConnector = notification.NewDiscordConnectService(notificationStore, discordAuthorization, cfg.DataEncryptionKey, logger)
+		discordLifecycle = notification.NewDiscordLifecycleService(notificationStore, discordAuthorization, cfg.DataEncryptionKey, logger)
+	}
 	var subscriptionService *notification.SubscriptionService
 	if cfg.WebPush != nil {
 		subscriptionService, err = newSubscriptionService(notificationStore, cfg.DataEncryptionKey)
@@ -152,32 +165,36 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	server := &http.Server{
 		Addr: cfg.ListenAddr,
 		Handler: web.NewRouter(web.RouterDependencies{
-			Ready:               postgres.ReadyCheck(pool),
-			Authentication:      oauthService,
-			Sessions:            sessionService,
-			PendingIdentities:   flowService,
-			AccountRegistration: accountRegistration,
-			GameNickClaims:      userService,
-			Identities:          identityStore,
-			IdentityUnlinker:    identityStore,
-			Games:               gameService,
-			Discovery:           gameDiscovery,
-			GameResolver:        gameDiscovery,
-			GameRequests:        gameRequests,
-			RequestQueries:      gameRequestQueries,
-			NavigationQueries:   gameRequestQueries,
-			NavigationCatalog:   gameDiscovery,
-			Realtime:            realtime,
-			Covers:              covers,
-			ProviderSync:        igdbSyncService,
-			Subscriptions:       subscriptionService,
-			PushDevices:         subscriptionService,
-			VAPIDPublicKey:      vapidPublicKey,
-			WebPushConfigured:   cfg.WebPush != nil,
-			SecureCookies:       strings.HasPrefix(cfg.BaseURL, "https://"),
-			Logger:              logger,
-			TrustedProxies:      cfg.TrustedProxies,
-			InstanceName:        cfg.InstanceName,
+			Ready:                postgres.ReadyCheck(pool),
+			Authentication:       oauthService,
+			Sessions:             sessionService,
+			PendingIdentities:    flowService,
+			AccountRegistration:  accountRegistration,
+			GameNickClaims:       userService,
+			Identities:           identityStore,
+			IdentityUnlinker:     identityStore,
+			Games:                gameService,
+			Discovery:            gameDiscovery,
+			DiscordSetup:         discordSetup,
+			DiscordAuthorization: discordAuthorization,
+			DiscordConnector:     discordConnector,
+			DiscordLifecycle:     discordLifecycle,
+			GameResolver:         gameDiscovery,
+			GameRequests:         gameRequests,
+			RequestQueries:       gameRequestQueries,
+			NavigationQueries:    gameRequestQueries,
+			NavigationCatalog:    gameDiscovery,
+			Realtime:             realtime,
+			Covers:               covers,
+			ProviderSync:         igdbSyncService,
+			Subscriptions:        subscriptionService,
+			PushDevices:          subscriptionService,
+			VAPIDPublicKey:       vapidPublicKey,
+			WebPushConfigured:    cfg.WebPush != nil,
+			SecureCookies:        strings.HasPrefix(cfg.BaseURL, "https://"),
+			Logger:               logger,
+			TrustedProxies:       cfg.TrustedProxies,
+			InstanceName:         cfg.InstanceName,
 			Legal: webmiddleware.LegalIdentity{
 				EntityName: cfg.Legal.EntityName, Address: cfg.Legal.Address,
 				ContactEmail: cfg.Legal.ContactEmail, ImprintURL: cfg.Legal.ImprintURL,

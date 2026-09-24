@@ -285,7 +285,11 @@ func (h *AuthenticationHandler) providers() []auth.ProviderAvailability {
 // tabs/flows from one browser so a resolution flow started from the
 // onboarding page can still reach the original pending identity.
 func (h *AuthenticationHandler) ensureBrowserBinding(w http.ResponseWriter, r *http.Request) (string, error) {
-	if value, ok := h.browserBinding(r); ok {
+	return ensureBrowserBinding(w, r, h.secureCookies)
+}
+
+func ensureBrowserBinding(w http.ResponseWriter, r *http.Request, secure bool) (string, error) {
+	if value, ok := browserBindingCookie(r); ok {
 		return value, nil
 	}
 	value, err := randomBrowserBinding()
@@ -294,7 +298,7 @@ func (h *AuthenticationHandler) ensureBrowserBinding(w http.ResponseWriter, r *h
 	}
 	http.SetCookie(w, &http.Cookie{
 		Name: browserBindingCookieName, Value: value, Path: "/",
-		MaxAge: int(browserBindingLifetime.Seconds()), HttpOnly: true, Secure: h.secureCookies, SameSite: http.SameSiteLaxMode,
+		MaxAge: int(browserBindingLifetime.Seconds()), HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode,
 	})
 	return value, nil
 }
