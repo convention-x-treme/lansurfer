@@ -131,10 +131,15 @@ type TrendingGame struct {
 // system callers, such as the notification worker, that never personalize
 // for a viewer and so never carry a viewer ID.
 type RequestSummary struct {
-	GameID   string
-	GameName string
-	StartsAt time.Time
-	Status   domain.Status
+	RequestID       string
+	GameID          string
+	GameName        string
+	StartsAt        time.Time
+	Status          domain.Status
+	MemberCount     int64
+	MaxPlayers      *int32
+	CreatorGameNick string
+	Description     string
 }
 
 type Store struct {
@@ -274,8 +279,10 @@ func (s *Store) GetGameRequestSummary(ctx context.Context, gameRequestID string)
 		return RequestSummary{}, fmt.Errorf("get game request summary: %w", err)
 	}
 	return RequestSummary{
-		GameID: row.GameID, GameName: row.GameName,
+		RequestID: row.RequestID, GameID: row.GameID, GameName: row.GameName,
 		StartsAt: row.StartsAt.Time, Status: domain.Status(row.Status),
+		MemberCount: row.MemberCount, MaxPlayers: int4Pointer(row.MaxPlayers),
+		CreatorGameNick: row.CreatorGameNick.String, Description: row.Description,
 	}, nil
 }
 

@@ -106,14 +106,18 @@ LIMIT sqlc.arg(result_limit);
 -- name: CountOpenGameRequests :one
 SELECT count(*) FROM game_requests WHERE status = 'open';
 
--- GetGameRequestSummary backs system callers (e.g. the notification worker)
--- that resolve a Game Request without a viewer to personalize for.
+-- GetGameRequestSummary backs system callers that need a current request
+-- snapshot without viewer-specific fields or roster/activity data.
 -- name: GetGameRequestSummary :one
 SELECT gr.id::text AS request_id, g.id::text AS game_id, g.name AS game_name,
-       gr.starts_at, gr.status
+       gr.starts_at, gr.status, gr.max_players, count(m.user_id) AS member_count,
+       u.game_nick AS creator_game_nick, gr.description
 FROM game_requests gr
 JOIN games g ON g.id = gr.game_id
-WHERE gr.id = sqlc.arg(id)::uuid;
+JOIN users u ON u.id = gr.creator_id
+LEFT JOIN game_request_members m ON m.game_request_id = gr.id
+WHERE gr.id = sqlc.arg(id)::uuid
+GROUP BY gr.id, g.id, g.name, u.game_nick;
 
 -- ListRecentlyViewedGameRequests backs the navigation's "Recently viewed"
 -- list. It is per-viewer reading history, so it deliberately ignores status:

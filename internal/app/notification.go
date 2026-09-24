@@ -66,7 +66,11 @@ func (r notificationRequestSummaries) GetGameRequestSummary(ctx context.Context,
 	if err != nil {
 		return notification.GameRequestSummary{}, err
 	}
-	return notification.GameRequestSummary{GameID: summary.GameID, GameName: summary.GameName, StartsAt: summary.StartsAt}, nil
+	return notification.GameRequestSummary{
+		RequestID: summary.RequestID, GameID: summary.GameID, GameName: summary.GameName,
+		StartsAt: summary.StartsAt, Status: string(summary.Status), MemberCount: summary.MemberCount,
+		MaxPlayers: summary.MaxPlayers, CreatorGameNick: summary.CreatorGameNick, Description: summary.Description,
+	}, nil
 }
 
 type notificationGameNickReader struct {

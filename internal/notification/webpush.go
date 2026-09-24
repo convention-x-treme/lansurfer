@@ -9,14 +9,19 @@ import (
 	"time"
 )
 
-// GameRequestSummary is the minimal, viewer-independent Game Request context
-// WebPushTransport needs: which Game (for follower resolution and payload
-// copy) and when it starts (for the payload). Resolved fresh at both Targets
-// and Send time, never cached across a delayed retry.
+// GameRequestSummary is the viewer-independent current request snapshot
+// notification transports use for recipient resolution and message content.
+// Resolved fresh at delivery time, never cached across a delayed retry.
 type GameRequestSummary struct {
-	GameID   string
-	GameName string
-	StartsAt time.Time
+	RequestID       string
+	GameID          string
+	GameName        string
+	StartsAt        time.Time
+	Status          string
+	MemberCount     int64
+	MaxPlayers      *int32
+	CreatorGameNick string
+	Description     string
 }
 
 // GameFollowers resolves which users follow one Game, for `created`
