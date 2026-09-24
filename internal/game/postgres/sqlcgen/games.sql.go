@@ -24,12 +24,28 @@ func (q *Queries) ActiveGameExists(ctx context.Context, gameID pgtype.UUID) (boo
 	return exists, err
 }
 
+const adminGameIGDBLink = `-- name: AdminGameIGDBLink :one
+SELECT external_id
+FROM game_external_ids
+WHERE game_id = $1::uuid
+  AND lower(btrim(provider)) = 'igdb'
+`
+
+func (q *Queries) AdminGameIGDBLink(ctx context.Context, gameID pgtype.UUID) (string, error) {
+	row := q.db.QueryRow(ctx, adminGameIGDBLink, gameID)
+	var external_id string
+	err := row.Scan(&external_id)
+	return external_id, err
+}
+
 const browseSubscriptionGames = `-- name: BrowseSubscriptionGames :many
 SELECT g.id::text, g.name, g.slug,
        enrichment.cover_image_id,
        enrichment.game_type,
        enrichment.platform_names,
        enrichment.first_release_date,
+       enrichment.summary,
+       enrichment.genre_names,
        EXISTS (
            SELECT 1
            FROM game_subscriptions gs
@@ -73,6 +89,8 @@ type BrowseSubscriptionGamesRow struct {
 	GameType         pgtype.Text
 	PlatformNames    []string
 	FirstReleaseDate pgtype.Timestamptz
+	Summary          pgtype.Text
+	GenreNames       []string
 	Subscribed       bool
 }
 
@@ -101,6 +119,8 @@ func (q *Queries) BrowseSubscriptionGames(ctx context.Context, arg BrowseSubscri
 			&i.GameType,
 			&i.PlatformNames,
 			&i.FirstReleaseDate,
+			&i.Summary,
+			&i.GenreNames,
 			&i.Subscribed,
 		); err != nil {
 			return nil, err
@@ -111,6 +131,70 @@ func (q *Queries) BrowseSubscriptionGames(ctx context.Context, arg BrowseSubscri
 		return nil, err
 	}
 	return items, nil
+}
+
+const copyGameAliases = `-- name: CopyGameAliases :exec
+INSERT INTO game_aliases (game_id, alias, created_at)
+SELECT $1::uuid, alias, created_at
+FROM game_aliases
+WHERE game_id = $2::uuid
+ON CONFLICT DO NOTHING
+`
+
+type CopyGameAliasesParams struct {
+	TargetID pgtype.UUID
+	SourceID pgtype.UUID
+}
+
+func (q *Queries) CopyGameAliases(ctx context.Context, arg CopyGameAliasesParams) error {
+	_, err := q.db.Exec(ctx, copyGameAliases, arg.TargetID, arg.SourceID)
+	return err
+}
+
+const copyGameSubscriptions = `-- name: CopyGameSubscriptions :exec
+INSERT INTO game_subscriptions (user_id, game_id, created_at)
+SELECT user_id, $1::uuid, created_at
+FROM game_subscriptions
+WHERE game_id = $2::uuid
+ON CONFLICT (user_id, game_id) DO NOTHING
+`
+
+type CopyGameSubscriptionsParams struct {
+	TargetID pgtype.UUID
+	SourceID pgtype.UUID
+}
+
+func (q *Queries) CopyGameSubscriptions(ctx context.Context, arg CopyGameSubscriptionsParams) error {
+	_, err := q.db.Exec(ctx, copyGameSubscriptions, arg.TargetID, arg.SourceID)
+	return err
+}
+
+const countActiveGames = `-- name: CountActiveGames :one
+SELECT count(*) FROM games WHERE active
+`
+
+// CountActiveGames states how large the authoritative local catalog is. It
+// counts local Games only: the synchronized provider index is a search
+// surface, not a catalog the navigation can meaningfully total.
+func (q *Queries) CountActiveGames(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, countActiveGames)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countSubscribedGames = `-- name: CountSubscribedGames :one
+SELECT count(*)
+FROM game_subscriptions gs
+JOIN games g ON g.id = gs.game_id
+WHERE gs.user_id = $1::uuid AND g.active
+`
+
+func (q *Queries) CountSubscribedGames(ctx context.Context, userID pgtype.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countSubscribedGames, userID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
 }
 
 const createGame = `-- name: CreateGame :one
@@ -170,6 +254,19 @@ func (q *Queries) CreateGameAlias(ctx context.Context, arg CreateGameAliasParams
 	return i, err
 }
 
+const deleteGame = `-- name: DeleteGame :execrows
+DELETE FROM games
+WHERE id = $1::uuid
+`
+
+func (q *Queries) DeleteGame(ctx context.Context, gameID pgtype.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteGame, gameID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const deleteGameAlias = `-- name: DeleteGameAlias :execrows
 DELETE FROM game_aliases
 WHERE id = $1::uuid AND game_id = $2::uuid
@@ -186,6 +283,114 @@ func (q *Queries) DeleteGameAlias(ctx context.Context, arg DeleteGameAliasParams
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const deleteGameIGDBEnrichment = `-- name: DeleteGameIGDBEnrichment :exec
+DELETE FROM game_igdb_enrichment
+WHERE game_id = $1::uuid
+`
+
+func (q *Queries) DeleteGameIGDBEnrichment(ctx context.Context, gameID pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, deleteGameIGDBEnrichment, gameID)
+	return err
+}
+
+const deleteGameIGDBLink = `-- name: DeleteGameIGDBLink :execrows
+DELETE FROM game_external_ids
+WHERE game_id = $1::uuid
+  AND lower(btrim(provider)) = 'igdb'
+`
+
+func (q *Queries) DeleteGameIGDBLink(ctx context.Context, gameID pgtype.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteGameIGDBLink, gameID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const deleteGameSubscriptions = `-- name: DeleteGameSubscriptions :exec
+DELETE FROM game_subscriptions
+WHERE game_id = $1::uuid
+`
+
+func (q *Queries) DeleteGameSubscriptions(ctx context.Context, gameID pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, deleteGameSubscriptions, gameID)
+	return err
+}
+
+const enrichmentMultiplayerModesForGame = `-- name: EnrichmentMultiplayerModesForGame :many
+SELECT ordinal,
+       platform_igdb_id,
+       platform_name,
+       campaign_coop,
+       drop_in,
+       lan_coop,
+       offline_coop,
+       online_coop,
+       split_screen,
+       split_screen_online,
+       offline_coop_max,
+       offline_max,
+       online_coop_max,
+       online_max
+FROM game_igdb_enrichment_multiplayer_modes
+WHERE game_id = $1::uuid
+ORDER BY ordinal
+`
+
+type EnrichmentMultiplayerModesForGameRow struct {
+	Ordinal           int32
+	PlatformIgdbID    pgtype.Int8
+	PlatformName      pgtype.Text
+	CampaignCoop      bool
+	DropIn            bool
+	LanCoop           bool
+	OfflineCoop       bool
+	OnlineCoop        bool
+	SplitScreen       bool
+	SplitScreenOnline bool
+	OfflineCoopMax    pgtype.Int4
+	OfflineMax        pgtype.Int4
+	OnlineCoopMax     pgtype.Int4
+	OnlineMax         pgtype.Int4
+}
+
+// Read-only: the last-known-good multiplayer snapshot of one Game, used by
+// the Admin UI game card. Ordered by ordinal to preserve provider order.
+func (q *Queries) EnrichmentMultiplayerModesForGame(ctx context.Context, gameID pgtype.UUID) ([]EnrichmentMultiplayerModesForGameRow, error) {
+	rows, err := q.db.Query(ctx, enrichmentMultiplayerModesForGame, gameID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []EnrichmentMultiplayerModesForGameRow
+	for rows.Next() {
+		var i EnrichmentMultiplayerModesForGameRow
+		if err := rows.Scan(
+			&i.Ordinal,
+			&i.PlatformIgdbID,
+			&i.PlatformName,
+			&i.CampaignCoop,
+			&i.DropIn,
+			&i.LanCoop,
+			&i.OfflineCoop,
+			&i.OnlineCoop,
+			&i.SplitScreen,
+			&i.SplitScreenOnline,
+			&i.OfflineCoopMax,
+			&i.OfflineMax,
+			&i.OnlineCoopMax,
+			&i.OnlineMax,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const followGame = `-- name: FollowGame :execrows
@@ -208,6 +413,43 @@ func (q *Queries) FollowGame(ctx context.Context, arg FollowGameParams) (int64, 
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const gameUsage = `-- name: GameUsage :one
+SELECT (SELECT count(*) FROM game_requests WHERE game_id = $1::uuid)::bigint AS game_request_count,
+       (SELECT count(*) FROM game_subscriptions WHERE game_id = $1::uuid)::bigint AS subscription_count
+`
+
+type GameUsageRow struct {
+	GameRequestCount  int64
+	SubscriptionCount int64
+}
+
+func (q *Queries) GameUsage(ctx context.Context, gameID pgtype.UUID) (GameUsageRow, error) {
+	row := q.db.QueryRow(ctx, gameUsage, gameID)
+	var i GameUsageRow
+	err := row.Scan(&i.GameRequestCount, &i.SubscriptionCount)
+	return i, err
+}
+
+const iGDBLinkOwner = `-- name: IGDBLinkOwner :one
+SELECT linked_game.id::text AS game_id, linked_game.name AS game_name
+FROM game_external_ids mapping
+JOIN games linked_game ON linked_game.id = mapping.game_id
+WHERE lower(btrim(mapping.provider)) = 'igdb'
+  AND mapping.external_id = $1::text
+`
+
+type IGDBLinkOwnerRow struct {
+	GameID   string
+	GameName string
+}
+
+func (q *Queries) IGDBLinkOwner(ctx context.Context, externalID string) (IGDBLinkOwnerRow, error) {
+	row := q.db.QueryRow(ctx, iGDBLinkOwner, externalID)
+	var i IGDBLinkOwnerRow
+	err := row.Scan(&i.GameID, &i.GameName)
+	return i, err
 }
 
 const listGameAliases = `-- name: ListGameAliases :many
@@ -267,8 +509,34 @@ func (q *Queries) ListGameFollowers(ctx context.Context, gameID pgtype.UUID) ([]
 }
 
 const listGames = `-- name: ListGames :many
-SELECT g.id::text, g.name, g.slug, g.active, g.created_at, g.updated_at
+SELECT g.id::text, g.name, g.slug, g.active, g.created_at, g.updated_at,
+       COALESCE(mapping.external_id, '')::text AS igdb_external_id,
+       (enrichment.game_id IS NOT NULL)::boolean AS igdb_enriched,
+       COALESCE(enrichment.summary, '')::text AS enrichment_summary,
+       COALESCE(enrichment.cover_image_id, '')::text AS cover_image_id,
+       -- The canonical igdb.com page is addressed by IGDB's own slug, which
+       -- lives in the synchronized provider index rather than in the
+       -- enrichment snapshot. The cast is safe because it reads the
+       -- enrichment external ID, whose CHECK constraint is numeric; a
+       -- provider that is disabled or has never completed a baseline has no
+       -- active generation and yields the empty string.
+       COALESCE((
+           SELECT provider_game.slug
+           FROM igdb_game_index provider_game
+           JOIN igdb_provider_state provider_state
+             ON provider_state.singleton
+            AND provider_state.active_generation_id = provider_game.generation_id
+           WHERE provider_game.igdb_id = enrichment.external_id::bigint
+       ), '')::text AS igdb_slug,
+       enrichment.genre_names,
+       enrichment.game_mode_names,
+       (SELECT count(*) FROM game_requests request WHERE request.game_id = g.id)::bigint AS game_request_count,
+       (SELECT count(*) FROM game_subscriptions subscription WHERE subscription.game_id = g.id)::bigint AS subscription_count
 FROM games g
+LEFT JOIN game_external_ids mapping
+  ON mapping.game_id = g.id
+ AND lower(btrim(mapping.provider)) = 'igdb'
+LEFT JOIN game_igdb_enrichment enrichment ON enrichment.game_id = g.id
 WHERE $1::text = ''
    OR strpos(lower(g.name), lower($1::text)) > 0
    OR EXISTS (
@@ -281,12 +549,21 @@ ORDER BY g.active DESC, lower(g.name), g.id
 `
 
 type ListGamesRow struct {
-	GID       string
-	Name      string
-	Slug      string
-	Active    bool
-	CreatedAt pgtype.Timestamptz
-	UpdatedAt pgtype.Timestamptz
+	GID               string
+	Name              string
+	Slug              string
+	Active            bool
+	CreatedAt         pgtype.Timestamptz
+	UpdatedAt         pgtype.Timestamptz
+	IgdbExternalID    string
+	IgdbEnriched      bool
+	EnrichmentSummary string
+	CoverImageID      string
+	IgdbSlug          string
+	GenreNames        []string
+	GameModeNames     []string
+	GameRequestCount  int64
+	SubscriptionCount int64
 }
 
 func (q *Queries) ListGames(ctx context.Context, search string) ([]ListGamesRow, error) {
@@ -305,6 +582,15 @@ func (q *Queries) ListGames(ctx context.Context, search string) ([]ListGamesRow,
 			&i.Active,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.IgdbExternalID,
+			&i.IgdbEnriched,
+			&i.EnrichmentSummary,
+			&i.CoverImageID,
+			&i.IgdbSlug,
+			&i.GenreNames,
+			&i.GameModeNames,
+			&i.GameRequestCount,
+			&i.SubscriptionCount,
 		); err != nil {
 			return nil, err
 		}
@@ -322,6 +608,8 @@ SELECT g.id::text, g.name, g.slug,
        enrichment.game_type,
        enrichment.platform_names,
        enrichment.first_release_date,
+       enrichment.summary,
+       enrichment.genre_names,
        true AS subscribed
 FROM game_subscriptions gs
 JOIN games g ON g.id = gs.game_id
@@ -339,6 +627,8 @@ type ListSubscribedGamesRow struct {
 	GameType         pgtype.Text
 	PlatformNames    []string
 	FirstReleaseDate pgtype.Timestamptz
+	Summary          pgtype.Text
+	GenreNames       []string
 	Subscribed       bool
 }
 
@@ -359,7 +649,184 @@ func (q *Queries) ListSubscribedGames(ctx context.Context, userID pgtype.UUID) (
 			&i.GameType,
 			&i.PlatformNames,
 			&i.FirstReleaseDate,
+			&i.Summary,
+			&i.GenreNames,
 			&i.Subscribed,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lockAdminGame = `-- name: LockAdminGame :one
+SELECT id::text
+FROM games
+WHERE id = $1::uuid
+FOR UPDATE
+`
+
+func (q *Queries) LockAdminGame(ctx context.Context, gameID pgtype.UUID) (string, error) {
+	row := q.db.QueryRow(ctx, lockAdminGame, gameID)
+	var id string
+	err := row.Scan(&id)
+	return id, err
+}
+
+const lockGamesForMerge = `-- name: LockGamesForMerge :many
+SELECT id::text
+FROM games
+WHERE id IN ($1::uuid, $2::uuid)
+ORDER BY id
+FOR UPDATE
+`
+
+type LockGamesForMergeParams struct {
+	SourceID pgtype.UUID
+	TargetID pgtype.UUID
+}
+
+func (q *Queries) LockGamesForMerge(ctx context.Context, arg LockGamesForMergeParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, lockGamesForMerge, arg.SourceID, arg.TargetID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const moveGameIGDBEnrichment = `-- name: MoveGameIGDBEnrichment :exec
+UPDATE game_igdb_enrichment
+SET game_id = $1::uuid,
+    updated_at = now()
+WHERE game_id = $2::uuid
+`
+
+type MoveGameIGDBEnrichmentParams struct {
+	TargetID pgtype.UUID
+	SourceID pgtype.UUID
+}
+
+func (q *Queries) MoveGameIGDBEnrichment(ctx context.Context, arg MoveGameIGDBEnrichmentParams) error {
+	_, err := q.db.Exec(ctx, moveGameIGDBEnrichment, arg.TargetID, arg.SourceID)
+	return err
+}
+
+const moveGameIGDBLink = `-- name: MoveGameIGDBLink :exec
+UPDATE game_external_ids
+SET game_id = $1::uuid
+WHERE game_id = $2::uuid
+  AND lower(btrim(provider)) = 'igdb'
+`
+
+type MoveGameIGDBLinkParams struct {
+	TargetID pgtype.UUID
+	SourceID pgtype.UUID
+}
+
+func (q *Queries) MoveGameIGDBLink(ctx context.Context, arg MoveGameIGDBLinkParams) error {
+	_, err := q.db.Exec(ctx, moveGameIGDBLink, arg.TargetID, arg.SourceID)
+	return err
+}
+
+const moveGameRequests = `-- name: MoveGameRequests :exec
+UPDATE game_requests
+SET game_id = $1::uuid
+WHERE game_id = $2::uuid
+`
+
+type MoveGameRequestsParams struct {
+	TargetID pgtype.UUID
+	SourceID pgtype.UUID
+}
+
+func (q *Queries) MoveGameRequests(ctx context.Context, arg MoveGameRequestsParams) error {
+	_, err := q.db.Exec(ctx, moveGameRequests, arg.TargetID, arg.SourceID)
+	return err
+}
+
+const searchActiveIGDBGamesForAdmin = `-- name: SearchActiveIGDBGamesForAdmin :many
+SELECT provider_game.igdb_id::text AS external_id,
+       provider_game.name,
+       provider_game.slug,
+       COALESCE(provider_game.game_type, '')::text AS game_type,
+       provider_game.platform_names,
+       provider_game.first_release_date,
+       COALESCE(provider_game.cover_image_id, '')::text AS cover_image_id,
+       COALESCE(provider_game.summary, '')::text AS summary,
+       provider_game.genre_names,
+       provider_game.game_mode_names,
+       COALESCE(linked_game.id::text, '')::text AS linked_game_id,
+       COALESCE(linked_game.name, '')::text AS linked_game_name
+FROM igdb_game_index provider_game
+JOIN igdb_provider_state state
+  ON state.singleton
+ AND state.active_generation_id = provider_game.generation_id
+LEFT JOIN game_external_ids mapping
+  ON lower(btrim(mapping.provider)) = 'igdb'
+ AND mapping.external_id = provider_game.igdb_id::text
+LEFT JOIN games linked_game ON linked_game.id = mapping.game_id
+WHERE provider_game.igdb_id::text = $1::text
+   OR strpos(lower(provider_game.search_text), lower($1::text)) > 0
+ORDER BY (provider_game.igdb_id::text = $1::text) DESC,
+         (lower(provider_game.name) = lower($1::text)) DESC,
+         (lower(provider_game.name) LIKE lower($1::text) || '%') DESC,
+         lower(provider_game.name), provider_game.igdb_id
+LIMIT 25
+`
+
+type SearchActiveIGDBGamesForAdminRow struct {
+	ExternalID       string
+	Name             string
+	Slug             string
+	GameType         string
+	PlatformNames    []string
+	FirstReleaseDate pgtype.Timestamptz
+	CoverImageID     string
+	Summary          string
+	GenreNames       []string
+	GameModeNames    []string
+	LinkedGameID     string
+	LinkedGameName   string
+}
+
+func (q *Queries) SearchActiveIGDBGamesForAdmin(ctx context.Context, search string) ([]SearchActiveIGDBGamesForAdminRow, error) {
+	rows, err := q.db.Query(ctx, searchActiveIGDBGamesForAdmin, search)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SearchActiveIGDBGamesForAdminRow
+	for rows.Next() {
+		var i SearchActiveIGDBGamesForAdminRow
+		if err := rows.Scan(
+			&i.ExternalID,
+			&i.Name,
+			&i.Slug,
+			&i.GameType,
+			&i.PlatformNames,
+			&i.FirstReleaseDate,
+			&i.CoverImageID,
+			&i.Summary,
+			&i.GenreNames,
+			&i.GameModeNames,
+			&i.LinkedGameID,
+			&i.LinkedGameName,
 		); err != nil {
 			return nil, err
 		}

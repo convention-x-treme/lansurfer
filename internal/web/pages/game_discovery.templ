@@ -10,13 +10,23 @@ import (
 // Games and the request composer. Surfaces provide only their card actions;
 // search threshold, availability, truncation, and empty-result copy stay in
 // one place.
-templ GameDiscoveryState(page game.DiscoveryPage, search string, viewer *components.Viewer, cards templ.Component) {
+//
+// empty is the surface's own "nothing to show" panel, for the two states
+// where a surface has more to say than a bare count: a search that matched
+// nothing, and a usable catalog that is nevertheless showing no cards. A
+// surface with nothing extra to say passes nil and keeps the shared copy --
+// the composer does, because a chooser mid-flow should not grow a second
+// call to action underneath the one it already has.
+templ GameDiscoveryState(page game.DiscoveryPage, search string, viewer *components.Viewer, cards, empty templ.Component) {
 	if page.SearchTooShort {
 		<p class="text-sm text-base-content/70 mb-4">Type at least 2 characters to search.</p>
 	}
 	if search == "" || page.SearchTooShort {
 		if len(page.Items) == 0 {
 			@GameCatalogAvailability(page.ProviderStatus, viewer)
+			if page.ProviderStatus.CatalogAvailable && empty != nil {
+				@empty
+			}
 		} else {
 			@cards
 		}
@@ -25,9 +35,13 @@ templ GameDiscoveryState(page game.DiscoveryPage, search string, viewer *compone
 			<p class="text-sm text-base-content/70 mb-4">Too many matches — refine your search.</p>
 		}
 		if len(page.Items) == 0 {
-			<section class="detail-card">
-				<h2 class="text-[1.0625rem] font-semibold">{ fmt.Sprintf("No games found for %q", search) }</h2>
-			</section>
+			if empty != nil {
+				@empty
+			} else {
+				<section class="detail-card">
+					<h2 class="text-[1.0625rem] font-semibold">{ fmt.Sprintf("No games found for %q", search) }</h2>
+				</section>
+			}
 		} else {
 			@cards
 		}

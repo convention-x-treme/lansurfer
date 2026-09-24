@@ -2,6 +2,7 @@ package pages
 
 import (
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/convention-x-treme/lansurfer/internal/game"
@@ -9,152 +10,448 @@ import (
 	"github.com/convention-x-treme/lansurfer/internal/web/components"
 )
 
-templ AdminGames(brand branding.Brand, navigation components.NavigationState, games []game.Game, search, formError, notice string) {
-	@components.Layout(brand, "Manage Games", navigation) {
+templ AdminGameIGDB(brand branding.Brand, navigation components.NavigationState, item game.Game, results []game.AdminProviderGame, search, formError string) {
+	@components.Layout(brand, "Manage IGDB Link", navigation) {
 		<header class="app-topbar">
-			<h1 class="app-title">Manage Games</h1>
-			<div class="flex gap-2">
-				<a class="btn btn-quiet btn-sm" href="/admin/igdb">IGDB Sync</a>
-				<a class="btn btn-quiet btn-sm" href="/admin/pwa">PWA</a>
+			<div class="min-w-0">
+				<h1 class="app-title">IGDB link for { item.Name }</h1>
+				<p class="text-sm text-base-content/70">The local Game ID, name, and slug stay authoritative.</p>
 			</div>
+			<a class="btn btn-quiet btn-sm" href="/admin/games">Back to catalog</a>
 		</header>
 		<div class="content-page">
-			<p class="mb-5 max-w-2xl text-sm text-base-content/70">Maintain the local games available for Looking for Group. This LANsurfer installation is the event; Game Requests do not need any further setup.</p>
-			if formError != "" {
-				<div role="alert" class="alert alert-error mb-4"><span>{ formError }</span></div>
-			}
-			if notice != "" {
-				<div role="status" class="alert alert-info mb-4"><span>{ notice }</span></div>
-			}
-			<form class="request-toolbar" method="get" action="/admin/games">
-				<label class="sr-only" for="admin-game-search">Search by game name or alias</label>
-				<input id="admin-game-search" class="input input-sm request-search" type="search" name="q" value={ search } maxlength="120" placeholder="Search by name or alias"/>
-				<button class="btn btn-quiet btn-sm" type="submit">Search</button>
-				if search != "" {
-					<a class="btn btn-ghost btn-sm" href="/admin/games">Clear</a>
+			<div class="max-w-4xl">
+				if formError != "" {
+					<div role="alert" class="alert alert-error mb-4"><span>{ formError }</span></div>
 				}
-			</form>
-			<div class="grid items-start gap-6 xl:grid-cols-[minmax(18rem,0.55fr)_minmax(0,1.45fr)]">
-				<section class="grid gap-2">
-					<p class="section-label">Add game</p>
-					<form method="post" action="/admin/games" class="detail-card">
-						@components.CSRFInput()
-						@GameFields("", "")
-						<div class="flex justify-end"><button class="btn btn-primary btn-sm" type="submit">Add game</button></div>
-					</form>
-				</section>
-				<section class="grid gap-2">
-					<p class="section-label">Catalog games</p>
-					<div class="grid gap-3">
-						if len(games) == 0 {
-							<div class="detail-card"><h2 class="text-[1.0625rem] font-semibold">No games found</h2><p class="text-sm text-base-content/70">Add a game or try a different name or alias.</p></div>
-						}
-						for _, item := range games {
-							@AdminGameCard(item)
+				<section class="detail-card">
+					<div class="flex flex-wrap items-center justify-between gap-3">
+						<div>
+							<h2 class="text-[1.0625rem] font-semibold">Current identity</h2>
+							if item.IGDBExternalID == "" {
+								<p class="text-sm text-base-content/70">Local-only · not linked</p>
+							} else {
+								<p class="data-text text-sm">IGDB #{ item.IGDBExternalID }</p>
+							}
+						</div>
+						if item.IGDBExternalID != "" {
+							<form method="post" action={ "/admin/games/" + item.ID + "/igdb/unlink" } data-confirm="Unlink this IGDB record? The local Game, aliases, followers, and Game Requests will remain.">
+								@components.CSRFInput()
+								<button class="btn btn-step-back btn-sm" type="submit">Unlink IGDB</button>
+							</form>
 						}
 					</div>
 				</section>
+				if item.IGDBExternalID == "" {
+					<section class="mt-4 grid gap-3">
+						<div><h2 class="text-[1.0625rem] font-semibold">Find IGDB record</h2><p class="text-sm text-base-content/70">Search the active synchronized catalog by name or IGDB ID.</p></div>
+						<form
+							class="request-toolbar"
+							method="get"
+							action={ "/admin/games/" + item.ID + "/igdb" }
+							hx-get={ "/admin/games/" + item.ID + "/igdb" }
+							hx-target="#igdb-link-results"
+							hx-swap="outerHTML"
+							hx-sync="this:replace"
+							hx-replace-url="true"
+							hx-trigger="submit, input changed delay:300ms from:(#igdb-link-search), search from:(#igdb-link-search)"
+						>
+							<label class="sr-only" for="igdb-link-search">Search IGDB</label>
+							<input id="igdb-link-search" class="input input-sm request-search" type="search" name="q" value={ search } maxlength="120" placeholder="Game name or IGDB ID" autocomplete="off" required/>
+							<noscript><button class="btn btn-primary btn-sm" type="submit">Search IGDB</button></noscript>
+						</form>
+						@AdminIGDBLinkResults(item, results, search)
+					</section>
+				} else {
+					<p class="mt-4 text-sm text-base-content/70">To change the IGDB identity, unlink the current record first, then select the replacement.</p>
+				}
 			</div>
 		</div>
 	}
 }
 
-templ AdminGameCard(item game.Game) {
-	<article class="game-card">
-		<div class="flex flex-wrap items-center justify-between gap-3">
-			<div><h2 class="text-[1.0625rem] font-semibold">{ item.Name }</h2><p class="data-text text-xs text-base-content/65">{ item.Slug }</p></div>
-			if item.Active {
-				<span class="status-chip status-chip-open">Active</span>
-			} else {
-				<span class="status-chip">Inactive</span>
-			}
-		</div>
-		<form method="post" action={ "/admin/games/" + item.ID } class="mt-3 grid gap-4 sm:grid-cols-2">
-			@components.CSRFInput()
-			@GameFields(item.Name, item.Slug)
-			<div class="sm:col-span-2 flex flex-wrap justify-end gap-2">
-				<button class="btn btn-quiet btn-sm" type="submit">Save game</button>
+// AdminIGDBLinkResults is the live-search swap target on the link screen, so
+// it carries the no-match state as well as the candidates themselves.
+templ AdminIGDBLinkResults(target game.Game, results []game.AdminProviderGame, search string) {
+	<div id="igdb-link-results" class="catalog-list" aria-live="polite">
+		if search != "" && len(results) == 0 {
+			<div class="detail-card"><h3 class="font-semibold">No IGDB records found</h3><p class="text-sm text-base-content/70">Try another name or run a synchronization from IGDB sync.</p></div>
+		}
+		for _, result := range results {
+			@AdminIGDBLinkResult(target, result)
+		}
+	</div>
+}
+
+// AdminIGDBLinkResult is one provider candidate. It uses the product's own
+// cover tile and row vocabulary rather than a layout of its own, so a
+// record reads here the way the same Game reads on every other screen.
+templ AdminIGDBLinkResult(target game.Game, result game.AdminProviderGame) {
+	<article class="catalog-entry catalog-entry-static">
+		<div class="catalog-summary">
+			<span class="catalog-cover">
+				@CoverArt(result.CoverImageID, result.Name, false)
+			</span>
+			<div class="catalog-entry-body">
+				<h3 class="catalog-entry-title">{ result.Name }</h3>
+				<p class="catalog-entry-meta">
+					<span class="data-text">IGDB #{ result.ExternalID }</span>
+				</p>
+				@AdminIGDBMetadata(adminProviderFacts(result))
 			</div>
-		</form>
-		<form method="post" action={ "/admin/games/" + item.ID + "/active" } class="flex justify-end" data-confirm={ gameActiveConfirmation(item.Active) }>
-			@components.CSRFInput()
-			if item.Active {
-				<input type="hidden" name="active" value="false"/><button class="btn btn-step-back btn-sm" type="submit">Deactivate game</button>
+			if result.LinkedGameID == "" {
+				<div class="catalog-candidate-actions">
+					<form method="post" action={ "/admin/games/" + target.ID + "/igdb" }>
+						@components.CSRFInput()
+						<input type="hidden" name="external_id" value={ result.ExternalID }/>
+						<button class="btn btn-primary btn-sm whitespace-nowrap" type="submit">Link this record</button>
+					</form>
+					if result.Slug != "" {
+						<a class="btn btn-quiet btn-sm whitespace-nowrap" href={ igdbGameURL(result.Slug) } target="_blank" rel="noopener noreferrer">
+							Open on IGDB
+							<span class="sr-only">(opens in a new tab)</span>
+							<span class="external-mark" aria-hidden="true">↗</span>
+						</a>
+					}
+				</div>
+			} else if result.LinkedGameID == target.ID {
+				<span class="status-chip status-chip-open">Already linked</span>
 			} else {
-				<input type="hidden" name="active" value="true"/><button class="btn btn-primary btn-sm" type="submit">Activate game</button>
-			}
-		</form>
-		<div class="divider my-1">Aliases</div>
-		<div class="flex flex-wrap gap-2">
-			for _, alias := range item.Aliases {
-				<form method="post" action={ "/admin/games/" + item.ID + "/aliases/" + alias.ID + "/remove" } data-confirm={ "Remove the alias " + alias.Value + "?" }>
-					@components.CSRFInput()
-					<button class="badge badge-outline h-auto min-h-11 gap-1 py-2" type="submit" aria-label={ "Remove alias " + alias.Value }>{ alias.Value } <span aria-hidden="true">×</span></button>
-				</form>
-			}
-			if len(item.Aliases) == 0 {
-				<span class="text-sm text-base-content/70">No aliases</span>
+				<div class="text-right">
+					<p class="text-sm text-base-content/70">Linked to { result.LinkedGameName }</p>
+					<a class="btn btn-quiet btn-sm mt-2" href={ "/admin/games/" + target.ID + "/merge?source=" + result.LinkedGameID + "&notice=igdb-link-conflict" }>Review merge</a>
+				</div>
 			}
 		</div>
-		<form method="post" action={ "/admin/games/" + item.ID + "/aliases" } class="flex flex-col gap-2 sm:flex-row">
-			@components.CSRFInput()
-			<label class="sr-only" for={ "alias-" + item.ID }>New alias</label>
-			<input id={ "alias-" + item.ID } class="input input-bordered input-sm flex-1" name="alias" maxlength="120" placeholder="Add search alias" required/>
-			<button class="btn btn-quiet btn-sm" type="submit">Add alias</button>
-		</form>
 	</article>
 }
 
-templ GameFields(name, slug string) {
-	<label class="form-control"><span class="label"><span class="label-text">Name</span></span><input class="input input-bordered w-full" name="name" value={ name } maxlength="120" required/></label>
-	<label class="form-control"><span class="label"><span class="label-text">Slug</span></span><input class="input input-bordered w-full data-text" name="slug" value={ slug } maxlength="120" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" placeholder="counter-strike-2" required/></label>
+// AdminGameFacts is one IGDB enrichment snapshot as an administration
+// surface states it. The two callers carry different halves of it -- a
+// local Game keeps no type/platform/release columns, a provider candidate
+// has no local identity -- so the zero value of every field is a fact that
+// simply is not known and renders as nothing.
+type AdminGameFacts struct {
+	Summary          string
+	GameType         string
+	PlatformNames    []string
+	FirstReleaseDate *time.Time
+	GenreNames       []string
+	GameModeNames    []string
+	MultiplayerModes []game.MultiplayerMode
+}
+
+func adminGameFacts(item game.Game) AdminGameFacts {
+	return AdminGameFacts{
+		Summary: item.IGDBSummary, GenreNames: item.IGDBGenreNames,
+		GameModeNames: item.IGDBGameModeNames, MultiplayerModes: item.IGDBMultiplayerModes,
+	}
+}
+
+func adminProviderFacts(result game.AdminProviderGame) AdminGameFacts {
+	return AdminGameFacts{
+		Summary: result.Summary, GameType: result.GameType, PlatformNames: result.PlatformNames,
+		FirstReleaseDate: result.FirstReleaseDate, GenreNames: result.GenreNames,
+		GameModeNames: result.GameModeNames, MultiplayerModes: result.MultiplayerModes,
+	}
+}
+
+func (f AdminGameFacts) empty() bool {
+	return f.Summary == "" && f.GameType == "" && len(f.PlatformNames) == 0 && f.FirstReleaseDate == nil &&
+		len(f.GenreNames) == 0 && len(f.GameModeNames) == 0 && len(f.MultiplayerModes) == 0
+}
+
+// AdminIGDBMetadata renders the synchronized IGDB metadata (issue #46) as an
+// inspection block: the whole stored summary as prose, then one labelled
+// row per kind of fact. The summary is not truncated here the way a player
+// card truncates it -- this surface exists to inspect the snapshot, and a
+// cut sentence is the one thing an operator cannot check. Genre, game mode, platform and release used to share
+// one undifferentiated strip of badges and one 13px line per platform, which
+// stated everything and separated nothing. It renders nothing when no
+// metadata is present, so local-only Games and missing enrichment snapshots
+// need no special casing at the call sites.
+templ AdminIGDBMetadata(facts AdminGameFacts) {
+	if !facts.empty() {
+		<div class="igdb-facts">
+			if facts.Summary != "" {
+				<p class="igdb-summary">{ facts.Summary }</p>
+			}
+			if facts.GameType != "" {
+				@igdbFact("Type") {
+					<span class="igdb-value">{ facts.GameType }</span>
+				}
+			}
+			if len(facts.GenreNames) > 0 {
+				@igdbFact("Genres") {
+					for _, name := range facts.GenreNames {
+						<span class="igdb-chip">{ name }</span>
+					}
+				}
+			}
+			if len(facts.GameModeNames) > 0 {
+				@igdbFact("Modes") {
+					for _, name := range facts.GameModeNames {
+						<span class="igdb-chip">{ name }</span>
+					}
+				}
+			}
+			if len(facts.PlatformNames) > 0 {
+				@igdbFact("Platforms") {
+					<span class="igdb-value">{ strings.Join(facts.PlatformNames, ", ") }</span>
+				}
+			}
+			if facts.FirstReleaseDate != nil {
+				@igdbFact("Released") {
+					<span class="data-text igdb-value">{ strconv.Itoa(facts.FirstReleaseDate.Year()) }</span>
+				}
+			}
+			if len(facts.MultiplayerModes) > 0 {
+				@igdbFact("Multiplayer") {
+					<ul class="igdb-platforms">
+						for _, mode := range facts.MultiplayerModes {
+							<li class="igdb-platform">
+								<span class="igdb-platform-name">{ multiplayerPlatformLabel(mode) }</span>
+								<span class="igdb-platform-values">
+									for _, capability := range multiplayerCapabilities(mode) {
+										<span class="igdb-chip">{ capability }</span>
+									}
+									for _, limit := range multiplayerLimits(mode) {
+										<span class="igdb-chip igdb-chip-limit">{ limit }</span>
+									}
+									if len(multiplayerCapabilities(mode)) == 0 && len(multiplayerLimits(mode)) == 0 {
+										<span class="igdb-value">No multiplayer detail reported</span>
+									}
+								</span>
+							</li>
+						}
+					</ul>
+				}
+			}
+		</div>
+	}
+}
+
+// igdbFact is one labelled row. The label is a fixed-basis flex item rather
+// than a grid column, so every row aligns without a breakpoint and the
+// values wrap under it on a narrow panel.
+templ igdbFact(label string) {
+	<div class="igdb-fact">
+		<span class="igdb-fact-label">{ label }</span>
+		<span class="igdb-fact-values">
+			{ children... }
+		</span>
+	</div>
+}
+
+// multiplayerPlatformLabel names the platform one multiplayer mode belongs
+// to, falling back to the raw provider platform ID when IGDB reported no
+// name for it.
+func multiplayerPlatformLabel(mode game.MultiplayerMode) string {
+	if mode.PlatformName != "" {
+		return mode.PlatformName
+	}
+	if mode.PlatformIGDBID > 0 {
+		return "IGDB platform #" + strconv.FormatInt(mode.PlatformIGDBID, 10)
+	}
+	return "Platform unspecified"
+}
+
+// multiplayerCapabilities lists what one platform supports, each capability
+// carrying its own reported player cap. IGDB reports the caps in separate
+// fields from the flags, and listing them separately produced a run of bare
+// numbers ("online co-op max 8 online max 12") that had to be matched back
+// to the capability they belonged to by hand.
+func multiplayerCapabilities(mode game.MultiplayerMode) []string {
+	var parts []string
+	if mode.CampaignCoop {
+		parts = append(parts, "Campaign co-op")
+	}
+	if mode.DropIn {
+		parts = append(parts, "Drop-in")
+	}
+	if mode.LanCoop {
+		parts = append(parts, "LAN co-op")
+	}
+	if mode.OfflineCoop {
+		parts = append(parts, withPlayerCap("Offline co-op", mode.OfflineCoopMax))
+	}
+	if mode.OnlineCoop {
+		parts = append(parts, withPlayerCap("Online co-op", mode.OnlineCoopMax))
+	}
+	if mode.SplitScreen {
+		parts = append(parts, "Split-screen")
+	}
+	if mode.SplitScreenOnline {
+		parts = append(parts, "Split-screen online")
+	}
+	return parts
+}
+
+// multiplayerLimits lists the platform's overall player caps, which belong
+// to no single capability. An absent cap is omitted rather than shown as
+// zero; it was never reported.
+func multiplayerLimits(mode game.MultiplayerMode) []string {
+	var parts []string
+	if mode.OnlineMax != nil {
+		parts = append(parts, "Up to "+strconv.Itoa(*mode.OnlineMax)+" online")
+	}
+	if mode.OfflineMax != nil {
+		parts = append(parts, "Up to "+strconv.Itoa(*mode.OfflineMax)+" offline")
+	}
+	return parts
+}
+
+func withPlayerCap(capability string, max *int) string {
+	if max == nil {
+		return capability
+	}
+	return capability + " (max " + strconv.Itoa(*max) + ")"
+}
+
+templ AdminGameMerge(brand branding.Brand, navigation components.NavigationState, target, source game.Game, games []game.Game, sourceID, formError, notice string) {
+	@components.Layout(brand, "Merge Games", navigation) {
+		<header class="app-topbar">
+			<div class="min-w-0">
+				<h1 class="app-title">Merge duplicate Game</h1>
+				<p class="text-sm text-base-content/70">{ target.Name } is the target. It keeps its local ID, name, slug, and active state.</p>
+			</div>
+			<a class="btn btn-quiet btn-sm" href="/admin/games">Back to catalog</a>
+		</header>
+		<div class="content-page">
+			<div class="max-w-4xl">
+				if notice != "" {
+					<div role="status" class="alert alert-info mb-4"><span>{ notice }</span></div>
+				}
+				if formError != "" {
+					<div role="alert" class="alert alert-error mb-4"><span>{ formError }</span></div>
+				}
+				<section class="detail-card">
+					<h2 class="text-[1.0625rem] font-semibold">Choose source Game</h2>
+					<p class="text-sm text-base-content/70">The source is removed after its Game Requests, followers, aliases, and IGDB identity move to the target.</p>
+					<form method="get" action={ "/admin/games/" + target.ID + "/merge" } class="mt-2 flex flex-col gap-3 sm:flex-row sm:items-end">
+						<label class="form-control flex-1"><span class="label"><span class="label-text">Source Game</span></span>
+							<select class="select select-bordered w-full" name="source" required>
+								<option value="">Choose duplicate</option>
+								for _, candidate := range games {
+									if candidate.ID != target.ID {
+										<option value={ candidate.ID } selected?={ candidate.ID == sourceID }>{ candidate.Name } · { candidate.Slug }</option>
+									}
+								}
+							</select>
+						</label>
+						<button class="btn btn-quiet" type="submit">Review merge</button>
+					</form>
+				</section>
+				if source.ID != "" {
+					<section class="detail-card mt-4">
+						<h2 class="text-[1.0625rem] font-semibold">Review</h2>
+						<dl class="grid gap-4 sm:grid-cols-2">
+							<div><dt class="text-sm text-base-content/60">Source · removed</dt><dd class="font-semibold">{ source.Name }</dd><dd class="data-text text-xs">{ source.Slug }</dd><dd class="mt-1 text-sm text-base-content/70">{ gameRelationshipSummary(source) }</dd></div>
+							<div><dt class="text-sm text-base-content/60">Target · kept</dt><dd class="font-semibold">{ target.Name }</dd><dd class="data-text text-xs">{ target.Slug }</dd><dd class="mt-1 text-sm text-base-content/70">{ gameRelationshipSummary(target) }</dd></div>
+						</dl>
+						if source.IGDBExternalID != "" && target.IGDBExternalID != "" {
+							<div role="alert" class="alert alert-warning"><span>Both Games have different IGDB links. Unlink the incorrect record before merging.</span></div>
+						} else {
+							<form method="post" action={ "/admin/games/" + target.ID + "/merge" } class="flex justify-end" data-confirm={ "Merge " + source.Name + " into " + target.Name + "? The source Game will be permanently removed." }>
+								@components.CSRFInput()
+								<input type="hidden" name="source_id" value={ source.ID }/>
+								<button class="btn btn-danger" type="submit">Merge and remove source</button>
+							</form>
+						}
+					</section>
+				}
+			</div>
+		</div>
+	}
+}
+
+func gameRelationshipSummary(item game.Game) string {
+	parts := []string{strconv.FormatInt(item.GameRequestCount, 10) + " Game Requests", strconv.FormatInt(item.SubscriptionCount, 10) + " followers"}
+	if item.IGDBExternalID == "" {
+		parts = append(parts, "local-only")
+	} else {
+		parts = append(parts, "IGDB #"+item.IGDBExternalID)
+	}
+	return strings.Join(parts, " · ")
 }
 
 templ AdminIGDB(brand branding.Brand, navigation components.NavigationState, status game.ProviderStatus, notice string) {
 	@components.Layout(brand, "IGDB Synchronization", navigation) {
 		<header class="app-topbar">
-			<h1 class="app-title">IGDB synchronization</h1>
-			<div class="flex gap-2">
-				<a class="btn btn-quiet btn-sm" href="/admin/games">Manage games</a>
-				<a class="btn btn-quiet btn-sm" href="/admin/pwa">PWA</a>
+			<div class="min-w-0">
+				<h1 class="app-title">IGDB synchronization</h1>
+				<p class="text-sm text-base-content/70">The local discovery index players search, and its background refresh.</p>
 			</div>
 		</header>
 		<div class="content-page">
-			<p class="mb-5 max-w-2xl text-sm text-base-content/70">Review the local IGDB discovery index and its background refresh.</p>
-			if notice != "" {
-				<div role="status" class="alert alert-info mb-4"><span>{ notice }</span></div>
-			}
-			<section class="detail-card">
-				<div class="flex flex-wrap items-center justify-between gap-3">
-					<h2 class="text-[1.0625rem] font-semibold">Status</h2>
-					@igdbStatusBadge(status.State)
-				</div>
-				<dl class="mt-2 grid gap-4 sm:grid-cols-3">
-					<div>
-						<dt class="text-sm text-base-content/60">Last attempt</dt>
-						<dd class="data-text">{ igdbTimestamp(status.LastAttempt) }</dd>
-					</div>
-					<div>
-						<dt class="text-sm text-base-content/60">Last success</dt>
-						<dd class="data-text">{ igdbTimestamp(status.LastSuccess) }</dd>
-					</div>
-					<div>
-						<dt class="text-sm text-base-content/60">Indexed records</dt>
-						<dd class="data-text">{ strconv.FormatInt(status.RecordCount, 10) }</dd>
-					</div>
-				</dl>
-				if status.LastError != "" {
-					<div role="alert" class="alert alert-error mt-2"><span>{ status.LastError }</span></div>
+			<div class="max-w-4xl">
+				if notice != "" {
+					<div role="status" class="alert alert-info mb-4"><span>{ notice }</span></div>
 				}
-				if status.State != game.ProviderDisabled && status.State != game.ProviderSyncing {
-					<form method="post" action="/admin/igdb/sync" class="flex justify-end mt-2">
-						@components.CSRFInput()
-						<button class="btn btn-primary btn-sm" type="submit">Sync now</button>
-					</form>
-				}
-			</section>
+				@AdminIGDBStatus(status)
+			</div>
 		</div>
 	}
+}
+
+// AdminIGDBStatus is the status card on /admin/igdb and the fragment
+// GET /admin/igdb/status returns. While a sync is in progress it polls that
+// route; the response replaces this very element, and the settled state
+// renders without the polling attributes, so the loop stops by itself once
+// the sync finishes. No client script and no separate stop condition.
+templ AdminIGDBStatus(status game.ProviderStatus) {
+	<section id="igdb-status" class="detail-card" { syncStatusAttributes(status.State)... }>
+		<div class="flex flex-wrap items-center justify-between gap-3">
+			<h2 class="text-[1.0625rem] font-semibold">Status</h2>
+			@igdbStatusBadge(status.State)
+		</div>
+		<dl class="grid gap-4 sm:grid-cols-3">
+			<div>
+				<dt class="text-sm text-base-content/60">Last attempt</dt>
+				<dd class="data-text">{ igdbTimestamp(status.LastAttempt) }</dd>
+			</div>
+			<div>
+				<dt class="text-sm text-base-content/60">Last success</dt>
+				<dd class="data-text">{ igdbTimestamp(status.LastSuccess) }</dd>
+			</div>
+			<div>
+				<dt class="text-sm text-base-content/60">Indexed records</dt>
+				<dd class="data-text">{ strconv.FormatInt(status.RecordCount, 10) }</dd>
+			</div>
+			if status.State == game.ProviderSyncing {
+				<div>
+					<dt class="text-sm text-base-content/60">Staged in this sync</dt>
+					<dd class="data-text">{ strconv.FormatInt(status.StagedRecords, 10) }</dd>
+				</div>
+			}
+		</dl>
+		if status.LastError != "" {
+			<div role="alert" class="alert alert-error"><span>{ status.LastError }</span></div>
+		}
+		if status.State != game.ProviderDisabled && status.State != game.ProviderSyncing {
+			<form method="post" action="/admin/igdb/sync" class="flex justify-end">
+				@components.CSRFInput()
+				<button class="btn btn-primary btn-sm" type="submit">Sync now</button>
+			</form>
+		}
+	</section>
+}
+
+// syncStatusAttributes makes the status card reload itself while a sync is in
+// progress. The polling element is the element the response replaces, so the
+// state that no longer carries these attributes is also the state that stops
+// polling. aria-live is added only then, so a settled card never re-announces
+// itself on an ordinary page load.
+func syncStatusAttributes(state game.ProviderState) templ.Attributes {
+	if state == game.ProviderSyncing {
+		return templ.Attributes{
+			"aria-live":  "polite",
+			"hx-get":     "/admin/igdb/status",
+			"hx-trigger": "every 2s",
+			"hx-swap":    "outerHTML",
+		}
+	}
+	return nil
 }
 
 templ igdbStatusBadge(state game.ProviderState) {
@@ -195,35 +492,35 @@ type PWADiagnostics struct {
 templ AdminPWA(brand branding.Brand, navigation components.NavigationState, diagnostics PWADiagnostics) {
 	@components.Layout(brand, "PWA Diagnostics", navigation) {
 		<header class="app-topbar">
-			<h1 class="app-title">PWA diagnostics</h1>
-			<div class="flex gap-2">
-				<a class="btn btn-quiet btn-sm" href="/admin/games">Manage games</a>
-				<a class="btn btn-quiet btn-sm" href="/admin/igdb">IGDB Sync</a>
+			<div class="min-w-0">
+				<h1 class="app-title">PWA diagnostics</h1>
+				<p class="text-sm text-base-content/70">Read-only facts about this installation. Nothing here is stored or shown to players.</p>
 			</div>
 		</header>
 		<div class="content-page">
-			<p class="mb-5 max-w-2xl text-sm text-base-content/70">Read-only facts about this installation's manifest, service worker, and secure-context status. Nothing here is stored or shown to players.</p>
-			<section class="detail-card">
-				<h2 class="text-[1.0625rem] font-semibold">Server</h2>
-				<dl class="mt-2 grid gap-4 sm:grid-cols-2">
-					<div><dt class="text-sm text-base-content/60">Instance name</dt><dd class="data-text">{ diagnostics.InstanceName }</dd></div>
-					<div><dt class="text-sm text-base-content/60">Base URL</dt><dd class="data-text">{ diagnostics.BaseURL }</dd></div>
-					<div><dt class="text-sm text-base-content/60">Manifest URL</dt><dd class="data-text">{ diagnostics.ManifestURL }</dd></div>
-					<div><dt class="text-sm text-base-content/60">Service worker URL</dt><dd class="data-text">{ diagnostics.ServiceWorkerURL }</dd></div>
-					<div><dt class="text-sm text-base-content/60">Expected secure context</dt><dd class="data-text">{ secureContextLabel(diagnostics.SecureContext) }</dd></div>
-				</dl>
-			</section>
-			<section class="detail-card mt-4" data-pwa-diagnostics>
-				<h2 class="text-[1.0625rem] font-semibold">Browser</h2>
-				<dl class="mt-2 grid gap-4 sm:grid-cols-2">
-					<div><dt class="text-sm text-base-content/60">Diagnostics ran</dt><dd class="data-text" data-fact="diagnostics-ran">No</dd></div>
-					<div><dt class="text-sm text-base-content/60">window.isSecureContext</dt><dd class="data-text" data-fact="secure-context">Not available without JavaScript</dd></div>
-					<div><dt class="text-sm text-base-content/60">Service worker supported</dt><dd class="data-text" data-fact="supported">Not available without JavaScript</dd></div>
-					<div><dt class="text-sm text-base-content/60">Registration</dt><dd class="data-text" data-fact="registration">Not available without JavaScript</dd></div>
-					<div><dt class="text-sm text-base-content/60">Controller</dt><dd class="data-text" data-fact="controller">Not available without JavaScript</dd></div>
-					<div><dt class="text-sm text-base-content/60">Last registration error</dt><dd class="data-text" data-fact="error">Not available without JavaScript</dd></div>
-				</dl>
-			</section>
+			<div class="grid max-w-5xl gap-4 xl:grid-cols-2">
+				<section class="detail-card">
+					<h2 class="text-[1.0625rem] font-semibold">Server</h2>
+					<dl class="grid gap-4 sm:grid-cols-2">
+						<div><dt class="text-sm text-base-content/60">Instance name</dt><dd class="data-text break-words">{ diagnostics.InstanceName }</dd></div>
+						<div><dt class="text-sm text-base-content/60">Base URL</dt><dd class="data-text break-words">{ diagnostics.BaseURL }</dd></div>
+						<div><dt class="text-sm text-base-content/60">Manifest URL</dt><dd class="data-text break-words">{ diagnostics.ManifestURL }</dd></div>
+						<div><dt class="text-sm text-base-content/60">Service worker URL</dt><dd class="data-text break-words">{ diagnostics.ServiceWorkerURL }</dd></div>
+						<div class="sm:col-span-2"><dt class="text-sm text-base-content/60">Expected secure context</dt><dd class="data-text">{ secureContextLabel(diagnostics.SecureContext) }</dd></div>
+					</dl>
+				</section>
+				<section class="detail-card" data-pwa-diagnostics>
+					<h2 class="text-[1.0625rem] font-semibold">Browser</h2>
+					<dl class="grid gap-4 sm:grid-cols-2">
+						<div><dt class="text-sm text-base-content/60">Diagnostics ran</dt><dd class="data-text" data-fact="diagnostics-ran">No</dd></div>
+						<div><dt class="text-sm text-base-content/60">window.isSecureContext</dt><dd class="data-text" data-fact="secure-context">Not available without JavaScript</dd></div>
+						<div><dt class="text-sm text-base-content/60">Service worker supported</dt><dd class="data-text" data-fact="supported">Not available without JavaScript</dd></div>
+						<div><dt class="text-sm text-base-content/60">Registration</dt><dd class="data-text" data-fact="registration">Not available without JavaScript</dd></div>
+						<div><dt class="text-sm text-base-content/60">Controller</dt><dd class="data-text" data-fact="controller">Not available without JavaScript</dd></div>
+						<div><dt class="text-sm text-base-content/60">Last registration error</dt><dd class="data-text" data-fact="error">Not available without JavaScript</dd></div>
+					</dl>
+				</section>
+			</div>
 		</div>
 		<script src={ brand.Assets.AdminPWADiagnostics } defer></script>
 	}
@@ -241,11 +538,4 @@ func igdbTimestamp(value *time.Time) string {
 		return "Never"
 	}
 	return value.UTC().Format("2006-01-02T15:04Z")
-}
-
-func gameActiveConfirmation(active bool) string {
-	if active {
-		return "Deactivate this game? Existing Game Requests are not changed."
-	}
-	return ""
 }

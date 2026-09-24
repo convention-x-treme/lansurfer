@@ -206,7 +206,7 @@ func gameNickErrorMessage(err error) string {
 // RequireGameNick redirects an authenticated user who has not chosen a
 // Game Nick yet away from normal product/admin surfaces and onto
 // onboarding. It must run after RequireAuthentication/RequireAdmin so a
-// signed-out request has already been rejected by then.
+// signed-out request has already been redirected to login by then.
 func RequireGameNick(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if account, ok := webmiddleware.CurrentUser(r.Context()); ok && account.GameNick == "" {

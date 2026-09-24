@@ -60,6 +60,7 @@ This document records both the implemented prototype baseline and the approved 1
 - HTMX
 - Tailwind CSS
 - DaisyUI
+- Phosphor Icons (Regular + Fill webfonts)
 - TypeScript for limited browser-specific behavior
 - esbuild
 - `go:embed`
@@ -316,6 +317,7 @@ Owns:
 - capacity rules
 - durable request-local activity for successful create/join/leave/close/cancel changes
 - the transactional notification-intent record Track E consumes
+- per-player reading history of Game Requests
 
 One table, `game_request_activity`, currently serves both of those responsibilities. Every successful change writes its entry inside the same transaction as the change itself, so a rolled-back mutation leaves neither the change nor a notification intent, and a committed one survives a restart before delivery. A second table would duplicate the same write for the same guarantee. Track E1's implementation confirmed this design: the `notification` module consumes this table asynchronously and keeps its own `notification_work`/`notification_delivery` state, with no second write into `gamerequest`'s tables or transactions. Splitting the notification record out remains the expected change only if a future track demonstrates delivery-specific state that does not belong here.
 
@@ -323,6 +325,8 @@ Two rules govern how a consumer reads it:
 
 - **`sequence` identifies a row and orders one Game Request's history. It is not a global replay cursor.** The value is assigned when the row is inserted, not when its transaction commits, and creating a Game Request takes no shared lock, so two concurrent changes can commit in the opposite order to their sequence values. A consumer holding a single high-watermark would permanently skip the row that committed late. Ordering within one request is safe because join, leave, close, and cancel serialize on that request's row lock and `created` is always first — which is also the only ordering delivery needs, since stale-update protection is per request. A consumer therefore keeps durable per-row delivery state keyed by `sequence` as an opaque identifier, rather than advancing one cursor.
 - **`origin` separates recorded activity from reconstructed activity.** Rows written while the application is running are `live`. Rows the `00006` migration reconstructed from prototype membership and status are `backfill`: they describe activity that predates the record and must never be delivered. A consumer starting for the first time on an installation that already has `live` history is responsible for its own baseline, so an upgrade does not deliver the archive.
+
+Reading history lives in its own table, `game_request_views`, and is deliberately not `game_request_activity`. Activity is domain history and Track E's notification-intent handoff; opening a detail page is neither, so a view must never be delivered, must never reach the realtime stream, and must never enter the activity table. It is also not transactional with any Game Request change: the write happens while serving a successful read, and losing it costs a navigation entry rather than corrupting a Game Request. One row per (player, request) with the timestamp updated on re-reading keeps the table a set of distinct requests, so it needs no pruning to stay short, and the foreign key to `game_requests` removes the history with the request.
 
 Request-local activity is not event sourcing, generic audit logging, chat, or notification delivery history.
 
@@ -374,6 +378,8 @@ Rules:
 - they are not domain entities
 
 Trending is a focused read model derived from Game Request activity over the product-defined rolling six-hour window. It does not authorize raw search-query tracking or a general analytics event store.
+
+The shared navigation is assembled once per request by a single builder in the web layer, so its counts and lists mean the same thing on every screen rather than being populated only by the screen that owns each number. Every read behind it is decoration around a page that has already succeeded: a failing count or list is logged and degrades to an absent number or an empty section, never to an error page replacing the screen the player asked for. `game_request_views` is read per viewer only; aggregating it across players would make it the analytics store this section rules out, and it is explicitly not a Trending ranking input.
 
 Game Request list/detail read models may join the local `game_igdb_enrichment` last-known-good snapshot to render presentation (cover, Game Type, platforms, release date) alongside a request's Game. The `gamerequest` domain owns no IGDB state itself; it never reads or writes `game_igdb_enrichment`, and this join stays confined to the read model.
 
@@ -460,6 +466,8 @@ Linking and unlinking are explicit authenticated account operations, and an acco
 
 Both providers resolve to the same local User/session model. Required Game Nick selection is provider-independent. A Discord display name may seed the Game Nick form but does not become LANsurfer public identity automatically.
 
+Post-1.0 Twitch authentication is a third provider adapter in the same registry. It reuses OIDC discovery, PKCE, nonce, authorization-code exchange, ID-token validation, and the existing OAuth flow service. Its fixed `provider_kind` and `provider_key` are both `twitch`; its verified Twitch `sub` remains the external identity subject. It requests `openid` and the `preferred_username` ID-token claim, never email. The same local identity, linking, onboarding, and session paths apply unchanged.
+
 Provider names and email addresses are private account data. Normal player and global administrator views must not expose them to anyone except the account owner.
 
 ---
@@ -491,17 +499,30 @@ LANSURFER_DATA_ENCRYPTION_KEY
 LANSURFER_WEBPUSH_PUBLIC_KEY
 LANSURFER_WEBPUSH_PRIVATE_KEY
 LANSURFER_WEBPUSH_SUBJECT
-LANSURFER_IGDB_CLIENT_ID
-LANSURFER_IGDB_CLIENT_SECRET
+LANSURFER_TWITCH_CLIENT_ID
+LANSURFER_TWITCH_CLIENT_SECRET
+LANSURFER_TWITCH_AUTH_ENABLED
+LANSURFER_IGDB_ENABLED
+LANSURFER_COVER_CACHE_DIR
+LANSURFER_LEGAL_ENTITY_NAME
+LANSURFER_LEGAL_ADDRESS
+LANSURFER_LEGAL_CONTACT_EMAIL
+LANSURFER_IMPRINT_URL
 ```
 
 `LANSURFER_OIDC_CLIENT_SECRET` is optional for public clients using PKCE and required when the provider configures LANsurfer as a confidential client.
+
+Twitch application credentials are shared only by Twitch authentication and IGDB discovery. Each capability is disabled by default and enabled with its own strict boolean flag; enabling either requires both shared credentials. The two capabilities do not share access tokens, clients, retries, or runtime state. Legacy `LANSURFER_IGDB_CLIENT_ID` and `LANSURFER_IGDB_CLIENT_SECRET` are not supported.
+
+`LANSURFER_COVER_CACHE_DIR` selects the IGDB cover cache store. When set, LANsurfer uses that writable directory as the persistent disk cache; when unset, it uses a fixed 64 MiB in-process LRU. The cache uses one store or the other, not a two-tier cache.
 
 Discord authentication and Discord delivery use separate configuration pairs; an operator may point both at the same Discord application, but configuring one does not enable the other. Web Push is disabled when both VAPID keys are absent; partial/invalid VAPID configuration is an error, and configured Web Push also requires `LANSURFER_WEBPUSH_SUBJECT` plus a valid data-encryption key. Configured Discord delivery likewise requires a valid data-encryption key.
 
 Provider credentials, the 32-byte data-encryption key, VAPID private key, and Discord-delivery OAuth secret remain operator configuration and must not be stored as ordinary product settings.
 
 Minimum instance identity, if configurable, is deployment/product state with a deliberately small surface. Do not reintroduce the removed 1.0 welcome-text/contact/logo/icon branding editor through configuration indirection.
+
+Operator legal identity (`LANSURFER_LEGAL_ENTITY_NAME`, `LANSURFER_LEGAL_ADDRESS`, `LANSURFER_LEGAL_CONTACT_EMAIL`, `LANSURFER_IMPRINT_URL`) is the one contact-bearing exception: it fills the fixed Terms/Privacy text and footer, travels to templates through request-context middleware like the instance name, and is required (entity name and contact email) whenever Discord login is configured.
 
 Do not introduce a config file format unless a concrete requirement appears.
 
@@ -511,7 +532,7 @@ Do not introduce a config file format unless a concrete requirement appears.
 
 LANsurfer keeps a fixed, accessible visual system and bundled application branding. Templates consume centralized branding values instead of repeating constants. Bundle approved logos/mascot/font assets with the application; do not add a runtime font or branding CDN.
 
-Stable 1.0 does not require PostgreSQL-backed administrator-managed welcome text, contact link, uploaded logo, uploaded application icon, white-labeling, or theme controls. A deployment may expose only the minimum instance identity required to distinguish the installation.
+Stable 1.0 does not require PostgreSQL-backed administrator-managed welcome text, contact link, uploaded logo, uploaded application icon, white-labeling, or theme controls. A deployment may expose only the minimum instance identity required to distinguish the installation, plus the operator legal identity described in §15.
 
 Serve a manifest with a stable application identity/start URL and bundled/default presentation. A minimal service worker supports installation and Web Push; it does not promise offline application behavior.
 
@@ -556,20 +577,28 @@ When enabled:
 - start the initial synchronization asynchronously after HTTP/application availability
 - synchronize lightweight search/classification metadata for all IGDB game records; do not filter game types at ingestion
 - keep enough provider data to search/disambiguate by name/alias, provider ID, type/category, useful relationships, platform/release context, and cover reference metadata
-- do not mirror the full provider graph or cover image bytes
+- do not mirror the full provider graph or bulk-download cover images; cover bytes are cached on demand only for cover IDs LANsurfer already knows
 - do not expose partially synchronized IGDB results during the first baseline sync
 - after the first successful baseline, run automatic refresh once per day and offer global administrators **Sync now**
 - retry failures independently of core request traffic
 - keep serving the last successful index while a later refresh is running or has failed
 - expose at least `disabled`, `not synced`, `syncing`, `current`, `stale`, and `failed` operator states
 
-Default player-visible provider categories are semantic product policy rather than hardcoded numeric enum assumptions. Ordinary search includes main games, standalone expansions, remakes, remasters, ports, and independently playable expanded/edition variants. DLC/add-ons, bundles, mods, episodes/seasons, packs, and updates remain synchronized but hidden by default.
+The administrator status page reads both counts in one query: `RecordCount` is the active generation's `record_count`, and `StagedRecords` is a `count(*)` over `igdb_game_index` joined to `igdb_sync_generations` through `igdb_provider_state.latest_attempt_generation_id` while that generation is still `syncing`. The two are deliberately separate, so an in-progress baseline never looks like a shrunken active catalog. While the state is `syncing`, that card polls its own fragment route (`/admin/igdb/status`) with HTMX; the polled response replaces the element that carries the polling attributes, so the settled state stops polling without a separate stop condition or client script. The fragment sits behind the same administrator authorization as the page.
+
+Default player-visible provider categories are semantic product policy rather than hardcoded numeric enum assumptions. Ordinary search includes main games, expansions, standalone expansions, remakes, remasters, ports, and expanded games. DLC/add-ons, bundles, mods, episodes/seasons, packs, and updates remain synchronized but hidden by default. An unmaterialized provider record is player-visible only when its Game Type is supported and IGDB `version_parent` is null; `parent_game` is never a visibility filter. Search, direct provider selection, and materialization enforce the same rule (`game.VisibleProviderRecord`), and already materialized local Games stay governed by local Game state. Editions are identified by these structured relationships, never by name heuristics.
 
 ### Materialization and authority
 
 Searching/viewing a provider result is read-only. Following it or creating a Game Request for it invokes the `game` module to atomically materialize one authoritative local Game keyed by provider/external ID. Any signed-in player may trigger this when IGDB is enabled; there is no administrator approval step.
 
 Never merge by name. Once materialized, local Games remain authoritative and usable if the provider is disabled, unavailable, changed, or later loses the source record.
+
+Administrator reconciliation stays inside the `game` module. Linking reloads the selected record from the active provider generation inside the write transaction; browser-submitted provider metadata is never persisted. Unlinking removes the IGDB mapping and enrichment snapshot together while leaving the local Game and its relationships untouched.
+
+Merging takes explicit source and target IDs, locks both Game rows in stable order, and completes in one transaction. The target keeps its ID, name, slug, and active state. Game Requests are reassigned, follows are copied with `(user_id, game_id)` conflict deduplication, aliases are copied with the existing case-insensitive per-Game uniqueness rule, and a single source IGDB mapping/enrichment snapshot moves to the target. If both Games have IGDB mappings, the transaction stops before moving anything; an administrator must explicitly unlink the incorrect identity first. The source Game is deleted only after every transfer succeeds.
+
+Permanent deletion locks and rechecks the Game in the transaction. It is rejected while Game Requests or follows exist. The `game_requests.game_id` foreign key remains `ON DELETE RESTRICT`; aliases, external identities, and enrichment may cascade only after those business-reference guards pass.
 
 Unmaterialized discovery reads presentation metadata from the active provider generation. Once materialized, player-facing reads use the authoritative local Game plus a local last-known-good IGDB enrichment snapshot (`game_igdb_enrichment`). Successful provider syncs refresh only non-empty enrichment fields; provider disappearance or disablement does not remove the snapshot.
 
@@ -586,13 +615,14 @@ Provider API and synchronization mechanics live behind narrow interfaces. The ex
 
 Do not couple the primary `games` table schema to IGDB-specific fields. Use generic provider/external identity and focused provider-index storage.
 
-IGDB covers are the only approved remote content exception. Allow images only from `images.igdb.com` in Content Security Policy, use `Referrer-Policy: no-referrer`, render a local placeholder on failure, and document viewer IP disclosure. Do not generalize this into a remote-asset system or cover proxy/cache.
+IGDB cover bytes are served same-origin through a bounded LANsurfer proxy/cache; player browsers never contact IGDB directly. The browser supplies only `size` (`small` or `big`) and an image ID matching `^[a-z0-9]{1,32}$`; on a cache miss the ID must also exist in `igdb_game_index.cover_image_id` or `game_igdb_enrichment.cover_image_id`. LANsurfer constructs the upstream URL server-side from a fixed `images.igdb.com` origin and fixed size mapping, with a combined 5-second catalog-and-fetch deadline, a 5-second upstream client timeout, redirects disabled, a 1 MiB response cap, and body-sniffed JPEG/PNG/WebP acceptance. Unknown IDs and failed fetches use a fixed 4,096-entry in-memory negative cache for up to 10 minutes. At most eight shared cold-miss operations run per process; a new cold key receives `503` without queuing when saturated, while cache hits and callers joining an existing singleflight do not consume another slot. The cache is either the configured disk store or the fixed 64 MiB in-process LRU, and missing/failed covers retain the local placeholder. Never accept arbitrary upstream URLs or generalize this into a remote-asset proxy.
 
 ---
 
 ## 18. Frontend Architecture
 
 `templ` renders full pages and HTMX fragments. DaisyUI provides the stable base component vocabulary; Tailwind handles layout/local variations. Avoid another UI framework.
+Icons are the Phosphor webfonts (Regular default, Fill for emphasized state), consumed as plain CSS classes in templ markup with `currentColor`; TypeScript does not manage icons.
 
 TypeScript handles only browser-specific progressive enhancement such as SSE connection handling, toast/dialog helpers, installability/service-worker registration, and Web Push permission/subscription behavior. Do not implement domain decisions in TypeScript.
 
@@ -605,6 +635,7 @@ When Tracks D and E both need browser changes, Track D owns the service-worker s
 Build frontend assets during development/CI. Production artifacts are embedded using `go:embed`.
 
 The deployed application should not require Node.js, package managers, Tailwind CLI, templ CLI, or esbuild at runtime.
+Icon webfonts and their stylesheet are bundled and embedded like the fonts through `scripts/prepare-assets.mjs`; there is no runtime icon CDN and no remote-content exception in Content Security Policy.
 
 ---
 
@@ -659,7 +690,7 @@ Important baseline controls:
 - careful trusted-proxy configuration
 - one-use, browser-bound authentication/link flow state
 - provider identity privacy
-- fixed CSP allowlisting for the IGDB cover exception
+- server-constructed IGDB cover fetches with no third-party requests from player browsers
 - encrypted Discord webhook credentials with key rotation/backup guidance
 - Web Push payload data minimization and explicit permission/consent
 
@@ -679,6 +710,6 @@ Parallel-track development makes boundaries especially important: contracts may 
 
 ## 23. Architectural Decision Policy
 
-Follow the [approval rules](../AGENTS.md#constraints-requiring-approval). Document approved architectural changes here or in a short ADR, including the reason for the decision. Small internal implementation choices do not need an ADR.
+Follow the [approval rules](../AGENTS.md#changes-requiring-approval). Document approved architectural changes here or in a short ADR, including the reason for the decision. Small internal implementation choices do not need an ADR.
 
 The roadmap's parallel tracks are planning boundaries, not new architectural layers. Do not create track packages, track-specific frameworks, or abstractions whose only purpose is coordinating project management.

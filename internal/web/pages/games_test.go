@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/convention-x-treme/lansurfer/internal/game"
+	"github.com/convention-x-treme/lansurfer/internal/web/branding"
 	"github.com/convention-x-treme/lansurfer/internal/web/components"
 )
 
@@ -19,7 +20,7 @@ func TestGameCatalogEmptySearchIsDiscoveryFirst(t *testing.T) {
 		ProviderStatus: game.ProviderStatus{State: game.ProviderCurrent, CatalogAvailable: true},
 	}
 	var rendered bytes.Buffer
-	if err := GameCatalogResults(page, "", "", nil).Render(context.Background(), &rendered); err != nil {
+	if err := GameCatalogResults(branding.Brand{}, page, "", false, "", nil).Render(context.Background(), &rendered); err != nil {
 		t.Fatalf("render GameCatalogResults: %v", err)
 	}
 	markup := rendered.String()
@@ -47,7 +48,7 @@ func TestGameCatalogOneCharacterPromptsForTwoCharacters(t *testing.T) {
 		ProviderStatus: game.ProviderStatus{State: game.ProviderCurrent, CatalogAvailable: true},
 	}
 	var rendered bytes.Buffer
-	if err := GameCatalogResults(page, "c", "", nil).Render(context.Background(), &rendered); err != nil {
+	if err := GameCatalogResults(branding.Brand{}, page, "c", false, "", nil).Render(context.Background(), &rendered); err != nil {
 		t.Fatalf("render GameCatalogResults: %v", err)
 	}
 	if !strings.Contains(rendered.String(), "Type at least 2 characters to search.") {
@@ -66,7 +67,7 @@ func TestGameCatalogNoUsableCatalogShowsAvailabilityState(t *testing.T) {
 	for name, status := range tests {
 		page := game.DiscoveryPage{ProviderStatus: status}
 		var rendered bytes.Buffer
-		if err := GameCatalogResults(page, "", "", nil).Render(context.Background(), &rendered); err != nil {
+		if err := GameCatalogResults(branding.Brand{}, page, "", false, "", nil).Render(context.Background(), &rendered); err != nil {
 			t.Fatalf("render GameCatalogResults for %s: %v", name, err)
 		}
 		if !strings.Contains(rendered.String(), "No games are available yet.") {
@@ -80,7 +81,7 @@ func TestGameCatalogNoUsableCatalogShowsAvailabilityState(t *testing.T) {
 func TestGameCatalogInitialSyncShowsGettingReady(t *testing.T) {
 	page := game.DiscoveryPage{ProviderStatus: game.ProviderStatus{State: game.ProviderSyncing, CatalogAvailable: false}}
 	var rendered bytes.Buffer
-	if err := GameCatalogResults(page, "", "", nil).Render(context.Background(), &rendered); err != nil {
+	if err := GameCatalogResults(branding.Brand{}, page, "", false, "", nil).Render(context.Background(), &rendered); err != nil {
 		t.Fatalf("render GameCatalogResults: %v", err)
 	}
 	if !strings.Contains(rendered.String(), "Game discovery is getting ready.") {
@@ -100,7 +101,7 @@ func TestGameCatalogBroadSearchShowsRefineHint(t *testing.T) {
 		HasMore: true,
 	}
 	var rendered bytes.Buffer
-	if err := GameCatalogResults(page, "warcraft", "", nil).Render(context.Background(), &rendered); err != nil {
+	if err := GameCatalogResults(branding.Brand{}, page, "warcraft", false, "", nil).Render(context.Background(), &rendered); err != nil {
 		t.Fatalf("render GameCatalogResults: %v", err)
 	}
 	markup := rendered.String()
@@ -116,7 +117,7 @@ func TestGameCatalogNoUsableCatalogShowsAdministrationLinkOnlyForAdmins(t *testi
 	page := game.DiscoveryPage{ProviderStatus: game.ProviderStatus{State: game.ProviderFailed, CatalogAvailable: false}}
 
 	var adminRendered bytes.Buffer
-	if err := GameCatalogResults(page, "", "", &components.Viewer{Role: "admin"}).Render(context.Background(), &adminRendered); err != nil {
+	if err := GameCatalogResults(branding.Brand{}, page, "", false, "", &components.Viewer{Role: "admin"}).Render(context.Background(), &adminRendered); err != nil {
 		t.Fatalf("render GameCatalogResults for admin: %v", err)
 	}
 	if !strings.Contains(adminRendered.String(), `href="/admin/igdb"`) {
@@ -124,7 +125,7 @@ func TestGameCatalogNoUsableCatalogShowsAdministrationLinkOnlyForAdmins(t *testi
 	}
 
 	var playerRendered bytes.Buffer
-	if err := GameCatalogResults(page, "", "", &components.Viewer{Role: "user"}).Render(context.Background(), &playerRendered); err != nil {
+	if err := GameCatalogResults(branding.Brand{}, page, "", false, "", &components.Viewer{Role: "user"}).Render(context.Background(), &playerRendered); err != nil {
 		t.Fatalf("render GameCatalogResults for player: %v", err)
 	}
 	if strings.Contains(playerRendered.String(), `href="/admin/igdb"`) {
@@ -144,6 +145,8 @@ func TestGameCardRendersUnifiedPresentationForMaterializedAndProviderItems(t *te
 		PlatformNames:    []string{"PC (Microsoft Windows)"},
 		FirstReleaseDate: &releaseDate,
 		CoverImageID:     "co1abc",
+		Summary:          "Azeroth braces for war.",
+		GenreNames:       []string{"Real Time Strategy (RTS)", "Strategy"},
 	}
 	items := map[string]game.DiscoveryItem{
 		"materialized": {
@@ -155,23 +158,34 @@ func TestGameCardRendersUnifiedPresentationForMaterializedAndProviderItems(t *te
 	}
 	for name, item := range items {
 		var rendered bytes.Buffer
-		if err := GameCard(item).Render(context.Background(), &rendered); err != nil {
+		if err := GameCard(item, false).Render(context.Background(), &rendered); err != nil {
 			t.Fatalf("render GameCard for %s: %v", name, err)
 		}
 		markup := rendered.String()
+		if strings.Contains(markup, "images.igdb.com") {
+			t.Errorf("%s card references images.igdb.com: %s", name, markup)
+		}
 		for _, want := range []string{
-			"https://images.igdb.com/igdb/image/upload/t_cover_small/co1abc.jpg",
+			"/media/igdb/big/co1abc",
 			"Warcraft III: Reign of Chaos",
-			"Main Game",
-			"PC (Microsoft Windows)",
-			"2002",
+			"2002 · Azeroth braces for war.",
+			"game-card-genre",
+			">RTS<",
 			"Find Players",
 		} {
 			if !strings.Contains(markup, want) {
 				t.Errorf("%s card does not contain %q: %s", name, want, markup)
 			}
 		}
-		if !strings.Contains(markup, "Follow Game") && !strings.Contains(markup, "Following") {
+		// The card spends its secondary line on the summary, so game type
+		// and platforms no longer appear there, and only the first genre
+		// earns the cover badge.
+		for _, unwanted := range []string{"Main Game", "PC (Microsoft Windows)", ">Strategy<", "Real Time Strategy (RTS)"} {
+			if strings.Contains(markup, unwanted) {
+				t.Errorf("%s card unexpectedly still contains %q: %s", name, unwanted, markup)
+			}
+		}
+		if !strings.Contains(markup, ">Follow<") && !strings.Contains(markup, "Following") {
 			t.Errorf("%s card does not offer a follow control: %s", name, markup)
 		}
 		// Materialization origin, sync-generation terminology, and Local/IGDB
@@ -197,7 +211,7 @@ func TestGameCardRendersAbbreviationFallbackForLocalGameWithoutCover(t *testing.
 		Materialized:     true,
 	}
 	var rendered bytes.Buffer
-	if err := GameCard(item).Render(context.Background(), &rendered); err != nil {
+	if err := GameCard(item, false).Render(context.Background(), &rendered); err != nil {
 		t.Fatalf("render GameCard: %v", err)
 	}
 	markup := rendered.String()
@@ -209,12 +223,88 @@ func TestGameCardRendersAbbreviationFallbackForLocalGameWithoutCover(t *testing.
 	}
 }
 
+// The card's secondary line degrades one field at a time: either half alone
+// still reads, and a Game with neither falls back to the slug exactly as it
+// did before the summary moved in.
+func TestGameCardMetaCombinesYearAndSummary(t *testing.T) {
+	releaseDate := time.Date(2002, time.July, 3, 0, 0, 0, 0, time.UTC)
+	long := strings.Repeat("a", gameCardSummaryLimit+10)
+	for name, testCase := range map[string]struct {
+		presentation game.GamePresentation
+		want         string
+	}{
+		"year and summary": {
+			presentation: game.GamePresentation{FirstReleaseDate: &releaseDate, Summary: "Azeroth braces for war."},
+			want:         "2002 · Azeroth braces for war.",
+		},
+		"year only":    {presentation: game.GamePresentation{FirstReleaseDate: &releaseDate}, want: "2002"},
+		"summary only": {presentation: game.GamePresentation{Summary: "Azeroth braces for war."}, want: "Azeroth braces for war."},
+		"neither falls back to the slug": {
+			presentation: game.GamePresentation{Slug: "warcraft-3", GameType: "Main Game"},
+			want:         "warcraft-3",
+		},
+		"collapses provider whitespace": {
+			presentation: game.GamePresentation{Summary: "Azeroth\n\nbraces  for war."},
+			want:         "Azeroth braces for war.",
+		},
+		"over-long summary is cut with an ellipsis": {
+			presentation: game.GamePresentation{Summary: long},
+			want:         strings.Repeat("a", gameCardSummaryLimit) + "…",
+		},
+	} {
+		if got := gameCardMeta(testCase.presentation); got != testCase.want {
+			t.Errorf("%s: gameCardMeta() = %q, want %q", name, got, testCase.want)
+		}
+	}
+}
+
+// The cover badge is narrow, so IGDB's own trailing acronym is preferred
+// over its long form wherever the provider supplies one. The genre name
+// IGDB stores is never rewritten; only this label is shortened.
+func TestShortGenrePrefersProviderAcronym(t *testing.T) {
+	for name, want := range map[string]string{
+		"Real Time Strategy (RTS)":   "RTS",
+		"Role-playing (RPG)":         "RPG",
+		"Turn-based strategy (TBS)":  "TBS",
+		"Hack and slash/Beat 'em up": "Hack & Slash",
+		"Strategy":                   "Strategy",
+		"Point-and-click":            "Point-and-click",
+		"Card & Board Game":          "Card & Board Game",
+		// Nothing before the parenthesis means there is no long form to
+		// drop, so the name survives whole rather than becoming empty.
+		"(RTS)":     "(RTS)",
+		"Puzzle ()": "Puzzle ()",
+		"":          "",
+	} {
+		if got := shortGenre(name); got != want {
+			t.Errorf("shortGenre(%q) = %q, want %q", name, got, want)
+		}
+	}
+}
+
+// A Game with no IGDB genres has no badge to show, and must render the
+// cover without an empty chip floating on it.
+func TestGameCardOmitsGenreBadgeWithoutGenres(t *testing.T) {
+	item := game.DiscoveryItem{
+		LocalGameID:      "game-1",
+		GamePresentation: game.GamePresentation{Name: "Trackmania", Slug: "trackmania"},
+		Materialized:     true,
+	}
+	var rendered bytes.Buffer
+	if err := GameCard(item, false).Render(context.Background(), &rendered); err != nil {
+		t.Fatalf("render GameCard: %v", err)
+	}
+	if strings.Contains(rendered.String(), "game-card-genre") {
+		t.Errorf("genre-less card unexpectedly renders a genre badge: %s", rendered.String())
+	}
+}
+
 // Typing filters the catalog without pressing the button, once the player
 // pauses rather than once per keystroke; the button stays as the
 // no-scripting submit path (spec: "3.2 Live search").
 func TestGameSearchFormAppliesWhileTyping(t *testing.T) {
 	var rendered bytes.Buffer
-	if err := GameSearchForm("").Render(context.Background(), &rendered); err != nil {
+	if err := GameSearchForm("", false).Render(context.Background(), &rendered); err != nil {
 		t.Fatalf("render GameSearchForm: %v", err)
 	}
 	markup := rendered.String()
@@ -223,7 +313,6 @@ func TestGameSearchFormAppliesWhileTyping(t *testing.T) {
 		"search from:(#game-search)",
 		`hx-sync="this:replace"`,
 		`hx-replace-url="true"`,
-		`type="submit"`,
 	} {
 		if !strings.Contains(markup, want) {
 			t.Errorf("search form is missing %q: %s", want, markup)
@@ -232,23 +321,35 @@ func TestGameSearchFormAppliesWhileTyping(t *testing.T) {
 	if strings.Contains(markup, "hx-push-url") {
 		t.Error("live search must replace the URL, not push a history entry per keystroke")
 	}
+	// The filters apply themselves, so neither a Search nor a Clear button is
+	// rendered for a player who has scripting. The submit control exists only
+	// inside noscript, where it is the one thing that can apply the checkbox.
+	if submit := strings.Index(markup, `type="submit"`); submit != -1 {
+		if noscript := strings.Index(markup, "<noscript>"); noscript == -1 || submit < noscript {
+			t.Errorf("a submit button is rendered outside noscript: %s", markup)
+		}
+	}
+	if strings.Contains(markup, ">Clear<") {
+		t.Errorf("search form still renders a Clear button: %s", markup)
+	}
 }
 
 // Following is idempotent in the database, but an unguarded control still lets
 // rapid clicks stack overlapping swaps against the same target.
 func TestGameFollowControlGuardsAgainstDoubleSubmission(t *testing.T) {
-	tests := map[string]struct {
-		subscribed bool
-		myGames    bool
-	}{
-		"follow":            {subscribed: false},
-		"unfollow":          {subscribed: true},
-		"unfollow my games": {subscribed: true, myGames: true},
+	local := game.DiscoveryItem{LocalGameID: "game-1", GamePresentation: game.GamePresentation{Name: "Warcraft III"}, Materialized: true}
+	provider := game.DiscoveryItem{Reference: game.ProviderReference{Provider: "igdb", ExternalID: "42"}, GamePresentation: game.GamePresentation{Name: "Warcraft III"}}
+	followed := local
+	followed.Subscribed = true
+	tests := map[string]game.DiscoveryItem{
+		"follow local":    local,
+		"follow provider": provider,
+		"unfollow":        followed,
 	}
-	for name, test := range tests {
+	for name, item := range tests {
 		var rendered bytes.Buffer
-		if err := GameFollowControl("game-1", test.subscribed, test.myGames).Render(context.Background(), &rendered); err != nil {
-			t.Fatalf("render GameFollowControl for %s: %v", name, err)
+		if err := GameCardFollowControl(item, false).Render(context.Background(), &rendered); err != nil {
+			t.Fatalf("render GameCardFollowControl for %s: %v", name, err)
 		}
 		markup := rendered.String()
 		for _, guard := range []string{`hx-sync="this:drop"`, `hx-disabled-elt="find button"`} {
@@ -256,5 +357,95 @@ func TestGameFollowControlGuardsAgainstDoubleSubmission(t *testing.T) {
 				t.Errorf("%s control is missing %s: %s", name, guard, markup)
 			}
 		}
+		// Following changes the cover tag and the card border as well as the
+		// button, so the whole card is the only fragment that stays correct
+		// after the swap.
+		if !strings.Contains(markup, `hx-target="closest article"`) {
+			t.Errorf("%s control does not swap the whole card: %s", name, markup)
+		}
+	}
+}
+
+// "Followed only" is a filter on the one Games screen, not a second page: it
+// rides in the same live-search form and survives a no-JavaScript follow via
+// the hidden field, so the redirect lands back on the filtered list.
+func TestGameSearchFormCarriesFollowedOnlyFilter(t *testing.T) {
+	var rendered bytes.Buffer
+	if err := GameSearchForm("", true).Render(context.Background(), &rendered); err != nil {
+		t.Fatalf("render GameSearchForm: %v", err)
+	}
+	markup := rendered.String()
+	for _, want := range []string{`name="followed"`, `value="1"`, "checked", "change from:(.filter-toggle input)"} {
+		if !strings.Contains(markup, want) {
+			t.Errorf("followed filter is missing %q: %s", want, markup)
+		}
+	}
+
+	item := game.DiscoveryItem{LocalGameID: "game-1", GamePresentation: game.GamePresentation{Name: "Warcraft III"}, Materialized: true}
+	var card bytes.Buffer
+	if err := GameCard(item, true).Render(context.Background(), &card); err != nil {
+		t.Fatalf("render GameCard: %v", err)
+	}
+	if !strings.Contains(card.String(), `<input type="hidden" name="followed" value="1">`) {
+		t.Errorf("follow control does not carry the filter through a no-JavaScript submit: %s", card.String())
+	}
+}
+
+// The followed state is named in words on the cover tag rather than by the
+// card border alone, and the button says only what pressing it does.
+func TestGameCardNamesTheFollowedState(t *testing.T) {
+	item := game.DiscoveryItem{
+		LocalGameID:      "game-1",
+		GamePresentation: game.GamePresentation{Name: "Warcraft III", Slug: "warcraft-3"},
+		Subscribed:       true,
+		Materialized:     true,
+	}
+	var rendered bytes.Buffer
+	if err := GameCard(item, false).Render(context.Background(), &rendered); err != nil {
+		t.Fatalf("render GameCard: %v", err)
+	}
+	markup := rendered.String()
+	for _, want := range []string{"game-card-tag", "Following", "game-card-followed", "Unfollow"} {
+		if !strings.Contains(markup, want) {
+			t.Errorf("followed card is missing %q: %s", want, markup)
+		}
+	}
+	if strings.Contains(markup, "btn-error") {
+		t.Errorf("unfollow must not read as a destructive action: %s", markup)
+	}
+}
+
+// The merged screen states what it is showing in the terms the filter uses,
+// so a player never has to infer whether a short list is the whole catalog.
+func TestGameCatalogCountLabelStatesTheCurrentView(t *testing.T) {
+	items := []game.DiscoveryItem{
+		{LocalGameID: "game-1", GamePresentation: game.GamePresentation{Name: "Warcraft III"}, Subscribed: true},
+		{LocalGameID: "game-2", GamePresentation: game.GamePresentation{Name: "Trackmania"}},
+	}
+	if got, want := catalogCountLabel(items, false), "2 games · 1 followed"; got != want {
+		t.Errorf("catalogCountLabel(unfiltered) = %q, want %q", got, want)
+	}
+	if got, want := catalogCountLabel(items[:1], true), "1 game followed"; got != want {
+		t.Errorf("catalogCountLabel(followed) = %q, want %q", got, want)
+	}
+}
+
+// Following nothing yet is a different situation from a search that missed,
+// and the way out of each differs, so the two never share copy.
+func TestGameCatalogEmptyDistinguishesFollowedFromSearchMiss(t *testing.T) {
+	var followed bytes.Buffer
+	if err := GameCatalogEmpty(branding.Brand{}, "", true).Render(context.Background(), &followed); err != nil {
+		t.Fatalf("render GameCatalogEmpty: %v", err)
+	}
+	if !strings.Contains(followed.String(), "You follow nothing yet.") {
+		t.Errorf("followed-only empty state does not name the situation: %s", followed.String())
+	}
+
+	var missed bytes.Buffer
+	if err := GameCatalogEmpty(branding.Brand{}, "zzz", false).Render(context.Background(), &missed); err != nil {
+		t.Fatalf("render GameCatalogEmpty: %v", err)
+	}
+	if !strings.Contains(missed.String(), "No game matches that.") {
+		t.Errorf("search-miss empty state does not name the situation: %s", missed.String())
 	}
 }

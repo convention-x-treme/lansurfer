@@ -6,9 +6,11 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"net/mail"
 	"net/netip"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -20,6 +22,9 @@ const (
 	defaultListenAddr     = ":8080"
 	defaultBaseURL        = "http://localhost:8080"
 	maxInstanceNameLength = 64
+
+	maxLegalEntityNameLength = 200
+	maxLegalAddressLength    = 300
 )
 
 type OIDC struct {
@@ -35,9 +40,21 @@ type Discord struct {
 	ClientSecret string
 }
 
-type IGDB struct {
+type Twitch struct {
 	ClientID     string
 	ClientSecret string
+	AuthEnabled  bool
+	IGDBEnabled  bool
+}
+
+// Legal is the operator's legal identity shown on the Terms and Privacy
+// pages. Each deployment is its own data controller, so this is operator
+// configuration; it is deliberately not a branding surface.
+type Legal struct {
+	EntityName   string
+	Address      string
+	ContactEmail string
+	ImprintURL   string
 }
 
 type WebPush struct {
@@ -53,7 +70,7 @@ type Config struct {
 	BaseURL     string
 	OIDC        *OIDC
 	Discord     *Discord
-	IGDB        *IGDB
+	Twitch      *Twitch
 	WebPush     *WebPush
 	// DataEncryptionKey is the operator-provided AES-256 key used to encrypt
 	// externally sourced credentials at rest (Web Push subscription material,
@@ -66,6 +83,12 @@ type Config struct {
 	// display fallback ("LANsurfer"), the same way it already owns
 	// branding.Default() rather than config owning product identity.
 	InstanceName string
+	// Legal is the trimmed, validated operator legal identity. Empty fields
+	// mean unset; the pages render them as "not configured".
+	Legal Legal
+	// CoverCacheDir is the trimmed LANSURFER_COVER_CACHE_DIR. Empty means
+	// IGDB covers are cached in a bounded in-process memory store instead.
+	CoverCacheDir string
 }
 
 // Load reads configuration from environment variables.
@@ -98,7 +121,7 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	igdb, err := loadIGDB()
+	twitch, err := loadTwitch()
 	if err != nil {
 		return Config{}, err
 	}
@@ -124,34 +147,75 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 
+	legal, err := loadLegal()
+	if err != nil {
+		return Config{}, err
+	}
+	if discord != nil && (legal.EntityName == "" || legal.ContactEmail == "") {
+		return Config{}, errors.New("LANSURFER_LEGAL_ENTITY_NAME and LANSURFER_LEGAL_CONTACT_EMAIL are required when Discord login is configured")
+	}
+
 	return Config{
 		DatabaseURL:       databaseURL,
 		ListenAddr:        listenAddr,
 		BaseURL:           baseURL,
 		OIDC:              oidc,
 		Discord:           discord,
-		IGDB:              igdb,
+		Twitch:            twitch,
 		WebPush:           webPush,
 		DataEncryptionKey: dataEncryptionKey,
 		TrustedProxies:    trustedProxies,
 		InstanceName:      instanceName,
+		Legal:             legal,
+		CoverCacheDir:     strings.TrimSpace(os.Getenv("LANSURFER_COVER_CACHE_DIR")),
 	}, nil
 }
 
 func loadInstanceName() (string, error) {
 	name := strings.TrimSpace(os.Getenv("LANSURFER_INSTANCE_NAME"))
-	if name == "" {
-		return "", nil
-	}
-	for _, r := range name {
-		if unicode.IsControl(r) || r == ' ' || r == ' ' {
-			return "", fmt.Errorf("LANSURFER_INSTANCE_NAME must not contain control characters or line breaks")
+	return name, checkSingleLine("LANSURFER_INSTANCE_NAME", name, maxInstanceNameLength)
+}
+
+// checkSingleLine rejects control characters, Unicode line/paragraph
+// separators, and values longer than max runes. Empty values pass.
+func checkSingleLine(name, value string, max int) error {
+	for _, r := range value {
+		if unicode.IsControl(r) || r == '\u2028' || r == '\u2029' {
+			return fmt.Errorf("%s must not contain control characters or line breaks", name)
 		}
 	}
-	if length := utf8.RuneCountInString(name); length > maxInstanceNameLength {
-		return "", fmt.Errorf("LANSURFER_INSTANCE_NAME must be %d Unicode characters or fewer, got %d", maxInstanceNameLength, length)
+	if length := utf8.RuneCountInString(value); length > max {
+		return fmt.Errorf("%s must be %d Unicode characters or fewer, got %d", name, max, length)
 	}
-	return name, nil
+	return nil
+}
+
+func loadLegal() (Legal, error) {
+	legal := Legal{
+		EntityName:   strings.TrimSpace(os.Getenv("LANSURFER_LEGAL_ENTITY_NAME")),
+		Address:      strings.TrimSpace(os.Getenv("LANSURFER_LEGAL_ADDRESS")),
+		ContactEmail: strings.TrimSpace(os.Getenv("LANSURFER_LEGAL_CONTACT_EMAIL")),
+		ImprintURL:   strings.TrimSpace(os.Getenv("LANSURFER_IMPRINT_URL")),
+	}
+	if err := checkSingleLine("LANSURFER_LEGAL_ENTITY_NAME", legal.EntityName, maxLegalEntityNameLength); err != nil {
+		return Legal{}, err
+	}
+	if err := checkSingleLine("LANSURFER_LEGAL_ADDRESS", legal.Address, maxLegalAddressLength); err != nil {
+		return Legal{}, err
+	}
+	if legal.ContactEmail != "" {
+		address, err := mail.ParseAddress(legal.ContactEmail)
+		if err != nil || address.Name != "" || address.Address != legal.ContactEmail {
+			return Legal{}, errors.New("LANSURFER_LEGAL_CONTACT_EMAIL must be a bare email address")
+		}
+	}
+	if legal.ImprintURL != "" {
+		parsed, err := url.Parse(legal.ImprintURL)
+		if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" || parsed.User != nil {
+			return Legal{}, errors.New("LANSURFER_IMPRINT_URL must be an absolute HTTP(S) URL")
+		}
+	}
+	return legal, nil
 }
 
 func loadTrustedProxies() ([]netip.Prefix, error) {
@@ -176,16 +240,38 @@ func loadTrustedProxies() ([]netip.Prefix, error) {
 	return proxies, nil
 }
 
-func loadIGDB() (*IGDB, error) {
-	clientID := strings.TrimSpace(os.Getenv("LANSURFER_IGDB_CLIENT_ID"))
-	clientSecret := strings.TrimSpace(os.Getenv("LANSURFER_IGDB_CLIENT_SECRET"))
-	if clientID == "" && clientSecret == "" {
+func loadTwitch() (*Twitch, error) {
+	clientID := strings.TrimSpace(os.Getenv("LANSURFER_TWITCH_CLIENT_ID"))
+	clientSecret := strings.TrimSpace(os.Getenv("LANSURFER_TWITCH_CLIENT_SECRET"))
+	authEnabled, err := optionalBool("LANSURFER_TWITCH_AUTH_ENABLED")
+	if err != nil {
+		return nil, err
+	}
+	igdbEnabled, err := optionalBool("LANSURFER_IGDB_ENABLED")
+	if err != nil {
+		return nil, err
+	}
+	if !authEnabled && !igdbEnabled && clientID == "" && clientSecret == "" {
 		return nil, nil
 	}
-	if clientID == "" || clientSecret == "" {
-		return nil, errors.New("LANSURFER_IGDB_CLIENT_ID and LANSURFER_IGDB_CLIENT_SECRET must be configured together")
+	if authEnabled || igdbEnabled {
+		if clientID == "" || clientSecret == "" {
+			return nil, errors.New("LANSURFER_TWITCH_CLIENT_ID and LANSURFER_TWITCH_CLIENT_SECRET are required when Twitch authentication or IGDB is enabled")
+		}
 	}
-	return &IGDB{ClientID: clientID, ClientSecret: clientSecret}, nil
+	return &Twitch{ClientID: clientID, ClientSecret: clientSecret, AuthEnabled: authEnabled, IGDBEnabled: igdbEnabled}, nil
+}
+
+func optionalBool(name string) (bool, error) {
+	value := strings.TrimSpace(os.Getenv(name))
+	if value == "" {
+		return false, nil
+	}
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		return false, fmt.Errorf("%s must be a boolean: %w", name, err)
+	}
+	return parsed, nil
 }
 
 func loadWebPush() (*WebPush, error) {

@@ -29,6 +29,30 @@ type ProviderGame struct {
 	CoverImageID      string
 	ProviderUpdatedAt *time.Time
 	Checksum          string
+	Summary           string
+	GenreNames        []string
+	GameModeNames     []string
+	MultiplayerModes  []MultiplayerMode
+}
+
+// MultiplayerMode is one platform-specific multiplayer capability record
+// (issue #46). Player limits are nil when IGDB does not report them: nil is
+// "not reported" and is deliberately distinct from a zero-player limit,
+// which IGDB never sends (0 is its unset representation).
+type MultiplayerMode struct {
+	PlatformIGDBID    int64
+	PlatformName      string
+	CampaignCoop      bool
+	DropIn            bool
+	LanCoop           bool
+	OfflineCoop       bool
+	OnlineCoop        bool
+	SplitScreen       bool
+	SplitScreenOnline bool
+	OfflineCoopMax    *int
+	OfflineMax        *int
+	OnlineCoopMax     *int
+	OnlineMax         *int
 }
 
 type ProviderState string
@@ -43,10 +67,18 @@ const (
 )
 
 type ProviderStatus struct {
-	State            ProviderState
-	LastAttempt      *time.Time
-	LastSuccess      *time.Time
-	RecordCount      int64
+	State       ProviderState
+	LastAttempt *time.Time
+	LastSuccess *time.Time
+	// RecordCount is the record count of the last successfully activated
+	// baseline generation, not of whatever sync may be running right now.
+	RecordCount int64
+	// StagedRecords is how many provider records have already been written
+	// into the in-progress generation. It is 0 whenever no generation is
+	// still being staged, so the admin status page renders it only while
+	// State reports ProviderSyncing; it is the signal that tells a running
+	// full sync apart from a hung one.
+	StagedRecords    int64
 	LastError        string
 	CatalogAvailable bool
 }
@@ -146,9 +178,10 @@ func NewProviderReference(provider, externalID string) (ProviderReference, error
 // player-visible Game Type policy (spec: "Player-visible Game Type
 // policy"). Values are normalized (trimmed, lowercase) IGDB semantic
 // game_type.type strings. Unknown or newly introduced types default to
-// hidden until explicitly reviewed here.
+// hidden until explicitly reviewed here. A supported type alone is not
+// enough: VisibleProviderRecord also hides IGDB versions/editions.
 var visibleProviderGameTypes = []string{
-	"main game", "standalone expansion", "remake", "remaster", "port", "expanded game",
+	"main game", "expansion", "standalone expansion", "remake", "remaster", "port", "expanded game",
 }
 
 func VisibleProviderGameType(gameType string) bool {
@@ -159,6 +192,15 @@ func VisibleProviderGameType(gameType string) bool {
 		}
 	}
 	return false
+}
+
+// VisibleProviderRecord is the full player-visible policy for an
+// unmaterialized provider record: a supported Game Type and no IGDB
+// version_parent (a version_parent marks a commercial edition/version of
+// another record). parent_game deliberately plays no part, so expansions stay
+// discoverable. Already materialized local Games are never subject to it.
+func VisibleProviderRecord(gameType string, hasVersionParent bool) bool {
+	return !hasVersionParent && VisibleProviderGameType(gameType)
 }
 
 // VisibleProviderGameTypes returns the normalized (lowercase) Game Type

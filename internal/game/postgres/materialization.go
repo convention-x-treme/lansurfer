@@ -105,6 +105,12 @@ func (s *Store) materializeIGDBGame(ctx context.Context, externalID string, igdb
 		if err := queries.UpsertIGDBEnrichmentForExternalID(ctx, externalID); err != nil {
 			return game.Game{}, fmt.Errorf("refresh IGDB enrichment for %s: %w", externalID, err)
 		}
+		if err := queries.ClearIGDBEnrichmentMultiplayerModesForExternalID(ctx, externalID); err != nil {
+			return game.Game{}, fmt.Errorf("clear IGDB multiplayer modes for %s: %w", externalID, err)
+		}
+		if err := queries.InsertIGDBEnrichmentMultiplayerModesForExternalID(ctx, externalID); err != nil {
+			return game.Game{}, fmt.Errorf("insert IGDB multiplayer modes for %s: %w", externalID, err)
+		}
 		if err := transaction.Commit(ctx); err != nil {
 			return game.Game{}, fmt.Errorf("commit IGDB materialization: %w", err)
 		}
@@ -120,6 +126,12 @@ func (s *Store) materializeIGDBGame(ctx context.Context, externalID string, igdb
 	}
 	if err != nil {
 		return game.Game{}, fmt.Errorf("load active IGDB provider game %s: %w", externalID, err)
+	}
+	// Only a player-visible record may become a new local Game; an edition
+	// that is already materialized took the found path above and stays
+	// authoritative (issue #62).
+	if !game.VisibleProviderRecord(providerRow.GameType.String, providerRow.VersionParentIgdbID.Valid) {
+		return game.Game{}, game.ErrProviderRecordNotFound
 	}
 
 	name, err := materializedGameName(providerRow.Name)
@@ -155,6 +167,12 @@ func (s *Store) materializeIGDBGame(ctx context.Context, externalID string, igdb
 	}
 	if err := queries.UpsertIGDBEnrichmentForExternalID(ctx, externalID); err != nil {
 		return game.Game{}, fmt.Errorf("store IGDB enrichment for %s: %w", externalID, err)
+	}
+	if err := queries.ClearIGDBEnrichmentMultiplayerModesForExternalID(ctx, externalID); err != nil {
+		return game.Game{}, fmt.Errorf("clear IGDB multiplayer modes for %s: %w", externalID, err)
+	}
+	if err := queries.InsertIGDBEnrichmentMultiplayerModesForExternalID(ctx, externalID); err != nil {
+		return game.Game{}, fmt.Errorf("insert IGDB multiplayer modes for %s: %w", externalID, err)
 	}
 	if err := transaction.Commit(ctx); err != nil {
 		return game.Game{}, fmt.Errorf("commit IGDB materialization: %w", err)

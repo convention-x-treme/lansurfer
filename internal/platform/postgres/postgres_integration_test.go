@@ -349,6 +349,289 @@ func TestGameCatalogPersistence(t *testing.T) {
 	}
 }
 
+func TestGameCatalogReconciliation(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+	store := gamepostgres.NewStore(pool)
+	games := game.NewService(store)
+	users := user.NewService(userpostgres.NewStore(pool))
+	requests := gamerequest.NewService(gamerequestpostgres.NewStore(pool), games, nil)
+
+	firstUser, err := users.Register(t.Context(), "ReconcileOne")
+	if err != nil {
+		t.Fatalf("register first user: %v", err)
+	}
+	secondUser, err := users.Register(t.Context(), "ReconcileTwo")
+	if err != nil {
+		t.Fatalf("register second user: %v", err)
+	}
+	target, err := games.Create(t.Context(), "Authoritative Local Name", "authoritative-local")
+	if err != nil {
+		t.Fatalf("create target: %v", err)
+	}
+	source, err := games.Create(t.Context(), "Duplicate Provider Name", "duplicate-provider")
+	if err != nil {
+		t.Fatalf("create source: %v", err)
+	}
+	if _, err := games.AddAlias(t.Context(), target.ID, "Shared Alias"); err != nil {
+		t.Fatalf("add target alias: %v", err)
+	}
+	if _, err := games.AddAlias(t.Context(), source.ID, "shared alias"); err != nil {
+		t.Fatalf("add duplicate source alias: %v", err)
+	}
+	if _, err := games.AddAlias(t.Context(), source.ID, "Provider Alias"); err != nil {
+		t.Fatalf("add source alias: %v", err)
+	}
+
+	subscriptions := game.NewSubscriptionService(store)
+	for _, pair := range [][2]string{{firstUser.ID, target.ID}, {firstUser.ID, source.ID}, {secondUser.ID, source.ID}} {
+		if err := subscriptions.Follow(t.Context(), pair[0], pair[1]); err != nil {
+			t.Fatalf("follow %v: %v", pair, err)
+		}
+	}
+	targetRequest, err := requests.Create(t.Context(), firstUser.ID, target.ID, nil, time.Now().Add(time.Hour), "target history")
+	if err != nil {
+		t.Fatalf("create target request: %v", err)
+	}
+	sourceRequest, err := requests.Create(t.Context(), secondUser.ID, source.ID, nil, time.Now().Add(2*time.Hour), "source history")
+	if err != nil {
+		t.Fatalf("create source request: %v", err)
+	}
+
+	release := time.Date(2024, time.April, 5, 0, 0, 0, 0, time.UTC)
+	activateIGDBGeneration(t, store, []game.ProviderGame{
+		{
+			Reference: game.ProviderReference{Provider: "igdb", ExternalID: "100"},
+			Name:      "Browser-Supplied Name Must Not Win", Slug: "provider-name", GameType: "Main Game",
+			PlatformNames: []string{"PC"}, CoverImageID: "co-reconcile", FirstReleaseDate: &release,
+		},
+		{Reference: game.ProviderReference{Provider: "igdb", ExternalID: "200"}, Name: "Unused Provider Game", Slug: "unused-provider", GameType: "Main Game"},
+	})
+
+	providerResults, err := games.SearchIGDB(t.Context(), "100")
+	if err != nil || len(providerResults) != 1 || providerResults[0].ExternalID != "100" ||
+		providerResults[0].CoverImageID != "co-reconcile" || providerResults[0].FirstReleaseDate == nil ||
+		!providerResults[0].FirstReleaseDate.Equal(release) {
+		t.Fatalf("SearchIGDB() = %#v, %v", providerResults, err)
+	}
+	if err := games.LinkIGDB(t.Context(), target.ID, "100"); err != nil {
+		t.Fatalf("link target to IGDB: %v", err)
+	}
+	var localName, localSlug, cover, gameType string
+	if err := pool.QueryRow(t.Context(), `
+		SELECT game.name, game.slug, enrichment.cover_image_id, enrichment.game_type
+		FROM games game
+		JOIN game_igdb_enrichment enrichment ON enrichment.game_id=game.id
+		WHERE game.id=$1 AND enrichment.external_id='100'
+	`, target.ID).Scan(&localName, &localSlug, &cover, &gameType); err != nil {
+		t.Fatalf("load linked game and enrichment: %v", err)
+	}
+	if localName != target.Name || localSlug != target.Slug || cover != "co-reconcile" || gameType != "Main Game" {
+		t.Fatalf("linked state = %q, %q, %q, %q", localName, localSlug, cover, gameType)
+	}
+	if err := games.LinkIGDB(t.Context(), source.ID, "100"); err == nil {
+		t.Fatal("link conflict unexpectedly succeeded")
+	} else {
+		var conflict *game.IGDBLinkConflict
+		if !errors.As(err, &conflict) || conflict.GameID != target.ID || conflict.GameName != target.Name {
+			t.Fatalf("link conflict = %#v, %v", conflict, err)
+		}
+	}
+
+	if err := games.UnlinkIGDB(t.Context(), target.ID); err != nil {
+		t.Fatalf("unlink target: %v", err)
+	}
+	var mappingCount, enrichmentCount, targetRequestCount, targetFollowCount int
+	if err := pool.QueryRow(t.Context(), `SELECT count(*) FROM game_external_ids WHERE game_id=$1 AND lower(provider)='igdb'`, target.ID).Scan(&mappingCount); err != nil {
+		t.Fatalf("count target mappings: %v", err)
+	}
+	if err := pool.QueryRow(t.Context(), `SELECT count(*) FROM game_igdb_enrichment WHERE game_id=$1`, target.ID).Scan(&enrichmentCount); err != nil {
+		t.Fatalf("count target enrichment: %v", err)
+	}
+	if err := pool.QueryRow(t.Context(), `SELECT count(*) FROM game_requests WHERE game_id=$1`, target.ID).Scan(&targetRequestCount); err != nil {
+		t.Fatalf("count target requests: %v", err)
+	}
+	if err := pool.QueryRow(t.Context(), `SELECT count(*) FROM game_subscriptions WHERE game_id=$1`, target.ID).Scan(&targetFollowCount); err != nil {
+		t.Fatalf("count target follows: %v", err)
+	}
+	if mappingCount != 0 || enrichmentCount != 0 || targetRequestCount != 1 || targetFollowCount != 1 {
+		t.Fatalf("state after unlink = mapping %d, enrichment %d, requests %d, follows %d", mappingCount, enrichmentCount, targetRequestCount, targetFollowCount)
+	}
+
+	if err := games.LinkIGDB(t.Context(), source.ID, "100"); err != nil {
+		t.Fatalf("link source after unlink: %v", err)
+	}
+	if err := games.Merge(t.Context(), source.ID, target.ID); err != nil {
+		t.Fatalf("merge source into target: %v", err)
+	}
+	var sourceCount, requestCount, followCount, aliasCount, linkCount int
+	if err := pool.QueryRow(t.Context(), `SELECT count(*) FROM games WHERE id=$1`, source.ID).Scan(&sourceCount); err != nil {
+		t.Fatalf("count source: %v", err)
+	}
+	if err := pool.QueryRow(t.Context(), `SELECT count(*) FROM game_requests WHERE id IN ($1,$2) AND game_id=$3`, targetRequest.ID, sourceRequest.ID, target.ID).Scan(&requestCount); err != nil {
+		t.Fatalf("count reassigned requests: %v", err)
+	}
+	if err := pool.QueryRow(t.Context(), `SELECT count(*) FROM game_subscriptions WHERE game_id=$1`, target.ID).Scan(&followCount); err != nil {
+		t.Fatalf("count merged follows: %v", err)
+	}
+	if err := pool.QueryRow(t.Context(), `SELECT count(*) FROM game_aliases WHERE game_id=$1`, target.ID).Scan(&aliasCount); err != nil {
+		t.Fatalf("count merged aliases: %v", err)
+	}
+	if err := pool.QueryRow(t.Context(), `
+		SELECT count(*) FROM game_external_ids mapping
+		JOIN game_igdb_enrichment enrichment ON enrichment.game_id=mapping.game_id AND enrichment.external_id=mapping.external_id
+		WHERE mapping.game_id=$1 AND lower(mapping.provider)='igdb' AND mapping.external_id='100'
+	`, target.ID).Scan(&linkCount); err != nil {
+		t.Fatalf("count merged IGDB identity: %v", err)
+	}
+	if sourceCount != 0 || requestCount != 2 || followCount != 2 || aliasCount != 2 || linkCount != 1 {
+		t.Fatalf("merged state = source %d, requests %d, follows %d, aliases %d, IGDB %d", sourceCount, requestCount, followCount, aliasCount, linkCount)
+	}
+	if err := pool.QueryRow(t.Context(), `SELECT name, slug FROM games WHERE id=$1`, target.ID).Scan(&localName, &localSlug); err != nil {
+		t.Fatalf("load target after merge: %v", err)
+	}
+	if localName != target.Name || localSlug != target.Slug {
+		t.Fatalf("target identity after merge = %q/%q", localName, localSlug)
+	}
+
+	if err := games.Delete(t.Context(), target.ID); !errors.Is(err, game.ErrGameHasRequests) {
+		t.Fatalf("delete game with requests error = %v", err)
+	}
+	followedOnly, err := games.Create(t.Context(), "Followed Only", "followed-only")
+	if err != nil {
+		t.Fatalf("create followed-only game: %v", err)
+	}
+	if err := subscriptions.Follow(t.Context(), firstUser.ID, followedOnly.ID); err != nil {
+		t.Fatalf("follow followed-only game: %v", err)
+	}
+	if err := games.Delete(t.Context(), followedOnly.ID); !errors.Is(err, game.ErrGameHasFollowers) {
+		t.Fatalf("delete followed game error = %v", err)
+	}
+	unused, err := games.Create(t.Context(), "Unused", "unused")
+	if err != nil {
+		t.Fatalf("create unused game: %v", err)
+	}
+	if _, err := games.AddAlias(t.Context(), unused.ID, "Unused Alias"); err != nil {
+		t.Fatalf("add unused alias: %v", err)
+	}
+	if err := games.LinkIGDB(t.Context(), unused.ID, "200"); err != nil {
+		t.Fatalf("link unused game: %v", err)
+	}
+	if err := games.Delete(t.Context(), unused.ID); err != nil {
+		t.Fatalf("delete unused game: %v", err)
+	}
+	if err := pool.QueryRow(t.Context(), `SELECT count(*) FROM games WHERE id=$1`, unused.ID).Scan(&sourceCount); err != nil || sourceCount != 0 {
+		t.Fatalf("unused game after deletion = count %d, error %v", sourceCount, err)
+	}
+}
+
+func TestGameMergeConflictingIGDBLinksRollsBack(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+	store := gamepostgres.NewStore(pool)
+	games := game.NewService(store)
+	users := user.NewService(userpostgres.NewStore(pool))
+	account, err := users.Register(t.Context(), "RollbackPlayer")
+	if err != nil {
+		t.Fatalf("register user: %v", err)
+	}
+	source, err := games.Create(t.Context(), "Rollback Source", "rollback-source")
+	if err != nil {
+		t.Fatalf("create source: %v", err)
+	}
+	target, err := games.Create(t.Context(), "Rollback Target", "rollback-target")
+	if err != nil {
+		t.Fatalf("create target: %v", err)
+	}
+	if _, err := games.AddAlias(t.Context(), source.ID, "Source Must Stay"); err != nil {
+		t.Fatalf("add source alias: %v", err)
+	}
+	if err := game.NewSubscriptionService(store).Follow(t.Context(), account.ID, source.ID); err != nil {
+		t.Fatalf("follow source: %v", err)
+	}
+	request, err := gamerequest.NewService(gamerequestpostgres.NewStore(pool), games, nil).Create(
+		t.Context(), account.ID, source.ID, nil, time.Now().Add(time.Hour), "must stay on source",
+	)
+	if err != nil {
+		t.Fatalf("create source request: %v", err)
+	}
+	activateIGDBGeneration(t, store, []game.ProviderGame{
+		{Reference: game.ProviderReference{Provider: "igdb", ExternalID: "301"}, Name: "Source Provider", Slug: "source-provider", GameType: "Main Game"},
+		{Reference: game.ProviderReference{Provider: "igdb", ExternalID: "302"}, Name: "Target Provider", Slug: "target-provider", GameType: "Main Game"},
+	})
+	if err := games.LinkIGDB(t.Context(), source.ID, "301"); err != nil {
+		t.Fatalf("link source: %v", err)
+	}
+	if err := games.LinkIGDB(t.Context(), target.ID, "302"); err != nil {
+		t.Fatalf("link target: %v", err)
+	}
+
+	if err := games.Merge(t.Context(), source.ID, target.ID); !errors.Is(err, game.ErrConflictingIGDBLink) {
+		t.Fatalf("conflicting merge error = %v", err)
+	}
+	var sourceCount, sourceAliases, sourceFollows int
+	var requestGameID string
+	if err := pool.QueryRow(t.Context(), `SELECT count(*) FROM games WHERE id=$1`, source.ID).Scan(&sourceCount); err != nil {
+		t.Fatalf("count source after rollback: %v", err)
+	}
+	if err := pool.QueryRow(t.Context(), `SELECT count(*) FROM game_aliases WHERE game_id=$1`, source.ID).Scan(&sourceAliases); err != nil {
+		t.Fatalf("count source aliases after rollback: %v", err)
+	}
+	if err := pool.QueryRow(t.Context(), `SELECT count(*) FROM game_subscriptions WHERE game_id=$1`, source.ID).Scan(&sourceFollows); err != nil {
+		t.Fatalf("count source follows after rollback: %v", err)
+	}
+	if err := pool.QueryRow(t.Context(), `SELECT game_id::text FROM game_requests WHERE id=$1`, request.ID).Scan(&requestGameID); err != nil {
+		t.Fatalf("load request after rollback: %v", err)
+	}
+	if sourceCount != 1 || sourceAliases != 1 || sourceFollows != 1 || requestGameID != source.ID {
+		t.Fatalf("rollback state = source %d, aliases %d, follows %d, request game %s", sourceCount, sourceAliases, sourceFollows, requestGameID)
+	}
+
+	// Remove the deliberate identity conflict, then force a failure at the
+	// final source deletion. Every transfer runs before DeleteGame, so this
+	// proves a late failure rolls the requests/follows/aliases/identity back.
+	if err := games.UnlinkIGDB(t.Context(), target.ID); err != nil {
+		t.Fatalf("unlink target before forced rollback: %v", err)
+	}
+	if _, err := pool.Exec(t.Context(), `
+		CREATE FUNCTION fail_game_delete() RETURNS trigger LANGUAGE plpgsql AS $$
+		BEGIN
+			RAISE EXCEPTION 'forced merge rollback';
+		END
+		$$;
+		CREATE TRIGGER fail_game_delete BEFORE DELETE ON games
+		FOR EACH ROW EXECUTE FUNCTION fail_game_delete();
+	`); err != nil {
+		t.Fatalf("install forced rollback trigger: %v", err)
+	}
+	if err := games.Merge(t.Context(), source.ID, target.ID); err == nil || !strings.Contains(err.Error(), "forced merge rollback") {
+		t.Fatalf("forced merge error = %v", err)
+	}
+	var targetAliases, targetFollows, sourceLinks, targetLinks int
+	if err := pool.QueryRow(t.Context(), `SELECT count(*) FROM game_aliases WHERE game_id=$1`, target.ID).Scan(&targetAliases); err != nil {
+		t.Fatalf("count target aliases after forced rollback: %v", err)
+	}
+	if err := pool.QueryRow(t.Context(), `SELECT count(*) FROM game_subscriptions WHERE game_id=$1`, target.ID).Scan(&targetFollows); err != nil {
+		t.Fatalf("count target follows after forced rollback: %v", err)
+	}
+	if err := pool.QueryRow(t.Context(), `SELECT count(*) FROM game_external_ids WHERE game_id=$1 AND lower(provider)='igdb'`, source.ID).Scan(&sourceLinks); err != nil {
+		t.Fatalf("count source links after forced rollback: %v", err)
+	}
+	if err := pool.QueryRow(t.Context(), `SELECT count(*) FROM game_external_ids WHERE game_id=$1 AND lower(provider)='igdb'`, target.ID).Scan(&targetLinks); err != nil {
+		t.Fatalf("count target links after forced rollback: %v", err)
+	}
+	if err := pool.QueryRow(t.Context(), `SELECT game_id::text FROM game_requests WHERE id=$1`, request.ID).Scan(&requestGameID); err != nil {
+		t.Fatalf("load request after forced rollback: %v", err)
+	}
+	if targetAliases != 0 || targetFollows != 0 || sourceLinks != 1 || targetLinks != 0 || requestGameID != source.ID {
+		t.Fatalf("forced rollback state = target aliases %d, target follows %d, source links %d, target links %d, request game %s", targetAliases, targetFollows, sourceLinks, targetLinks, requestGameID)
+	}
+}
+
 func TestIGDBGenerationPersistence(t *testing.T) {
 	pool := newTestPool(t)
 	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
@@ -391,6 +674,70 @@ func TestIGDBGenerationPersistence(t *testing.T) {
 	}
 	if !after.CatalogAvailable {
 		t.Fatal("active generation must mark catalog available")
+	}
+}
+
+// The admin status page distinguishes a running full sync from a hung one by
+// the number of rows already staged into the in-progress generation, so that
+// count has to track the staging generation alone. RecordCount must keep
+// reporting the last successful baseline instead of following it: a refresh
+// that is only half way through must not make the active catalog look bigger.
+func TestIGDBStatusReportsStagedRecords(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+
+	store := gamepostgres.NewStore(pool)
+	firstID, err := store.BeginGeneration(t.Context())
+	if err != nil {
+		t.Fatalf("BeginGeneration: %v", err)
+	}
+	firstBatch := []game.ProviderGame{testProviderGame("100"), testProviderGame("101")}
+	if err := store.StoreProviderGames(t.Context(), firstID, firstBatch); err != nil {
+		t.Fatalf("StoreProviderGames: %v", err)
+	}
+	staging, err := store.Status(t.Context(), time.Now().UTC())
+	if err != nil {
+		t.Fatalf("Status while staging first baseline: %v", err)
+	}
+	if staging.StagedRecords != 2 {
+		t.Fatalf("StagedRecords while staging = %d, want 2", staging.StagedRecords)
+	}
+	if staging.RecordCount != 0 {
+		t.Fatalf("RecordCount while staging = %d, want 0 before any baseline", staging.RecordCount)
+	}
+
+	if err := store.ActivateGeneration(t.Context(), firstID, int64(len(firstBatch))); err != nil {
+		t.Fatalf("ActivateGeneration: %v", err)
+	}
+	active, err := store.Status(t.Context(), time.Now().UTC())
+	if err != nil {
+		t.Fatalf("Status after activation: %v", err)
+	}
+	if active.StagedRecords != 0 {
+		t.Fatalf("StagedRecords after activation = %d, want 0", active.StagedRecords)
+	}
+	if active.RecordCount != 2 {
+		t.Fatalf("RecordCount after activation = %d, want 2", active.RecordCount)
+	}
+
+	secondID, err := store.BeginGeneration(t.Context())
+	if err != nil {
+		t.Fatalf("BeginGeneration (refresh): %v", err)
+	}
+	if err := store.StoreProviderGames(t.Context(), secondID, []game.ProviderGame{testProviderGame("200")}); err != nil {
+		t.Fatalf("StoreProviderGames (refresh): %v", err)
+	}
+	refreshing, err := store.Status(t.Context(), time.Now().UTC())
+	if err != nil {
+		t.Fatalf("Status while refreshing: %v", err)
+	}
+	if refreshing.StagedRecords != 1 {
+		t.Fatalf("StagedRecords during refresh = %d, want 1", refreshing.StagedRecords)
+	}
+	if refreshing.RecordCount != 2 {
+		t.Fatalf("RecordCount during refresh = %d, want the last baseline's 2", refreshing.RecordCount)
 	}
 }
 
@@ -1209,6 +1556,7 @@ func TestGameRequestPresentationIncludesLocalEnrichment(t *testing.T) {
 		Slug:         "warcraft-iii",
 		GameType:     "Main Game",
 		CoverImageID: "co1abc",
+		Summary:      "Reign of Chaos is the third game in the Warcraft series.",
 	}
 	activateIGDBGeneration(t, gameStore, []game.ProviderGame{provider})
 
@@ -1252,6 +1600,15 @@ func TestGameRequestPresentationIncludesLocalEnrichment(t *testing.T) {
 		t.Fatalf("get by id: %v", err)
 	}
 	assertRequestGame(t, "ByID", detail)
+
+	// The detail page states the whole summary, so only that projection
+	// reads it; a list row has no room for it and does not pay for it.
+	if detail.Game.Summary != provider.Summary {
+		t.Fatalf("ByID summary = %q, want %q", detail.Game.Summary, provider.Summary)
+	}
+	if active[index].Game.Summary != "" {
+		t.Fatalf("ListActive summary = %q, want it unread", active[index].Game.Summary)
+	}
 }
 
 // TestGetGameRequestSummaryHasNoViewer covers Track E2's system-caller read:
@@ -2243,6 +2600,105 @@ func TestDiscoveryProviderDisabledAfterSuccessfulSyncOnlyReturnsLocalGames(t *te
 	}
 }
 
+// TestDiscoveryHidesProviderVersionsButKeepsExpansions covers issue #62: an
+// unmaterialized IGDB record is player-visible only with a supported Game
+// Type and no version_parent, across search, direct selection, and
+// materialization. parent_game alone never hides a record, and an edition
+// already materialized locally stays governed by local Game state.
+func TestDiscoveryHidesProviderVersionsButKeepsExpansions(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+
+	users := user.NewService(userpostgres.NewStore(pool))
+	viewer, err := users.Register(t.Context(), "Edition Filter Viewer")
+	if err != nil {
+		t.Fatalf("register viewer: %v", err)
+	}
+	gameStore := gamepostgres.NewStore(pool)
+	catalog := game.NewService(gameStore)
+	discovery := game.NewDiscoveryService(gameStore, gameStore, gameStore, storeProviderStatus{store: gameStore})
+
+	record := func(externalID, name, gameType, parent, versionParent string) game.ProviderGame {
+		return game.ProviderGame{
+			Reference: game.ProviderReference{Provider: "igdb", ExternalID: externalID},
+			Name:      name, Slug: strings.ToLower(strings.ReplaceAll(name, " ", "-")), GameType: gameType,
+			ParentExternalID: parent, VersionParentID: versionParent,
+		}
+	}
+	activateIGDBGeneration(t, gameStore, []game.ProviderGame{
+		record("9701", "Warcrest Reforged", "Main Game", "", ""),
+		record("9702", "Warcrest Frozen Throne", "Expansion", "9701", ""),
+		record("9703", "Warcrest Standalone", "Standalone Expansion", "9701", ""),
+		record("9704", "Warcrest Spoils Edition", "Main Game", "", "9701"),
+		record("9705", "Warcrest Expansion Edition", "Expansion", "9701", "9702"),
+		record("9706", "Warcrest Skin Pack", "DLC Addon", "9701", ""),
+		record("9707", "Warcrest Collector Edition", "Main Game", "", "9701"),
+	})
+
+	// An edition an administrator linked before the policy applied keeps its
+	// local Game: search, selection, and Resolve all still reach it.
+	legacy, err := catalog.Create(t.Context(), "Warcrest Legacy Collector", "warcrest-legacy-collector")
+	if err != nil {
+		t.Fatalf("create legacy game: %v", err)
+	}
+	if err := gameStore.LinkIGDB(t.Context(), legacy.ID, game.ProviderReference{Provider: "igdb", ExternalID: "9707"}); err != nil {
+		t.Fatalf("link legacy edition: %v", err)
+	}
+
+	page, err := discovery.Browse(t.Context(), viewer.ID, "warcrest")
+	if err != nil {
+		t.Fatalf("Browse: %v", err)
+	}
+	var got []string
+	for _, item := range page.Items {
+		if item.Materialized {
+			got = append(got, "local:"+item.LocalGameID)
+		} else {
+			got = append(got, item.Reference.ExternalID)
+		}
+	}
+	slices.Sort(got)
+	want := []string{"9701", "9702", "9703", "local:" + legacy.ID}
+	slices.Sort(want)
+	if !slices.Equal(got, want) {
+		t.Fatalf("Browse identities = %v, want %v", got, want)
+	}
+
+	for _, externalID := range []string{"9701", "9702", "9703"} {
+		reference := game.ProviderReference{Provider: "igdb", ExternalID: externalID}
+		if _, err := discovery.Select(t.Context(), viewer.ID, game.GameSelection{Reference: reference}); err != nil {
+			t.Fatalf("Select visible %s: %v", externalID, err)
+		}
+	}
+	for _, externalID := range []string{"9704", "9705", "9706"} {
+		reference := game.ProviderReference{Provider: "igdb", ExternalID: externalID}
+		if _, err := discovery.Select(t.Context(), viewer.ID, game.GameSelection{Reference: reference}); !errors.Is(err, game.ErrProviderRecordNotFound) {
+			t.Fatalf("Select hidden %s: err = %v, want %v", externalID, err, game.ErrProviderRecordNotFound)
+		}
+		if _, err := discovery.Resolve(t.Context(), reference); !errors.Is(err, game.ErrProviderRecordNotFound) {
+			t.Fatalf("Resolve hidden %s: err = %v, want %v", externalID, err, game.ErrProviderRecordNotFound)
+		}
+		if mappings, _, _ := countMaterializedState(t, pool, externalID); mappings != 0 {
+			t.Fatalf("hidden %s materialized: mappings=%d", externalID, mappings)
+		}
+	}
+	if _, err := discovery.Resolve(t.Context(), game.ProviderReference{Provider: "igdb", ExternalID: "9702"}); err != nil {
+		t.Fatalf("Resolve expansion: %v", err)
+	}
+
+	legacyReference := game.ProviderReference{Provider: "igdb", ExternalID: "9707"}
+	item, err := discovery.Select(t.Context(), viewer.ID, game.GameSelection{Reference: legacyReference})
+	if err != nil || item.LocalGameID != legacy.ID {
+		t.Fatalf("Select legacy edition = %#v, %v; want local Game %s", item, err, legacy.ID)
+	}
+	resolved, err := discovery.Resolve(t.Context(), legacyReference)
+	if err != nil || resolved.ID != legacy.ID {
+		t.Fatalf("Resolve legacy edition = %#v, %v; want local Game %s", resolved, err, legacy.ID)
+	}
+}
+
 func TestIGDBMaterializationPostgreSQL(t *testing.T) {
 	pool := newTestPool(t)
 	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
@@ -3009,8 +3465,8 @@ func TestMigrateAndReadyCheck(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get migration version: %v", err)
 	}
-	if version != 12 {
-		t.Errorf("migration version = %d, want 12", version)
+	if version != 13 {
+		t.Errorf("migration version = %d, want 13", version)
 	}
 
 	if err := migrateFS(t.Context(), pool, migrationFS, logger); err != nil {
@@ -3517,6 +3973,37 @@ func TestForwardMigrationIntroducesGameNickAndAuthFlows(t *testing.T) {
 		RETURNING id::text
 	`, flowID).Scan(&consumed); !errors.Is(err, pgx.ErrNoRows) {
 		t.Fatalf("replay flow error = %v, want no rows", err)
+	}
+
+	if _, err := pool.Exec(t.Context(), `
+		INSERT INTO user_identities (user_id, provider_kind, provider_key, subject)
+		VALUES ($1, 'twitch', 'twitch', 'twitch-subject')
+	`, userID); err != nil {
+		t.Fatalf("insert Twitch identity: %v", err)
+	}
+	twitchStateHash := sha256.Sum256([]byte("twitch-oauth-state"))
+	if _, err := pool.Exec(t.Context(), `
+		INSERT INTO auth_flows (
+			phase, operation, provider_kind, provider_key, state_hash, browser_binding_hash,
+			nonce, pkce_verifier, expires_at
+		) VALUES ('oauth', 'login', 'twitch', 'twitch', $1, $2, 'nonce', 'verifier', now() + interval '10 minutes')
+	`, twitchStateHash[:], browserHash[:]); err != nil {
+		t.Fatalf("create Twitch oauth flow: %v", err)
+	}
+	if _, err := pool.Exec(t.Context(), `
+		INSERT INTO user_identities (user_id, provider_kind, provider_key, subject)
+		VALUES ($1, 'unknown', 'unknown', 'unknown-subject')
+	`, userID); err == nil {
+		t.Fatal("unknown provider kind unexpectedly succeeded")
+	}
+	unknownStateHash := sha256.Sum256([]byte("unknown-oauth-state"))
+	if _, err := pool.Exec(t.Context(), `
+		INSERT INTO auth_flows (
+			phase, operation, provider_kind, provider_key, state_hash, browser_binding_hash,
+			nonce, pkce_verifier, expires_at
+		) VALUES ('oauth', 'login', 'unknown', 'unknown', $1, $2, 'nonce', 'verifier', now() + interval '10 minutes')
+	`, unknownStateHash[:], browserHash[:]); err == nil {
+		t.Fatal("unknown auth flow provider kind unexpectedly succeeded")
 	}
 }
 
@@ -4038,5 +4525,417 @@ func TestGameRequestActivityKeepsHistoryAcrossRejoin(t *testing.T) {
 	// The rejoin is a new entry rather than the old one resurfacing.
 	if detail.Activity[0].OccurredAt.Before(detail.Activity[1].OccurredAt) {
 		t.Fatalf("rejoin entry is older than the leave it followed: %#v", detail.Activity[:2])
+	}
+}
+
+// The navigation's sidebar reads three things PostgreSQL has to get right:
+// reading history is per-viewer and deduplicated by request, the counts state
+// the active catalog rather than every row ever written, and a deleted Game
+// Request takes its view rows with it instead of leaving the sidebar pointing
+// at a request that no longer exists.
+func TestNavigationReadingHistoryAndCountsPersistence(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+
+	users := user.NewService(userpostgres.NewStore(pool))
+	reader, err := users.Register(t.Context(), "History Reader")
+	if err != nil {
+		t.Fatalf("register reader: %v", err)
+	}
+	other, err := users.Register(t.Context(), "Other Player")
+	if err != nil {
+		t.Fatalf("register other player: %v", err)
+	}
+
+	gameStore := gamepostgres.NewStore(pool)
+	catalog := game.NewService(gameStore)
+	subscriptions := game.NewSubscriptionService(gameStore)
+	warcraft, err := catalog.Create(t.Context(), "Warcraft III", "warcraft-3")
+	if err != nil {
+		t.Fatalf("create game: %v", err)
+	}
+	quake, err := catalog.Create(t.Context(), "Quake III Arena", "quake-3-arena")
+	if err != nil {
+		t.Fatalf("create second game: %v", err)
+	}
+	retired, err := catalog.Create(t.Context(), "Retired Game", "retired-game")
+	if err != nil {
+		t.Fatalf("create third game: %v", err)
+	}
+
+	requests := gamerequest.NewService(gamerequestpostgres.NewStore(pool), catalog, nil)
+	queries := gamerequestquery.NewStore(pool)
+
+	first, err := requests.Create(t.Context(), reader.ID, warcraft.ID, nil, time.Now().Add(time.Hour), "")
+	if err != nil {
+		t.Fatalf("create first request: %v", err)
+	}
+	second, err := requests.Create(t.Context(), reader.ID, quake.ID, nil, time.Now().Add(2*time.Hour), "")
+	if err != nil {
+		t.Fatalf("create second request: %v", err)
+	}
+
+	// Re-reading a request moves it back to the top rather than appending a
+	// second entry, so the list stays a set of distinct requests.
+	for _, view := range []struct{ requestID, userID string }{
+		{second.ID, reader.ID},
+		{first.ID, reader.ID},
+		{second.ID, reader.ID},
+		{first.ID, other.ID},
+	} {
+		if err := requests.RecordView(t.Context(), view.requestID, view.userID); err != nil {
+			t.Fatalf("record view: %v", err)
+		}
+	}
+
+	history, err := queries.RecentlyViewed(t.Context(), reader.ID)
+	if err != nil {
+		t.Fatalf("recently viewed: %v", err)
+	}
+	if len(history) != 2 {
+		t.Fatalf("recently viewed = %#v, want 2 distinct requests", history)
+	}
+	if history[0].ID != second.ID || history[1].ID != first.ID {
+		t.Fatalf("recently viewed order = %q, %q, want newest view first", history[0].ID, history[1].ID)
+	}
+	if history[0].GameName != "Quake III Arena" || history[0].Status != gamerequest.StatusOpen {
+		t.Fatalf("recently viewed entry = %#v", history[0])
+	}
+
+	// History is private: one player's reading never appears in another's.
+	otherHistory, err := queries.RecentlyViewed(t.Context(), other.ID)
+	if err != nil || len(otherHistory) != 1 || otherHistory[0].ID != first.ID {
+		t.Fatalf("other player history = %#v, %v", otherHistory, err)
+	}
+
+	// A closed request stays in history: it is still what the player read.
+	if err := requests.Close(t.Context(), first.ID, reader.ID); err != nil {
+		t.Fatalf("close request: %v", err)
+	}
+	history, err = queries.RecentlyViewed(t.Context(), reader.ID)
+	if err != nil || len(history) != 2 {
+		t.Fatalf("history after close = %#v, %v", history, err)
+	}
+	if history[1].ID != first.ID || history[1].Status != gamerequest.StatusClosed {
+		t.Fatalf("closed history entry = %#v", history[1])
+	}
+
+	if err := subscriptions.Follow(t.Context(), reader.ID, warcraft.ID); err != nil {
+		t.Fatalf("follow game: %v", err)
+	}
+	total, err := subscriptions.CountCatalog(t.Context())
+	if err != nil || total != 3 {
+		t.Fatalf("catalog count = %d, %v, want 3", total, err)
+	}
+	followed, err := subscriptions.CountFollowed(t.Context(), reader.ID)
+	if err != nil || followed != 1 {
+		t.Fatalf("followed count = %d, %v, want 1", followed, err)
+	}
+	if followed, err := subscriptions.CountFollowed(t.Context(), other.ID); err != nil || followed != 0 {
+		t.Fatalf("other player followed count = %d, %v, want 0", followed, err)
+	}
+
+	// Both counts state the active catalog, matching what Games and My Games
+	// themselves list: deactivating a Game removes it from both.
+	if err := subscriptions.Follow(t.Context(), reader.ID, retired.ID); err != nil {
+		t.Fatalf("follow third game: %v", err)
+	}
+	if err := catalog.SetActive(t.Context(), retired.ID, false); err != nil {
+		t.Fatalf("deactivate game: %v", err)
+	}
+	if total, err := subscriptions.CountCatalog(t.Context()); err != nil || total != 2 {
+		t.Fatalf("catalog count after deactivation = %d, %v, want 2", total, err)
+	}
+	if followed, err := subscriptions.CountFollowed(t.Context(), reader.ID); err != nil || followed != 1 {
+		t.Fatalf("followed count after deactivation = %d, %v, want 1", followed, err)
+	}
+
+	// Views belong to their Game Request: deleting one must not leave the
+	// sidebar linking to a request that is gone.
+	if _, err := pool.Exec(t.Context(), "DELETE FROM game_request_activity WHERE game_request_id = $1", second.ID); err != nil {
+		t.Fatalf("delete activity: %v", err)
+	}
+	if _, err := pool.Exec(t.Context(), "DELETE FROM game_requests WHERE id = $1", second.ID); err != nil {
+		t.Fatalf("delete request: %v", err)
+	}
+	history, err = queries.RecentlyViewed(t.Context(), reader.ID)
+	if err != nil || len(history) != 1 || history[0].ID != first.ID {
+		t.Fatalf("history after request deletion = %#v, %v", history, err)
+	}
+
+	// A view of a request that does not exist is rejected by the foreign key
+	// rather than silently stored.
+	if err := requests.RecordView(t.Context(), second.ID, reader.ID); !errors.Is(err, gamerequest.ErrNotFound) {
+		t.Fatalf("record view of deleted request = %v, want ErrNotFound", err)
+	}
+}
+
+// TestIGDBMultiplayerMetadataPersistence covers issue #46 at the persistence
+// layer: summary, genre and game mode names, and platform-specific
+// multiplayer modes survive staging, materialization, and refresh; an
+// unreported player limit stays NULL instead of reading as zero; an empty
+// newer generation keeps the last-known-good snapshot; and removing a
+// retired generation removes its multiplayer rows with it.
+func TestIGDBMultiplayerMetadataPersistence(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+	gameStore := gamepostgres.NewStore(pool)
+	discovery := game.NewDiscoveryService(gameStore, gameStore, gameStore, storeProviderStatus{store: gameStore})
+
+	activateIGDBGeneration(t, gameStore, []game.ProviderGame{{
+		Reference:     game.ProviderReference{Provider: "igdb", ExternalID: "100"},
+		Name:          "Metadata Quest",
+		Slug:          "metadata-quest",
+		GameType:      "Main Game",
+		Summary:       "A co-op adventure.",
+		GenreNames:    []string{"Strategy"},
+		GameModeNames: []string{"Multiplayer"},
+		PlatformNames: []string{"PC", "Linux"},
+		MultiplayerModes: []game.MultiplayerMode{
+			{PlatformIGDBID: 6, PlatformName: "PC", CampaignCoop: true, LanCoop: true, OnlineCoopMax: new(4)},
+			{PlatformIGDBID: 49, PlatformName: "Linux", OnlineCoop: true},
+		},
+	}})
+
+	var summary string
+	var genreNames, gameModeNames []string
+	if err := pool.QueryRow(t.Context(), `
+		SELECT summary, genre_names, game_mode_names FROM igdb_game_index WHERE igdb_id = 100
+	`).Scan(&summary, &genreNames, &gameModeNames); err != nil {
+		t.Fatalf("load provider metadata: %v", err)
+	}
+	if summary != "A co-op adventure." || !slices.Equal(genreNames, []string{"Strategy"}) || !slices.Equal(gameModeNames, []string{"Multiplayer"}) {
+		t.Fatalf("provider metadata = %q, %#v, %#v", summary, genreNames, gameModeNames)
+	}
+	var modeCount, unreportedMaxCount int
+	if err := pool.QueryRow(t.Context(), `
+		SELECT count(*), count(*) FILTER (WHERE online_max IS NULL)
+		FROM igdb_game_index_multiplayer_modes WHERE igdb_id = 100
+	`).Scan(&modeCount, &unreportedMaxCount); err != nil {
+		t.Fatalf("count provider modes: %v", err)
+	}
+	if modeCount != 2 || unreportedMaxCount != 2 {
+		t.Fatalf("provider modes = %d rows, %d unreported maxima, want 2 and 2", modeCount, unreportedMaxCount)
+	}
+	var providerModePlatforms []string
+	if err := pool.QueryRow(t.Context(), `
+		SELECT array_agg(platform_name ORDER BY ordinal)
+		FROM igdb_game_index_multiplayer_modes WHERE igdb_id = 100
+	`).Scan(&providerModePlatforms); err != nil {
+		t.Fatalf("load provider mode platforms: %v", err)
+	}
+	if !slices.Equal(providerModePlatforms, []string{"PC", "Linux"}) {
+		t.Fatalf("provider mode platforms = %#v, want provider order preserved", providerModePlatforms)
+	}
+
+	materialized, err := discovery.Resolve(t.Context(), game.ProviderReference{Provider: "igdb", ExternalID: "100"})
+	if err != nil {
+		t.Fatalf("materialize provider record 100: %v", err)
+	}
+	var enrichmentSummary string
+	if err := pool.QueryRow(t.Context(), `SELECT summary FROM game_igdb_enrichment WHERE game_id = $1`, materialized.ID).Scan(&enrichmentSummary); err != nil {
+		t.Fatalf("load enrichment summary: %v", err)
+	}
+	if enrichmentSummary != "A co-op adventure." {
+		t.Fatalf("enrichment summary = %q, want the materialized snapshot value", enrichmentSummary)
+	}
+	var enrichmentModes int
+	if err := pool.QueryRow(t.Context(), `SELECT count(*) FROM game_igdb_enrichment_multiplayer_modes WHERE game_id = $1`, materialized.ID).Scan(&enrichmentModes); err != nil {
+		t.Fatalf("count enrichment modes: %v", err)
+	}
+	if enrichmentModes != 2 {
+		t.Fatalf("enrichment modes = %d, want 2", enrichmentModes)
+	}
+
+	// A newer successful generation with mode data replaces the snapshot;
+	// online_max carries a real value, distinct from unreported.
+	activateIGDBGeneration(t, gameStore, []game.ProviderGame{{
+		Reference: game.ProviderReference{Provider: "igdb", ExternalID: "100"},
+		Name:      "Metadata Quest",
+		Slug:      "metadata-quest",
+		GameType:  "Main Game",
+		Summary:   "Updated summary.",
+		MultiplayerModes: []game.MultiplayerMode{
+			{PlatformIGDBID: 6, PlatformName: "PC", OnlineCoop: true, OnlineMax: new(8)},
+		},
+	}})
+	var onlineMax *int
+	if err := pool.QueryRow(t.Context(), `
+		SELECT modes.online_max
+		FROM game_igdb_enrichment_multiplayer_modes modes
+		JOIN game_igdb_enrichment enrichment ON enrichment.game_id = modes.game_id
+		WHERE enrichment.external_id = '100'
+	`).Scan(&onlineMax); err != nil {
+		t.Fatalf("load refreshed mode limit: %v", err)
+	}
+	if onlineMax == nil || *onlineMax != 8 {
+		t.Fatalf("refreshed online_max = %v, want 8", onlineMax)
+	}
+
+	// A newer generation reporting no modes and an empty summary keeps the
+	// last-known-good snapshot instead of blanking it.
+	activateIGDBGeneration(t, gameStore, []game.ProviderGame{{
+		Reference: game.ProviderReference{Provider: "igdb", ExternalID: "100"},
+		Name:      "Metadata Quest",
+		Slug:      "metadata-quest",
+		GameType:  "Main Game",
+	}})
+	if err := pool.QueryRow(t.Context(), `
+		SELECT summary FROM game_igdb_enrichment WHERE external_id = '100'
+	`).Scan(&enrichmentSummary); err != nil {
+		t.Fatalf("reload enrichment summary: %v", err)
+	}
+	if enrichmentSummary != "Updated summary." {
+		t.Fatalf("enrichment summary after empty generation = %q, want the previous snapshot", enrichmentSummary)
+	}
+	if err := pool.QueryRow(t.Context(), `
+		SELECT count(*) FROM game_igdb_enrichment_multiplayer_modes modes
+		JOIN game_igdb_enrichment enrichment ON enrichment.game_id = modes.game_id
+		WHERE enrichment.external_id = '100'
+	`).Scan(&enrichmentModes); err != nil {
+		t.Fatalf("recount enrichment modes: %v", err)
+	}
+	if enrichmentModes != 1 {
+		t.Fatalf("enrichment modes after empty generation = %d, want the previous snapshot of 1", enrichmentModes)
+	}
+
+	// Only the active generation remains after cleanup. It reports no
+	// multiplayer modes, so the provider mode table has no generation rows
+	// at all -- every retired generation's rows are gone with it.
+	var indexGenerations, modeGenerations int
+	if err := pool.QueryRow(t.Context(), `SELECT count(DISTINCT generation_id) FROM igdb_game_index`).Scan(&indexGenerations); err != nil {
+		t.Fatalf("count index generations: %v", err)
+	}
+	if err := pool.QueryRow(t.Context(), `SELECT count(DISTINCT generation_id) FROM igdb_game_index_multiplayer_modes`).Scan(&modeGenerations); err != nil {
+		t.Fatalf("count mode generations: %v", err)
+	}
+	if indexGenerations != 1 || modeGenerations != 0 {
+		t.Fatalf("surviving generations = %d index / %d modes, want 1 / 0 after cleanup", indexGenerations, modeGenerations)
+	}
+}
+
+// The player-facing card renders a summary and a genre badge for a provider
+// record whether or not it has been materialized yet, so the card does not
+// change shape the moment someone follows it. Both discovery projections
+// therefore have to carry the enrichment columns: the materialized row from
+// game_igdb_enrichment, the unmaterialized row straight from the active
+// generation's igdb_game_index.
+func TestIGDBDiscoverySearchCarriesSummaryAndGenresForBothProjections(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+
+	users := user.NewService(userpostgres.NewStore(pool))
+	viewer, err := users.Register(t.Context(), "Card Metadata Viewer")
+	if err != nil {
+		t.Fatalf("register viewer: %v", err)
+	}
+
+	gameStore := gamepostgres.NewStore(pool)
+	discovery := game.NewDiscoveryService(gameStore, gameStore, gameStore, storeProviderStatus{store: gameStore})
+
+	activateIGDBGeneration(t, gameStore, []game.ProviderGame{
+		{
+			Reference: game.ProviderReference{Provider: "igdb", ExternalID: "7001"},
+			Name:      "Cardmeta Alpha", Slug: "cardmeta-alpha", GameType: "Main Game",
+			Summary: "Alpha braces for war.", GenreNames: []string{"Strategy", "Simulator"},
+		},
+		{
+			Reference: game.ProviderReference{Provider: "igdb", ExternalID: "7002"},
+			Name:      "Cardmeta Beta", Slug: "cardmeta-beta", GameType: "Main Game",
+			Summary: "Beta braces for war.", GenreNames: []string{"Shooter"},
+		},
+	})
+	// Only Alpha is materialized; Beta stays a pure provider result.
+	if _, err := discovery.Resolve(t.Context(), game.ProviderReference{Provider: "igdb", ExternalID: "7001"}); err != nil {
+		t.Fatalf("materialize provider record 7001: %v", err)
+	}
+
+	page, err := discovery.Browse(t.Context(), viewer.ID, "cardmeta")
+	if err != nil {
+		t.Fatalf("Browse: %v", err)
+	}
+	found := map[string]game.DiscoveryItem{}
+	for _, item := range page.Items {
+		found[item.Name] = item
+	}
+	if len(found) != 2 {
+		t.Fatalf("Browse = %#v, want both Cardmeta records", page.Items)
+	}
+	for name, want := range map[string]struct {
+		summary      string
+		genres       []string
+		materialized bool
+	}{
+		"Cardmeta Alpha": {summary: "Alpha braces for war.", genres: []string{"Strategy", "Simulator"}, materialized: true},
+		"Cardmeta Beta":  {summary: "Beta braces for war.", genres: []string{"Shooter"}, materialized: false},
+	} {
+		item := found[name]
+		if item.Materialized != want.materialized {
+			t.Errorf("%s materialized = %t, want %t", name, item.Materialized, want.materialized)
+		}
+		if item.Summary != want.summary {
+			t.Errorf("%s summary = %q, want %q", name, item.Summary, want.summary)
+		}
+		if !slices.Equal(item.GenreNames, want.genres) {
+			t.Errorf("%s genre names = %#v, want %#v in provider order", name, item.GenreNames, want.genres)
+		}
+	}
+
+	// A local Game that never materialized via IGDB has no snapshot to show
+	// and must come back with empty metadata rather than a NULL scan error.
+	local, err := game.NewService(gameStore).Create(t.Context(), "Handmade Cardmeta", "handmade-cardmeta")
+	if err != nil {
+		t.Fatalf("create local game: %v", err)
+	}
+	page, err = discovery.Browse(t.Context(), viewer.ID, "handmade cardmeta")
+	if err != nil {
+		t.Fatalf("Browse local-only game: %v", err)
+	}
+	if len(page.Items) != 1 || page.Items[0].LocalGameID != local.ID {
+		t.Fatalf("Browse = %#v, want the local-only Game", page.Items)
+	}
+	if page.Items[0].Summary != "" || len(page.Items[0].GenreNames) != 0 {
+		t.Errorf("local-only Game carries enrichment metadata: %#v", page.Items[0])
+	}
+}
+
+func TestCoverImageKnown(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+	store := gamepostgres.NewStore(pool)
+	generationID, err := store.BeginGeneration(t.Context())
+	if err != nil {
+		t.Fatalf("BeginGeneration: %v", err)
+	}
+	if err := store.StoreProviderGames(t.Context(), generationID, []game.ProviderGame{{
+		Reference: game.ProviderReference{Provider: "igdb", ExternalID: "100"},
+		Name:      "Indexed", Slug: "indexed", CoverImageID: "coindexed",
+	}}); err != nil {
+		t.Fatalf("StoreProviderGames: %v", err)
+	}
+	var gameID string
+	if err := pool.QueryRow(t.Context(), `INSERT INTO games (name, slug) VALUES ('Enriched', 'enriched') RETURNING id`).Scan(&gameID); err != nil {
+		t.Fatalf("insert game: %v", err)
+	}
+	if _, err := pool.Exec(t.Context(), `INSERT INTO game_igdb_enrichment (game_id, external_id, cover_image_id) VALUES ($1, '77', 'coenriched')`, gameID); err != nil {
+		t.Fatalf("insert enrichment: %v", err)
+	}
+
+	for id, want := range map[string]bool{"coindexed": true, "coenriched": true, "counknown": false} {
+		got, err := store.CoverImageKnown(t.Context(), id)
+		if err != nil {
+			t.Fatalf("CoverImageKnown(%q): %v", id, err)
+		}
+		if got != want {
+			t.Errorf("CoverImageKnown(%q) = %v, want %v", id, got, want)
+		}
 	}
 }

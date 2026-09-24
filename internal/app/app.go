@@ -12,6 +12,8 @@ import (
 	"github.com/convention-x-treme/lansurfer/internal/auth"
 	authpostgres "github.com/convention-x-treme/lansurfer/internal/auth/postgres"
 	"github.com/convention-x-treme/lansurfer/internal/game"
+	"github.com/convention-x-treme/lansurfer/internal/game/cover"
+	"github.com/convention-x-treme/lansurfer/internal/game/igdb"
 	gamepostgres "github.com/convention-x-treme/lansurfer/internal/game/postgres"
 	"github.com/convention-x-treme/lansurfer/internal/gamerequest"
 	gamerequestpostgres "github.com/convention-x-treme/lansurfer/internal/gamerequest/postgres"
@@ -23,6 +25,7 @@ import (
 	"github.com/convention-x-treme/lansurfer/internal/user"
 	userpostgres "github.com/convention-x-treme/lansurfer/internal/user/postgres"
 	"github.com/convention-x-treme/lansurfer/internal/web"
+	webmiddleware "github.com/convention-x-treme/lansurfer/internal/web/middleware"
 )
 
 const (
@@ -95,10 +98,31 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		})
 		providers = append(providers, auth.ConfiguredProvider{DisplayName: "Discord", Adapter: discordProvider})
 	}
+	if cfg.Twitch != nil && cfg.Twitch.AuthEnabled {
+		discoveryCtx, cancelDiscovery := context.WithTimeout(ctx, oidcDiscoveryTimeout)
+		twitchProvider, discoverErr := auth.DiscoverTwitchProvider(discoveryCtx, auth.TwitchConfig{
+			ClientID: cfg.Twitch.ClientID, ClientSecret: cfg.Twitch.ClientSecret,
+			RedirectURL: cfg.BaseURL + "/auth/twitch/callback",
+		})
+		cancelDiscovery()
+		if discoverErr != nil {
+			return fmt.Errorf("initialize Twitch: %w", discoverErr)
+		}
+		providers = append(providers, auth.ConfiguredProvider{DisplayName: "Twitch", Adapter: twitchProvider})
+	}
 	oauthService := auth.NewOAuthService(providers, flowService, resolutionService)
 
 	gameStore := gamepostgres.NewStore(pool)
 	gameService := game.NewService(gameStore)
+	var coverStore cover.Store = cover.NewMemoryStore(cover.MemoryCapacity)
+	if cfg.CoverCacheDir != "" {
+		diskStore, err := cover.NewDiskStore(cfg.CoverCacheDir)
+		if err != nil {
+			return fmt.Errorf("open cover cache: %w", err)
+		}
+		coverStore = diskStore
+	}
+	covers := cover.NewService(coverStore, igdb.NewCoverFetcher(), gameStore, logger)
 	realtime := sse.NewBroker()
 	gameRequests := gamerequest.NewService(gamerequestpostgres.NewStore(pool), gameService, realtime)
 	gameRequestQueries := gamerequestquery.NewStore(pool)
@@ -111,7 +135,11 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	if cfg.WebPush != nil {
 		vapidPublicKey = cfg.WebPush.PublicKey
 	}
-	igdbSyncService := newIGDBSync(ctx, cfg.IGDB, gameStore, logger)
+	var igdbCreds igdbCredentials
+	if cfg.Twitch != nil {
+		igdbCreds = igdbCredentials{Enabled: cfg.Twitch.IGDBEnabled, ClientID: cfg.Twitch.ClientID, ClientSecret: cfg.Twitch.ClientSecret}
+	}
+	igdbSyncService := newIGDBSync(ctx, igdbCreds, gameStore, logger)
 	gameDiscovery := game.NewDiscoveryService(gameStore, gameStore, gameStore, igdbSyncService)
 
 	server := &http.Server{
@@ -130,7 +158,10 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 			GameResolver:        gameDiscovery,
 			GameRequests:        gameRequests,
 			RequestQueries:      gameRequestQueries,
+			NavigationQueries:   gameRequestQueries,
+			NavigationCatalog:   gameDiscovery,
 			Realtime:            realtime,
+			Covers:              covers,
 			ProviderSync:        igdbSyncService,
 			Subscriptions:       subscriptionService,
 			PushDevices:         subscriptionService,
@@ -140,7 +171,11 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 			Logger:              logger,
 			TrustedProxies:      cfg.TrustedProxies,
 			InstanceName:        cfg.InstanceName,
-			BaseURL:             cfg.BaseURL,
+			Legal: webmiddleware.LegalIdentity{
+				EntityName: cfg.Legal.EntityName, Address: cfg.Legal.Address,
+				ContactEmail: cfg.Legal.ContactEmail, ImprintURL: cfg.Legal.ImprintURL,
+			},
+			BaseURL: cfg.BaseURL,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,

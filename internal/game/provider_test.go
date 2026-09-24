@@ -52,7 +52,7 @@ var _ DiscoveryRepository = finalDiscoveryRepositoryContract{}
 var _ MaterializationRepository = finalMaterializationRepositoryContract{}
 
 func TestVisibleProviderGameType(t *testing.T) {
-	visible := []string{"Main Game", "Standalone Expansion", "Remake", "Remaster", "Port", "Expanded Game"}
+	visible := []string{"Main Game", "Expansion", "Standalone Expansion", "Remake", "Remaster", "Port", "Expanded Game"}
 	hidden := []string{"DLC Addon", "Bundle", "Mod", "Episode", "Season", "Pack", "Update", "future-new-type", ""}
 
 	for _, value := range visible {
@@ -64,6 +64,18 @@ func TestVisibleProviderGameType(t *testing.T) {
 		if VisibleProviderGameType(value) {
 			t.Errorf("VisibleProviderGameType(%q) = true", value)
 		}
+	}
+}
+
+func TestVisibleProviderRecord(t *testing.T) {
+	if !VisibleProviderRecord("Expansion", false) {
+		t.Error("Expansion without version parent should be visible")
+	}
+	if VisibleProviderRecord("Main Game", true) {
+		t.Error("Main Game with version parent should be hidden")
+	}
+	if VisibleProviderRecord("DLC Addon", false) {
+		t.Error("DLC Addon should be hidden")
 	}
 }
 

@@ -28,6 +28,11 @@ const trendingLimit = 5
 // maxSearchLength matches the game catalog's own search bound.
 const maxSearchLength = 120
 
+// recentlyViewedLimit keeps the navigation's reading history to the handful
+// the sidebar has room for. Older views stay in the table and simply fall off
+// the list.
+const recentlyViewedLimit = 5
+
 // ErrInvalidSearch reports a search term the read model refuses to run.
 var ErrInvalidSearch = errors.New("invalid search term")
 
@@ -103,9 +108,21 @@ func (f Filter) Active() bool {
 }
 
 // TrendingGame is one entry of the request-activity ranking.
+// RecentRequest is one entry of the navigation's "Recently viewed" list: just
+// enough to label and link the Game Request the viewer last opened. It carries
+// no membership or capacity state, because the list is reading history, not a
+// second Game Request list.
+type RecentRequest struct {
+	ID       string
+	GameName string
+	Status   domain.Status
+	ViewedAt time.Time
+}
+
 type TrendingGame struct {
 	GameID        string
 	GameName      string
+	CoverImageID  string
 	ActivityCount int64
 	RequestCount  int64
 }
@@ -179,9 +196,13 @@ func (s *Store) ByID(ctx context.Context, id, viewerID string) (Request, error) 
 	if err != nil {
 		return Request{}, fmt.Errorf("get game request: %w", err)
 	}
+	presentation := gamePresentationFromRow(row.GameName, row.GameSlug, row.GameType, row.CoverImageID, row.PlatformNames, row.FirstReleaseDate)
+	// Only the detail projection carries the summary: it is the one screen
+	// that states it, and a list would pay for it once per row.
+	presentation.Summary = textValue(row.Summary)
 	request := requestFromFields(requestFields{
 		ID: row.RequestID, GameID: row.GameID,
-		Game:      gamePresentationFromRow(row.GameName, row.GameSlug, row.GameType, row.CoverImageID, row.PlatformNames, row.FirstReleaseDate),
+		Game:      presentation,
 		CreatorID: row.CreatorID, CreatorGameNick: row.CreatorGameNick.String,
 		MaxPlayers: row.MaxPlayers, StartsAt: row.StartsAt, Description: row.Description, Status: row.Status,
 		CreatedAt: row.CreatedAt, MemberCount: row.MemberCount, ViewerJoined: row.ViewerJoined, ViewerSubscribed: row.ViewerSubscribed,
@@ -220,7 +241,7 @@ func (s *Store) Trending(ctx context.Context) ([]TrendingGame, error) {
 	result := make([]TrendingGame, 0, len(rows))
 	for _, row := range rows {
 		result = append(result, TrendingGame{
-			GameID: row.GameID, GameName: row.GameName,
+			GameID: row.GameID, GameName: row.GameName, CoverImageID: textValue(row.CoverImageID),
 			ActivityCount: row.ActivityCount, RequestCount: row.RequestCount,
 		})
 	}
@@ -256,6 +277,32 @@ func (s *Store) GetGameRequestSummary(ctx context.Context, gameRequestID string)
 		GameID: row.GameID, GameName: row.GameName,
 		StartsAt: row.StartsAt.Time, Status: domain.Status(row.Status),
 	}, nil
+}
+
+// RecentlyViewed returns the viewer's own reading history, newest first,
+// bounded by recentlyViewedLimit. It is per-viewer and never filtered by
+// status: history states what the player read, not what is still open.
+func (s *Store) RecentlyViewed(ctx context.Context, viewerID string) ([]RecentRequest, error) {
+	parsedViewerID, err := parseUUID(viewerID)
+	if err != nil {
+		return nil, fmt.Errorf("parse viewer id: %w", err)
+	}
+	rows, err := s.queries.ListRecentlyViewedGameRequests(ctx, sqlcgen.ListRecentlyViewedGameRequestsParams{
+		ViewerID: parsedViewerID, ResultLimit: recentlyViewedLimit,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list recently viewed game requests: %w", err)
+	}
+	result := make([]RecentRequest, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, RecentRequest{
+			ID:       row.RequestID,
+			GameName: row.GameName,
+			Status:   domain.Status(row.Status),
+			ViewedAt: row.ViewedAt.Time,
+		})
+	}
+	return result, nil
 }
 
 // requestFields is the input to requestFromFields, built once by each sqlc

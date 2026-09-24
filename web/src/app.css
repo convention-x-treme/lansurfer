@@ -1,19 +1,13 @@
-@source "../../internal/web/**/*.templ";
-
 /* Tailwind's automatic source detection walks the whole repository, so files
    that hold no class names still feed the scanner and ordinary prose turns
    into shipped CSS: the word "invisible" in a Go test comment emits
    .invisible, and a task name such as [frontend:build] emits a utility
-   invented from it. Test code and build configuration are excluded for that
-   reason. Production class names come from the templates and from app.ts,
-   which builds a few of them at runtime.
-
-   Only this change's own files are excluded. The same leak from Go test
-   comments and documentation prose exists repository-wide and predates it;
-   narrowing that is Track G's call, tracked separately. */
-@source not "../../web/tests/**";
-@source not "../../playwright.config.ts";
-@source not "../../Taskfile.yml";
+   invented from it. Detection is therefore off (source(none) on the
+   tailwindcss import in brand.generated.css) and the sources are named
+   explicitly. Production class names come from the templates and from
+   app.ts, which builds a few of them at runtime. */
+@source "../../internal/web/**/*.templ";
+@source "./app.ts";
 
 /* One token set for both presentations, switched by the document's colour
    scheme. DaisyUI sets color-scheme on every theme selector it emits —
@@ -72,6 +66,10 @@
   --ink-open: light-dark(var(--brand-deep-blue), var(--brand-aqua-wave));
   --ink-hot: light-dark(color-mix(in srgb, var(--brand-golden-hour) 45%, black), var(--brand-golden-hour));
   --ink-last: light-dark(color-mix(in srgb, var(--brand-sunset) 64%, black), var(--brand-sunset));
+  /* Accent as text. Sea Foam is a fill colour: straight on the light card it
+     is 1.4:1, so the light theme darkens it the way --ink-hot darkens Golden
+     Hour, while the dark theme keeps the brand value. */
+  --ink-accent: light-dark(color-mix(in srgb, var(--color-accent) 38%, black), var(--color-accent));
   /* Sunset on its own 18% chip tint is 4.2:1 in dark mode; whitening it to 88%
      reaches 4.65:1 without leaving the colour's one job. */
   --ink-chip-last: light-dark(
@@ -160,6 +158,9 @@
     background: var(--color-base-200);
     padding: 1.5rem 1rem;
     box-shadow: var(--shadow-raised);
+    /* The sidebar now carries two variable-length lists, so a short viewport
+       scrolls the column instead of clipping the account block off the end. */
+    overflow-y: auto;
   }
 
   .app-navigation {
@@ -188,6 +189,114 @@
     color: var(--ink-nav-active);
     background: color-mix(in srgb, var(--color-primary) 12%, var(--color-base-200));
     font-weight: 700;
+  }
+
+  /* A sub-item reads as belonging to the entry above it through indentation
+     and a slightly smaller row, not through a second colour. */
+  .app-navigation-link-nested {
+    min-height: 2.125rem;
+    padding-inline-start: 1.625rem;
+    font-size: 0.875rem;
+  }
+
+  /* The sidebar's secondary lists. The rule above each one separates it from
+     the primary navigation without adding another surface colour. */
+  .nav-section {
+    display: grid;
+    gap: 0.5rem;
+    border-top: 1px solid var(--border-raised);
+    padding-top: 1rem;
+  }
+
+  /* Grid items default to min-width:auto, so a nowrap truncating label sizes
+     its column to the whole Game name and scrolls the sidebar sideways. The
+     floor lets the existing truncation cut the name instead. */
+  .nav-section,
+  .nav-section ul,
+  .nav-section li {
+    min-width: 0;
+  }
+
+  .nav-section-heading {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    padding-inline: 0.75rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: light-dark(var(--brand-deep-ocean), var(--brand-sea-foam));
+    text-transform: uppercase;
+  }
+
+  /* A joined round is a card, not a nav row: the fill marks it as a distinct
+     object, and hover moves only the border so the row does not jump. */
+  .nav-upcoming-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5625rem;
+    border: 1px solid var(--border-raised);
+    border-radius: var(--radius-field);
+    background: var(--color-base-100);
+    padding: 0.5rem 0.75rem;
+    transition: border-color 180ms ease-out;
+  }
+
+  .nav-upcoming-item:hover,
+  .nav-upcoming-item:focus-visible {
+    border-color: color-mix(in srgb, var(--color-primary) 55%, transparent);
+  }
+
+  .nav-upcoming-dot {
+    width: 0.375rem;
+    height: 0.375rem;
+    flex: none;
+    border-radius: 50%;
+    background: var(--color-primary);
+  }
+
+  /* Sunset is this product's one "no time left" colour, so a round that has
+     started uses the same ink here as in the request list. The time text
+     carries the meaning on its own; the colour only reinforces it. */
+  .nav-upcoming-item-now {
+    border-color: color-mix(in srgb, var(--brand-sunset) 55%, transparent);
+  }
+
+  .nav-upcoming-item-now .nav-upcoming-dot {
+    background: var(--ink-last);
+  }
+
+  .nav-upcoming-item-now time {
+    color: var(--ink-last);
+  }
+
+  /* The warning tier before Sunset: the round is inside a quarter of an hour
+     and Golden Hour is this product's colour for time itself. */
+  .nav-upcoming-item-soon {
+    border-color: color-mix(in srgb, var(--brand-golden-hour) 55%, transparent);
+  }
+
+  .nav-upcoming-item-soon .nav-upcoming-dot {
+    background: var(--ink-hot);
+  }
+
+  .nav-upcoming-item-soon time {
+    color: var(--ink-hot);
+  }
+
+  .nav-recent-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5625rem;
+    border-radius: var(--radius-field);
+    padding: 0.375rem 0.75rem;
+    color: color-mix(in srgb, var(--color-base-content) 72%, transparent);
+    transition: color 180ms ease-out, background-color 180ms ease-out;
+  }
+
+  .nav-recent-item:hover,
+  .nav-recent-item:focus-visible {
+    color: var(--color-base-content);
+    background: color-mix(in srgb, var(--color-primary) 8%, transparent);
   }
 
   .viewer-panel {
@@ -337,19 +446,55 @@
     gap: 0;
   }
 
+  /* A last free place borders the hero the way it borders the list row, so the
+     detail page a player lands on carries the scarcity the row promised. */
+  .detail-hero-last {
+    border-color: color-mix(in srgb, var(--brand-sunset) 70%, var(--border-raised));
+  }
+
+  /* Screen title per the type scale in docs/BRANDING.md: the Game names the
+     page, so it is set larger here than the top bar's own title. */
+  .detail-title {
+    min-width: 0;
+    font-size: 1.875rem;
+    font-weight: 900;
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+  }
+
+  /* The activity feed is a scanning surface: alternating rows keep a time
+     with its own sentence without drawing a rule between every entry. */
+  .activity-list {
+    display: grid;
+  }
+
+  .activity-row {
+    display: flex;
+    gap: 0.75rem;
+    border-radius: var(--radius-field);
+    padding: 0.375rem 0.5rem;
+  }
+
+  .activity-row:nth-child(odd) {
+    background: color-mix(in srgb, var(--color-base-content) 5%, transparent);
+  }
+
   .detail-card-accent {
     border-color: color-mix(in srgb, var(--color-warning) 40%, var(--border-raised));
   }
 
+  /* Cover-first: the art is how a player recognises a game across a grid, so
+     it leads the card and the text sits under it. The card itself carries no
+     padding -- the cover has to reach the rounded edge -- so the body owns
+     its own. */
   .game-card {
     display: flex;
     min-width: 0;
     flex-direction: column;
-    gap: 0.875rem;
+    overflow: hidden;
     border: 1px solid var(--border-raised);
     border-radius: var(--radius-box);
     background: var(--color-base-200);
-    padding: 1.125rem 1.25rem;
     box-shadow: var(--shadow-raised);
     transition: border-color 180ms ease-out;
   }
@@ -359,10 +504,593 @@
     border-color: color-mix(in srgb, var(--color-primary) 58%, var(--border-raised));
   }
 
+  /* A followed card keeps a Surf Blue edge so the "Followed only" view reads
+     as one block rather than as an arbitrary subset. The word on the cover
+     tag, not this colour, is what actually states the follow. */
+  .game-card-followed {
+    border-color: color-mix(in srgb, var(--color-primary) 50%, var(--border-raised));
+  }
+
+  .game-card-cover {
+    position: relative;
+    display: grid;
+    aspect-ratio: 3 / 2;
+    place-items: center;
+    overflow: hidden;
+    background: color-mix(in srgb, var(--color-primary) 12%, var(--color-base-300));
+  }
+
+  /* Cover art is portrait and the band is landscape, so the image is taken
+     out of flow: left in the grid its own intrinsic ratio would set the
+     band's height and every card in a row would be a different size. */
+  .game-card-cover-image {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    /* Box art puts the title in the upper third; a centred crop cuts it. */
+    object-position: center 28%;
+  }
+
+  /* The abbreviation stands in for missing art at the scale of the band it
+     replaces, rather than as a small tile floating in an empty rectangle. */
+  .game-card-cover-fallback {
+    font-family: var(--font-mono);
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: var(--ink-abbreviation);
+  }
+
+  /* The genre sits opposite the follow tag so the two chips can never
+     collide on a followed card. Its colours are the fixed brand pair rather
+     than theme tokens: it always lies on cover art, which is its own
+     arbitrary image in either theme, so a theme-following chip would be
+     legible on neither reliably. Sea Foam on Ocean Depth clears 10.2:1. */
+  .game-card-genre {
+    position: absolute;
+    top: 0.625rem;
+    left: 0.625rem;
+    max-width: calc(100% - 1.25rem);
+    overflow: hidden;
+    border-radius: var(--radius-selector);
+    background: var(--brand-ocean-depth);
+    padding: 0.25rem 0.5rem;
+    color: var(--brand-sea-foam);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-overflow: ellipsis;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .game-card-tag {
+    position: absolute;
+    top: 0.625rem;
+    right: 0.625rem;
+    border-radius: var(--radius-selector);
+    background: var(--color-primary);
+    padding: 0.25rem 0.5rem;
+    color: var(--color-primary-content);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .game-card-body {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    flex-direction: column;
+    gap: 0.375rem;
+    padding: 0.875rem 1rem 1rem;
+  }
+
+  .game-card-name {
+    min-width: 0;
+    flex: 1;
+    overflow-wrap: anywhere;
+    font-size: 1.0625rem;
+    font-weight: 900;
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+  }
+
+  .game-card-short {
+    flex: none;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    color: color-mix(in srgb, var(--color-base-content) 65%, transparent);
+  }
+
+  /* The summary is variable-length prose on a fluid-width card, so the line
+     clamp -- not the server-side rune cap -- is what actually holds every
+     card in a row to the same height. */
+  .game-card-meta {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 5;
+    font-size: 0.8125rem;
+    color: color-mix(in srgb, var(--color-base-content) 70%, transparent);
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+  }
+
+  /* The follow action is the card's point, so it gets the remaining width and
+     "Find Players" stays the quiet companion beside it. */
+  .game-card-actions {
+    display: flex;
+    margin-top: auto;
+    align-items: center;
+    gap: 0.5rem;
+    padding-top: 0.625rem;
+  }
+
+  .game-card-follow {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .game-card-follow .btn {
+    width: 100%;
+  }
+
   .game-grid {
     display: grid;
+    gap: 0.875rem;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr));
+  }
+
+  /* The administration catalog. One Game is a row first and a form second:
+     collapsed it states what the row is and how it is used, and opening it
+     reveals every change that can be made to that one Game. The disclosure is
+     the native element, so the list still opens and submits without
+     scripting, and a hundred Games stay a hundred rows rather than a hundred
+     stacked forms. */
+  /* The administration screens are one column with no rail, so the list needs
+     its own measure: at full desktop width a row would otherwise strand its
+     name and its state at opposite edges of the viewport. */
+  .catalog-shell {
+    width: min(100%, 76rem);
+  }
+
+  .catalog-list {
+    display: grid;
+    gap: 0.5rem;
+  }
+
+  .catalog-entry {
+    border: 1px solid var(--border-raised);
+    border-radius: var(--radius-box);
+    background: var(--color-base-200);
+    box-shadow: var(--shadow-raised);
+    transition: border-color 180ms ease-out;
+  }
+
+  .catalog-entry:hover,
+  .catalog-entry:focus-within,
+  .catalog-entry[open] {
+    border-color: color-mix(in srgb, var(--color-primary) 58%, var(--border-raised));
+  }
+
+  .catalog-summary {
+    display: flex;
+    min-width: 0;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 0.75rem;
+    border-radius: var(--radius-box);
+    padding: 0.5rem 0.75rem;
+    cursor: pointer;
+    /* Both spellings: the marker is a pseudo-element in WebKit and a
+       list-style in everything else, and the row states its own affordance. */
+    list-style: none;
+  }
+
+  .catalog-summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .catalog-entry[open] .catalog-summary {
+    border-end-start-radius: 0;
+    border-end-end-radius: 0;
+  }
+
+  /* A provider candidate is the same row without the disclosure: nothing about
+     it opens, so it must not offer the affordance either. */
+  .catalog-entry-static .catalog-summary {
+    align-items: flex-start;
+    cursor: default;
+  }
+
+  /* The basis, not the shrink, is what keeps a narrow viewport readable: below
+     it the chips wrap to their own line instead of squeezing the name into a
+     one-letter-per-line column. */
+  .catalog-entry-body {
+    display: grid;
+    min-width: 0;
+    flex: 1 1 12rem;
+    gap: 0.125rem;
+  }
+
+  .catalog-entry-title {
+    overflow-wrap: anywhere;
+    font-size: 1.0625rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    line-height: 1.25;
+  }
+
+  .catalog-entry-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    /* Spacing separates the facts rather than punctuation: a wrapped line
+       would otherwise start with an orphaned separator. */
+    gap: 0.125rem 1rem;
+    font-size: 0.8125rem;
+    color: color-mix(in srgb, var(--color-base-content) 70%, transparent);
+    overflow-wrap: anywhere;
+  }
+
+  /* Chips and the disclosure travel together: wrapped onto their own line on a
+     narrow viewport they stay one right-aligned group rather than splitting
+     across two. */
+  .catalog-entry-state {
+    display: flex;
+    flex: none;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-inline-start: auto;
+    justify-content: flex-end;
+    gap: 0.375rem;
+  }
+
+  /* The word, not an icon: the row already carries chips, and a rotating
+     chevron would be one more thing to read. */
+  .catalog-entry-disclosure {
+    flex: none;
+    border-radius: var(--radius-selector);
+    padding: 0.3125rem 0.625rem;
+    background: var(--surface-quiet);
+    color: var(--ink-quiet);
+    font-size: 0.8125rem;
+    font-weight: 600;
+  }
+
+  .catalog-entry[open] .catalog-entry-disclosure {
+    background: color-mix(in srgb, var(--color-primary) 18%, transparent);
+    color: var(--ink-selected);
+  }
+
+  .catalog-panel {
+    display: grid;
+    gap: 1.25rem;
+    border-top: 1px solid var(--border-raised);
+    padding: 1rem 0.75rem 1.125rem;
+  }
+
+  .catalog-section {
+    display: grid;
+    gap: 0.625rem;
+  }
+
+  /* The panel now holds three distinct jobs -- edit, inspect, destroy -- so a
+     hairline separates them; spacing alone stopped carrying the grouping once
+     each section grew past a couple of rows. */
+  .catalog-section + .catalog-section {
+    border-top: 1px solid var(--border-raised);
+    padding-top: 1.125rem;
+  }
+
+  /* One heading style for every part of an opened Game, in the data face:
+     these label regions of a record rather than introducing prose, and the
+     mono face is what the product already uses for record data. */
+  .catalog-section-heading,
+  .catalog-input-label {
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: color-mix(in srgb, var(--color-base-content) 72%, transparent);
+    text-transform: uppercase;
+  }
+
+  /* A field label sits closer to its control than a section heading does to
+     its section, and it names one input rather than a region. */
+  .catalog-input-label {
+    font-weight: 600;
+    text-transform: none;
+  }
+
+  .catalog-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .catalog-actions {
+    align-items: center;
+  }
+
+  /* One choice and the control that takes it, on one line: deactivating and
+     deleting are two answers to the same question, so they are stated the
+     same way. */
+  /* One choice and the control that takes it: deactivating and deleting are
+     two answers to the same question, so they are stated the same way. Two
+     thirds of the row explain, one third acts -- until the row is too narrow
+     to split, where the control moves under its own sentence. */
+  .catalog-decision {
+    display: grid;
+    align-items: center;
+    gap: 0.5rem 0.75rem;
+  }
+
+  /* Stacked, the control keeps its own width: a grid item stretches by
+     default, which turned a disabled delete button into a full-width bar. */
+  .catalog-decision > :not(.catalog-decision-text) {
+    justify-self: start;
+  }
+
+  @media (min-width: 40rem) {
+    .catalog-decision {
+      grid-template-columns: 2fr 1fr;
+    }
+
+    .catalog-decision > :not(.catalog-decision-text) {
+      justify-self: end;
+    }
+  }
+
+  .catalog-decision-text {
+    min-width: 0;
+    font-size: 0.875rem;
+    color: color-mix(in srgb, var(--color-base-content) 78%, transparent);
+  }
+
+  /* The aliases and the field that adds one share a row: the add control is
+     a short word, not a form, and a full-width input with a button beside it
+     claimed more of the panel than every alias put together. */
+  .alias-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .alias-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    border-radius: var(--radius-selector);
+    background: color-mix(in srgb, var(--color-base-content) 10%, transparent);
+    padding: 0.25rem 0.5rem 0.25rem 0.625rem;
+    color: var(--color-base-content);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 180ms ease-out, color 180ms ease-out;
+  }
+
+  /* Removing is what pressing an alias does, so the hover state says so in
+     the colour the rest of the product reserves for destructive actions. */
+  .alias-chip:hover,
+  .alias-chip:focus-visible {
+    background: var(--surface-danger-strong);
+    color: var(--ink-danger-strong);
+  }
+
+  .alias-chip-remove {
+    font-size: 1rem;
+    line-height: 1;
+    color: color-mix(in srgb, var(--color-base-content) 60%, transparent);
+  }
+
+  .alias-chip:hover .alias-chip-remove,
+  .alias-chip:focus-visible .alias-chip-remove {
+    color: inherit;
+  }
+
+  .alias-add {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+  }
+
+  .alias-input {
+    width: 9rem;
+    font-size: 0.8125rem;
+  }
+
+  .catalog-candidate-actions {
+    display: grid;
+    flex: none;
+    gap: 0.375rem;
+  }
+
+  .external-mark {
+    margin-inline-start: 0.125rem;
+    font-size: 0.875rem;
+  }
+
+  /* The provider snapshot. It is read-only reference material an
+     administrator scans, so it is set as prose plus labelled rows rather
+     than as one strip of badges: the label says what kind of fact follows,
+     which is the whole difference between "Shooter" as a genre and
+     "Multiplayer" as a mode. */
+  .igdb-facts {
+    display: grid;
+    gap: 0.625rem;
+    border-radius: var(--radius-field);
+    background: color-mix(in srgb, var(--color-base-content) 4%, transparent);
+    padding: 0.875rem 1rem;
+  }
+
+  /* Prose size, panel width: the summary is the block an administrator
+     actually reads, so it gets the whole row rather than a measure column
+     that left two thirds of the panel empty. */
+  .igdb-summary {
+    font-size: 0.875rem;
+    line-height: 1.6;
+    /* The stored summary keeps the provider's own paragraph breaks, so a
+       long one reads as paragraphs rather than as one block. */
+    white-space: pre-line;
+    color: color-mix(in srgb, var(--color-base-content) 82%, transparent);
+    text-wrap: pretty;
+  }
+
+  .igdb-fact {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.25rem 0.75rem;
+  }
+
+  /* A fixed basis rather than a grid column: every row lines up at any panel
+     width, and the values wrap under the label instead of into a 3rem
+     column. */
+  .igdb-fact-label {
+    flex: 0 0 5.5rem;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    color: color-mix(in srgb, var(--color-base-content) 62%, transparent);
+  }
+
+  .igdb-fact-values {
+    display: flex;
+    min-width: 0;
+    flex: 1 1 14rem;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.375rem;
+  }
+
+  .igdb-value {
+    font-size: 0.8125rem;
+    color: color-mix(in srgb, var(--color-base-content) 82%, transparent);
+    overflow-wrap: anywhere;
+  }
+
+  /* A tag is a filled pill, not an outlined box: at this size an outline is
+     mostly border, and a row of them reads as a grid of empty rectangles. */
+  .igdb-chip {
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+    padding: 0.1875rem 0.625rem;
+    color: var(--ink-selected);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    line-height: 1.3;
+    white-space: nowrap;
+  }
+
+  /* One row per platform, separated by a rule: the platforms used to be one
+     13px sentence each, so which capability belonged to which platform was a
+     reading exercise. */
+  .igdb-platforms {
+    display: grid;
+    min-width: 0;
+    flex: 1 1 14rem;
+    gap: 0.375rem;
+  }
+
+  .igdb-platform {
+    display: grid;
+    gap: 0.25rem;
+  }
+
+  .igdb-platform + .igdb-platform {
+    border-top: 1px solid var(--border-raised);
+    padding-top: 0.375rem;
+  }
+
+  .igdb-platform-name {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+  }
+
+  .igdb-platform-values {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.375rem;
+  }
+
+  /* A cap is a number, so it is set in the data face and without the chip's
+     outline: it reads as a measurement beside the capabilities, not as
+     another capability. */
+  .igdb-chip-limit {
+    background: color-mix(in srgb, var(--color-base-content) 10%, transparent);
+    color: color-mix(in srgb, var(--color-base-content) 82%, transparent);
+    font-family: var(--font-mono);
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Manual creation trails the catalog it used to lead, so its own heading and
+     its reason for existing sit on the closed summary. */
+  .catalog-composer-summary {
+    display: grid;
+    gap: 0.25rem;
+    cursor: pointer;
+    list-style: none;
+  }
+
+  .catalog-composer-summary::-webkit-details-marker {
+    display: none;
+  }
+
+  /* The composer picks a game, it does not browse the catalog: a row of
+     cover plus title, with the whole row as the control. */
+  .pick-card {
+    display: flex;
+    min-width: 0;
+    align-items: center;
     gap: 0.75rem;
-    grid-template-columns: repeat(auto-fill, minmax(min(100%, 19rem), 1fr));
+    border: 1px solid var(--border-raised);
+    border-radius: var(--radius-box);
+    background: var(--color-base-200);
+    padding: 0.625rem;
+    color: inherit;
+    text-decoration: none;
+    transition:
+      border-color 180ms ease-out,
+      background-color 180ms ease-out;
+  }
+
+  /* Picking a game is the whole point of this list, so its hover is louder
+     than the catalog card's: the fill moves, not only the edge, and the
+     cover picks up the same Surf Blue rim so the row reads as one target
+     rather than as art sitting next to a link. */
+  .pick-card:hover,
+  .pick-card:focus-visible {
+    border-color: color-mix(in srgb, var(--color-primary) 72%, var(--border-raised));
+    background: color-mix(in srgb, var(--color-primary) 14%, var(--color-base-200));
+  }
+
+  .pick-card:hover .pick-cover,
+  .pick-card:focus-visible .pick-cover {
+    border-color: color-mix(in srgb, var(--color-primary) 55%, var(--border-raised));
+  }
+
+  /* Pressed is a deeper fill of the same tint, so the row answers the click
+     before the next page arrives. */
+  .pick-card:active {
+    background: color-mix(in srgb, var(--color-primary) 22%, var(--color-base-200));
+  }
+
+  .pick-name {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    font-size: 1rem;
+    font-weight: 600;
+    line-height: 1.3;
   }
 
   .member-time {
@@ -384,9 +1112,10 @@
     justify-content: center;
   }
 
+  /* Fills the main column above the footer; main is a flex column. */
   .request-shell {
     display: grid;
-    min-height: calc(100dvh - 4.5rem);
+    flex: 1;
   }
 
   .request-main {
@@ -409,6 +1138,39 @@
     display: grid;
     gap: 0.75rem;
     align-content: start;
+    justify-items: center;
+    text-align: center;
+  }
+
+  .trending-heading {
+    display: grid;
+    gap: 0.125rem;
+    justify-items: center;
+  }
+
+  /* Rank is the order of the covers, so the rail needs no counter beside
+     them; the numbers stay in each tile's accessible name. */
+  .trending-covers {
+    display: grid;
+    gap: 0.625rem;
+    justify-items: center;
+  }
+
+  .trending-cover {
+    transition: border-color 180ms ease-out;
+  }
+
+  .trending-cover:hover,
+  .trending-cover:focus-visible {
+    border-color: color-mix(in srgb, var(--color-primary) 58%, var(--border-raised));
+  }
+
+  /* A debounced search that has left but not landed: the list it is about
+     to replace dims, so a slow event network reads as "working", not as
+     "typed and nothing happened". */
+  .request-toolbar.htmx-request + [aria-live] {
+    opacity: 0.55;
+    transition: opacity 120ms ease-out;
   }
 
   .request-toolbar {
@@ -417,6 +1179,25 @@
     align-items: center;
     gap: 0.5rem;
     padding-bottom: 0.875rem;
+  }
+
+  /* Filters that live in the top bar rather than above the list. They take
+     the room between the screen title and the page action, and they apply
+     themselves, so there is no submit control to leave space for. */
+  .topbar-filters {
+    display: flex;
+    flex: 1 1 14rem;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+  }
+
+  /* max-width rather than width: a flex item that is allowed to grow ignores
+     width, so the cap has to be the maximum. */
+  .topbar-filters .request-search {
+    flex: 1 1 10rem;
+    max-width: 22rem;
   }
 
   /* The scope chips are one exclusive choice, so they are a fieldset for the
@@ -519,19 +1300,18 @@
 
   .request-list {
     display: grid;
-    gap: 0.375rem;
+    gap: 0.625rem;
   }
 
   .request-row {
     display: grid;
-    min-height: 3.5rem;
-    grid-template-columns: minmax(0, 1fr) 3.25rem 4.75rem auto;
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
-    gap: 0.875rem;
+    gap: 1rem;
     border: 1px solid var(--border-raised);
-    border-radius: var(--radius-field);
+    border-radius: var(--radius-box);
     background: var(--color-base-200);
-    padding: 0.6875rem 0.875rem;
+    padding: 0.75rem;
     box-shadow: var(--shadow-raised);
     transition: border-color 180ms ease-out, background-color 180ms ease-out;
   }
@@ -556,27 +1336,146 @@
     color: color-mix(in srgb, var(--color-base-content) 70%, transparent);
   }
 
-  .request-row-closed .game-abbreviation {
+  .request-row-closed .cover-art-fallback {
     color: inherit;
+  }
+
+  /* A closed round keeps its cover, but the art stops carrying the row. */
+  .request-row-closed .request-cover {
+    opacity: 0.55;
   }
 
   .request-row-main {
     display: grid;
     min-width: 0;
-    grid-template-columns: 2.125rem minmax(0, auto) auto;
+    grid-template-columns: auto minmax(0, 1fr);
     align-items: center;
-    justify-content: start;
-    gap: 0.875rem;
+    gap: 1rem;
+    color: inherit;
   }
 
-  /* Places and start time are columns: right-aligned so they scan vertically. */
-  .request-row > span[aria-label],
-  .request-row > time {
-    text-align: right;
+  /* Portrait box art at the ratio the covers are published in, so the tile
+     never letterboxes and never crops the title band out of the image. */
+  .request-cover,
+  .trending-cover,
+  .detail-cover,
+  .pick-cover,
+  .catalog-cover,
+  .selected-game-cover {
+    position: relative;
+    display: grid;
+    width: 6rem;
+    aspect-ratio: 3 / 4;
+    flex: none;
+    place-items: center;
+    overflow: hidden;
+    border: 1px solid var(--border-raised);
+    border-radius: var(--radius-field);
+    background: color-mix(in srgb, var(--color-primary) 12%, var(--color-base-300));
   }
 
-  .request-row > span[aria-label] {
-    justify-self: end;
+  .detail-cover {
+    width: 4.5rem;
+  }
+
+  /* Small enough that a followed list reads as a list rather than a wall of
+     box art. These per-use widths have to follow the shared rule above:
+     same specificity, so order is what decides them. */
+  .pick-cover {
+    width: 4.6875rem;
+  }
+
+  /* An administration row is a scanning row, not a shop window: the cover is
+     there to recognise the Game by, so it is the smallest tile in the system. */
+  .catalog-cover {
+    width: 2.75rem;
+  }
+
+  /* Out of flow, so a cover that has not loaded yet cannot resize the row
+     around it and shuffle everything below. */
+  .cover-art-image {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .cover-art-fallback {
+    font-family: var(--font-mono);
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: var(--ink-abbreviation);
+  }
+
+  .request-row-body {
+    display: grid;
+    min-width: 0;
+    align-content: center;
+    gap: 0.5rem;
+  }
+
+  /* The Host mark sits on the title line, next to the sentence it qualifies,
+     so the title truncates around it instead of through it. */
+  .request-row-title {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 1.1875rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  .request-row-title-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* The Game Nick and the Game are what a player scans the line for, so the
+     words joining them step back out of the way. */
+  .request-row-connector {
+    font-weight: 400;
+  }
+
+  /* One line, always: the description is a player-authored paragraph, and
+     wrapping it would let one round set the height of the whole list. */
+  .request-row-description {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: color-mix(in srgb, var(--color-base-content) 72%, transparent);
+    font-size: 0.875rem;
+    line-height: 1.45;
+  }
+
+  .request-row-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.375rem 0.75rem;
+  }
+
+  /* Hairline separators instead of separator elements: nothing between the
+     facts is content, so nothing between them is markup. A chip already has
+     its own edge and fill, so the hairline is drawn on the chip itself and
+     reads as a pipe stuck to it; the row gap separates it instead. */
+  .request-row-meta > * + *:not(.status-chip) {
+    border-left: 1px solid var(--border-raised);
+    padding-left: 0.75rem;
+  }
+
+  .request-places {
+    display: flex;
+    align-items: baseline;
+    gap: 0.375rem;
+  }
+
+  .request-places .place-counter {
+    font-size: 1.125rem;
   }
 
   .place-counter {
@@ -620,7 +1519,7 @@
   }
 
   .request-row-action .btn {
-    min-width: 4.25rem;
+    min-width: 5.5rem;
   }
 
   .action-static {
@@ -643,18 +1542,19 @@
 
   .request-list-skeleton {
     display: none;
-    gap: 0.375rem;
+    gap: 0.625rem;
   }
 
+  /* The placeholder carries the cover row's own proportions, so a filtered
+     list settles into place instead of jumping a row height on every swap. */
   .request-skeleton-row {
-    min-height: 3.5rem;
     display: grid;
-    grid-template-columns: 2.125rem minmax(8rem, 1fr) 4rem;
+    grid-template-columns: 6rem minmax(8rem, 1fr) 5.5rem;
     align-items: center;
-    gap: 0.75rem;
-    border-radius: var(--radius-field);
+    gap: 1rem;
+    border-radius: var(--radius-box);
     background: var(--color-base-200);
-    padding: 0.625rem 0.75rem;
+    padding: 0.75rem;
   }
 
   .request-skeleton-row span {
@@ -664,8 +1564,8 @@
   }
 
   .request-skeleton-row span:first-child {
-    height: 2.125rem;
-    border-radius: var(--radius-selector);
+    height: 8rem;
+    border-radius: var(--radius-field);
   }
 
   #game-request-list.htmx-request .request-list-content {
@@ -704,12 +1604,69 @@
     box-shadow: var(--shadow-raised);
   }
 
+  /* The chosen Game leads the details step the way the cover leads the
+     pick row, and it wears the primary edge because it is the one answer
+     already given on this screen. Name only: the player just picked it. */
+  .selected-game {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 0.875rem;
+    border: 2px solid var(--color-primary);
+    border-radius: var(--radius-box);
+    background: var(--color-base-100);
+    padding: 0.75rem;
+  }
+
+  .selected-game-cover {
+    width: 6.25rem;
+  }
+
+  .selected-game-body {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .selected-game-name {
+    overflow-wrap: anywhere;
+    font-size: 1.1875rem;
+    font-weight: 700;
+    line-height: 1.25;
+  }
+
+  /* An error that names one field sits with that field, close enough to
+     read as its answer rather than as a page-wide complaint. */
+  .field-error {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--ink-danger);
+  }
+
+  /* One primary action, sized to be the obvious one, with the way out
+     beside it rather than competing for the same weight. */
+  .composer-actions {
+    display: flex;
+    flex-wrap: wrap-reverse;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .composer-commit {
+    flex: 1 1 14rem;
+  }
+
+  /* The border is the whole boundary of an unselected chip, so it carries
+     the 3:1 non-text contrast itself (WCAG 1.4.11) rather than the softer
+     edge a decorative divider can afford. */
   .start-choice span {
     display: inline-flex;
     min-height: 2.5rem;
     cursor: pointer;
     align-items: center;
-    border: 1px solid var(--border-raised);
+    border: 1px solid color-mix(in srgb, var(--color-base-content) 50%, transparent);
     border-radius: var(--radius-field);
     padding-inline: 0.875rem;
     color: color-mix(in srgb, var(--color-base-content) 72%, transparent);
@@ -776,7 +1733,7 @@
   .auth-stage {
     position: relative;
     display: grid;
-    min-height: 100dvh;
+    flex: 1;
     align-items: center;
     justify-items: start;
     overflow: hidden;
@@ -929,6 +1886,22 @@
   color: light-dark(var(--ink-danger), var(--color-error-content));
 }
 
+.alert[data-live-toast] {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.alert[data-live-toast] .btn-ghost {
+  color: inherit;
+}
+
+.alert[data-live-toast] .btn-ghost:hover,
+.alert[data-live-toast] .btn-ghost:focus-visible {
+  background-color: transparent;
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+
 /* Form fields: DaisyUI's 20%-of-ink border is 1.8:1 in dark mode, so nothing
    marks the control (SC 1.4.11). The focus ring is the system's own, not the
    2 px outline DaisyUI derives from the same border colour. */
@@ -966,7 +1939,7 @@ textarea::placeholder {
 @media (min-width: 64rem) {
   .app-shell {
     display: grid;
-    grid-template-columns: 15.5rem minmax(0, 1fr);
+    grid-template-columns: 18.75rem minmax(0, 1fr);
   }
 
   .app-topbar {
@@ -986,8 +1959,10 @@ textarea::placeholder {
     grid-template-columns: minmax(0, 1fr) 20rem;
   }
 
+  /* The rail is a column of cover art now, so it only has to be as wide as a
+     cover plus its gutters. */
   .request-shell {
-    grid-template-columns: minmax(0, 1fr) 18.5rem;
+    grid-template-columns: minmax(0, 1fr) 10.5rem;
   }
 
   .request-rail {
@@ -1010,49 +1985,35 @@ textarea::placeholder {
     margin-left: auto;
   }
 
-  .request-row > span[aria-label] {
-    grid-column: 1;
-    grid-row: 2;
-    justify-self: start;
-    padding-left: 3rem;
-  }
-
-  .request-row > time {
-    grid-column: 1;
-    grid-row: 2;
-    padding-left: 7rem;
+  /* The action moves under the reading block rather than squeezing the
+     description into a column too narrow to read. */
+  .request-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.75rem;
   }
 
   .request-row-action {
-    grid-column: 2;
-    grid-row: 1 / span 2;
+    justify-content: stretch;
   }
 
-  .request-row {
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 0.5rem 0.75rem;
-    padding-block: 0.625rem;
+  .request-row-action .btn,
+  .request-row-action .action-static,
+  .request-row-action form {
+    width: 100%;
   }
 
-  /* The chip wraps under the game name instead of disappearing: below 48 rem
-     Host, Joined, and Last place used to be readable only as a border tint. */
-  .request-row-main {
-    grid-template-columns: 2.25rem minmax(0, 1fr);
-    row-gap: 0.25rem;
+  .request-cover {
+    width: 4.5rem;
   }
 
-  .request-row-main > span:first-child {
-    grid-row: 1 / span 2;
+  .request-row-title {
+    font-size: 1rem;
   }
 
-  .request-row-main .status-chip {
-    grid-column: 2;
-    justify-self: start;
-  }
-
-  .request-row > span[aria-label],
-  .request-row > time {
-    text-align: left;
+  /* The screen title drops to the top bar's size rather than setting three
+     lines of 30px black type across a phone. */
+  .detail-title {
+    font-size: 1.5rem;
   }
 
   .request-search {
@@ -1113,8 +2074,13 @@ textarea::placeholder {
    standing player hits reliably. Pointer-coarse only, so desktop keeps its
    density. */
 @media (pointer: coarse) {
+  .btn,
   .btn-sm,
-  .action-static {
+  .action-static,
+  .alias-chip,
+  .input,
+  .select,
+  .start-choice span {
     min-height: 2.75rem;
   }
 
@@ -1132,6 +2098,7 @@ textarea::placeholder {
   }
 
   .app-navigation-link,
+  .nav-recent-item,
   .count-muted,
   .member-time,
   .request-row-closed,

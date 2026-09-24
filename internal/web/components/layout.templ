@@ -4,8 +4,11 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
+	"unicode"
 	"unicode/utf8"
 
+	requestquery "github.com/convention-x-treme/lansurfer/internal/query/gamerequest"
 	"github.com/convention-x-treme/lansurfer/internal/web/branding"
 	webmiddleware "github.com/convention-x-treme/lansurfer/internal/web/middleware"
 )
@@ -61,6 +64,16 @@ type NavigationState struct {
 	// open Game Request on the installation, never the subset a discovery
 	// filter matched. Sections without a count on the current page omit it.
 	OpenRequests int64
+	// Games counts the active local catalog; FollowedGames counts what this
+	// viewer follows, matching what the Games screen's "Followed only" filter
+	// itself lists.
+	Games int64
+	FollowedGames int64
+	// Upcoming is the viewer's own joined Game Requests, soonest first and
+	// already bounded by the caller.
+	Upcoming []requestquery.Request
+	// RecentlyViewed is the viewer's own reading history, newest first.
+	RecentlyViewed []requestquery.RecentRequest
 }
 
 templ Layout(brand branding.Brand, title string, navigation NavigationState) {
@@ -81,13 +94,14 @@ templ Layout(brand branding.Brand, title string, navigation NavigationState) {
 			if navigation.Viewer != nil {
 				<div class="app-shell" data-authenticated-shell>
 					@DesktopNavigation(brand, navigation)
-					<div class="min-w-0">
+					<div class="flex min-h-dvh min-w-0 flex-col">
 						@MobileNavigation(brand, navigation)
 						<div data-realtime-url="/events/game-requests"></div>
 						<div id="live-notices" class="pointer-events-none fixed bottom-4 right-4 z-50 grid w-[min(24rem,calc(100%-2rem))] gap-3 [&>*]:pointer-events-auto" aria-live="polite"></div>
-						<main id="main-content" class="min-w-0">
+						<main id="main-content" class="flex min-w-0 flex-1 flex-col">
 							{ children... }
 						</main>
+						@Footer(brand)
 					</div>
 				</div>
 			} else {
@@ -123,7 +137,10 @@ templ AuthLayout(brand branding.Brand, title string) {
 				@InstanceLabel(brand)
 				@ThemeToggle()
 			</header>
-			<main id="main-content">{ children... }</main>
+			<div class="flex min-h-dvh flex-col">
+				<main id="main-content" class="flex flex-1 flex-col">{ children... }</main>
+				@Footer(brand)
+			</div>
 		</body>
 	</html>
 }
@@ -152,13 +169,14 @@ templ DesktopNavigation(brand branding.Brand, state NavigationState) {
 		</a>
 		@InstanceLabel(brand)
 		@NavigationLinks(state)
+		@UpcomingGames(state)
+		@RecentlyViewedRequests(state)
 		<div class="mt-auto grid gap-3">
 			@ViewerPanel(state.Viewer)
 			<div class="flex items-center justify-between gap-2 px-2">
 				@LogoutControl()
 				@ThemeToggle()
 			</div>
-			@OperatorAttribution("px-2 text-xs text-base-content/65")
 		</div>
 	</aside>
 }
@@ -178,13 +196,14 @@ templ MobileNavigation(brand branding.Brand, state NavigationState) {
 				</div>
 				@InstanceLabel(brand)
 				@NavigationLinks(state)
+				@UpcomingGames(state)
+				@RecentlyViewedRequests(state)
 				<div class="mt-auto grid gap-3">
 					@ViewerPanel(state.Viewer)
 					<div class="flex items-center justify-between gap-2 px-2">
 						@LogoutControl()
 						@ThemeToggle()
 					</div>
-					@OperatorAttribution("px-2 text-xs text-base-content/65")
 				</div>
 			</nav>
 		</details>
@@ -197,20 +216,98 @@ templ NavigationLinks(state NavigationState) {
 			<a class={ navigationLinkClass(state.Section == "game-requests") } href="/game-requests" aria-current={ navigationCurrent(state.Section == "game-requests") }>
 				<span>Game Requests</span>
 				if state.OpenRequests > 0 {
-					<span class="data-text count-hot ml-auto text-xs">{ fmt.Sprint(state.OpenRequests) }</span>
+					<span class={ navigationCountClass(state.Section == "game-requests") }>{ fmt.Sprint(state.OpenRequests) }</span>
 				}
 			</a>
 		</li>
-		<li>@NavigationLink("/games", "Games", "games", state.Section)</li>
-		<li>@NavigationLink("/games/mine", "My Games", "my-games", state.Section)</li>
+		<li>
+			<a class={ navigationLinkClass(state.Section == "games" || state.Section == "games-followed") } href="/games" aria-current={ navigationCurrent(state.Section == "games") }>
+				<span>Games</span>
+				if state.Games > 0 {
+					<span class={ navigationCountClass(state.Section == "games") }>{ fmt.Sprint(state.Games) }</span>
+				}
+			</a>
+		</li>
+		<li>
+			<a class={ navigationSubLinkClass(state.Section == "games-followed") } href="/games?followed=1" aria-current={ navigationCurrent(state.Section == "games-followed") }>
+				<span>Followed</span>
+				if state.FollowedGames > 0 {
+					<span class={ navigationCountClass(state.Section == "games-followed") }>{ fmt.Sprint(state.FollowedGames) }</span>
+				}
+			</a>
+		</li>
 		if state.Viewer != nil && state.Viewer.Role == "admin" {
 			<li>
-				<a class={ navigationLinkClass(state.Section == "administration") } href="/admin/games" aria-current={ navigationCurrent(state.Section == "administration") }>
+				<a class={ navigationLinkClass(strings.HasPrefix(state.Section, "administration")) } href="/admin/games" aria-current={ navigationCurrent(state.Section == "administration") }>
 					<span>Administration</span><span class="status-chip status-chip-host ml-auto">Orga</span>
+				</a>
+			</li>
+			<li>
+				<a class={ navigationSubLinkClass(state.Section == "administration-igdb") } href="/admin/igdb" aria-current={ navigationCurrent(state.Section == "administration-igdb") }>
+					<span>IGDB sync</span>
+				</a>
+			</li>
+			<li>
+				<a class={ navigationSubLinkClass(state.Section == "administration-pwa") } href="/admin/pwa" aria-current={ navigationCurrent(state.Section == "administration-pwa") }>
+					<span>PWA</span>
 				</a>
 			</li>
 		}
 	</ul>
+}
+
+// UpcomingGames lists the Game Requests the viewer has joined, soonest first,
+// as a shortcut back into a round that is about to start. A request whose
+// start time has arrived is marked urgent with the same sunset ink the request
+// list uses for "now", so the two screens agree about urgency.
+templ UpcomingGames(state NavigationState) {
+	if len(state.Upcoming) > 0 {
+		<section class="nav-section" aria-labelledby="nav-upcoming-heading">
+			<h2 class="nav-section-heading data-text" id="nav-upcoming-heading">
+				<span>Your next games</span>
+				<span class="data-text ml-auto text-xs font-medium text-base-content/70">{ fmt.Sprint(len(state.Upcoming)) }</span>
+			</h2>
+			<ul class="grid gap-1.5">
+				for _, request := range state.Upcoming {
+					<li>
+						<a class={ upcomingItemClass(request.StartsAt) } href={ templ.SafeURL("/game-requests/" + request.ID) }>
+							<span class="nav-upcoming-dot" aria-hidden="true"></span>
+							<span class="min-w-0 flex-1 truncate text-sm font-semibold">{ request.Game.Name }</span>
+							<time class="data-text flex-none text-xs font-bold" datetime={ request.StartsAt.Format(time.RFC3339) } title={ AbsoluteTime(request.StartsAt) }>{ StartLabel(request.StartsAt) }</time>
+						</a>
+					</li>
+				}
+			</ul>
+		</section>
+	}
+}
+
+// RecentlyViewedRequests lists the Game Requests this viewer last opened,
+// newest first. It is private reading history: it states what they read, not
+// what is still open, so a closed or cancelled request stays listed and says
+// so in text rather than quietly disappearing.
+templ RecentlyViewedRequests(state NavigationState) {
+	if len(state.RecentlyViewed) > 0 {
+		<section class="nav-section" aria-labelledby="nav-recent-heading">
+			<h2 class="nav-section-heading data-text" id="nav-recent-heading"><span>Recently viewed</span></h2>
+			<ul class="grid">
+				for _, entry := range state.RecentlyViewed {
+					<li>
+						<a class="nav-recent-item" href={ templ.SafeURL("/game-requests/" + entry.ID) }>
+							<span class="data-text w-7 flex-none text-xs text-base-content/70" aria-hidden="true">{ GameAbbreviation(entry.GameName) }</span>
+							<span class="min-w-0 flex-1 truncate text-sm">
+								{ entry.GameName }
+								if entry.Status != "open" {
+									<span class="text-base-content/60">{ " · " + string(entry.Status) }</span>
+								}
+							</span>
+							<time class="data-text flex-none text-xs text-base-content/70" datetime={ entry.ViewedAt.Format(time.RFC3339) } title={ AbsoluteTime(entry.ViewedAt) }>{ ViewedAgoLabel(entry.ViewedAt) }</time>
+						</a>
+					</li>
+				}
+			</ul>
+		</section>
+	}
 }
 
 templ NavigationLink(href, label, section, current string) {
@@ -262,9 +359,9 @@ templ CSRFInput() {
 
 // OperatorAttribution renders the fixed "Powered by …" credit that links to the
 // operating community's site. class carries the surrounding context's text
-// styling, because the sidebar, mobile drawer, and login panel each differ.
+// styling.
 templ OperatorAttribution(class string) {
-	<p class={ class }>Powered by <a class="link whitespace-nowrap text-base-content/75" href={ branding.OperatorURL } target="_blank" rel="noopener noreferrer">{ branding.OperatorName }</a></p>
+	<p class={ class }>Powered by <a class="link whitespace-nowrap text-base-content/75 link-hover" href={ branding.OperatorURL } target="_blank" rel="noopener noreferrer">{ branding.OperatorName }</a></p>
 }
 
 // FontPreloads starts the webfont requests while the parser is still in the
@@ -276,11 +373,30 @@ templ FontPreloads(brand branding.Brand) {
 	<link rel="preload" as="font" type="font/woff2" crossorigin="anonymous" href={ templ.SafeURL(brand.Assets.DataFont) }/>
 }
 
+// Footer links the Terms, Privacy, and contact/reporting surfaces on every
+// shell. It is ordinary flow content, not fixed or sticky: each shell is a
+// full-height flex column, so it rests at the viewport bottom on short pages
+// without covering content or the live-notice toasts on long ones.
 templ Footer(brand branding.Brand) {
 	<footer class="border-t border-base-300 bg-base-200">
-		<div class="page-shell flex flex-col gap-1 py-6 text-sm text-base-content/70 sm:flex-row sm:items-center sm:justify-between">
-			<p><span class="brand-wordmark text-base-content">{ brand.Name }</span> · Open-source LFG for LAN events.</p>
-			<p>{ brand.Tagline }</p>
+		<div class="w-full flex flex-col items-center justify-end gap-x-3 gap-y-2 px-4 py-4 text-center text-sm text-base-content/70 sm:flex-row sm:text-right lg:px-6">
+			<nav class="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 sm:justify-end" aria-label="Legal">
+				<a class="link link-hover" href="/terms">Terms</a>
+				<span aria-hidden="true">·</span>
+				<a class="link link-hover" href="/privacy">Privacy</a>
+				<span aria-hidden="true">·</span>
+				<a class="link link-hover" href="/terms#contact">Contact &amp; reporting</a>
+				if imprint := webmiddleware.LegalInfo(ctx).ImprintURL; imprint != "" {
+					<span aria-hidden="true">·</span>
+					<a class="link link-hover" href={ templ.URL(imprint) } target="_blank" rel="noopener noreferrer">Imprint</a>
+				}
+			</nav>
+			<div class="flex items-center gap-3 font-medium">
+				<span class="hidden text-base-content/50 sm:inline" aria-hidden="true">│</span>
+				<p><a class="link link-hover" href={ templ.URL(branding.RepositoryURL) } target="_blank" rel="noopener noreferrer">Github</a></p>
+				<span class="text-base-content/50" aria-hidden="true">│</span>
+				@OperatorAttribution("")
+			</div>
 		</div>
 	</footer>
 }
@@ -297,6 +413,163 @@ func navigationCurrent(active bool) string {
 		return "page"
 	}
 	return "false"
+}
+
+func navigationSubLinkClass(active bool) string {
+	return navigationLinkClass(active) + " app-navigation-link-nested"
+}
+
+// navigationCountClass keeps one rule for every count in the sidebar: the
+// current section's own number is the warm one, the rest stay muted, so the
+// colour marks where you are rather than competing for attention on every row.
+func navigationCountClass(active bool) string {
+	if active {
+		return "data-text count-hot ml-auto text-xs"
+	}
+	return "data-text ml-auto text-xs text-base-content/70"
+}
+
+// upcomingItemClass colours a joined round by how close its start is, on the
+// same two thresholds every start time in the product uses.
+func upcomingItemClass(startsAt time.Time) string {
+	switch StartUrgency(startsAt) {
+	case UrgencyStarting:
+		return "nav-upcoming-item nav-upcoming-item-now"
+	case UrgencySoon:
+		return "nav-upcoming-item nav-upcoming-item-soon"
+	default:
+		return "nav-upcoming-item"
+	}
+}
+
+// The one place the product decides when a start time stops being a quiet
+// fact: Golden Hour once the round is inside a quarter of an hour, Sunset
+// once there is no time left to get there. Both screens that state a start
+// read these thresholds rather than keeping their own.
+const (
+	startsSoonWithin     = 15 * time.Minute
+	startsStartingWithin = 5 * time.Minute
+)
+
+// Urgency tiers for a Game Request start time, newest first.
+const (
+	UrgencyNone     = ""
+	UrgencySoon     = "soon"
+	UrgencyStarting = "starting"
+)
+
+// StartUrgency states which tier a start time falls in. A round that already
+// started is past the last threshold, so it stays Sunset rather than falling
+// back to quiet.
+func StartUrgency(startsAt time.Time) string {
+	switch remaining := time.Until(startsAt); {
+	case remaining <= startsStartingWithin:
+		return UrgencyStarting
+	case remaining <= startsSoonWithin:
+		return UrgencySoon
+	default:
+		return UrgencyNone
+	}
+}
+
+// startsNowWithin is the window inside which a Game Request reads as starting
+// "now" rather than counting down.
+const startsNowWithin = 2 * time.Minute
+
+// AbsoluteTime is the exact local time behind a relative label. Every
+// relative time in the product carries it as a hover title, so "in 12 min"
+// is never the only thing a player can read off the screen.
+func AbsoluteTime(value time.Time) string {
+	return value.Local().Format("2006-01-02 15:04")
+}
+
+// StartLabel states when a Game Request starts, relative to now and coarse
+// enough to stay stable between renders. It lives here because both the
+// Game Request list and the navigation's "Your next games" state the same
+// thing and must not drift apart.
+func StartLabel(startsAt time.Time) string {
+	remaining := time.Until(startsAt)
+	if remaining <= startsNowWithin {
+		return "now"
+	}
+	if remaining < time.Hour {
+		return fmt.Sprintf("in %d min", max(1, int(remaining.Round(time.Minute)/time.Minute)))
+	}
+	if remaining < 24*time.Hour {
+		return fmt.Sprintf("in %d h", max(1, int(remaining.Round(time.Hour)/time.Hour)))
+	}
+	return startsAt.Local().Format("Jan 2")
+}
+
+// ViewedAgoLabel states how long ago the viewer opened a Game Request, in the
+// compact form the sidebar has room for.
+func ViewedAgoLabel(viewedAt time.Time) string {
+	elapsed := time.Since(viewedAt)
+	switch {
+	case elapsed < time.Minute:
+		return "now"
+	case elapsed < time.Hour:
+		return fmt.Sprintf("%dm", int(elapsed/time.Minute))
+	case elapsed < 24*time.Hour:
+		return fmt.Sprintf("%dh", int(elapsed/time.Hour))
+	default:
+		return fmt.Sprintf("%dd", int(elapsed/(24*time.Hour)))
+	}
+}
+
+// GameAbbreviation compresses a Game's name to the short mono tag used
+// wherever a full name will not fit: the request rows and the navigation's
+// reading history. Roman numerals become digits, because "Warcraft III" reads
+// as "W3" to players and "WI" reads as nothing.
+//
+// ponytail: derived from the name, with no per-Game abbreviation field. Add
+// one only if curated abbreviations turn out to matter.
+func GameAbbreviation(name string) string {
+	words := strings.Fields(name)
+	if len(words) == 0 {
+		return "?"
+	}
+	if len(words) == 1 {
+		runes := []rune(words[0])
+		if len(runes) > 3 {
+			runes = runes[:3]
+		}
+		return strings.ToUpper(string(runes))
+	}
+	result := make([]rune, 0, 3)
+	for _, word := range words {
+		if roman := romanDigit(word); roman != 0 {
+			result = append(result, roman)
+		} else {
+			for _, value := range word {
+				if unicode.IsLetter(value) || unicode.IsDigit(value) {
+					result = append(result, unicode.ToUpper(value))
+					break
+				}
+			}
+		}
+		if len(result) == 3 {
+			break
+		}
+	}
+	return string(result)
+}
+
+func romanDigit(word string) rune {
+	switch strings.ToUpper(strings.TrimSpace(word)) {
+	case "I":
+		return '1'
+	case "II":
+		return '2'
+	case "III":
+		return '3'
+	case "IV":
+		return '4'
+	case "V":
+		return '5'
+	default:
+		return 0
+	}
 }
 
 func ViewerInitial(name string) string {

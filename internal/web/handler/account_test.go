@@ -19,7 +19,7 @@ func TestAccountShowRendersLinkedIdentitiesAndLinkableProviders(t *testing.T) {
 	authentication := &stubAuthentication{providers: []auth.ProviderAvailability{
 		{Kind: "discord", DisplayName: "Discord"}, {Kind: "oidc", DisplayName: "CXT account"},
 	}}
-	handler := NewAccount(identities, &stubUnlinker{}, &stubGameNickClaims{}, authentication, branding.Default())
+	handler := NewAccount(identities, &stubUnlinker{}, &stubGameNickClaims{}, authentication, nil, branding.Default())
 	request := withCurrentUser(httptest.NewRequest(http.MethodGet, "/account", nil), user.User{ID: "user-1", GameNick: "NightOtter"})
 	response := httptest.NewRecorder()
 
@@ -45,7 +45,7 @@ func TestAccountShowOffersUnlinkWithMultipleIdentities(t *testing.T) {
 		{ID: "identity-1", ProviderKind: "discord"},
 		{ID: "identity-2", ProviderKind: "oidc"},
 	}}
-	handler := NewAccount(identities, &stubUnlinker{}, &stubGameNickClaims{}, &stubAuthentication{}, branding.Default())
+	handler := NewAccount(identities, &stubUnlinker{}, &stubGameNickClaims{}, &stubAuthentication{}, nil, branding.Default())
 	request := withCurrentUser(httptest.NewRequest(http.MethodGet, "/account", nil), user.User{ID: "user-1", GameNick: "NightOtter"})
 	response := httptest.NewRecorder()
 
@@ -61,7 +61,7 @@ func TestAccountShowOffersUnlinkWithMultipleIdentities(t *testing.T) {
 
 func TestAccountRenameGameNickRejectsInvalidInput(t *testing.T) {
 	claims := &stubGameNickClaims{err: user.ErrGameNickTaken}
-	handler := NewAccount(&stubIdentityLookup{}, &stubUnlinker{}, claims, &stubAuthentication{}, branding.Default())
+	handler := NewAccount(&stubIdentityLookup{}, &stubUnlinker{}, claims, &stubAuthentication{}, nil, branding.Default())
 	request := withCurrentUser(httptest.NewRequest(http.MethodPost, "/account/game-nick", strings.NewReader("game_nick=Taken")), user.User{ID: "user-1", GameNick: "NightOtter"})
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	response := httptest.NewRecorder()
@@ -77,7 +77,7 @@ func TestAccountRenameGameNickRejectsInvalidInput(t *testing.T) {
 }
 
 func TestAccountRenameGameNickRedirectsOnSuccess(t *testing.T) {
-	handler := NewAccount(&stubIdentityLookup{}, &stubUnlinker{}, &stubGameNickClaims{}, &stubAuthentication{}, branding.Default())
+	handler := NewAccount(&stubIdentityLookup{}, &stubUnlinker{}, &stubGameNickClaims{}, &stubAuthentication{}, nil, branding.Default())
 	request := withCurrentUser(httptest.NewRequest(http.MethodPost, "/account/game-nick", strings.NewReader("game_nick=NewNick")), user.User{ID: "user-1", GameNick: "NightOtter"})
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	response := httptest.NewRecorder()
@@ -91,7 +91,7 @@ func TestAccountRenameGameNickRedirectsOnSuccess(t *testing.T) {
 
 func TestAccountUnlinkRedirectsWithErrorOnFailure(t *testing.T) {
 	unlinker := &stubUnlinker{err: auth.ErrIdentityNotFound}
-	handler := NewAccount(&stubIdentityLookup{}, unlinker, &stubGameNickClaims{}, &stubAuthentication{}, branding.Default())
+	handler := NewAccount(&stubIdentityLookup{}, unlinker, &stubGameNickClaims{}, &stubAuthentication{}, nil, branding.Default())
 	request := withCurrentUser(withURLParam(httptest.NewRequest(http.MethodPost, "/account/identities/identity-1/unlink", nil), "identityID", "identity-1"), user.User{ID: "user-1"})
 	response := httptest.NewRecorder()
 
@@ -106,7 +106,7 @@ func TestAccountUnlinkRedirectsWithErrorOnFailure(t *testing.T) {
 }
 
 func TestAccountUnlinkRedirectsToAccountOnSuccess(t *testing.T) {
-	handler := NewAccount(&stubIdentityLookup{}, &stubUnlinker{}, &stubGameNickClaims{}, &stubAuthentication{}, branding.Default())
+	handler := NewAccount(&stubIdentityLookup{}, &stubUnlinker{}, &stubGameNickClaims{}, &stubAuthentication{}, nil, branding.Default())
 	request := withCurrentUser(withURLParam(httptest.NewRequest(http.MethodPost, "/account/identities/identity-1/unlink", nil), "identityID", "identity-1"), user.User{ID: "user-1"})
 	response := httptest.NewRecorder()
 

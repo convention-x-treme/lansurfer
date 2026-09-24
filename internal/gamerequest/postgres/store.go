@@ -128,6 +128,27 @@ func (s *Store) Leave(ctx context.Context, requestID, userID string) error {
 	})
 }
 
+// RecordView notes that a player opened a Game Request. A deleted request or
+// an unparsable ID is not an error the viewer should ever see: the detail page
+// they are reading rendered fine, and the navigation's "Recently viewed" list
+// is not worth failing that page over.
+func (s *Store) RecordView(ctx context.Context, requestID, userID string) error {
+	databaseRequestID, databaseUserID, err := parseIDs(requestID, userID)
+	if err != nil {
+		return gamerequest.ErrNotFound
+	}
+	err = s.queries.RecordGameRequestView(ctx, sqlcgen.RecordGameRequestViewParams{
+		UserID: databaseUserID, GameRequestID: databaseRequestID,
+	})
+	if isForeignKeyViolation(err) {
+		return gamerequest.ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("record game request view: %w", err)
+	}
+	return nil
+}
+
 func (s *Store) SetStatus(ctx context.Context, requestID, userID string, status gamerequest.Status) error {
 	databaseRequestID, databaseUserID, err := parseIDs(requestID, userID)
 	if err != nil {

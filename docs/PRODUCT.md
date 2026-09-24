@@ -32,6 +32,12 @@ Creating a request should take only a few seconds. Joining should require very l
 
 Players should understand the UI without learning LANsurfer-specific terminology.
 
+### Live filtering
+
+Every filter in the UI applies as soon as its value changes. Do not require or provide a separate **Filter** or **Apply filters** button. Search fields are live filters too, but debounce their input before applying it.
+
+A **Clear filters** control is optional rather than a default requirement. Add one only when the implementation request explicitly includes it or after confirming with the requester that the screen should provide it.
+
 ### Event focused
 
 LANsurfer 1.0 should work especially well when the people using an installation already share the same physical LAN party or gaming event.
@@ -135,7 +141,6 @@ Do not create generic abstractions in 1.0 merely to make these possibilities eas
 - guest accounts, passkeys, and account self-deletion
 - full theme customization or white-label branding
 - external catalog providers other than IGDB
-- local caching or proxying of remote covers
 - multi-instance/high-availability architecture
 - WebSockets, native applications, tournaments, ratings, teams, and federation
 
@@ -164,6 +169,8 @@ LANsurfer owns a local User record. External identities authenticate that user b
 - Local user IDs, explicit revocable PostgreSQL sessions, and opaque cookies remain the account/session model.
 
 Discord authentication and Discord notification delivery are separate integrations.
+
+Post-1.0, Twitch is an optional third authentication provider. Twitch login reuses the same local identity, explicit linking, onboarding, and session model as OIDC and Discord. It requests only a stable Twitch subject and display username, never Twitch email; a Twitch account may be explicitly linked to the same local User as the other providers. Twitch login and IGDB discovery share optional Twitch application credentials but remain independently enabled features.
 
 ## 7. Roles and Management Boundaries
 
@@ -224,14 +231,15 @@ When configured, LANsurfer synchronizes lightweight IGDB metadata into a local s
 
 - Synchronize lightweight search/classification metadata for all IGDB game records rather than filtering record types during ingestion.
 - Keep enough provider data to search and disambiguate results, including provider ID, names/aliases, type/category information, useful relationship signals, platform/release context, and cover reference metadata where applicable.
-- Do not mirror cover image bytes or the full provider graph.
+- Do not mirror the full provider graph or bulk-download cover images; cover bytes are cached on demand only for cover IDs LANsurfer already knows.
 - The initial sync starts asynchronously after LANsurfer is available and never blocks application startup.
 - Player-facing IGDB results remain unavailable until one complete initial baseline sync succeeds; local Games remain usable while the provider is `not synced` or `syncing`.
 - After the baseline, refresh the provider index automatically once per day and provide global administrators a manual **Sync now** action.
 - Refresh failures retry independently of normal application traffic. The last successful provider index remains usable while the provider is `stale` or `failed`.
 - Operator-visible provider states distinguish at least `disabled`, `not synced`, `syncing`, `current`, `stale`, and `failed`.
+- While a synchronization is running, the administrator status page reports separately how many records the in-progress generation has staged so far, refreshing itself without a manual reload, and keeps reporting the last successful baseline's record count unchanged.
 
-Ordinary player search shows by default the useful playable categories: main games, standalone expansions, remakes, remasters, ports, and independently playable expanded/edition variants. Noise-heavy categories such as DLC/add-ons, bundles, mods, episodes/seasons, packs, and updates remain synchronized but are hidden from ordinary player search by default.
+Ordinary player search shows by default the useful playable categories: main games, expansions, standalone expansions, remakes, remasters, ports, and expanded games. Noise-heavy categories such as DLC/add-ons, bundles, mods, episodes/seasons, packs, and updates remain synchronized but are hidden from ordinary player search by default. Provider records that IGDB marks as a version/edition of another game (for example a deluxe or collector edition) are hidden as well, while expansions that merely have a parent game stay discoverable. The same policy applies to direct selection of a provider record; already materialized local Games are unaffected.
 
 ### Materializing an authoritative Game
 
@@ -243,6 +251,15 @@ Concurrent activation of the same provider record must converge on one local Gam
 
 Once materialized, the local Game remains authoritative and usable even if IGDB is later disabled, unavailable, or changes its metadata.
 
+Global administrators may explicitly reconcile the authoritative local catalog:
+
+- link an existing local Game to a record from the active synchronized IGDB catalog without replacing its local ID, name, slug, aliases, follows, or history
+- unlink an incorrect IGDB identity and enrichment snapshot without deleting the local Game or its relationships
+- merge an explicit source Game into an explicit target Game, keeping the target's local identity while moving Game Requests, follows, aliases, and a non-conflicting IGDB identity
+- permanently delete only Games with no Game Requests or follows; deactivation remains the normal lifecycle action for Games with history
+
+LANsurfer never chooses a duplicate automatically by name or silently discards one of two conflicting IGDB identities during a merge.
+
 If an IGDB record disappears during synchronization:
 
 - remove the provider-index record when no authoritative local Game references it
@@ -251,13 +268,15 @@ If an IGDB record disappears during synchronization:
 
 ### Covers and attribution
 
-IGDB attribution and operator setup/terms must be visible in the appropriate UI and documentation. Remote covers may load only from the approved `images.igdb.com` host with a fixed Content Security Policy allowlist, `Referrer-Policy: no-referrer`, and a local placeholder. Documentation must disclose that loading a remote cover exposes the viewer's IP address to IGDB. Local cover caching/proxying is not planned for 1.0.
+IGDB attribution and operator setup/terms must be visible in the appropriate UI and documentation. Covers are served same-origin through LANsurfer, so player browsers never contact IGDB directly. On a cache miss LANsurfer may fetch only a known cover ID from the fixed `images.igdb.com` origin server-side and cache the bytes on demand; missing or failed covers keep the local placeholder. Documentation must disclose that the server-side fetch exposes the LANsurfer server's egress IP address, request timing, and requested cover ID to IGDB. The bounded cover proxy is catalog infrastructure, not a generic remote-asset proxy.
 
 ## 10. Game Following
 
-A GameSubscription means a player follows a Game. It drives My Games/followed lists, in-browser relevance, and the default Web Push audience.
+A GameSubscription means a player follows a Game. It drives followed lists, in-browser relevance, and the default Web Push audience.
 
-My Games remains explicitly followed Games only. Creating or joining a Game Request never implicitly adds a Game to My Games; a player follows a Game only through an explicit Follow action.
+Following remains explicit. Creating or joining a Game Request never implicitly follows a Game; a player follows a Game only through an explicit Follow action.
+
+Followed Games are not a separate screen. Games is one catalog with a **Followed only** filter, so searching and narrowing to followed Games compose on the same page instead of splitting into two lists of the same cards. The retired `/games/mine` address resolves to that filter.
 
 When IGDB is enabled, following a provider-only search result first materializes the corresponding authoritative local Game atomically and then records the subscription.
 
@@ -300,7 +319,7 @@ Additional filters beyond these are not automatically part of 1.0 merely because
 
 1.0 includes a compact request-based Trending view over a rolling **6-hour** window. The UI states the window explicitly, for example `Trending · last 6 hours`.
 
-Trending is derived from local Game Request activity. Search queries and page views are not persisted or used as ranking inputs. Quiet periods may therefore produce a sparse or empty Trending view rather than silently expanding the window.
+Trending is derived from local Game Request activity. Search queries are not persisted. Neither search queries nor page views are ranking inputs: the private per-player reading history behind "Recently viewed" (see [Shared navigation](#shared-navigation)) is never aggregated across players and never influences Trending. Quiet periods may therefore produce a sparse or empty Trending view rather than silently expanding the window.
 
 ### Durable request-local activity
 
@@ -315,6 +334,18 @@ Each Game Request keeps chronological durable activity for successful:
 Activity is separate from current membership and separate from notification delivery history. Failed, rejected, or duplicate mutations do not create activity entries. A player leaving removes current membership but does not erase the historical activity entry. Public actor identity uses Game Nick where relevant.
 
 1.0 does not turn this into generic audit logging, event sourcing, comments/chat, or a global social feed.
+
+### Shared navigation
+
+Every signed-in screen renders the same navigation, so its numbers and lists mean the same thing wherever the player is:
+
+- **Game Requests**, with how many Game Requests are open on the installation. This count is never narrowed by the player's current discovery filter.
+- **Games**, with how many Games the local catalog holds, and **Followed** beneath it with how many Games this player follows. Both lead to the same Games screen; Followed applies its "Followed only" filter. A count of zero is omitted rather than rendered.
+- **Administration**, for administrators only.
+- **Your next games** — up to three Game Requests this player has joined, soonest first. A round whose start time has arrived is marked urgent with the same treatment the request list uses for "now".
+- **Recently viewed** — up to five Game Requests this player most recently opened, newest first.
+
+"Recently viewed" is private reading history. It is per-player and never visible to anyone else, it records only that a player opened a Game Request's detail page, and it states what the player read rather than what is still open: a Game Request that closed or was cancelled after they read it stays listed and says so. Re-opening a Game Request moves it back to the top instead of adding a second entry, and a deleted Game Request leaves the list entirely. Opening a Game Request is not an activity entry, is never delivered as a notification, and never reaches the live-update stream.
 
 ## 12. Live and Durable Notifications
 
@@ -364,7 +395,7 @@ Possible future work may include:
 - Event-scoped Game Requests
 - Clans with ownership, membership, invitations, rosters, and primary-Clan display
 - Clan-aware Game Request discovery or scoping when a concrete need exists
-- authentication providers beyond OIDC and Discord
+- authentication providers beyond OIDC, Discord, and Twitch
 
 These features must not shape 1.0 through speculative generic abstractions. If they become scheduled, their concrete domain model should be designed against the actual use case at that time.
 
@@ -378,11 +409,13 @@ The fixed visual system uses the canonical LANsurfer design and bundled applicat
 
 Stable 1.0 does **not** require a full administrator-managed branding surface. In particular, 1.0 does not require configurable welcome text, contact link, uploaded logo, uploaded app icon, custom colors, white-labeling, or theme editing.
 
+Operator legal identity is the one configurable exception: legal entity name, postal address, contact email, and an optional external imprint URL are operator configuration, because each deployment is its own data controller. LANsurfer serves a public Terms of Service (`/terms`) and Privacy Policy (`/privacy`) filled from these values, links them together with a contact/reporting entry and the imprint from the footer of every screen, and states on the login screen that logging in accepts the Terms. Support, abuse, Discord, and data requests go to the contact email; software bugs go to the project's issue tracker. This does not reintroduce welcome text, logos, colors, or free-form legal text as configuration.
+
 A deployment may expose the minimum configurable instance identity needed to distinguish a LANsurfer installation. The application otherwise uses fixed/default LANsurfer branding and bundled assets.
 
 The web app manifest uses a stable application identity and start URL, and the minimal service-worker shell supports installation plus Web Push integration. Installation does not imply offline application support.
 
-The remote IGDB-cover exception concerns catalog content and does not permit remote instance branding or broader theme customization.
+The IGDB cover proxy concerns catalog content and does not permit remote instance branding or broader theme customization.
 
 ## 15. Self-Hosting and Release Experience
 
@@ -419,4 +452,4 @@ A 1.0 release must not require Event switching, Open Play, Clans, a generic Game
 
 ## 17. Product Decisions Left to Implementation
 
-Layout, copy, pagination, route shape, migration mechanics, exact browser versions used as validation evidence, exact provider-index schema, stale-state thresholds, and validation helpers are implementation details unless the roadmap explicitly promotes them to release criteria. Follow the [approval rules](../AGENTS.md#constraints-requiring-approval) for changes to technology, security, module boundaries, deployment, domain terminology, or approved 1.0 scope.
+Layout, copy, pagination, route shape, migration mechanics, exact browser versions used as validation evidence, exact provider-index schema, stale-state thresholds, and validation helpers are implementation details unless the roadmap explicitly promotes them to release criteria. Follow the [approval rules](../AGENTS.md#changes-requiring-approval) for changes to technology, security, module boundaries, deployment, domain terminology, or approved 1.0 scope.

@@ -25,6 +25,8 @@ For stable 1.0:
 
 Post-1.0 items are intentionally **not scheduled to a version** unless the roadmap is explicitly changed.
 
+Implemented post-1.0 scope includes [#40](https://github.com/convention-x-treme/lansurfer/issues/40): optional Twitch authentication. Twitch is a third independently configured login provider using the existing local identity/linking/session model; it shares Twitch application credentials with independently enabled IGDB discovery and does not request email.
+
 ## Completed prototype baseline
 
 The completed prototype established:
@@ -225,7 +227,7 @@ When IGDB is enabled:
 - Start the initial provider sync asynchronously after LANsurfer becomes available; do not block application startup.
 - Synchronize lightweight search/classification metadata for **all IGDB game records**; do not filter provider record types at ingestion.
 - Store only fields useful for search/classification/disambiguation, such as provider ID, names/aliases, type/category, useful relationship signals, platform/release context, and cover-reference metadata.
-- Do not mirror the full provider graph or cover image bytes.
+- Do not mirror the full provider graph or bulk-download cover images; cover bytes are cached on demand only for cover IDs LANsurfer already knows.
 - Do not expose partially synchronized IGDB player results during the first baseline sync.
 - After a successful baseline, refresh automatically once per day and provide global administrators **Sync now**.
 - Retry refresh failures independently of core application traffic.
@@ -237,11 +239,14 @@ When IGDB is enabled:
 Ordinary player search shows by default:
 
 - main games
+- expansions
 - standalone expansions
 - remakes
 - remasters
 - ports
-- independently playable expanded/edition variants
+- expanded games
+
+Records with an IGDB `version_parent` (commercial editions/versions of another game) are hidden regardless of type; `parent_game` alone does not hide a record.
 
 The following remain synchronized but hidden from ordinary player search by default:
 
@@ -275,7 +280,7 @@ If IGDB is disabled after prior use, promoted local Games remain intact. A previ
 
 ### Covers
 
-IGDB covers may load directly from `images.igdb.com` only. Keep the fixed CSP allowlist, `Referrer-Policy: no-referrer`, local placeholder behavior, required attribution/IP-disclosure documentation, and no local cover proxy/cache.
+IGDB covers are served same-origin through LANsurfer; player browsers never contact `images.igdb.com`. On a cache miss the server may fetch only a validated, known cover ID from the fixed IGDB image origin, subject to the approved bounded proxy limits: fixed `small`/`big` sizes, known-ID check, combined 5-second catalog-and-fetch deadline, 1 MiB image cap, redirects disabled, bounded negative caching, and at most eight concurrent shared cold-miss operations per process. Cache hits make no upstream request. Missing, failed, or saturated cover loads keep the existing local placeholder, and player-facing CSP must not allow the IGDB image host.
 
 ## Acceptance
 
@@ -289,7 +294,7 @@ Local-only operation remains fully usable; enabled-provider discovery uses a com
 - Test default visible/hidden type policy and search disambiguation.
 - Race multiple follow/request activations for the same provider ID and prove one authoritative local Game results.
 - Exercise disable/re-enable and provider-record deletion with both unreferenced deletion and referenced archival/tombstone paths.
-- Verify cover CSP/no-referrer/placeholder/attribution behavior.
+- Verify same-origin cover URLs, a cache hit without another upstream request, bounded invalid/failed/saturated behavior, the existing placeholder/attribution behavior, and player-facing CSP without `images.igdb.com`.
 
 # Track D — Minimum Instance Identity & PWA
 
@@ -426,11 +431,11 @@ Ship the canonical LANsurfer brand and design system as the fixed/default presen
 - Provide one shared application shell, centralized design tokens, reusable components, consistent action/state semantics, responsive behavior, keyboard focus, reduced-motion behavior, and supported contrast behavior.
 - Keep dark mode and light mode as equally supported presentations of the same default design system; theme choice is a user presentation preference, not instance branding.
 - Keep production rendering in templ/HTMX with Tailwind and DaisyUI plus limited progressive TypeScript. Bundle approved fonts and product assets with the application; runtime font CDNs are not allowed.
-- Keep generated frontend assets reproducible and embedded for production. The existing approved IGDB remote-cover exception remains a catalog concern and does not generalize into remote brand assets.
+- Keep generated frontend assets reproducible and embedded for production. The IGDB same-origin cover proxy remains a catalog concern and does not permit remote brand assets or a generic remote-asset proxy.
 
 ### Feature-surface adoption
 
-- Adopt the design system across the shared shell and current authentication, Game Request, Games/My Games, administration, empty/error, and related supported surfaces represented by the existing product.
+- Adopt the design system across the shared shell and current authentication, Game Request, Games, administration, empty/error, and related supported surfaces represented by the existing product.
 - As Tracks A–F add or change user-visible states, render them through the established shell, tokens, components, and interaction vocabulary rather than creating parallel visual systems.
 - Track G does not own domain rules, persistence, read models, authorization, or product-scope decisions. It consumes the affected track's server-side contracts and translates them into consistent presentation.
 - Preserve SSR/HTMX behavior and progressive enhancement; do not create an internal JSON API solely to serve the UI.
@@ -525,7 +530,7 @@ Run cross-track integration checks as contracts land. The formal stable-1.0 Inte
 - Discord delivery remains separate from Discord authentication and keeps one synchronized message per Game Request.
 - IGDB-disabled local-only operation works with administrator-managed local Games.
 - IGDB-enabled operation handles complete baseline, daily/manual refresh, provider failure, disable/re-enable, type visibility, materialization races, and removal/archive policy.
-- Minimum instance identity, manifest, service worker, CSP, and remote-cover exception coexist correctly.
+- Minimum instance identity, manifest, service worker, same-origin IGDB cover proxy, and CSP without a third-party IGDB image allowance coexist correctly.
 - Track G's canonical default branding/UI system is applied across stable-1.0 surfaces in both supported themes without introducing administrator branding customization or a parallel visual system.
 - Production-generated UI assets, fonts, and licenses are embedded and compatible with the release/operations path.
 - A populated prototype installation upgrades through 1.0 migrations without data loss.
@@ -614,6 +619,5 @@ The following have no planned release and should not influence current implement
 - guest accounts, passkeys, or account self-deletion
 - full theme customization/white-label system
 - catalog providers other than IGDB
-- local caching/proxying of remote covers
 - multi-instance/high-availability application architecture
 - WebSockets, native applications, tournaments, ratings, teams, or federation

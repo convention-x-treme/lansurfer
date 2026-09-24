@@ -49,4 +49,9 @@ Track E1 (the durable notification foundation) is implemented, including the `su
 
 Track E2 (Web Push) design is approved (`notifications/2026-09-20-track-e-web-push-design.md`). Its foundation slice — `notification_push_subscription`/`notification_push_preference` persistence, AES-256-GCM-at-rest encryption via `internal/platform/crypto`, and the `/account/notifications` settings page — is now implemented per `notifications/2026-09-21-track-e2-web-push-foundation-plan.md`. E2's delivery (recipient materialization, the transport adapter, actual send) and the browser-side service-worker/enable JavaScript that calls these endpoints are not yet implemented; each is tracked by its own follow-up plan, not yet written or executed. Track E3 (Discord delivery) design is still in progress (`notifications/2026-09-20-track-e-discord-delivery-design.md`).
 
+## Legal pages
+
+1. `legal/2026-09-22-legal-pages-design.md` — public Terms, Privacy, and contact/reporting surface for issue #39 section 1.
+2. `legal/2026-09-22-legal-pages-plan.md` — execution checklist for that design.
+
 When adding another durable artifact, place it in the relevant feature directory and link related documents with repository-relative paths.

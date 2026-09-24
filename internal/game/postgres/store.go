@@ -38,8 +38,17 @@ func (s *Store) List(ctx context.Context, search string) ([]game.Game, error) {
 		if err != nil {
 			return nil, fmt.Errorf("list aliases for game %s: %w", row.GID, err)
 		}
+		modeRows, err := s.queries.EnrichmentMultiplayerModesForGame(ctx, databaseID)
+		if err != nil {
+			return nil, fmt.Errorf("list multiplayer modes for game %s: %w", row.GID, err)
+		}
 		item := game.Game{
 			ID: row.GID, Name: row.Name, Slug: row.Slug, Active: row.Active,
+			IGDBExternalID: row.IgdbExternalID, IGDBEnriched: row.IgdbEnriched,
+			IGDBSlug: row.IgdbSlug, IGDBCoverImageID: row.CoverImageID, IGDBSummary: row.EnrichmentSummary,
+			IGDBGenreNames: nonNilStrings(row.GenreNames), IGDBGameModeNames: nonNilStrings(row.GameModeNames),
+			IGDBMultiplayerModes: enrichmentModeRows(modeRows),
+			GameRequestCount:     row.GameRequestCount, SubscriptionCount: row.SubscriptionCount,
 			CreatedAt: row.CreatedAt.Time, UpdatedAt: row.UpdatedAt.Time,
 			Aliases: make([]game.Alias, 0, len(aliases)),
 		}
@@ -160,7 +169,7 @@ func (s *Store) Browse(ctx context.Context, userID, search string) ([]game.Subsc
 	for _, row := range rows {
 		result = append(result, game.SubscriptionGame{
 			ID:               row.GID,
-			GamePresentation: presentation(row.Name, row.Slug, row.GameType, row.CoverImageID, row.PlatformNames, row.FirstReleaseDate),
+			GamePresentation: presentation(row.Name, row.Slug, row.GameType, row.CoverImageID, row.PlatformNames, row.FirstReleaseDate, row.Summary, row.GenreNames),
 			Subscribed:       row.Subscribed,
 		})
 	}
@@ -180,11 +189,35 @@ func (s *Store) MyGames(ctx context.Context, userID string) ([]game.Subscription
 	for _, row := range rows {
 		result = append(result, game.SubscriptionGame{
 			ID:               row.GID,
-			GamePresentation: presentation(row.Name, row.Slug, row.GameType, row.CoverImageID, row.PlatformNames, row.FirstReleaseDate),
+			GamePresentation: presentation(row.Name, row.Slug, row.GameType, row.CoverImageID, row.PlatformNames, row.FirstReleaseDate, row.Summary, row.GenreNames),
 			Subscribed:       row.Subscribed,
 		})
 	}
 	return result, nil
+}
+
+// CountCatalog reports how many active local Games exist, which is the number
+// the navigation states beside "Games".
+func (s *Store) CountCatalog(ctx context.Context) (int64, error) {
+	total, err := s.queries.CountActiveGames(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("count active games: %w", err)
+	}
+	return total, nil
+}
+
+// CountFollowed reports how many active Games the viewer follows, matching
+// what My Games itself lists.
+func (s *Store) CountFollowed(ctx context.Context, userID string) (int64, error) {
+	databaseUserID, err := parseUUID(userID)
+	if err != nil {
+		return 0, fmt.Errorf("parse user ID: %w", err)
+	}
+	total, err := s.queries.CountSubscribedGames(ctx, databaseUserID)
+	if err != nil {
+		return 0, fmt.Errorf("count subscribed games: %w", err)
+	}
+	return total, nil
 }
 
 // textValue reads a possibly-NULL text column into a plain string, empty
@@ -203,7 +236,7 @@ func textValue(value pgtype.Text) string {
 // slug always come from the authoritative local Game; the remaining fields
 // come from the LEFT JOINed game_igdb_enrichment snapshot and are zero for a
 // Game never materialized via IGDB.
-func presentation(name, slug string, gameType, cover pgtype.Text, platforms []string, release pgtype.Timestamptz) game.GamePresentation {
+func presentation(name, slug string, gameType, cover pgtype.Text, platforms []string, release pgtype.Timestamptz, summary pgtype.Text, genres []string) game.GamePresentation {
 	return game.GamePresentation{
 		Name:             name,
 		Slug:             slug,
@@ -211,6 +244,8 @@ func presentation(name, slug string, gameType, cover pgtype.Text, platforms []st
 		PlatformNames:    nonNilStrings(platforms),
 		FirstReleaseDate: timestamptzPointer(release),
 		CoverImageID:     textValue(cover),
+		Summary:          textValue(summary),
+		GenreNames:       nonNilStrings(genres),
 	}
 }
 

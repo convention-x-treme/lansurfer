@@ -31,7 +31,7 @@ The original use case is **CXT**, a LAN party with around **400 participants**. 
 
 The completed prototype establishes a simple browser-based flow:
 
-1. **Follow your games.** Pick the games you'd like to play and find them again in My Games.
+1. **Follow your games.** Pick the games you'd like to play and find them again with the **Followed only** filter on Games.
 2. **Find players.** Create a Game Request with a start time, an optional player limit, and a short description.
 3. **Join a game.** Browse requests, see who's still looking for players, and join in. Live updates keep player counts and new requests visible in the browser.
 
@@ -128,6 +128,21 @@ In the [Discord Developer Portal](https://discord.com/developers/applications), 
 
 OIDC and Discord identities resolve to the same local User only through an explicit, signed-in `/account` link, or by proving an existing account through the other configured provider during onboarding. LANsurfer never merges accounts by matching email address, name, or Game Nick.
 
+### Configure Twitch login and IGDB discovery
+
+Twitch login and IGDB discovery share one Twitch Developer Application but are independently enabled:
+
+```sh
+LANSURFER_TWITCH_CLIENT_ID=
+LANSURFER_TWITCH_CLIENT_SECRET=
+LANSURFER_TWITCH_AUTH_ENABLED=false
+LANSURFER_IGDB_ENABLED=false
+```
+
+Set either enable flag to `true` only after configuring both credentials. Register `<base URL>/auth/twitch/callback` as the Twitch OAuth redirect URI when Twitch login is enabled. Twitch login requests only OpenID Connect identity and a display username; it does not request email. The old `LANSURFER_IGDB_CLIENT_ID` and `LANSURFER_IGDB_CLIENT_SECRET` variables no longer work.
+
+IGDB covers are served same-origin through LANsurfer; player browsers do not contact `images.igdb.com`. On a cache miss LANsurfer fetches a known cover from that fixed origin server-side. `LANSURFER_COVER_CACHE_DIR` selects a persistent disk cache; when it is unset, LANsurfer uses a fixed 64 MiB in-process LRU. The production Compose configuration sets it to `/var/cache/lansurfer/covers` and mounts the `cover-cache` named volume there. Deleting the configured cache directory resets the disk cache; known covers are fetched again on demand.
+
 When LANsurfer runs behind a reverse proxy, set `LANSURFER_BASE_URL` to the
 public HTTPS origin. Set `LANSURFER_TRUSTED_PROXIES` to a comma-separated list
 of the proxy IP addresses or CIDR ranges only when client-IP logging should use
@@ -150,6 +165,26 @@ typography, or other fixed branding. LANsurfer also serves `/manifest.webmanifes
 `/service-worker.js` for installability; an administrator can check their resolved values, and
 whether the deployment is a secure context (required for installation and Web Push), at
 `/admin/pwa`.
+
+### Configure legal identity
+
+```sh
+LANSURFER_LEGAL_ENTITY_NAME=
+LANSURFER_LEGAL_ADDRESS=
+LANSURFER_LEGAL_CONTACT_EMAIL=
+LANSURFER_IMPRINT_URL=
+```
+
+LANsurfer serves a public Terms of Service at `/terms` and Privacy Policy at `/privacy`, linked
+from the footer of every screen. These values fill in the operator (data controller) on both
+pages; unset values show as "not configured" and the imprint link is hidden. Entity name and
+address are single-line (200 and 300 characters), the contact email must be a bare address, and
+the imprint must be an absolute `http(s)` URL. **Discord login requires the entity name and
+contact email**; LANsurfer refuses to start without them, because Discord requires a privacy
+policy with a responsible contact. Register `<base URL>/terms` and `<base URL>/privacy` in the
+Discord Developer Portal. The page text describes the reference deployment (30-day log retention,
+self-operated server in a colocation data center); another operator edits
+`internal/web/pages/legal.templ` to match theirs and has both texts legally reviewed.
 
 ### Promote the first administrator
 

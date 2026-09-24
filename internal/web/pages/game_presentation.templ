@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/convention-x-treme/lansurfer/internal/game"
+	"github.com/convention-x-treme/lansurfer/internal/web/components"
 )
 
 // GameIdentity is the shared player-facing rendering of one Game's name,
@@ -12,41 +13,37 @@ import (
 // whether the underlying Game is already an authoritative local Game or
 // still exists only in the synchronized IGDB index (spec: "4.1 One
 // player-facing Game card") -- it never renders a materialization-origin
-// label. compact selects the tight single-line presentation used in list
-// rows (cover when known, else the abbreviation tile, plus name only); the
-// full presentation adds a cover/abbreviation tile at card size plus a
-// metadata line underneath the name.
-templ GameIdentity(p game.GamePresentation, compact bool) {
-	if compact {
+// label.
+//
+// The Game Request list rows carry their own portrait cover tile (CoverArt)
+// rather than this card presentation, so there is no second, tighter variant
+// here.
+templ GameIdentity(p game.GamePresentation) {
+	<div class="flex items-center gap-3">
 		if p.CoverImageID != "" {
-			<img class="h-[2.125rem] w-[2.125rem] flex-none rounded object-cover bg-base-300" src={ providerCoverURL(p.CoverImageID) } alt="" referrerpolicy="no-referrer" loading="lazy" data-cover-fallback="true"/>
-			<span class="game-abbreviation" aria-hidden="true" hidden>{ gameAbbreviation(p.Name) }</span>
+			<img class="h-12 w-9 flex-none rounded object-cover bg-base-300" src={ providerCoverURL(p.CoverImageID) } alt="" loading="lazy" data-cover-fallback="true"/>
+			<span class="game-abbreviation" aria-hidden="true" hidden>{ components.GameAbbreviation(p.Name) }</span>
 		} else {
-			<span class="game-abbreviation" aria-hidden="true">{ gameAbbreviation(p.Name) }</span>
+			<span class="game-abbreviation" aria-hidden="true">{ components.GameAbbreviation(p.Name) }</span>
 		}
-		<span class="min-w-0 truncate font-semibold">{ p.Name }</span>
-	} else {
-		<div class="flex items-center gap-3">
-			if p.CoverImageID != "" {
-				<img class="h-12 w-9 flex-none rounded object-cover bg-base-300" src={ providerCoverURL(p.CoverImageID) } alt="" referrerpolicy="no-referrer" loading="lazy" data-cover-fallback="true"/>
-				<span class="game-abbreviation" aria-hidden="true" hidden>{ gameAbbreviation(p.Name) }</span>
-			} else {
-				<span class="game-abbreviation" aria-hidden="true">{ gameAbbreviation(p.Name) }</span>
-			}
-			<span class="min-w-0">
-				<strong class="block truncate text-base font-semibold">{ p.Name }</strong>
-				<span class="data-text block truncate text-xs text-base-content/65">{ presentationSecondary(p) }</span>
-			</span>
-		</div>
-	}
+		<span class="min-w-0">
+			<strong class="block truncate text-base font-semibold">{ p.Name }</strong>
+			<span class="data-text block truncate text-xs text-base-content/65">{ presentationSecondary(p) }</span>
+		</span>
+	</div>
 }
 
-// providerCoverURL constructs the approved images.igdb.com cover URL from
-// only the persisted cover_image_id (spec: "Covers"). It never accepts or
-// echoes any other provider-supplied metadata; the CSP img-src allowlist and
-// Referrer-Policy: no-referrer safeguards live in internal/web/middleware.
+// providerCoverURL is the same-origin cover proxy URL for the persisted
+// cover_image_id (spec: "Covers"). LANsurfer fetches the image from IGDB
+// server-side; browsers never contact images.igdb.com.
 func providerCoverURL(coverImageID string) string {
-	return "https://images.igdb.com/igdb/image/upload/t_cover_small/" + coverImageID + ".jpg"
+	return "/media/igdb/small/" + coverImageID
+}
+
+// providerCoverLargeURL is providerCoverURL at the size the Games catalog
+// card's cover band needs; t_cover_small visibly blurs when stretched.
+func providerCoverLargeURL(coverImageID string) string {
+	return "/media/igdb/big/" + coverImageID
 }
 
 // presentationSecondary renders type/platform/release disambiguation when

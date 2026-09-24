@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -82,6 +83,23 @@ func (s *Store) StoreProviderGames(ctx context.Context, generationID string, gam
 		if stored != 1 {
 			return fmt.Errorf("store IGDB provider game %s: generation is not syncing", providerGame.Reference.ExternalID)
 		}
+		if len(providerGame.MultiplayerModes) > 0 {
+			igdbID, err := strconv.ParseInt(providerGame.Reference.ExternalID, 10, 64)
+			if err != nil {
+				return fmt.Errorf("store IGDB multiplayer modes %s: parse IGDB ID: %w", providerGame.Reference.ExternalID, err)
+			}
+			modes, err := multiplayerModesJSON(providerGame.MultiplayerModes)
+			if err != nil {
+				return fmt.Errorf("store IGDB multiplayer modes %s: encode: %w", providerGame.Reference.ExternalID, err)
+			}
+			if err := queries.StoreIGDBMultiplayerModes(ctx, sqlcgen.StoreIGDBMultiplayerModesParams{
+				GenerationID: databaseGenerationID,
+				IgdbID:       igdbID,
+				Modes:        modes,
+			}); err != nil {
+				return fmt.Errorf("store IGDB multiplayer modes %s: %w", providerGame.Reference.ExternalID, err)
+			}
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("commit IGDB staging: %w", err)
@@ -122,6 +140,12 @@ func (s *Store) ActivateGeneration(ctx context.Context, generationID string, rec
 	}
 	if err := queries.RefreshIGDBEnrichmentFromGeneration(ctx, databaseGenerationID); err != nil {
 		return fmt.Errorf("refresh IGDB enrichment: %w", err)
+	}
+	if err := queries.ClearIGDBEnrichmentMultiplayerModesFromGeneration(ctx, databaseGenerationID); err != nil {
+		return fmt.Errorf("clear IGDB multiplayer modes: %w", err)
+	}
+	if err := queries.InsertIGDBEnrichmentMultiplayerModesFromGeneration(ctx, databaseGenerationID); err != nil {
+		return fmt.Errorf("insert IGDB multiplayer modes: %w", err)
 	}
 	if err := queries.DeleteInactiveIGDBGenerations(ctx, databaseGenerationID); err != nil {
 		return fmt.Errorf("delete inactive IGDB generations: %w", err)
@@ -177,6 +201,7 @@ func (s *Store) Status(ctx context.Context, now time.Time) (game.ProviderStatus,
 		LastAttempt:      timestamptzPointer(row.LastAttemptAt),
 		LastSuccess:      timestamptzPointer(row.LastSuccessAt),
 		RecordCount:      row.RecordCount,
+		StagedRecords:    row.StagedRecordCount,
 		CatalogAvailable: row.ActiveGenerationID.Valid,
 	}
 	if row.LastError.Valid {
@@ -234,7 +259,7 @@ func (s *Store) Search(ctx context.Context, userID, search string, limit int, in
 		items = append(items, game.DiscoveryItem{
 			LocalGameID:      row.LocalGameID,
 			Reference:        reference,
-			GamePresentation: presentation(row.Name, row.Slug, row.GameType, row.CoverImageID, row.PlatformNames, row.FirstReleaseDate),
+			GamePresentation: presentation(row.Name, row.Slug, row.GameType, row.CoverImageID, row.PlatformNames, row.FirstReleaseDate, row.Summary, row.GenreNames),
 			Subscribed:       row.Subscribed,
 			Materialized:     row.Materialized,
 		})
@@ -269,7 +294,7 @@ func (s *Store) FindLocal(ctx context.Context, userID, localGameID string) (game
 	}
 	return game.DiscoveryItem{
 		LocalGameID:      row.GID,
-		GamePresentation: presentation(row.Name, row.Slug, row.GameType, row.CoverImageID, row.PlatformNames, row.FirstReleaseDate),
+		GamePresentation: presentation(row.Name, row.Slug, row.GameType, row.CoverImageID, row.PlatformNames, row.FirstReleaseDate, row.Summary, row.GenreNames),
 		Subscribed:       row.Subscribed,
 		Materialized:     true,
 	}, nil
@@ -280,12 +305,13 @@ func (s *Store) FindLocal(ctx context.Context, userID, localGameID string) (game
 // active generation. If it already maps to an active local Game, this
 // returns that Game's own presentation and the viewer's Follow state
 // (Materialized=true); otherwise it returns the active generation's own
-// provider presentation, unmaterialized (Materialized=false). A provider
-// record absent from the active generation, or mapped only to a
-// deactivated local Game, reports game.ErrProviderRecordNotFound rather
-// than fabricating or resurrecting a result -- see
-// FindProviderDiscoveryGame's own comment for why those two cases collapse
-// to "no row" together.
+// provider presentation, unmaterialized (Materialized=false) -- but only
+// when game.VisibleProviderRecord allows it. A provider record absent from
+// the active generation, hidden by that policy while unmaterialized, or
+// mapped only to a deactivated local Game, reports
+// game.ErrProviderRecordNotFound rather than fabricating or resurrecting a
+// result -- see FindProviderDiscoveryGame's own comment for why those cases
+// collapse to "no row" together.
 func (s *Store) FindProvider(ctx context.Context, userID string, reference game.ProviderReference) (game.DiscoveryItem, error) {
 	normalized, err := game.NewProviderReference(reference.Provider, reference.ExternalID)
 	if err != nil {
@@ -300,8 +326,9 @@ func (s *Store) FindProvider(ctx context.Context, userID string, reference game.
 		return game.DiscoveryItem{}, game.ErrInvalidProviderReference
 	}
 	row, err := s.queries.FindProviderDiscoveryGame(ctx, sqlcgen.FindProviderDiscoveryGameParams{
-		UserID: databaseUserID,
-		IgdbID: igdbID,
+		UserID:           databaseUserID,
+		IgdbID:           igdbID,
+		VisibleGameTypes: game.VisibleProviderGameTypes(),
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return game.DiscoveryItem{}, game.ErrProviderRecordNotFound
@@ -316,7 +343,7 @@ func (s *Store) FindProvider(ctx context.Context, userID string, reference game.
 	return game.DiscoveryItem{
 		LocalGameID:      row.LocalGameID,
 		Reference:        rowReference,
-		GamePresentation: presentation(row.Name, row.Slug, row.GameType, row.CoverImageID, row.PlatformNames, row.FirstReleaseDate),
+		GamePresentation: presentation(row.Name, row.Slug, row.GameType, row.CoverImageID, row.PlatformNames, row.FirstReleaseDate, row.Summary, row.GenreNames),
 		Subscribed:       row.Subscribed,
 		Materialized:     row.Materialized,
 	}, nil
@@ -358,7 +385,55 @@ func storeIGDBProviderGameParams(generationID pgtype.UUID, providerGame game.Pro
 		IgdbUpdatedAt:       optionalTime(providerGame.ProviderUpdatedAt),
 		Checksum:            checksum,
 		SearchText:          normalizedSearchText(providerGame.Name, providerGame.AlternativeNames),
+		Summary:             optionalText(providerGame.Summary),
+		GenreNames:          nonNilStrings(providerGame.GenreNames),
+		GameModeNames:       nonNilStrings(providerGame.GameModeNames),
 	}, nil
+}
+
+// multiplayerModeJSON is the transport shape the StoreIGDBMultiplayerModes
+// jsonb_to_recordset column list expects. Pointers encode "not reported":
+// nil player limits and an absent platform become SQL NULL (issue #46).
+type multiplayerModeJSON struct {
+	PlatformIGDBID    *int64 `json:"platform_igdb_id"`
+	PlatformName      string `json:"platform_name"`
+	CampaignCoop      bool   `json:"campaign_coop"`
+	DropIn            bool   `json:"drop_in"`
+	LanCoop           bool   `json:"lan_coop"`
+	OfflineCoop       bool   `json:"offline_coop"`
+	OnlineCoop        bool   `json:"online_coop"`
+	SplitScreen       bool   `json:"split_screen"`
+	SplitScreenOnline bool   `json:"split_screen_online"`
+	OfflineCoopMax    *int   `json:"offline_coop_max"`
+	OfflineMax        *int   `json:"offline_max"`
+	OnlineCoopMax     *int   `json:"online_coop_max"`
+	OnlineMax         *int   `json:"online_max"`
+}
+
+func multiplayerModesJSON(modes []game.MultiplayerMode) ([]byte, error) {
+	payload := make([]multiplayerModeJSON, len(modes))
+	for i, mode := range modes {
+		row := multiplayerModeJSON{
+			PlatformName:      mode.PlatformName,
+			CampaignCoop:      mode.CampaignCoop,
+			DropIn:            mode.DropIn,
+			LanCoop:           mode.LanCoop,
+			OfflineCoop:       mode.OfflineCoop,
+			OnlineCoop:        mode.OnlineCoop,
+			SplitScreen:       mode.SplitScreen,
+			SplitScreenOnline: mode.SplitScreenOnline,
+			OfflineCoopMax:    mode.OfflineCoopMax,
+			OfflineMax:        mode.OfflineMax,
+			OnlineCoopMax:     mode.OnlineCoopMax,
+			OnlineMax:         mode.OnlineMax,
+		}
+		if mode.PlatformIGDBID > 0 {
+			platformID := mode.PlatformIGDBID
+			row.PlatformIGDBID = &platformID
+		}
+		payload[i] = row
+	}
+	return json.Marshal(payload)
 }
 
 func optionalPositiveInt64(value string) (pgtype.Int8, error) {
@@ -421,4 +496,67 @@ func boundedOneLine(value string, limit int) string {
 	}
 	runes := []rune(value)
 	return string(runes[:limit])
+}
+
+func enrichmentModeRows(rows []sqlcgen.EnrichmentMultiplayerModesForGameRow) []game.MultiplayerMode {
+	modes := make([]game.MultiplayerMode, 0, len(rows))
+	for _, row := range rows {
+		modes = append(modes, game.MultiplayerMode{
+			PlatformIGDBID:    row.PlatformIgdbID.Int64,
+			PlatformName:      row.PlatformName.String,
+			CampaignCoop:      row.CampaignCoop,
+			DropIn:            row.DropIn,
+			LanCoop:           row.LanCoop,
+			OfflineCoop:       row.OfflineCoop,
+			OnlineCoop:        row.OnlineCoop,
+			SplitScreen:       row.SplitScreen,
+			SplitScreenOnline: row.SplitScreenOnline,
+			OfflineCoopMax:    optionalInt(row.OfflineCoopMax),
+			OfflineMax:        optionalInt(row.OfflineMax),
+			OnlineCoopMax:     optionalInt(row.OnlineCoopMax),
+			OnlineMax:         optionalInt(row.OnlineMax),
+		})
+	}
+	return modes
+}
+
+func providerModeRows(rows []sqlcgen.IGDBMultiplayerModesForExternalIDsRow) map[string][]game.MultiplayerMode {
+	modes := make(map[string][]game.MultiplayerMode, len(rows))
+	for _, row := range rows {
+		modes[row.ExternalID] = append(modes[row.ExternalID], game.MultiplayerMode{
+			PlatformIGDBID:    row.PlatformIgdbID.Int64,
+			PlatformName:      row.PlatformName.String,
+			CampaignCoop:      row.CampaignCoop,
+			DropIn:            row.DropIn,
+			LanCoop:           row.LanCoop,
+			OfflineCoop:       row.OfflineCoop,
+			OnlineCoop:        row.OnlineCoop,
+			SplitScreen:       row.SplitScreen,
+			SplitScreenOnline: row.SplitScreenOnline,
+			OfflineCoopMax:    optionalInt(row.OfflineCoopMax),
+			OfflineMax:        optionalInt(row.OfflineMax),
+			OnlineCoopMax:     optionalInt(row.OnlineCoopMax),
+			OnlineMax:         optionalInt(row.OnlineMax),
+		})
+	}
+	return modes
+}
+
+func optionalInt(value pgtype.Int4) *int {
+	if !value.Valid {
+		return nil
+	}
+	result := int(value.Int32)
+	return &result
+}
+
+// CoverImageKnown reports whether any synchronized provider record or local
+// enrichment snapshot references imageID, so the cover proxy only ever
+// fetches covers LANsurfer itself renders.
+func (s *Store) CoverImageKnown(ctx context.Context, imageID string) (bool, error) {
+	known, err := s.queries.CoverImageKnown(ctx, imageID)
+	if err != nil {
+		return false, fmt.Errorf("look up IGDB cover image: %w", err)
+	}
+	return known, nil
 }

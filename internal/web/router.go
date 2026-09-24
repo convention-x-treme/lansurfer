@@ -66,8 +66,15 @@ type RouterDependencies struct {
 	GameResolver        handler.GameResolver
 	GameRequests        handler.GameRequestCommands
 	RequestQueries      handler.GameRequestQueries
-	Realtime            handler.GameRequestEvents
-	Subscriptions       handler.SubscriptionManager
+	// NavigationQueries and NavigationCatalog back the shared sidebar every
+	// authenticated screen renders. The same concrete read model and
+	// discovery service behind RequestQueries/Discovery satisfy them; saying
+	// so is this composition root's job, not a reason to widen either
+	// handler's own narrower interface.
+	NavigationQueries handler.NavigationQueries
+	NavigationCatalog handler.NavigationCatalog
+	Realtime          handler.GameRequestEvents
+	Subscriptions     handler.SubscriptionManager
 	// PushDevices is the same concrete *notification.SubscriptionService as
 	// Subscriptions, exposed through the handler.PushDeviceRemover interface
 	// Logout needs. Two fields (rather than widening either handler
@@ -83,12 +90,17 @@ type RouterDependencies struct {
 	// configured at all on this instance, independent of Subscriptions being
 	// wired (which also requires DataEncryptionKey).
 	WebPushConfigured bool
-	SecureCookies     bool
-	Logger            *slog.Logger
-	TrustedProxies    []netip.Prefix
+	// Covers serves public same-origin IGDB cover images.
+	Covers         handler.CoverImages
+	SecureCookies  bool
+	Logger         *slog.Logger
+	TrustedProxies []netip.Prefix
 	// InstanceName is the raw, already-trimmed config.Config.InstanceName
 	// value. Empty means unset; NewRouter resolves the display fallback.
 	InstanceName string
+	// Legal is the operator's legal identity from config.Config.Legal,
+	// rendered by the footer and the Terms/Privacy pages.
+	Legal webmiddleware.LegalIdentity
 	// BaseURL is config.Config.BaseURL, used only by /admin/pwa diagnostics
 	// (manifest/worker URLs and the expected secure-context status).
 	BaseURL string
@@ -97,9 +109,13 @@ type RouterDependencies struct {
 // NewRouter constructs the HTTP router.
 func NewRouter(dependencies RouterDependencies) http.Handler {
 	brand := branding.Default()
-	instanceName := dependencies.InstanceName
-	if instanceName == "" {
-		instanceName = brand.Name
+	// resolvedInstanceName is what a surface renders when it always needs a
+	// name (the manifest, the administration diagnostics). The layouts need
+	// the opposite: whether one was configured at all, which is why the
+	// middleware below carries the raw value rather than this fallback.
+	resolvedInstanceName := dependencies.InstanceName
+	if resolvedInstanceName == "" {
+		resolvedInstanceName = brand.Name
 	}
 	authenticationHandler := handler.NewAuthentication(
 		dependencies.Authentication, dependencies.Sessions, brand, dependencies.SecureCookies,
@@ -109,13 +125,15 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 		dependencies.PendingIdentities, dependencies.AccountRegistration, dependencies.GameNickClaims,
 		dependencies.Identities, dependencies.Authentication, brand, dependencies.SecureCookies,
 	)
-	accountHandler := handler.NewAccount(dependencies.Identities, dependencies.IdentityUnlinker, dependencies.GameNickClaims, dependencies.Authentication, brand)
+	navigation := handler.NewNavigation(dependencies.NavigationQueries, dependencies.NavigationCatalog)
+	legalHandler := handler.NewLegal(navigation, brand)
+	accountHandler := handler.NewAccount(dependencies.Identities, dependencies.IdentityUnlinker, dependencies.GameNickClaims, dependencies.Authentication, navigation, brand)
 	administrationHandler := handler.NewAdministration(
-		dependencies.Games, dependencies.ProviderSync, brand,
-		instanceName, dependencies.BaseURL, SecureContextStatus(dependencies.BaseURL),
+		dependencies.Games, dependencies.ProviderSync, navigation, brand,
+		resolvedInstanceName, dependencies.BaseURL, SecureContextStatus(dependencies.BaseURL),
 	)
-	gamesHandler := handler.NewGames(dependencies.Discovery, brand)
-	gameRequestsHandler := handler.NewGameRequests(dependencies.GameRequests, dependencies.RequestQueries, dependencies.GameResolver, dependencies.Discovery, brand)
+	gamesHandler := handler.NewGames(dependencies.Discovery, navigation, brand)
+	gameRequestsHandler := handler.NewGameRequests(dependencies.GameRequests, dependencies.RequestQueries, dependencies.GameResolver, dependencies.Discovery, navigation, brand)
 	realtimeHandler := handler.NewRealtime(dependencies.Realtime)
 	var notificationSettingsHandler *handler.NotificationSettingsHandler
 	if dependencies.Subscriptions != nil {
@@ -135,10 +153,19 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 	router.Use(webmiddleware.SecurityHeaders(dependencies.SecureCookies))
 	router.Use(webmiddleware.CSRF(dependencies.SecureCookies))
 	router.Use(webmiddleware.Theme)
-	router.Use(webmiddleware.Instance(instanceName))
+	// The raw configured value, not the brand fallback: an unset instance must
+	// reach the layouts as empty, or the secondary instance label renders the
+	// brand name a second time beside the wordmark on every screen.
+	router.Use(webmiddleware.Instance(dependencies.InstanceName))
+	router.Use(webmiddleware.Legal(dependencies.Legal))
 
 	router.Handle("/assets/*", http.StripPrefix("/assets/", assets.Handler()))
-	manifest := manifestHandler(brand, instanceName)
+	// Covers are public like /assets/: an anonymous page may show them, and
+	// the handler never touches the session.
+	media := handler.NewMedia(dependencies.Covers)
+	router.Get("/media/igdb/{size}/{imageID}", media.IGDBCover)
+	router.Head("/media/igdb/{size}/{imageID}", media.IGDBCover)
+	manifest := manifestHandler(brand, resolvedInstanceName)
 	router.Get("/manifest.webmanifest", manifest)
 	router.Head("/manifest.webmanifest", manifest)
 	serviceWorker, err := serviceWorkerHandler()
@@ -150,11 +177,17 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 	router.Group(func(authenticated chi.Router) {
 		authenticated.Use(webmiddleware.Authentication(dependencies.Sessions, dependencies.SecureCookies))
 		authenticated.Get("/", rootHandler(brand, dependencies.Authentication))
+		// Public: no RequireAuthentication, but the session is resolved so a
+		// signed-in player keeps the application shell.
+		authenticated.Get("/terms", legalHandler.Terms)
+		authenticated.Get("/privacy", legalHandler.Privacy)
 		authenticated.Get("/auth/login", authenticationHandler.Login)
 		authenticated.Get("/auth/oidc", authenticationHandler.BeginFor("oidc"))
 		authenticated.Get("/auth/discord", authenticationHandler.BeginFor("discord"))
+		authenticated.Get("/auth/twitch", authenticationHandler.BeginFor("twitch"))
 		authenticated.Get("/auth/callback", authenticationHandler.CallbackFor("oidc"))
 		authenticated.Get("/auth/discord/callback", authenticationHandler.CallbackFor("discord"))
+		authenticated.Get("/auth/twitch/callback", authenticationHandler.CallbackFor("twitch"))
 		// Logout is registered here rather than on the top-level router, like
 		// every other /auth/* route, so webmiddleware.Authentication resolves
 		// CurrentUser before the handler runs. It needs the current account's
@@ -175,6 +208,7 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 			account.Post("/game-nick", accountHandler.RenameGameNick)
 			account.Post("/link/oidc", authenticationHandler.LinkFor("oidc"))
 			account.Post("/link/discord", authenticationHandler.LinkFor("discord"))
+			account.Post("/link/twitch", authenticationHandler.LinkFor("twitch"))
 			account.Post("/identities/{identityID}/unlink", accountHandler.Unlink)
 			if notificationSettingsHandler != nil {
 				account.Route("/notifications", func(notifications chi.Router) {
@@ -202,7 +236,6 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 				requests.Get("/", gameRequestsHandler.List)
 				requests.Get("/new", gameRequestsHandler.New)
 				requests.Get("/new/discovery", gameRequestsHandler.Discovery)
-				requests.Get("/new/selection", gameRequestsHandler.Selection)
 				requests.Get("/refresh", gameRequestsHandler.RefreshList)
 				requests.Post("/", gameRequestsHandler.Create)
 				requests.Get("/{requestID}", gameRequestsHandler.View)
@@ -225,8 +258,15 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 				admin.Post("/games/{gameID}/active", administrationHandler.SetGameActive)
 				admin.Post("/games/{gameID}/aliases", administrationHandler.AddGameAlias)
 				admin.Post("/games/{gameID}/aliases/{aliasID}/remove", administrationHandler.RemoveGameAlias)
+				admin.Get("/games/{gameID}/igdb", administrationHandler.GameIGDB)
+				admin.Post("/games/{gameID}/igdb", administrationHandler.LinkGameIGDB)
+				admin.Post("/games/{gameID}/igdb/unlink", administrationHandler.UnlinkGameIGDB)
+				admin.Get("/games/{gameID}/merge", administrationHandler.MergeGamePage)
+				admin.Post("/games/{gameID}/merge", administrationHandler.MergeGame)
+				admin.Post("/games/{gameID}/delete", administrationHandler.DeleteGame)
 				if dependencies.ProviderSync != nil {
 					admin.Get("/igdb", administrationHandler.IGDB)
+					admin.Get("/igdb/status", administrationHandler.IGDBStatus)
 					admin.Post("/igdb/sync", administrationHandler.SyncIGDB)
 				}
 				admin.Get("/pwa", administrationHandler.PWA)

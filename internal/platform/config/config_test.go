@@ -56,6 +56,8 @@ func TestLoadReadsConfiguredValues(t *testing.T) {
 	t.Setenv("LANSURFER_DISCORD_CLIENT_ID", " discord-client ")
 	t.Setenv("LANSURFER_DISCORD_CLIENT_SECRET", " discord-secret ")
 	t.Setenv("LANSURFER_TRUSTED_PROXIES", " 10.20.0.5, 10.21.0.0/16 ")
+	t.Setenv("LANSURFER_LEGAL_ENTITY_NAME", " Computerfreunde Karlsdorf-Neuthard e.V. ")
+	t.Setenv("LANSURFER_LEGAL_CONTACT_EMAIL", " datenschutz@convention-x-treme.de ")
 
 	cfg, err := Load()
 	if err != nil {
@@ -159,23 +161,92 @@ func TestLoadLeavesDiscordUnsetWhenCredentialsAreEmpty(t *testing.T) {
 func TestLoadIGDBConfiguration(t *testing.T) {
 	clearOptionalEnvironment(t)
 	t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
-	t.Setenv("LANSURFER_IGDB_CLIENT_ID", "client")
-	t.Setenv("LANSURFER_IGDB_CLIENT_SECRET", "secret")
+	t.Setenv("LANSURFER_TWITCH_CLIENT_ID", "client")
+	t.Setenv("LANSURFER_TWITCH_CLIENT_SECRET", "secret")
+	t.Setenv("LANSURFER_IGDB_ENABLED", "true")
 
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if cfg.IGDB == nil || cfg.IGDB.ClientID != "client" || cfg.IGDB.ClientSecret != "secret" {
-		t.Fatalf("IGDB = %#v", cfg.IGDB)
+	if cfg.Twitch == nil || cfg.Twitch.ClientID != "client" || cfg.Twitch.ClientSecret != "secret" || !cfg.Twitch.IGDBEnabled {
+		t.Fatalf("Twitch = %#v", cfg.Twitch)
+	}
+}
+
+func TestLoadTwitchConfigurationEnablesCapabilitiesIndependently(t *testing.T) {
+	clearOptionalEnvironment(t)
+	t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
+	t.Setenv("LANSURFER_TWITCH_CLIENT_ID", "client")
+	t.Setenv("LANSURFER_TWITCH_CLIENT_SECRET", "secret")
+	t.Setenv("LANSURFER_TWITCH_AUTH_ENABLED", "true")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Twitch == nil || !cfg.Twitch.AuthEnabled || cfg.Twitch.IGDBEnabled {
+		t.Fatalf("Twitch = %#v", cfg.Twitch)
+	}
+}
+
+func TestLoadTwitchConfigurationAcceptsEachCapabilityCombination(t *testing.T) {
+	tests := []struct {
+		name, authEnabled, igdbEnabled string
+		wantAuth, wantIGDB             bool
+	}{
+		{name: "both disabled"},
+		{name: "IGDB only", igdbEnabled: "true", wantIGDB: true},
+		{name: "both enabled", authEnabled: "true", igdbEnabled: "true", wantAuth: true, wantIGDB: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			clearOptionalEnvironment(t)
+			t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
+			t.Setenv("LANSURFER_TWITCH_CLIENT_ID", "client")
+			t.Setenv("LANSURFER_TWITCH_CLIENT_SECRET", "secret")
+			t.Setenv("LANSURFER_TWITCH_AUTH_ENABLED", test.authEnabled)
+			t.Setenv("LANSURFER_IGDB_ENABLED", test.igdbEnabled)
+
+			cfg, err := Load()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cfg.Twitch == nil || cfg.Twitch.AuthEnabled != test.wantAuth || cfg.Twitch.IGDBEnabled != test.wantIGDB {
+				t.Fatalf("Twitch = %#v", cfg.Twitch)
+			}
+		})
+	}
+}
+
+func TestLoadRejectsInvalidTwitchConfiguration(t *testing.T) {
+	tests := []struct {
+		name, clientID, clientSecret, authEnabled, igdbEnabled string
+	}{
+		{name: "enabled without credentials", igdbEnabled: "true"},
+		{name: "partial credentials", clientID: "client", authEnabled: "true"},
+		{name: "invalid auth flag", clientID: "client", clientSecret: "secret", authEnabled: "sometimes"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			clearOptionalEnvironment(t)
+			t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
+			t.Setenv("LANSURFER_TWITCH_CLIENT_ID", test.clientID)
+			t.Setenv("LANSURFER_TWITCH_CLIENT_SECRET", test.clientSecret)
+			t.Setenv("LANSURFER_TWITCH_AUTH_ENABLED", test.authEnabled)
+			t.Setenv("LANSURFER_IGDB_ENABLED", test.igdbEnabled)
+			if _, err := Load(); err == nil {
+				t.Fatal("Load() accepted invalid Twitch configuration")
+			}
+		})
 	}
 }
 
 func TestLoadRejectsPartialIGDBConfiguration(t *testing.T) {
 	clearOptionalEnvironment(t)
 	t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
-	t.Setenv("LANSURFER_IGDB_CLIENT_ID", "client")
-	t.Setenv("LANSURFER_IGDB_CLIENT_SECRET", "")
+	t.Setenv("LANSURFER_TWITCH_CLIENT_ID", "client")
+	t.Setenv("LANSURFER_IGDB_ENABLED", "true")
 
 	if _, err := Load(); err == nil {
 		t.Fatal("Load() unexpectedly accepted partial IGDB configuration")
@@ -185,15 +256,13 @@ func TestLoadRejectsPartialIGDBConfiguration(t *testing.T) {
 func TestLoadLeavesIGDBUnsetWhenCredentialsAreEmpty(t *testing.T) {
 	clearOptionalEnvironment(t)
 	t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
-	t.Setenv("LANSURFER_IGDB_CLIENT_ID", "")
-	t.Setenv("LANSURFER_IGDB_CLIENT_SECRET", "")
 
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if cfg.IGDB != nil {
-		t.Fatalf("IGDB = %#v, want nil", cfg.IGDB)
+	if cfg.Twitch != nil {
+		t.Fatalf("Twitch = %#v, want nil", cfg.Twitch)
 	}
 }
 
@@ -423,14 +492,119 @@ func clearOptionalEnvironment(t *testing.T) {
 		"LANSURFER_DISCORD_CLIENT_ID",
 		"LANSURFER_DISCORD_CLIENT_SECRET",
 		"LANSURFER_TRUSTED_PROXIES",
-		"LANSURFER_IGDB_CLIENT_ID",
-		"LANSURFER_IGDB_CLIENT_SECRET",
+		"LANSURFER_TWITCH_CLIENT_ID",
+		"LANSURFER_TWITCH_CLIENT_SECRET",
+		"LANSURFER_TWITCH_AUTH_ENABLED",
+		"LANSURFER_IGDB_ENABLED",
 		"LANSURFER_INSTANCE_NAME",
 		"LANSURFER_WEBPUSH_PUBLIC_KEY",
 		"LANSURFER_WEBPUSH_PRIVATE_KEY",
 		"LANSURFER_WEBPUSH_SUBJECT",
 		"LANSURFER_DATA_ENCRYPTION_KEY",
+		"LANSURFER_LEGAL_ENTITY_NAME",
+		"LANSURFER_LEGAL_ADDRESS",
+		"LANSURFER_LEGAL_CONTACT_EMAIL",
+		"LANSURFER_IMPRINT_URL",
 	} {
 		t.Setenv(name, "")
+	}
+}
+
+func TestLoadReadsCoverCacheDir(t *testing.T) {
+	t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
+	t.Setenv("LANSURFER_COVER_CACHE_DIR", " /var/cache/lansurfer/covers ")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.CoverCacheDir != "/var/cache/lansurfer/covers" {
+		t.Errorf("CoverCacheDir = %q", cfg.CoverCacheDir)
+	}
+}
+
+func TestLoadReadsLegalIdentity(t *testing.T) {
+	clearOptionalEnvironment(t)
+	t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
+	t.Setenv("LANSURFER_LEGAL_ENTITY_NAME", " Computerfreunde Karlsdorf-Neuthard e.V. ")
+	t.Setenv("LANSURFER_LEGAL_ADDRESS", " Example Street 1, 76689 Karlsdorf-Neuthard, Germany ")
+	t.Setenv("LANSURFER_LEGAL_CONTACT_EMAIL", " datenschutz@convention-x-treme.de ")
+	t.Setenv("LANSURFER_IMPRINT_URL", " https://www.convention-x-treme.de/impressum ")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	want := Legal{
+		EntityName:   "Computerfreunde Karlsdorf-Neuthard e.V.",
+		Address:      "Example Street 1, 76689 Karlsdorf-Neuthard, Germany",
+		ContactEmail: "datenschutz@convention-x-treme.de",
+		ImprintURL:   "https://www.convention-x-treme.de/impressum",
+	}
+	if cfg.Legal != want {
+		t.Errorf("Legal = %#v, want %#v", cfg.Legal, want)
+	}
+}
+
+func TestLoadLeavesLegalIdentityUnsetByDefault(t *testing.T) {
+	clearOptionalEnvironment(t)
+	t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Legal != (Legal{}) {
+		t.Errorf("Legal = %#v, want zero value", cfg.Legal)
+	}
+}
+
+func TestLoadRejectsInvalidLegalIdentity(t *testing.T) {
+	tests := map[string]struct{ name, value string }{
+		"entity with line break":  {"LANSURFER_LEGAL_ENTITY_NAME", "Club\ne.V."},
+		"entity too long":         {"LANSURFER_LEGAL_ENTITY_NAME", strings.Repeat("a", 201)},
+		"address with tab":        {"LANSURFER_LEGAL_ADDRESS", "Street 1,\tCity"},
+		"address too long":        {"LANSURFER_LEGAL_ADDRESS", strings.Repeat("a", 301)},
+		"email with display name": {"LANSURFER_LEGAL_CONTACT_EMAIL", "Privacy <datenschutz@convention-x-treme.de>"},
+		"email without domain":    {"LANSURFER_LEGAL_CONTACT_EMAIL", "datenschutz"},
+		"imprint javascript":      {"LANSURFER_IMPRINT_URL", "javascript:alert(1)"},
+		"imprint placeholder":     {"LANSURFER_IMPRINT_URL", "<https://www.convention-x-treme.de/impressum>"},
+		"imprint relative":        {"LANSURFER_IMPRINT_URL", "/impressum"},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			clearOptionalEnvironment(t)
+			t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
+			t.Setenv(test.name, test.value)
+
+			_, err := Load()
+			if err == nil || !strings.Contains(err.Error(), test.name) {
+				t.Fatalf("Load() error = %v, want error naming %s", err, test.name)
+			}
+		})
+	}
+}
+
+// Discord's Developer Terms require a privacy policy that names a responsible
+// party with a contact, so enabling Discord login without one is refused.
+func TestLoadRequiresLegalIdentityWithDiscord(t *testing.T) {
+	for name, legal := range map[string][2]string{
+		"both missing":  {"", ""},
+		"email missing": {"Computerfreunde Karlsdorf-Neuthard e.V.", ""},
+		"name missing":  {"", "datenschutz@convention-x-treme.de"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			clearOptionalEnvironment(t)
+			t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
+			t.Setenv("LANSURFER_DISCORD_CLIENT_ID", "client")
+			t.Setenv("LANSURFER_DISCORD_CLIENT_SECRET", "secret")
+			t.Setenv("LANSURFER_LEGAL_ENTITY_NAME", legal[0])
+			t.Setenv("LANSURFER_LEGAL_CONTACT_EMAIL", legal[1])
+
+			_, err := Load()
+			if err == nil || !strings.Contains(err.Error(), "LANSURFER_LEGAL_ENTITY_NAME") ||
+				!strings.Contains(err.Error(), "LANSURFER_LEGAL_CONTACT_EMAIL") {
+				t.Fatalf("Load() error = %v, want error naming both legal variables", err)
+			}
+		})
 	}
 }
