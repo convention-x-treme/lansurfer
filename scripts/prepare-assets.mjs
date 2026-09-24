@@ -26,7 +26,8 @@ await cp(
   new URL("../node_modules/@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2", import.meta.url),
   new URL("fonts/jetbrains-mono-latin-wght-normal.woff2", output),
 );
-await cp(new URL("../docs/Otter02.png", import.meta.url), new URL("images/otter.png", output));
+await cp(new URL("../docs/mascot/initial-mascot.png", import.meta.url), new URL("images/otter.png", output));
+await cp(new URL("../docs/mascot/mascot-welcome-pose.png", import.meta.url), new URL("images/mascot-welcome-pose.png", output));
 
 // Temporary PWA icon (see docs/superpowers/pwa/2026-09-20-track-d-instance-pwa-design.md).
 // These are finished, pre-generated renditions, copied verbatim like the

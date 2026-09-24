@@ -142,14 +142,16 @@ Phosphor Icons is the approved icon library for LANsurfer through 1.0. It is an 
 
 ## LANsurfer logo and lockup
 
-Set the wordmark in Schibsted Grotesk italic: 900 for `LAN`, 600 for `surfer`, tracking −0.03em. This is the only italic in the system. Use it with the canonical tagline for the LANsurfer lockup. No production signet has been approved. Until one exists:
+Set the wordmark in Schibsted Grotesk italic: 900 for `LAN`, 600 for `surfer`, tracking −0.03em. This is the only italic in the system. Use it with the canonical tagline for the LANsurfer lockup. Current artwork: [logo-with-slogan.png](logo/logo-with-slogan.png). The standalone [icon.png](logo/icon.png) is the brand icon. These are product identity assets, not configurable instance branding.
 
 - use the `LANsurfer` wordmark as text;
 - do not promote a prototype or UI-kit placeholder to the production logo or favicon;
 - do not use the mascot as a substitute favicon or signet;
 - keep at least the height of the wordmark's capital `L` as clear space around a future lockup.
 
-The eventual LANsurfer signet must remain recognizable at 32 px, work with no more than two blues plus optional Golden Hour, and have a one-color version suitable for print, stamps, merchandise, and sponsor walls. Product logo assets should be stored once and referenced through the centralized brand definition.
+Keep at least the height of the wordmark's capital `L` as clear space around a lockup. The available [icon.png](logo/icon.png) is the supplied icon artwork; application favicons and install icons remain the separately generated assets in [`pwa-icons`](pwa-icons/).
+
+Do not redraw, crop, recolor, or substitute the supplied logo and icon without updating this guide and the bundled product assets together.
 
 ### Instance identity in 1.0
 
@@ -164,7 +166,7 @@ Minimum instance identity is not Event-specific and must not grow into a second 
 
 ## Mascot
 
-The LANsurfer otter is a guide, not a decorative pattern. The current source artwork is [Otter02.png](Otter02.png).
+The LANsurfer otter is a guide, not a decorative pattern. The [initial-mascot.png](mascot/initial-mascot.png) is the original source artwork. Additional poses include [mascot-welcome-pose.png](mascot/mascot-welcome-pose.png) and [mascot-with-surfbord.png](mascot/mascot-with-surfbord.png); [mascot-sprite-sheet.png](mascot/mascot-sprite-sheet.png) contains the mascot sprite sheet.
 
 Use the mascot:
 
