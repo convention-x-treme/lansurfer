@@ -25,24 +25,26 @@ var backoffSchedule = []time.Duration{
 // computeBackoff returns the delay before the next automatic attempt.
 // attemptsMade is the number of attempts already made (1-based). When
 // retryAfter is set (an HTTP 429 Retry-After or equivalent provider hint),
-// it is honored as-is, without jitter, and only capped; otherwise the
-// schedule entry for attemptsMade is used, jittered, then capped. jitter is
-// injected so tests can be deterministic; production code passes
-// applyJitter.
+// it is returned as-is, without jitter or the automatic-delay cap;
+// otherwise the schedule entry for attemptsMade is used, jittered, then
+// capped. jitter is injected so tests can be deterministic; production code
+// passes applyJitter.
 func computeBackoff(attemptsMade int, retryAfter *time.Duration, jitter func(time.Duration) time.Duration) time.Duration {
-	var delay time.Duration
 	if retryAfter != nil {
-		delay = *retryAfter
-	} else {
-		index := attemptsMade - 1
-		if index < 0 {
-			index = 0
+		if *retryAfter < 0 {
+			return 0
 		}
-		if index >= len(backoffSchedule) {
-			index = len(backoffSchedule) - 1
-		}
-		delay = jitter(backoffSchedule[index])
+		return *retryAfter
 	}
+
+	index := attemptsMade - 1
+	if index < 0 {
+		index = 0
+	}
+	if index >= len(backoffSchedule) {
+		index = len(backoffSchedule) - 1
+	}
+	delay := jitter(backoffSchedule[index])
 	if delay > maxAutomaticDelay {
 		delay = maxAutomaticDelay
 	}

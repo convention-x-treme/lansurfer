@@ -23,15 +23,19 @@ func TestComputeBackoffClampsAttemptsBeyondScheduleLength(t *testing.T) {
 	}
 }
 
-func TestComputeBackoffHonorsRetryAfterCappedAtFiveMinutes(t *testing.T) {
+func TestComputeBackoffHonorsRetryAfterWithoutCap(t *testing.T) {
 	noJitter := func(d time.Duration) time.Duration { return d }
 	hint := 45 * time.Second
 	if got := computeBackoff(1, &hint, noJitter); got != hint {
 		t.Fatalf("computeBackoff with Retry-After = %v, want %v", got, hint)
 	}
 	longHint := 20 * time.Minute
-	if got := computeBackoff(1, &longHint, noJitter); got != 5*time.Minute {
-		t.Fatalf("computeBackoff with a long Retry-After = %v, want the 5m cap", got)
+	if got := computeBackoff(1, &longHint, noJitter); got != longHint {
+		t.Fatalf("computeBackoff with a long Retry-After = %v, want %v", got, longHint)
+	}
+	negativeHint := -time.Second
+	if got := computeBackoff(1, &negativeHint, noJitter); got != 0 {
+		t.Fatalf("computeBackoff with negative Retry-After = %v, want 0", got)
 	}
 }
 
@@ -40,6 +44,14 @@ func TestComputeBackoffAppliesJitterOnlyToScheduledDelay(t *testing.T) {
 	jitter := func(d time.Duration) time.Duration { called = true; return d + time.Second }
 	if got := computeBackoff(1, nil, jitter); !called || got != 6*time.Second {
 		t.Fatalf("computeBackoff(1, nil, jitter) = %v, called = %v, want 6s and called", got, called)
+	}
+
+	called = false
+	if got := computeBackoff(1, nil, func(time.Duration) time.Duration {
+		called = true
+		return 20 * time.Minute
+	}); !called || got != 5*time.Minute {
+		t.Fatalf("computeBackoff with an over-cap jittered delay = %v, called = %v, want 5m and called", got, called)
 	}
 
 	called = false
