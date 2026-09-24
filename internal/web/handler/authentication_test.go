@@ -31,6 +31,46 @@ func TestLoginRendersProviderChoice(t *testing.T) {
 	}
 }
 
+func TestLoginSeparatesPrimaryProviderFromAlternatives(t *testing.T) {
+	handler := NewAuthentication(&stubAuthentication{available: true, providers: []auth.ProviderAvailability{
+		{Kind: "oidc", DisplayName: "CXT account"},
+		{Kind: "discord", DisplayName: "Discord"},
+		{Kind: "twitch", DisplayName: "Twitch"},
+	}}, &stubSessions{}, branding.Default(), true)
+	response := httptest.NewRecorder()
+
+	handler.Login(response, httptest.NewRequest(http.MethodGet, "/auth/login", nil))
+
+	body := response.Body.String()
+	if count := strings.Count(body, `class="divider`); count != 1 {
+		t.Fatalf("login provider divider count = %d, want 1", count)
+	}
+	oidc := strings.Index(body, "Continue with CXT account")
+	divider := strings.Index(body, `class="divider`)
+	discord := strings.Index(body, "Continue with Discord")
+	twitch := strings.Index(body, "Continue with Twitch")
+	if oidc < 0 || divider <= oidc || discord <= divider || twitch <= discord {
+		t.Fatalf("provider order = oidc:%d divider:%d discord:%d twitch:%d", oidc, divider, discord, twitch)
+	}
+}
+
+func TestLoginUsesProviderBrandButtons(t *testing.T) {
+	handler := NewAuthentication(&stubAuthentication{available: true, providers: []auth.ProviderAvailability{
+		{Kind: "discord", DisplayName: "Discord"},
+		{Kind: "twitch", DisplayName: "Twitch"},
+	}}, &stubSessions{}, branding.Default(), true)
+	response := httptest.NewRecorder()
+
+	handler.Login(response, httptest.NewRequest(http.MethodGet, "/auth/login", nil))
+
+	body := response.Body.String()
+	for _, want := range []string{`class="btn btn-provider-discord`, `class="btn btn-provider-twitch`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("login response missing %q: %q", want, body)
+		}
+	}
+}
+
 func TestBeginForIssuesBrowserBindingAndRedirects(t *testing.T) {
 	authentication := &stubAuthentication{available: true, start: auth.OAuthStart{AuthorizationURL: "https://identity.example/authorize"}}
 	handler := NewAuthentication(authentication, &stubSessions{}, branding.Default(), true)
