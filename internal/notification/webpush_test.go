@@ -83,7 +83,7 @@ func TestWebPushTargetsForCreatedUnionsFollowersAndAllAudienceExcludingActor(t *
 			"follower-1": {WebPushEnabled: true, NewRequestAudience: AudienceFollowed},
 			"actor-1":    {WebPushEnabled: true, NewRequestAudience: AudienceFollowed},
 		},
-		audienceAll: []string{"all-audience-1"},
+		audienceAll: []string{"follower-1", "all-audience-1"},
 	}
 	transport := NewWebPushTransport(subs, subs, subs, followers, &fakeRequestParticipants{}, summaries, "https://lansurfer.example", nil)
 
@@ -96,10 +96,14 @@ func TestWebPushTargetsForCreatedUnionsFollowersAndAllAudienceExcludingActor(t *
 		if target.Transport != "webpush" {
 			t.Fatalf("target.Transport = %q, want %q", target.Transport, "webpush")
 		}
-		got[target.Key] = true
+		subscriptionID, userID, err := decodeWebPushTarget(target.Key)
+		if err != nil {
+			t.Fatalf("decodeWebPushTarget(%q) error = %v", target.Key, err)
+		}
+		got[encodeWebPushTarget(subscriptionID, userID)] = true
 	}
-	if len(got) != 2 || !got["10"] || !got["20"] {
-		t.Fatalf("Targets() = %#v, want exactly subscription IDs 10 and 20 (follower's device + all-audience user's device, actor excluded)", targets)
+	if len(got) != 2 || !got[encodeWebPushTarget(10, "follower-1")] || !got[encodeWebPushTarget(20, "all-audience-1")] {
+		t.Fatalf("Targets() = %#v, want follower and all-audience targets with actor excluded", targets)
 	}
 }
 
@@ -115,8 +119,31 @@ func TestWebPushTargetsForLifecycleUsesCurrentParticipantsRegardlessOfAudience(t
 	if err != nil {
 		t.Fatalf("Targets() error = %v", err)
 	}
-	if len(targets) != 1 || targets[0].Key != "30" {
-		t.Fatalf("Targets() for left = %#v, want exactly subscription 30 (leaving actor excluded)", targets)
+	wantKey := encodeWebPushTarget(30, "participant-1")
+	if len(targets) != 1 || targets[0].Key != wantKey {
+		t.Fatalf("Targets() for left = %#v, want exactly subscription 30 for participant-1 (leaving actor excluded)", targets)
+	}
+}
+
+func TestWebPushTargetKeyRoundTripsAndSeparatesOwners(t *testing.T) {
+	key := encodeWebPushTarget(42, "owner/α")
+	subscriptionID, userID, err := decodeWebPushTarget(key)
+	if err != nil {
+		t.Fatalf("decodeWebPushTarget() error = %v", err)
+	}
+	if subscriptionID != 42 || userID != "owner/α" {
+		t.Fatalf("decoded target = (%d, %q), want (42, %q)", subscriptionID, userID, "owner/α")
+	}
+	if key == encodeWebPushTarget(42, "another-owner") {
+		t.Fatal("same subscription with different owner produced identical keys")
+	}
+}
+
+func TestWebPushTargetDecoderRejectsMalformedKeys(t *testing.T) {
+	for _, key := range []string{"", "1", "0:dXNlcg", "-1:dXNlcg", "01:dXNlcg", "1:", "1:!!!!", "1:dXNlcg==", "1:dXNlcg:extra"} {
+		if _, _, err := decodeWebPushTarget(key); err == nil {
+			t.Errorf("decodeWebPushTarget(%q) succeeded, want error", key)
+		}
 	}
 }
 

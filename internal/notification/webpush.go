@@ -2,8 +2,10 @@ package notification
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -119,7 +121,8 @@ func (t *WebPushTransport) Targets(ctx context.Context, activity Activity) ([]Ta
 			return nil, fmt.Errorf("list subscriptions for %s: %w", userID, err)
 		}
 		for _, sub := range subs {
-			targets = append(targets, Target{Transport: "webpush", Key: strconv.FormatInt(sub.ID, 10)})
+			key := encodeWebPushTarget(sub.ID, userID)
+			targets = append(targets, Target{Transport: "webpush", Key: key})
 		}
 	}
 	return targets, nil
@@ -136,6 +139,26 @@ func dedupeExcept(userIDs []string, exclude string) []string {
 		result = append(result, id)
 	}
 	return result
+}
+
+func encodeWebPushTarget(subscriptionID int64, userID string) string {
+	return strconv.FormatInt(subscriptionID, 10) + ":" + base64.RawURLEncoding.EncodeToString([]byte(userID))
+}
+
+func decodeWebPushTarget(key string) (int64, string, error) {
+	subscriptionText, encodedUserID, ok := strings.Cut(key, ":")
+	if !ok {
+		return 0, "", fmt.Errorf("invalid web push target key")
+	}
+	subscriptionID, err := strconv.ParseInt(subscriptionText, 10, 64)
+	if err != nil || subscriptionID <= 0 || strconv.FormatInt(subscriptionID, 10) != subscriptionText {
+		return 0, "", fmt.Errorf("invalid web push target subscription ID")
+	}
+	userIDBytes, err := base64.RawURLEncoding.DecodeString(encodedUserID)
+	if err != nil || len(userIDBytes) == 0 || base64.RawURLEncoding.EncodeToString(userIDBytes) != encodedUserID {
+		return 0, "", fmt.Errorf("invalid web push target user ID")
+	}
+	return subscriptionID, string(userIDBytes), nil
 }
 
 // webPushSender is implemented in webpush_send.go (Task 5). Defined here so
