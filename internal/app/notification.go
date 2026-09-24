@@ -11,6 +11,7 @@ import (
 	notificationpostgres "github.com/convention-x-treme/lansurfer/internal/notification/postgres"
 	"github.com/convention-x-treme/lansurfer/internal/platform/config"
 	platformpostgres "github.com/convention-x-treme/lansurfer/internal/platform/postgres"
+	"github.com/convention-x-treme/lansurfer/internal/user"
 )
 
 // newNotificationWorker ties the worker to the caller's root context by
@@ -39,6 +40,18 @@ func newSubscriptionService(store *notificationpostgres.Store, encryptionKey []b
 // E1 registers none. E2/E3 append their transports here as they land.
 func notificationTransports() []notification.Transport {
 	return nil
+}
+
+type notificationGameNickReader struct {
+	users *user.Service
+}
+
+func (r notificationGameNickReader) GetGameNick(ctx context.Context, userID string) (string, error) {
+	account, err := r.users.ByID(ctx, userID)
+	if err != nil {
+		return "", err
+	}
+	return account.GameNick, nil
 }
 
 // ListNotificationProblems opens its own standalone database connection and

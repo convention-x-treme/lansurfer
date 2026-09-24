@@ -38,6 +38,11 @@ type GameRequestSummaryReader interface {
 	GetGameRequestSummary(ctx context.Context, gameRequestID string) (GameRequestSummary, error)
 }
 
+// GameNickReader resolves one user's public LANsurfer Game Nick.
+type GameNickReader interface {
+	GetGameNick(ctx context.Context, userID string) (string, error)
+}
+
 // WebPushTransport implements notification.Transport for personal Web Push.
 // It never persists anything itself: recipient/eligibility state lives in
 // SubscriptionRepository/PreferenceRepository/DeliveryReadRepository, all
@@ -49,6 +54,7 @@ type WebPushTransport struct {
 	followers     GameFollowers
 	participants  RequestParticipants
 	summaries     GameRequestSummaryReader
+	gameNicks     GameNickReader
 	baseURL       string
 	sender        webPushSender // set in Task 5; nil is valid here, Send is not implemented yet
 }
@@ -56,12 +62,12 @@ type WebPushTransport struct {
 func NewWebPushTransport(
 	subscriptions SubscriptionRepository, preferences PreferenceRepository, delivery DeliveryReadRepository,
 	followers GameFollowers, participants RequestParticipants, summaries GameRequestSummaryReader,
-	baseURL string, sender webPushSender,
+	gameNicks GameNickReader, baseURL string, sender webPushSender,
 ) *WebPushTransport {
 	return &WebPushTransport{
 		subscriptions: subscriptions, preferences: preferences, delivery: delivery,
 		followers: followers, participants: participants, summaries: summaries,
-		baseURL: baseURL, sender: sender,
+		gameNicks: gameNicks, baseURL: baseURL, sender: sender,
 	}
 }
 
@@ -126,6 +132,13 @@ func (t *WebPushTransport) Targets(ctx context.Context, activity Activity) ([]Ta
 		}
 	}
 	return targets, nil
+}
+
+func (t *WebPushTransport) actorGameNick(ctx context.Context, activity Activity) (string, error) {
+	if activity.Kind != ActivityJoined && activity.Kind != ActivityLeft {
+		return "", nil
+	}
+	return t.gameNicks.GetGameNick(ctx, activity.ActorID)
 }
 
 func dedupeExcept(userIDs []string, exclude string) []string {
