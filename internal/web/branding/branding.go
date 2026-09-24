@@ -50,7 +50,7 @@ type Assets struct {
 	IconStylesheet string
 	Script         string
 	Mascot         string
-	// MascotSad is shown when a Game Request filter matches nothing.
+	// MascotSad is shown on the empty Game Request list.
 	MascotSad string
 	// PrimaryFontItalic carries the wordmark, which is the only italic in the
 	// system, so it is preloaded beside the upright face.

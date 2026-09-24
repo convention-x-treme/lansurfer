@@ -1610,23 +1610,13 @@
     object-fit: contain;
   }
 
-  /* The no-match otter is a full-body portrait, so it stands on the panel
-     floor instead of shrinking into the square mascot slot. The artwork
+  /* The Game Request list's empty otter is a full-body portrait, so it gets a portrait slot
+     inside the panel padding rather than the square mascot slot. The artwork
      gestures to its own right; mirroring it points the open paw at the copy. */
-  .request-empty-miss {
-    align-items: flex-end;
-    padding-block-end: 0;
-  }
-
-  .request-empty-miss img {
+  .request-empty-portrait img {
     width: auto;
-    height: 11rem;
+    height: 9rem;
     transform: scaleX(-1);
-  }
-
-  .request-empty-miss > div {
-    align-self: center;
-    padding-block-end: 1.5rem;
   }
 
   .composer-panel {
@@ -2086,38 +2076,53 @@ textarea::placeholder {
     height: 5rem;
   }
 
-  /* Phones: copy spans the panel; the action shares the floor row with the
+  /* Phones: copy spans the panel; the action shares the last row with the
      otter, whose unmirrored paw now points back at the button. */
-  .request-empty-miss {
+  .request-empty-portrait {
     display: grid;
-    grid-template-columns: 1fr auto;
+    grid-template-columns: max-content minmax(0, 1fr);
     gap: 0 1rem;
   }
 
-  .request-empty-miss > div {
+  .request-empty-portrait > div {
     display: contents;
   }
 
-  .request-empty-miss h2,
-  .request-empty-miss p {
+  .request-empty-portrait h2,
+  .request-empty-portrait p {
     grid-column: 1 / -1;
   }
 
-  .request-empty-miss a {
+  .request-empty-portrait a {
     grid-row: 3;
     grid-column: 1;
     align-self: center;
     justify-self: start;
     margin-block-start: 0;
+    white-space: nowrap;
   }
 
-  .request-empty-miss img {
+  .request-empty-portrait img {
     grid-row: 3;
     grid-column: 2;
+    justify-self: end;
     width: auto;
     height: 7rem;
     margin-block-start: 0.75rem;
     transform: none;
+  }
+
+  /* Too narrow for the button and the otter side by side: the otter takes
+     its own row under the action instead of shrinking to a thumbnail. */
+  @media (max-width: 23.99rem) {
+    .request-empty-portrait img {
+      grid-row: 4;
+      grid-column: 1 / -1;
+    }
+
+    .request-empty-portrait a {
+      margin-block-start: 1.25rem;
+    }
   }
 
   .member-row,
