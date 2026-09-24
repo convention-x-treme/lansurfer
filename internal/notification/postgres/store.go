@@ -496,6 +496,50 @@ func (s *Store) DeleteDiscordDestination(ctx context.Context) error {
 	return nil
 }
 
+// CreateDiscordSetupState persists a new one-use OAuth setup state bound to
+// initiatingAdminID and the given browser/session binding hash. Callers
+// pass only hashed state/browser-binding secrets; the raw values never
+// reach persistence.
+func (s *Store) CreateDiscordSetupState(ctx context.Context, stateHash, browserBindingHash []byte, initiatingAdminID string, expiresAt time.Time) (notification.DiscordSetupState, error) {
+	adminID, err := parseUUID(initiatingAdminID)
+	if err != nil {
+		return notification.DiscordSetupState{}, fmt.Errorf("parse initiating admin id: %w", err)
+	}
+	row, err := s.queries.CreateDiscordSetupState(ctx, sqlcgen.CreateDiscordSetupStateParams{
+		StateHash: stateHash, InitiatingAdminID: adminID, BrowserBindingHash: browserBindingHash,
+		ExpiresAt: pgtype.Timestamptz{Time: expiresAt, Valid: true},
+	})
+	if err != nil {
+		return notification.DiscordSetupState{}, fmt.Errorf("create discord setup state: %w", err)
+	}
+	return notification.DiscordSetupState{ID: row.ID, InitiatingAdminID: initiatingAdminID, ExpiresAt: row.ExpiresAt.Time}, nil
+}
+
+// ConsumeDiscordSetupState atomically marks the matching, unconsumed,
+// unexpired state consumed in one UPDATE statement: PostgreSQL's row-level
+// locking on that single statement means concurrent callers racing the
+// same state can never both succeed, without any application-level lock.
+// It returns notification.ErrDiscordSetupStateInvalid for any unknown
+// state, replay, expiry, or admin/browser-binding mismatch, deliberately
+// without distinguishing which.
+func (s *Store) ConsumeDiscordSetupState(ctx context.Context, stateHash, browserBindingHash []byte, initiatingAdminID string, now time.Time) (notification.DiscordSetupState, error) {
+	adminID, err := parseUUID(initiatingAdminID)
+	if err != nil {
+		return notification.DiscordSetupState{}, notification.ErrDiscordSetupStateInvalid
+	}
+	row, err := s.queries.ConsumeDiscordSetupState(ctx, sqlcgen.ConsumeDiscordSetupStateParams{
+		Now: pgtype.Timestamptz{Time: now, Valid: true}, StateHash: stateHash,
+		BrowserBindingHash: browserBindingHash, InitiatingAdminID: adminID,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return notification.DiscordSetupState{}, notification.ErrDiscordSetupStateInvalid
+	}
+	if err != nil {
+		return notification.DiscordSetupState{}, fmt.Errorf("consume discord setup state: %w", err)
+	}
+	return notification.DiscordSetupState{ID: row.ID, InitiatingAdminID: row.InitiatingAdminID}, nil
+}
+
 func parseUUID(value string) (pgtype.UUID, error) {
 	var id pgtype.UUID
 	if err := id.Scan(value); err != nil {

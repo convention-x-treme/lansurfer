@@ -3,7 +3,10 @@
 package postgres
 
 import (
+	"errors"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -301,5 +304,133 @@ func TestDiscordDestinationPersistsOnlyEncryptedCredential(t *testing.T) {
 	}
 	if brokenCiphertext != nil {
 		t.Fatal("broken destination row still has a credential ciphertext")
+	}
+}
+
+// The Store wrapper around ConsumeDiscordSetupState is what
+// DiscordSetupService actually calls: it must translate pgx.ErrNoRows into
+// notification.ErrDiscordSetupStateInvalid and never mutate any
+// destination row as a side effect of an invalid consume attempt.
+func TestDiscordSetupStateStoreRejectsWrongAdminWithoutTouchingDestination(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+	users := user.NewService(userpostgres.NewStore(pool))
+	admin, err := users.Register(t.Context(), "Setup Admin")
+	if err != nil {
+		t.Fatalf("register admin: %v", err)
+	}
+	otherAdmin, err := users.Register(t.Context(), "Other Admin")
+	if err != nil {
+		t.Fatalf("register other admin: %v", err)
+	}
+	store := notificationpostgres.NewStore(pool)
+
+	stateHash := make([]byte, 32)
+	browserHash := make([]byte, 32)
+	for i := range stateHash {
+		stateHash[i] = byte(i + 10)
+		browserHash[i] = byte(i + 20)
+	}
+	if _, err := store.CreateDiscordSetupState(t.Context(), stateHash, browserHash, admin.ID, time.Now().Add(5*time.Minute)); err != nil {
+		t.Fatalf("CreateDiscordSetupState() error = %v", err)
+	}
+
+	if _, err := store.ConsumeDiscordSetupState(t.Context(), stateHash, browserHash, otherAdmin.ID, time.Now()); !errors.Is(err, notification.ErrDiscordSetupStateInvalid) {
+		t.Fatalf("ConsumeDiscordSetupState() with wrong admin error = %v, want ErrDiscordSetupStateInvalid", err)
+	}
+
+	// The correct admin can still consume it afterward: the wrong-admin
+	// attempt above must not have consumed or corrupted the row.
+	consumed, err := store.ConsumeDiscordSetupState(t.Context(), stateHash, browserHash, admin.ID, time.Now())
+	if err != nil {
+		t.Fatalf("ConsumeDiscordSetupState() with correct admin error = %v", err)
+	}
+	if consumed.InitiatingAdminID != admin.ID {
+		t.Fatalf("consumed.InitiatingAdminID = %q, want %q", consumed.InitiatingAdminID, admin.ID)
+	}
+
+	var destinationRowCount int
+	if err := pool.QueryRow(t.Context(), `SELECT count(*) FROM notification_discord_destination`).Scan(&destinationRowCount); err != nil {
+		t.Fatalf("count destinations: %v", err)
+	}
+	if destinationRowCount != 0 {
+		t.Fatalf("destination row count = %d, want 0: setup-state consume must never touch the destination table", destinationRowCount)
+	}
+}
+
+// The one-use claim is enforced by a single atomic UPDATE statement, not
+// application-level locking: racing every consume attempt concurrently
+// against the same state must let exactly one succeed regardless of
+// goroutine scheduling.
+func TestDiscordSetupStateConcurrentConsumeSucceedsExactlyOnce(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+	users := user.NewService(userpostgres.NewStore(pool))
+	admin, err := users.Register(t.Context(), "Setup Admin")
+	if err != nil {
+		t.Fatalf("register admin: %v", err)
+	}
+	store := notificationpostgres.NewStore(pool)
+
+	stateHash := make([]byte, 32)
+	browserHash := make([]byte, 32)
+	for i := range stateHash {
+		stateHash[i] = byte(i + 30)
+		browserHash[i] = byte(i + 40)
+	}
+	if _, err := store.CreateDiscordSetupState(t.Context(), stateHash, browserHash, admin.ID, time.Now().Add(5*time.Minute)); err != nil {
+		t.Fatalf("CreateDiscordSetupState() error = %v", err)
+	}
+
+	const attempts = 20
+	var wg sync.WaitGroup
+	var successes int64
+	for range attempts {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, err := store.ConsumeDiscordSetupState(t.Context(), stateHash, browserHash, admin.ID, time.Now()); err == nil {
+				atomic.AddInt64(&successes, 1)
+			}
+		}()
+	}
+	wg.Wait()
+
+	if successes != 1 {
+		t.Fatalf("concurrent ConsumeDiscordSetupState() successes = %d, want exactly 1", successes)
+	}
+}
+
+// The setup-state operation column is fixed to exactly one legal value by
+// a table CHECK constraint, so "configure Discord destination" binding is
+// enforced by the database itself: no other operation value can ever be
+// stored or match a lookup.
+func TestDiscordSetupStateOperationIsDatabaseEnforced(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+	users := user.NewService(userpostgres.NewStore(pool))
+	admin, err := users.Register(t.Context(), "Setup Admin")
+	if err != nil {
+		t.Fatalf("register admin: %v", err)
+	}
+
+	stateHash := make([]byte, 32)
+	browserHash := make([]byte, 32)
+	for i := range stateHash {
+		stateHash[i] = byte(i + 50)
+		browserHash[i] = byte(i + 60)
+	}
+	if _, err := pool.Exec(t.Context(), `
+		INSERT INTO notification_discord_setup_state
+			(state_hash, initiating_admin_id, browser_binding_hash, operation, expires_at)
+		VALUES ($1, $2::uuid, $3, 'some_other_operation', now() + interval '5 minutes')
+	`, stateHash, admin.ID, browserHash); err == nil {
+		t.Fatal("insert with a non-configure_discord_destination operation succeeded, want a CHECK violation")
 	}
 }
