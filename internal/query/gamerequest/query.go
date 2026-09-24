@@ -279,6 +279,23 @@ func (s *Store) GetGameRequestSummary(ctx context.Context, gameRequestID string)
 	}, nil
 }
 
+// ListParticipants returns current membership without viewer-specific detail reads.
+func (s *Store) ListParticipants(ctx context.Context, gameRequestID string) ([]string, error) {
+	id, err := parseUUID(gameRequestID)
+	if err != nil {
+		return nil, domain.ErrNotFound
+	}
+	rows, err := s.queries.ListGameRequestMembers(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("list game request members: %w", err)
+	}
+	users := make([]string, 0, len(rows))
+	for _, row := range rows {
+		users = append(users, row.UserID)
+	}
+	return users, nil
+}
+
 // RecentlyViewed returns the viewer's own reading history, newest first,
 // bounded by recentlyViewedLimit. It is per-viewer and never filtered by
 // status: history states what the player read, not what is still open.

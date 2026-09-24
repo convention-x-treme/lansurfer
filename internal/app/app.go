@@ -17,6 +17,7 @@ import (
 	gamepostgres "github.com/convention-x-treme/lansurfer/internal/game/postgres"
 	"github.com/convention-x-treme/lansurfer/internal/gamerequest"
 	gamerequestpostgres "github.com/convention-x-treme/lansurfer/internal/gamerequest/postgres"
+	"github.com/convention-x-treme/lansurfer/internal/notification"
 	notificationpostgres "github.com/convention-x-treme/lansurfer/internal/notification/postgres"
 	"github.com/convention-x-treme/lansurfer/internal/platform/config"
 	"github.com/convention-x-treme/lansurfer/internal/platform/postgres"
@@ -126,22 +127,28 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	realtime := sse.NewBroker()
 	gameRequests := gamerequest.NewService(gamerequestpostgres.NewStore(pool), gameService, realtime)
 	gameRequestQueries := gamerequestquery.NewStore(pool)
-	notificationWorker := newNotificationWorker(notificationStore, logger)
-	subscriptionService, err := newSubscriptionService(notificationStore, cfg.DataEncryptionKey)
-	if err != nil {
-		return fmt.Errorf("construct Web Push subscription service: %w", err)
-	}
-	var vapidPublicKey string
-	if cfg.WebPush != nil {
-		vapidPublicKey = cfg.WebPush.PublicKey
-	}
 	var igdbCreds igdbCredentials
 	if cfg.Twitch != nil {
 		igdbCreds = igdbCredentials{Enabled: cfg.Twitch.IGDBEnabled, ClientID: cfg.Twitch.ClientID, ClientSecret: cfg.Twitch.ClientSecret}
 	}
 	igdbSyncService := newIGDBSync(ctx, igdbCreds, gameStore, logger)
 	gameDiscovery := game.NewDiscoveryService(gameStore, gameStore, gameStore, igdbSyncService)
-
+	transports, err := notificationTransports(cfg, notificationStore, gameDiscovery, gameRequestQueries, userService)
+	if err != nil {
+		return err
+	}
+	notificationWorker := newNotificationWorker(notificationStore, transports, logger)
+	var subscriptionService *notification.SubscriptionService
+	if cfg.WebPush != nil {
+		subscriptionService, err = newSubscriptionService(notificationStore, cfg.DataEncryptionKey)
+		if err != nil {
+			return fmt.Errorf("construct Web Push subscription service: %w", err)
+		}
+	}
+	var vapidPublicKey string
+	if cfg.WebPush != nil {
+		vapidPublicKey = cfg.WebPush.PublicKey
+	}
 	server := &http.Server{
 		Addr: cfg.ListenAddr,
 		Handler: web.NewRouter(web.RouterDependencies{

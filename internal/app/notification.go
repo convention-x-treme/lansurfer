@@ -7,10 +7,12 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/convention-x-treme/lansurfer/internal/game"
 	"github.com/convention-x-treme/lansurfer/internal/notification"
 	notificationpostgres "github.com/convention-x-treme/lansurfer/internal/notification/postgres"
 	"github.com/convention-x-treme/lansurfer/internal/platform/config"
 	platformpostgres "github.com/convention-x-treme/lansurfer/internal/platform/postgres"
+	gamerequestquery "github.com/convention-x-treme/lansurfer/internal/query/gamerequest"
 	"github.com/convention-x-treme/lansurfer/internal/user"
 )
 
@@ -19,8 +21,8 @@ import (
 // application's own ctx), matching appBoundIGDBSync's rationale: a
 // background worker must keep running, and be cancellable only by
 // application shutdown, independent of any single request.
-func newNotificationWorker(store *notificationpostgres.Store, logger *slog.Logger) *notification.Worker {
-	return notification.NewWorker(store, notificationTransports(), logger, time.Now)
+func newNotificationWorker(store *notificationpostgres.Store, transports []notification.Transport, logger *slog.Logger) *notification.Worker {
+	return notification.NewWorker(store, transports, logger, time.Now)
 }
 
 // newSubscriptionService constructs the Web Push subscription/preference
@@ -31,15 +33,37 @@ func newSubscriptionService(store *notificationpostgres.Store, encryptionKey []b
 	return notification.NewSubscriptionService(store, store, encryptionKey)
 }
 
-// notificationTransports is the single place every notification.Transport
-// this application registers is listed. newNotificationWorker and the CLI
-// diagnostics/retry helpers below all call this rather than passing nil
-// directly, so a transport added here reaches manual retry too instead of
-// leaving it permanently unable to find the transport it needs.
-//
-// E1 registers none. E2/E3 append their transports here as they land.
-func notificationTransports() []notification.Transport {
-	return nil
+// notificationTransports constructs the runtime's Web Push transport once for
+// both worker delivery and service eligibility checks.
+func notificationTransports(cfg config.Config, store *notificationpostgres.Store, followers *game.DiscoveryService, requests *gamerequestquery.Store, users *user.Service) ([]notification.Transport, error) {
+	if cfg.WebPush == nil {
+		return nil, nil
+	}
+	if len(cfg.DataEncryptionKey) != 32 {
+		return nil, fmt.Errorf("construct Web Push transport: invalid data-encryption key")
+	}
+	sender, err := notification.NewWebPushSender(cfg.WebPush.PublicKey, cfg.WebPush.PrivateKey, cfg.WebPush.Subject)
+	if err != nil {
+		return nil, fmt.Errorf("construct Web Push transport: %w", err)
+	}
+	instanceName := cfg.InstanceName
+	if instanceName == "" {
+		instanceName = "LANsurfer"
+	}
+	return []notification.Transport{notification.NewWebPushTransport(
+		store, store, store, followers, requests, notificationRequestSummaries{requests}, notificationGameNickReader{users},
+		cfg.BaseURL, instanceName, cfg.DataEncryptionKey, sender,
+	)}, nil
+}
+
+type notificationRequestSummaries struct{ requests *gamerequestquery.Store }
+
+func (r notificationRequestSummaries) GetGameRequestSummary(ctx context.Context, id string) (notification.GameRequestSummary, error) {
+	summary, err := r.requests.GetGameRequestSummary(ctx, id)
+	if err != nil {
+		return notification.GameRequestSummary{}, err
+	}
+	return notification.GameRequestSummary{GameID: summary.GameID, GameName: summary.GameName, StartsAt: summary.StartsAt}, nil
 }
 
 type notificationGameNickReader struct {
@@ -73,7 +97,7 @@ func ListNotificationProblems(ctx context.Context, cfg config.Config, logger *sl
 		return nil, fmt.Errorf("apply database migrations: %w", err)
 	}
 
-	service := notification.NewService(notificationpostgres.NewStore(pool), notificationTransports())
+	service := notification.NewService(notificationpostgres.NewStore(pool), nil)
 	problems, err := service.ListProblems(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list notification problems: %w", err)
@@ -115,7 +139,7 @@ func retryNotificationDelivery(ctx context.Context, cfg config.Config, deliveryI
 		return fmt.Errorf("apply database migrations: %w", err)
 	}
 
-	service := notification.NewService(notificationpostgres.NewStore(pool), notificationTransports())
+	service := notification.NewService(notificationpostgres.NewStore(pool), nil)
 	if uncertain {
 		return service.ManualRetryUncertain(ctx, id)
 	}

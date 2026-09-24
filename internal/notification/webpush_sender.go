@@ -19,6 +19,11 @@ type libraryWebPushSender struct {
 	subject string
 }
 
+// NewWebPushSender constructs the bounded production sender without provider I/O.
+func NewWebPushSender(publicKey, privateKey, subject string) (*libraryWebPushSender, error) {
+	return newWebPushSender(publicKey, privateKey, subject, nil)
+}
+
 func newWebPushSender(publicKey, privateKey, subject string, httpClient webpush.HTTPClient) (*libraryWebPushSender, error) {
 	if subject == "" {
 		return nil, errors.New("Web Push VAPID subject required")
