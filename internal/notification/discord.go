@@ -146,4 +146,11 @@ type DiscordWebhookOAuthResult struct {
 type DiscordWebhookOAuthProvider interface {
 	AuthorizationURL(state string) string
 	Exchange(ctx context.Context, code string) (DiscordWebhookOAuthResult, error)
+	// DeleteWebhook best-effort deletes a webhook this provider previously
+	// created, using only credential (the webhook-token API needs no
+	// separate OAuth token). Callers use this exclusively for immediate,
+	// best-effort cleanup of a webhook that is no longer any destination's
+	// active credential; failure here must never roll back or block a
+	// local destination change that already committed.
+	DeleteWebhook(ctx context.Context, credential DiscordWebhookCredential) error
 }

@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 )
@@ -102,4 +103,91 @@ func randomDiscordSetupState() (string, error) {
 
 func hashDiscordSetupSecret(value string) [sha256.Size]byte {
 	return sha256.Sum256([]byte(value))
+}
+
+// DiscordConnectService installs or replaces the instance's single Discord
+// destination after a successful, already-validated OAuth callback (see
+// DiscordSetupService.Consume). It owns exactly the approved "destination
+// replacement" transaction semantics: the previous destination stays
+// active until the new one is durably stored, and only a successful local
+// commit may trigger a best-effort remote cleanup of the old webhook.
+//
+// DiscordConnectService performs no setup-state check itself; callers must
+// only reach Connect after Consume has already validated the state/admin/
+// browser binding.
+type DiscordConnectService struct {
+	destinations  DiscordDestinationRepository
+	provider      DiscordWebhookOAuthProvider
+	encryptionKey []byte
+	logger        *slog.Logger
+}
+
+func NewDiscordConnectService(destinations DiscordDestinationRepository, provider DiscordWebhookOAuthProvider, encryptionKey []byte, logger *slog.Logger) *DiscordConnectService {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return &DiscordConnectService{destinations: destinations, provider: provider, encryptionKey: encryptionKey, logger: logger}
+}
+
+// Connect exchanges code for a newly authorized webhook, encrypts its
+// credential, and atomically installs it as the singleton destination,
+// replacing any existing one. ConnectDiscordDestination is one atomic
+// database statement (INSERT ... ON CONFLICT DO UPDATE against the
+// destination's boolean singleton primary key), so a failure exchanging,
+// encrypting, or storing leaves any previous destination completely
+// unchanged: there is no intermediate phase in which no valid destination
+// exists, and no old-then-new delete/insert pair outside that one
+// statement.
+//
+// Connect never scans or replays historical notification_work: it only
+// ever touches the destination row itself.
+func (s *DiscordConnectService) Connect(ctx context.Context, code string) error {
+	result, err := s.provider.Exchange(ctx, code)
+	if err != nil {
+		return fmt.Errorf("exchange discord webhook oauth code: %w", err)
+	}
+
+	previous, previousCiphertext, err := s.destinations.GetDiscordDestination(ctx)
+	hadPreviousConnectedWebhook := err == nil && previous.State == DiscordDestinationConnected && len(previousCiphertext) > 0
+	if err != nil && !errors.Is(err, ErrDiscordDestinationNotFound) {
+		return fmt.Errorf("get existing discord destination: %w", err)
+	}
+
+	ciphertext, err := EncryptDiscordCredential(s.encryptionKey, result.Credential)
+	if err != nil {
+		return fmt.Errorf("encrypt discord webhook credential: %w", err)
+	}
+
+	destination := DiscordDestination{
+		State: DiscordDestinationConnected, GuildID: result.GuildID, ChannelID: result.ChannelID, WebhookName: result.WebhookName,
+	}
+	if err := s.destinations.ConnectDiscordDestination(ctx, destination, ciphertext); err != nil {
+		return fmt.Errorf("install discord destination: %w", err)
+	}
+
+	// The new destination is now durably committed. Only now, and only
+	// best-effort, may the old remote webhook be cleaned up: a missing
+	// previous destination, a broken one (already credential-less), or a
+	// cleanup failure below must never roll back or block the replacement
+	// that has already succeeded.
+	if hadPreviousConnectedWebhook {
+		s.cleanupOldWebhook(ctx, previousCiphertext)
+	}
+	return nil
+}
+
+// cleanupOldWebhook decrypts ciphertext only in memory, in this immediate
+// cleanup path, and deletes the resulting credential's remote webhook.
+// Neither the decrypted credential nor the delete failure below is ever
+// logged with secret material: only the safe diagnostic error message
+// (never containing webhook ID/token) is recorded.
+func (s *DiscordConnectService) cleanupOldWebhook(ctx context.Context, ciphertext DiscordCredentialCiphertext) {
+	credential, err := DecryptDiscordCredential(s.encryptionKey, ciphertext)
+	if err != nil {
+		s.logger.Error("decrypt previous discord webhook credential for cleanup", "error", err)
+		return
+	}
+	if err := s.provider.DeleteWebhook(ctx, credential); err != nil {
+		s.logger.Error("delete previous discord webhook", "error", err)
+	}
 }

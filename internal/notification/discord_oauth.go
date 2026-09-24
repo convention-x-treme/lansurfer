@@ -14,6 +14,10 @@ import (
 const (
 	discordWebhookAuthorizationURL = "https://discord.com/oauth2/authorize"
 	discordWebhookTokenURL         = "https://discord.com/api/oauth2/token"
+	// discordWebhookAPIURL is the webhook-token management endpoint base:
+	// DELETE {discordWebhookAPIURL}/{id}/{token} deletes a webhook using
+	// only its own credential, with no bot/gateway/OAuth-token involved.
+	discordWebhookAPIURL = "https://discord.com/api/webhooks"
 	// discordWebhookScope is the only scope this client ever requests.
 	// Discord delivery must never request identify, guilds, bot, or
 	// applications.commands: those belong to Discord login or a bot/gateway
@@ -149,4 +153,28 @@ func (c *DiscordWebhookOAuthClient) Exchange(ctx context.Context, code string) (
 		ChannelID:   webhook.ChannelID,
 		WebhookName: name,
 	}, nil
+}
+
+// DeleteWebhook best-effort deletes the webhook identified by credential
+// using the webhook-token management endpoint, which needs only the
+// webhook's own ID/token: no bot, gateway, or OAuth access token is
+// involved. Callers must treat any error as non-fatal cleanup failure;
+// this method never distinguishes "already gone" from other failures, so
+// callers must not infer destination state from it.
+func (c *DiscordWebhookOAuthClient) DeleteWebhook(ctx context.Context, credential DiscordWebhookCredential) error {
+	endpoint := discordWebhookAPIURL + "/" + url.PathEscape(credential.WebhookID) + "/" + url.PathEscape(credential.WebhookToken)
+	request, err := http.NewRequestWithContext(ctx, http.MethodDelete, endpoint, nil)
+	if err != nil {
+		return fmt.Errorf("create discord webhook delete request: %w", err)
+	}
+	response, err := c.httpClient.Do(request)
+	if err != nil {
+		return fmt.Errorf("delete discord webhook: %w", err)
+	}
+	defer response.Body.Close()
+	_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, discordTokenBodyLimit))
+	if response.StatusCode != http.StatusOK && response.StatusCode != http.StatusNoContent && response.StatusCode != http.StatusNotFound {
+		return fmt.Errorf("delete discord webhook: status %d", response.StatusCode)
+	}
+	return nil
 }

@@ -234,3 +234,50 @@ func TestDiscordWebhookExchangeMalformedJSONFailsClosed(t *testing.T) {
 		t.Fatal("Exchange() with malformed JSON succeeded, want an error")
 	}
 }
+
+func TestDiscordWebhookDeleteWebhookSendsCredentialInPathOnly(t *testing.T) {
+	var gotMethod, gotPath string
+	client := testDiscordWebhookOAuthClient(t, func(w http.ResponseWriter, r *http.Request) {
+		gotMethod, gotPath = r.Method, r.URL.Path
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	credential := DiscordWebhookCredential{WebhookID: "webhook-id-1", WebhookToken: "webhook-token-1"}
+	if err := client.DeleteWebhook(context.Background(), credential); err != nil {
+		t.Fatalf("DeleteWebhook() error = %v", err)
+	}
+	if gotMethod != http.MethodDelete {
+		t.Fatalf("method = %q, want DELETE", gotMethod)
+	}
+	if gotPath != "/api/webhooks/webhook-id-1/webhook-token-1" {
+		t.Fatalf("path = %q, want /api/webhooks/webhook-id-1/webhook-token-1", gotPath)
+	}
+}
+
+func TestDiscordWebhookDeleteWebhookTreatsAlreadyDeletedAsSuccess(t *testing.T) {
+	client := testDiscordWebhookOAuthClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"code": 10015, "message": "Unknown Webhook"}`))
+	})
+
+	credential := DiscordWebhookCredential{WebhookID: "webhook-id-1", WebhookToken: "webhook-token-1"}
+	if err := client.DeleteWebhook(context.Background(), credential); err != nil {
+		t.Fatalf("DeleteWebhook() for an already-deleted webhook error = %v, want nil", err)
+	}
+}
+
+func TestDiscordWebhookDeleteWebhookFailureNeverLeaksCredential(t *testing.T) {
+	client := testDiscordWebhookOAuthClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"message": "server error"}`))
+	})
+
+	credential := DiscordWebhookCredential{WebhookID: "webhook-id-secret", WebhookToken: "webhook-token-secret"}
+	err := client.DeleteWebhook(context.Background(), credential)
+	if err == nil {
+		t.Fatal("DeleteWebhook() with a 500 response succeeded, want an error")
+	}
+	if strings.Contains(err.Error(), credential.WebhookID) || strings.Contains(err.Error(), credential.WebhookToken) {
+		t.Fatalf("error leaked the webhook credential: %v", err)
+	}
+}

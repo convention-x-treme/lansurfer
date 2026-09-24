@@ -3,6 +3,7 @@
 package postgres
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"sync"
@@ -18,6 +19,7 @@ import (
 	userpostgres "github.com/convention-x-treme/lansurfer/internal/user/postgres"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func discordAdminUUID(t *testing.T, id string) pgtype.UUID {
@@ -432,5 +434,239 @@ func TestDiscordSetupStateOperationIsDatabaseEnforced(t *testing.T) {
 		VALUES ($1, $2::uuid, $3, 'some_other_operation', now() + interval '5 minutes')
 	`, stateHash, admin.ID, browserHash); err == nil {
 		t.Fatal("insert with a non-configure_discord_destination operation succeeded, want a CHECK violation")
+	}
+}
+
+// fakeDiscordWebhookOAuthProviderForConnect is a minimal
+// notification.DiscordWebhookOAuthProvider used only to drive
+// notification.DiscordConnectService against a real Store: no real
+// network/Discord call is made, and every DeleteWebhook call is recorded
+// with the wall-clock order it happened in relative to the local commit.
+type fakeDiscordWebhookOAuthProviderForConnect struct {
+	exchangeResult notification.DiscordWebhookOAuthResult
+	exchangeErr    error
+
+	deleteCalls       int
+	deletedCredential notification.DiscordWebhookCredential
+	deleteErr         error
+}
+
+func (f *fakeDiscordWebhookOAuthProviderForConnect) AuthorizationURL(string) string { return "" }
+
+func (f *fakeDiscordWebhookOAuthProviderForConnect) Exchange(context.Context, string) (notification.DiscordWebhookOAuthResult, error) {
+	if f.exchangeErr != nil {
+		return notification.DiscordWebhookOAuthResult{}, f.exchangeErr
+	}
+	return f.exchangeResult, nil
+}
+
+func (f *fakeDiscordWebhookOAuthProviderForConnect) DeleteWebhook(_ context.Context, credential notification.DiscordWebhookCredential) error {
+	f.deleteCalls++
+	f.deletedCredential = credential
+	return f.deleteErr
+}
+
+// A successful replacement against a real Store leaves exactly the new
+// destination active, and the old remote webhook delete only happens after
+// that local row is already durably committed: this test proves the
+// commit happened first by reading the row back inside the provider's
+// DeleteWebhook call itself, before DiscordConnectService.Connect returns.
+func TestDiscordConnectServiceReplacementCommitsBeforeRemoteCleanup(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+	store := notificationpostgres.NewStore(pool)
+	key := make([]byte, crypto.KeySize)
+	for i := range key {
+		key[i] = byte(i + 11)
+	}
+
+	oldCredential := notification.DiscordWebhookCredential{WebhookID: "old-webhook-id", WebhookToken: "old-webhook-token"}
+	oldCiphertext, err := notification.EncryptDiscordCredential(key, oldCredential)
+	if err != nil {
+		t.Fatalf("EncryptDiscordCredential() error = %v", err)
+	}
+	if err := store.ConnectDiscordDestination(t.Context(), notification.DiscordDestination{
+		GuildID: "guild-old", ChannelID: "channel-old",
+	}, oldCiphertext); err != nil {
+		t.Fatalf("seed old ConnectDiscordDestination() error = %v", err)
+	}
+
+	var sawNewGuildIDDuringCleanup string
+	provider := &fakeDiscordWebhookOAuthProviderForConnect{
+		exchangeResult: notification.DiscordWebhookOAuthResult{
+			Credential: notification.DiscordWebhookCredential{WebhookID: "new-webhook-id", WebhookToken: "new-webhook-token"},
+			GuildID:    "guild-new", ChannelID: "channel-new", WebhookName: "New Destination",
+		},
+	}
+	connect := notification.NewDiscordConnectService(store, providerRecordingCommittedGuildID{
+		DiscordWebhookOAuthProvider: provider,
+		pool:                        pool,
+		t:                           t,
+		observed:                    &sawNewGuildIDDuringCleanup,
+	}, key, nil)
+
+	if err := connect.Connect(t.Context(), "the-code"); err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+
+	if sawNewGuildIDDuringCleanup != "guild-new" {
+		t.Fatalf("guild_id visible during remote cleanup = %q, want the NEW destination already committed", sawNewGuildIDDuringCleanup)
+	}
+	if provider.deleteCalls != 1 {
+		t.Fatalf("DeleteWebhook calls = %d, want exactly 1", provider.deleteCalls)
+	}
+	if provider.deletedCredential != oldCredential {
+		t.Fatalf("DeleteWebhook credential = %#v, want the OLD credential %#v", provider.deletedCredential, oldCredential)
+	}
+
+	destination, ciphertext, err := store.GetDiscordDestination(t.Context())
+	if err != nil {
+		t.Fatalf("GetDiscordDestination() error = %v", err)
+	}
+	if destination.GuildID != "guild-new" || destination.State != notification.DiscordDestinationConnected {
+		t.Fatalf("destination = %#v, want exactly the new connected destination", destination)
+	}
+	decrypted, err := notification.DecryptDiscordCredential(key, ciphertext)
+	if err != nil {
+		t.Fatalf("DecryptDiscordCredential() error = %v", err)
+	}
+	if decrypted.WebhookID != "new-webhook-id" {
+		t.Fatalf("stored credential = %#v, want the new webhook ID", decrypted)
+	}
+
+	var rowCount int
+	if err := pool.QueryRow(t.Context(), `SELECT count(*) FROM notification_discord_destination`).Scan(&rowCount); err != nil {
+		t.Fatalf("count destinations: %v", err)
+	}
+	if rowCount != 1 {
+		t.Fatalf("notification_discord_destination row count = %d, want exactly 1 (singleton)", rowCount)
+	}
+}
+
+// providerRecordingCommittedGuildID wraps a provider and, on DeleteWebhook,
+// reads the destination row's guild_id directly from the database so the
+// test can assert the new row was already durably committed before any
+// remote cleanup attempt runs.
+type providerRecordingCommittedGuildID struct {
+	notification.DiscordWebhookOAuthProvider
+	pool     *pgxpool.Pool
+	t        *testing.T
+	observed *string
+}
+
+func (p providerRecordingCommittedGuildID) DeleteWebhook(ctx context.Context, credential notification.DiscordWebhookCredential) error {
+	p.t.Helper()
+	var guildID string
+	if err := p.pool.QueryRow(ctx, `SELECT guild_id FROM notification_discord_destination WHERE id = true`).Scan(&guildID); err != nil {
+		p.t.Fatalf("read destination guild_id during cleanup: %v", err)
+	}
+	*p.observed = guildID
+	return p.DiscordWebhookOAuthProvider.DeleteWebhook(ctx, credential)
+}
+
+// A local storage failure (here, a database CHECK-constraint violation
+// enforced on the destination row itself) must leave the old destination
+// completely unchanged, and must never attempt a remote cleanup: the new
+// destination was never durably committed.
+func TestDiscordConnectServiceStorageFailureAgainstRealStoreLeavesOldDestinationActive(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+	store := notificationpostgres.NewStore(pool)
+	key := make([]byte, crypto.KeySize)
+	for i := range key {
+		key[i] = byte(i + 13)
+	}
+
+	oldCiphertext, err := notification.EncryptDiscordCredential(key, notification.DiscordWebhookCredential{WebhookID: "old-id", WebhookToken: "old-token"})
+	if err != nil {
+		t.Fatalf("EncryptDiscordCredential() error = %v", err)
+	}
+	if err := store.ConnectDiscordDestination(t.Context(), notification.DiscordDestination{
+		GuildID: "guild-old", ChannelID: "channel-old",
+	}, oldCiphertext); err != nil {
+		t.Fatalf("seed old ConnectDiscordDestination() error = %v", err)
+	}
+
+	provider := &fakeDiscordWebhookOAuthProviderForConnect{
+		exchangeResult: notification.DiscordWebhookOAuthResult{
+			// An empty GuildID violates notification_discord_destination's
+			// guild_id CHECK constraint, forcing the single atomic UPSERT
+			// statement to fail rather than simulating failure in Go.
+			Credential: notification.DiscordWebhookCredential{WebhookID: "new-id", WebhookToken: "new-token"},
+			GuildID:    "", ChannelID: "channel-new",
+		},
+	}
+	connect := notification.NewDiscordConnectService(store, provider, key, nil)
+
+	if err := connect.Connect(t.Context(), "the-code"); err == nil {
+		t.Fatal("Connect() with a database-constraint-violating destination succeeded, want an error")
+	}
+	if provider.deleteCalls != 0 {
+		t.Fatalf("DeleteWebhook calls = %d, want 0: the new destination never committed", provider.deleteCalls)
+	}
+
+	destination, ciphertext, err := store.GetDiscordDestination(t.Context())
+	if err != nil {
+		t.Fatalf("GetDiscordDestination() error = %v", err)
+	}
+	if destination.GuildID != "guild-old" {
+		t.Fatalf("destination = %#v, want the OLD destination untouched", destination)
+	}
+	decrypted, err := notification.DecryptDiscordCredential(key, ciphertext)
+	if err != nil {
+		t.Fatalf("DecryptDiscordCredential() error = %v", err)
+	}
+	if decrypted.WebhookID != "old-id" {
+		t.Fatalf("stored credential = %#v, want the OLD credential still active", decrypted)
+	}
+}
+
+// A remote cleanup failure after a successful commit must never be
+// surfaced as a Connect error, and the new destination must stay
+// connected: no rollback, no restore of the old destination.
+func TestDiscordConnectServiceRemoteCleanupFailureAgainstRealStoreLeavesNewDestinationConnected(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+	store := notificationpostgres.NewStore(pool)
+	key := make([]byte, crypto.KeySize)
+	for i := range key {
+		key[i] = byte(i + 17)
+	}
+
+	oldCiphertext, err := notification.EncryptDiscordCredential(key, notification.DiscordWebhookCredential{WebhookID: "old-id", WebhookToken: "old-token"})
+	if err != nil {
+		t.Fatalf("EncryptDiscordCredential() error = %v", err)
+	}
+	if err := store.ConnectDiscordDestination(t.Context(), notification.DiscordDestination{
+		GuildID: "guild-old", ChannelID: "channel-old",
+	}, oldCiphertext); err != nil {
+		t.Fatalf("seed old ConnectDiscordDestination() error = %v", err)
+	}
+
+	provider := &fakeDiscordWebhookOAuthProviderForConnect{
+		exchangeResult: notification.DiscordWebhookOAuthResult{
+			Credential: notification.DiscordWebhookCredential{WebhookID: "new-id", WebhookToken: "new-token"},
+			GuildID:    "guild-new", ChannelID: "channel-new",
+		},
+		deleteErr: errors.New("discord webhook delete unavailable"),
+	}
+	connect := notification.NewDiscordConnectService(store, provider, key, nil)
+
+	if err := connect.Connect(t.Context(), "the-code"); err != nil {
+		t.Fatalf("Connect() error = %v, want nil even though remote cleanup fails", err)
+	}
+
+	destination, _, err := store.GetDiscordDestination(t.Context())
+	if err != nil {
+		t.Fatalf("GetDiscordDestination() error = %v", err)
+	}
+	if destination.GuildID != "guild-new" || destination.State != notification.DiscordDestinationConnected {
+		t.Fatalf("destination = %#v, want the new destination still connected", destination)
 	}
 }
