@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 // Track D's service-worker contract is deliberately narrow: install/activate
 // only, registered once at root scope, swallowing its own failures. These
@@ -138,3 +138,76 @@ for (const state of [
     expect(await page.evaluate(async () => (await navigator.serviceWorker.getRegistration("/"))?.scope)).toBeTruthy();
   });
 }
+
+
+const pushPayload = (origin: string) => ({
+  version: 1,
+  kind: "created",
+  game: "Demo",
+  starts_at: "2026-09-24T12:00:00Z",
+  url: `${origin}/game-requests/request-123`,
+  instance: "LANsurfer",
+  title: "New Demo Game Request",
+  body: "LANsurfer · Starts 2026-09-24T12:00:00Z",
+});
+
+async function openPushChannel(page: Page) {
+  const cdp = await page.context().newCDPSession(page);
+  const origin = new URL(page.url()).origin;
+  let registrationId = "";
+  cdp.on("ServiceWorker.workerRegistrationUpdated", ({ registrations }) => {
+    registrationId = registrations.find((registration) => registration.scopeURL === `${origin}/`)?.registrationId ?? "";
+  });
+  await cdp.send("ServiceWorker.enable");
+  await expect.poll(() => registrationId).not.toBe("");
+  return { cdp, origin, registrationId };
+}
+
+async function deliverPush(page: Page, data: string): Promise<void> {
+  const channel = await openPushChannel(page);
+  await channel.cdp.send("ServiceWorker.deliverPushMessage", {
+    origin: channel.origin,
+    registrationId: channel.registrationId,
+    data,
+  });
+  await channel.cdp.detach();
+}
+
+test("visible LANsurfer window suppresses OS push notification", async ({ page }) => {
+  await page.context().grantPermissions(["notifications"]);
+  await page.goto("/game-requests");
+  await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
+  await deliverPush(page, JSON.stringify(pushPayload(new URL(page.url()).origin)));
+  const notifications = await page.evaluate(async () => (await navigator.serviceWorker.getRegistration("/"))?.getNotifications());
+  expect(notifications).toHaveLength(0);
+});
+
+test("push without visible LANsurfer window shows one OS notification", async ({ page }) => {
+  await page.context().grantPermissions(["notifications"]);
+  await page.goto("/game-requests");
+  await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
+  const channel = await openPushChannel(page);
+  await page.goto("about:blank");
+  await channel.cdp.send("ServiceWorker.deliverPushMessage", {
+    origin: channel.origin,
+    registrationId: channel.registrationId,
+    data: JSON.stringify(pushPayload(channel.origin)),
+  });
+  await page.goto("/game-requests");
+  const notifications = await page.evaluate(async () => (await navigator.serviceWorker.getRegistration("/"))?.getNotifications().then((items) => items.map(({ title, body }) => ({ title, body }))));
+  expect(notifications).toHaveLength(1);
+  expect(notifications?.[0].title).toBe("New Demo Game Request");
+  expect(notifications?.[0].body).toBe("LANsurfer · Starts 2026-09-24T12:00:00Z");
+  await channel.cdp.detach();
+});
+
+test("malformed and unsupported pushes do not crash or notify", async ({ page }) => {
+  await page.context().grantPermissions(["notifications"]);
+  await page.goto("/game-requests");
+  await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
+  await deliverPush(page, "{");
+  await deliverPush(page, JSON.stringify({ ...pushPayload(new URL(page.url()).origin), version: 2 }));
+  const notifications = await page.evaluate(async () => (await navigator.serviceWorker.getRegistration("/"))?.getNotifications());
+  expect(notifications).toHaveLength(0);
+  expect(await page.evaluate(() => navigator.serviceWorker.controller !== null)).toBe(true);
+});
