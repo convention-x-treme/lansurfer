@@ -18,6 +18,22 @@ export function initNotificationSettings(): void {
   const panel = form?.closest<HTMLElement>("[data-vapid-public-key]");
   const publicKey = panel?.dataset.vapidPublicKey;
   if (!form || !button || !status || !publicKey) return;
+  document.querySelectorAll<HTMLFormElement>('[data-current-device-remove="true"]').forEach((removeForm) => {
+    removeForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      void (async () => {
+        try {
+          const { registration } = await registerServiceWorker();
+          const subscription = await registration?.pushManager.getSubscription();
+          await subscription?.unsubscribe();
+        } catch {
+          // Browser cleanup must not block server-side device removal.
+        }
+        removeForm.submit();
+      })();
+    });
+  });
+
 
   const showStatus = (state: string, message: string) => {
     status.dataset.pushState = state;

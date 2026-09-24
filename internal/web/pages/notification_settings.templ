@@ -106,7 +106,7 @@ templ NotificationSettings(brand branding.Brand, navigation components.Navigatio
 									if device.ID == view.CurrentDeviceID {
 										<span class="text-sm text-base-content/70">Current browser</span>
 									}
-									<form method="post" action={ templ.SafeURL(deviceRemovePath(device)) }>
+									<form method="post" action={ templ.SafeURL(deviceRemovePath(device)) } data-current-device-remove={ strconv.FormatBool(device.ID == view.CurrentDeviceID) }>
 										@components.CSRFInput()
 										<button class="btn btn-ghost btn-sm" type="submit">Remove</button>
 									</form>
