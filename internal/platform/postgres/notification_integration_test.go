@@ -742,7 +742,7 @@ func TestNotificationRetryBackoffProgressesToExhaustionAfterSixAttempts(t *testi
 	}
 }
 
-func TestNotificationRetryAfterHintOverridesScheduledBackoffCappedAtFiveMinutes(t *testing.T) {
+func TestNotificationProviderRetryAfterIsHonoredWithoutFiveMinuteCap(t *testing.T) {
 	pool := newTestPool(t)
 	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
 		t.Fatalf("Migrate() error = %v", err)
@@ -773,8 +773,8 @@ func TestNotificationRetryAfterHintOverridesScheduledBackoffCappedAtFiveMinutes(
 		t.Fatalf("read next_attempt_at: %v", err)
 	}
 	delay := nextAttemptAt.Sub(before)
-	if delay < 4*time.Minute+30*time.Second || delay > 5*time.Minute+30*time.Second {
-		t.Fatalf("next_attempt_at delay = %v, want capped at approximately 5m (Retry-After of 20m must not be honored past the cap)", delay)
+	if delay < 19*time.Minute+30*time.Second || delay > 20*time.Minute+30*time.Second {
+		t.Fatalf("next_attempt_at delay = %v, want approximately 20m (provider Retry-After is neither capped nor jittered)", delay)
 	}
 }
 
