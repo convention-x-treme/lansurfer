@@ -1,6 +1,6 @@
 # Track E2 — Remaining Web Push Implementation Tasks
 
-Status: Current remaining-work plan
+Status: Implementation tasks E2-D1–D8 and E2-C1–C11 complete; real-device validation blocked (see `docs/validation/track-e-web-push.md`). Historical execution record; E3 not started.
 Date: 2026-09-24
 Tracking issue: #28
 Branch: `docs/track-e-notifications-sdd`

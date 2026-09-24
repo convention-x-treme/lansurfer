@@ -1,6 +1,8 @@
 # Track E — Current Task Index
 
 Status: Current
+
+Phase 1 E2 implementation tasks are complete on this branch. Real-device Web Push validation remains blocked; E2 is not fully validated. Phase 2 E3 has not started.
 Date: 2026-09-24
 Tracking issue: #28
 Branch: `docs/track-e-notifications-sdd`

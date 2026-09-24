@@ -154,7 +154,7 @@ WebSockets are not part of the initial architecture. Introducing them requires a
 
 ### Web Push
 
-Web Push uses VAPID behind a narrow adapter around the approved `github.com/marknefedov/go-webpush/v2` dependency and extends Track D's single existing service worker with push/click behavior rather than registering another worker.
+Web Push uses VAPID behind a narrow adapter around the approved `github.com/marknefedov/go-webpush/v2` dependency and extends Track D's single existing service worker with push/click behavior rather than registering another worker. E2 adds no offline shell or fetch caching. Automated browser coverage is separate from real-device validation; see [Track E Web Push validation](validation/track-e-web-push.md).
 
 Store multiple labeled subscriptions per user. Browser permission, active subscription/device state, LANsurfer enablement, and new-request audience preference remain separate. New Game Requests use followed/My Games by default or all new requests through explicit opt-in. Join/leave/close/cancel notify current request participants independently of that creation-audience setting. The activity actor is excluded from their own personal push.
 

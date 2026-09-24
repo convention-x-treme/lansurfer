@@ -1,4 +1,5 @@
 # Track E2 Delivery — Web Push Send Implementation Plan
+> **Status:** Historical — E2 delivery implementation completed; remaining execution superseded by `2026-09-24-track-e2-remaining-web-push-plan.md`. Retained as implementation history.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
