@@ -10,13 +10,14 @@ import (
 // unit tests in resolution_test.go and session_test.go.
 
 type stubIdentityStore struct {
-	found        Identity
-	findErr      error
-	created      Identity
-	createErr    error
-	updatedName  string
-	updatedEmail string
-	listed       []Identity
+	found         Identity
+	findErr       error
+	created       Identity
+	createErr     error
+	updatedName   string
+	updatedEmail  string
+	updatedAvatar string
+	listed        []Identity
 
 	// byProviderSubjectCalls/raceWinner let a test simulate a concurrent
 	// identity-creation race: the first ByProviderSubject call (the initial
@@ -44,8 +45,8 @@ func (s *stubIdentityStore) Create(_ context.Context, identity Identity) (Identi
 	return identity, s.createErr
 }
 
-func (s *stubIdentityStore) UpdateMetadata(_ context.Context, _, _, _, name, email string) error {
-	s.updatedName, s.updatedEmail = name, email
+func (s *stubIdentityStore) UpdateMetadata(_ context.Context, profile Profile) error {
+	s.updatedName, s.updatedEmail, s.updatedAvatar = profile.Name, profile.Email, profile.AvatarRef
 	return nil
 }
 

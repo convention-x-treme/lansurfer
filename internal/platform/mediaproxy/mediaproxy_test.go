@@ -1,4 +1,4 @@
-package cover
+package mediaproxy
 
 import (
 	"context"
@@ -45,7 +45,7 @@ type fakeCatalog struct {
 	known func(ctx context.Context, id string) (bool, error)
 }
 
-func (c *fakeCatalog) CoverImageKnown(ctx context.Context, id string) (bool, error) {
+func (c *fakeCatalog) Known(ctx context.Context, id string) (bool, error) {
 	c.calls.Add(1)
 	if c.known == nil {
 		return true, nil
@@ -70,7 +70,7 @@ func newTestService() (*Service, *fakeStore, *fakeCatalog, *fakeFetcher) {
 	store := &fakeStore{images: map[string][]byte{}}
 	catalog := &fakeCatalog{}
 	fetcher := &fakeFetcher{}
-	return NewService(store, fetcher, catalog, slog.New(slog.NewTextHandler(io.Discard, nil))), store, catalog, fetcher
+	return NewService(store, fetcher, catalog.Known, slog.New(slog.NewTextHandler(io.Discard, nil)), "small", "big"), store, catalog, fetcher
 }
 
 func TestGetRejectsInvalidInputWithoutAccess(t *testing.T) {

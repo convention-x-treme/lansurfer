@@ -15,6 +15,10 @@ type AccountIdentityRow struct {
 	PrivateEmail string
 	CanUnlink    bool
 	UnlinkPath   string
+	// ID, HasAvatar, and AvatarSelected drive the avatar source choice.
+	ID             string
+	HasAvatar      bool
+	AvatarSelected bool
 }
 
 // AccountProviderOption offers a configured provider the account has not
@@ -25,7 +29,7 @@ type AccountProviderOption struct {
 	Href  string
 }
 
-templ Account(brand branding.Brand, navigation components.NavigationState, currentGameNick string, identities []AccountIdentityRow, linkable []AccountProviderOption, linkError bool, gameNickInput, gameNickError string) {
+templ Account(brand branding.Brand, navigation components.NavigationState, currentGameNick, avatarKey string, identities []AccountIdentityRow, linkable []AccountProviderOption, linkError bool, gameNickInput, gameNickError string) {
 	@components.Layout(brand, "Account", navigation) {
 		<header class="app-topbar">
 			<h1 class="app-title">Account</h1>
@@ -48,6 +52,34 @@ templ Account(brand branding.Brand, navigation components.NavigationState, curre
 						</div>
 					}
 					<button class="btn btn-primary btn-sm w-fit" type="submit">Rename</button>
+				</form>
+			</section>
+			<section class="auth-panel">
+				<h2 class="text-xl font-bold">Avatar</h2>
+				<p class="mt-1 text-sm text-base-content/70">Shown next to your Game Nick. Pictures come from a linked sign-in method and are served by LANsurfer.</p>
+				<form method="post" action="/account/avatar" class="mt-4 grid gap-3">
+					@components.CSRFInput()
+					<div class="flex items-center gap-3">
+						@components.Avatar("avatar-placeholder", currentGameNick, avatarKey)
+						<span class="text-sm font-semibold">Current avatar</span>
+					</div>
+					<fieldset class="grid gap-2">
+						<legend class="sr-only">Avatar source</legend>
+						for _, identity := range identities {
+							<label class="icon-label gap-2 text-sm">
+								<input class="radio radio-sm" type="radio" name="identity" value={ identity.ID } checked?={ identity.AvatarSelected } disabled?={ !identity.HasAvatar }/>
+								<i class={ providerIcon(identity.Kind) } aria-hidden="true"></i>{ identity.Label }
+								if !identity.HasAvatar {
+									<span class="text-xs text-base-content/50">No picture</span>
+								}
+							</label>
+						}
+						<label class="icon-label gap-2 text-sm">
+							<input class="radio radio-sm" type="radio" name="identity" value="default" checked?={ avatarKey == "" }/>
+							Default (Game Nick initial)
+						</label>
+					</fieldset>
+					<button class="btn btn-primary btn-sm w-fit" type="submit">Save avatar</button>
 				</form>
 			</section>
 			<section class="auth-panel">

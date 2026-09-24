@@ -40,6 +40,9 @@ type Profile struct {
 	PreferredUsername  string
 	Email              string
 	GameNickSuggestion string
+	// AvatarRef is optional provider picture metadata: a Discord avatar hash,
+	// or an https picture URL for Twitch/OIDC. Invalid values are dropped.
+	AvatarRef string
 }
 
 type Identity struct {
@@ -50,7 +53,12 @@ type Identity struct {
 	Subject      string
 	DisplayName  string
 	Email        string
-	CreatedAt    time.Time
+	AvatarRef    string
+	// AvatarKey is the public same-origin cache key derived from AvatarRef;
+	// empty when the identity offers no picture.
+	AvatarKey      string
+	AvatarSelected bool
+	CreatedAt      time.Time
 }
 
 type Session struct {
@@ -75,7 +83,7 @@ type IdentityStore interface {
 	ByProviderSubject(context.Context, string, string, string) (Identity, error)
 	ListByUser(context.Context, string) ([]Identity, error)
 	Create(context.Context, Identity) (Identity, error)
-	UpdateMetadata(context.Context, string, string, string, string, string) error
+	UpdateMetadata(context.Context, Profile) error
 	Unlink(context.Context, string, string) error
 }
 
@@ -102,6 +110,7 @@ func normalizeProfile(profile Profile) Profile {
 	if utf8.RuneCountInString(profile.Email) > maxIdentityEmailLength {
 		profile.Email = ""
 	}
+	profile.AvatarRef = normalizeAvatarRef(profile.ProviderKind, strings.TrimSpace(profile.AvatarRef))
 	return profile
 }
 

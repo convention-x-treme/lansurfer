@@ -54,6 +54,8 @@ type Viewer struct {
 	ID string
 	GameNick string
 	Role string
+	// AvatarKey is the selected same-origin avatar key; empty means Default.
+	AvatarKey string
 }
 
 type NavigationState struct {
@@ -315,10 +317,21 @@ templ NavigationLink(href, label, section, current string) {
 	<a class={ navigationLinkClass(section == current) } href={ templ.SafeURL(href) } aria-current={ navigationCurrent(section == current) }>{ label }</a>
 }
 
+// Avatar renders the selected same-origin provider avatar, falling back to
+// the local Game Nick initial when there is none or the image fails to load.
+templ Avatar(class, gameNick, avatarKey string) {
+	if avatarKey != "" {
+		<img class={ class, "avatar-image" } src={ "/media/avatar/" + avatarKey } alt="" loading="lazy" data-cover-fallback="true"/>
+		<span class={ class } aria-hidden="true" hidden>{ ViewerInitial(gameNick) }</span>
+	} else {
+		<span class={ class } aria-hidden="true">{ ViewerInitial(gameNick) }</span>
+	}
+}
+
 templ ViewerPanel(viewer *Viewer) {
 	if viewer != nil {
 		<a class="viewer-panel" href="/account">
-			<span class="avatar-placeholder" aria-hidden="true">{ ViewerInitial(viewer.GameNick) }</span>
+			@Avatar("avatar-placeholder", viewer.GameNick, viewer.AvatarKey)
 			<span class="min-w-0"><strong class="block truncate text-sm">{ viewer.GameNick }</strong><span class="block text-xs font-semibold text-primary">{ viewerRole(viewer.Role) }</span></span>
 		</a>
 	}

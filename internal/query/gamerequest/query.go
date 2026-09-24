@@ -57,7 +57,9 @@ type Request struct {
 type Member struct {
 	ID       string
 	GameNick string
-	JoinedAt time.Time
+	// AvatarKey is the selected same-origin avatar key; empty means Default.
+	AvatarKey string
+	JoinedAt  time.Time
 }
 
 // Activity is one durable request-local entry, newest first.
@@ -203,7 +205,7 @@ func (s *Store) ByID(ctx context.Context, id, viewerID string) (Request, error) 
 	}
 	request.Members = make([]Member, 0, len(members))
 	for _, member := range members {
-		request.Members = append(request.Members, Member{ID: member.UserID, GameNick: member.MemberGameNick.String, JoinedAt: member.JoinedAt.Time})
+		request.Members = append(request.Members, Member{ID: member.UserID, GameNick: member.MemberGameNick.String, AvatarKey: member.AvatarKey, JoinedAt: member.JoinedAt.Time})
 	}
 	activity, err := s.queries.ListGameRequestActivity(ctx, databaseID)
 	if err != nil {

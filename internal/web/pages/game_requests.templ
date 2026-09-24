@@ -648,7 +648,7 @@ templ GameRequestDetailContent(request requestquery.Request, viewerID string, re
 				<ul class="grid">
 					for _, member := range request.Members {
 						<li class="member-row">
-							<span class={ memberAvatarClass(member, request) } aria-hidden="true">{ components.ViewerInitial(member.GameNick) }</span>
+							@components.Avatar(memberAvatarClass(member, request), member.GameNick, member.AvatarKey)
 							<span class="min-w-0 flex-1 truncate font-semibold">{ member.GameNick }</span>
 							if member.ID == request.CreatorID {
 								<span class="status-chip status-chip-host">Host</span>

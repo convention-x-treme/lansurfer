@@ -39,10 +39,16 @@ type NavigationCatalog interface {
 type Navigation struct {
 	queries NavigationQueries
 	catalog NavigationCatalog
+	avatars ViewerAvatars
 }
 
-func NewNavigation(queries NavigationQueries, catalog NavigationCatalog) *Navigation {
-	return &Navigation{queries: queries, catalog: catalog}
+// ViewerAvatars resolves the viewer's selected avatar key ("" for Default).
+type ViewerAvatars interface {
+	SelectedAvatarKey(context.Context, string) (string, error)
+}
+
+func NewNavigation(queries NavigationQueries, catalog NavigationCatalog, avatars ViewerAvatars) *Navigation {
+	return &Navigation{queries: queries, catalog: catalog, avatars: avatars}
 }
 
 // For assembles the sidebar for one request and marks section as current.
@@ -64,6 +70,13 @@ func (n *Navigation) For(r *http.Request, section string) components.NavigationS
 		return state
 	}
 	ctx := r.Context()
+	if n.avatars != nil {
+		if key, err := n.avatars.SelectedAvatarKey(ctx, account.ID); err != nil {
+			webmiddleware.LogError(r, "load viewer avatar for navigation", err)
+		} else {
+			state.Viewer.AvatarKey = key
+		}
+	}
 	// Each source is checked on its own so a caller that wires only some of
 	// them -- a focused test, or a future screen with a narrower shell --
 	// renders the sidebar it can rather than panicking on the one it cannot.

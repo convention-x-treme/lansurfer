@@ -47,14 +47,14 @@ func TestTwitchAuthorizationURLRequestsOnlyOpenIDAndUsername(t *testing.T) {
 			Endpoint: oauth2.Endpoint{AuthURL: "https://id.twitch.tv/oauth2/authorize"},
 			Scopes:   []string{"openid"},
 		},
-		authorizationOptions: []oauth2.AuthCodeOption{twitchUsernameClaims()},
+		authorizationOptions: []oauth2.AuthCodeOption{twitchProfileClaims()},
 	}
 	parsed, err := url.Parse(provider.AuthorizationURL("state", "nonce", "verifier"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	query := parsed.Query()
-	if query.Get("scope") != "openid" || query.Get("claims") != `{"id_token":{"preferred_username":null}}` {
+	if query.Get("scope") != "openid" || query.Get("claims") != `{"id_token":{"preferred_username":null,"picture":null}}` {
 		t.Fatalf("authorization query = %v", query)
 	}
 }
@@ -63,9 +63,11 @@ func TestOIDCProfileMapsTwitchUsernameWithoutEmail(t *testing.T) {
 	provider := &OIDCProvider{providerKind: "twitch", providerKey: "twitch", usePreferredUsernameAsName: true}
 	profile := provider.profileFromClaims(" twitch-subject ", map[string]any{
 		"preferred_username": " NightOtter ", "email": "private@example.test",
+		"picture": "https://static-cdn.jtvnw.net/jtv_user_pictures/otter-profile_image-300x300.png",
 	})
 	if profile.ProviderKind != "twitch" || profile.ProviderKey != "twitch" || profile.Subject != "twitch-subject" ||
-		profile.Name != "NightOtter" || profile.PreferredUsername != "NightOtter" || profile.GameNickSuggestion != "NightOtter" || profile.Email != "" {
+		profile.Name != "NightOtter" || profile.PreferredUsername != "NightOtter" || profile.GameNickSuggestion != "NightOtter" || profile.Email != "" ||
+		profile.AvatarRef != "https://static-cdn.jtvnw.net/jtv_user_pictures/otter-profile_image-300x300.png" {
 		t.Fatalf("Profile = %#v", profile)
 	}
 }
