@@ -211,25 +211,30 @@ func (h *NotificationSettingsHandler) render(w http.ResponseWriter, r *http.Requ
 		http.Error(w, "authentication required", http.StatusUnauthorized)
 		return
 	}
-	devices, err := h.subscriptions.ListDevices(r.Context(), account.ID)
-	if err != nil {
-		webmiddleware.LogError(r, "list push devices", err)
-		http.Error(w, "load notification settings", http.StatusInternalServerError)
-		return
-	}
-	preference, err := h.subscriptions.Preference(r.Context(), account.ID)
-	if err != nil {
-		webmiddleware.LogError(r, "load push preference", err)
-		http.Error(w, "load notification settings", http.StatusInternalServerError)
-		return
-	}
+	var devices []notification.PushSubscriptionRecord
+	preference := notification.PushPreference{NewRequestAudience: notification.AudienceFollowed}
 	var currentDeviceID int64
-	if cookie, err := r.Cookie(webmiddleware.DeviceCookieName); err == nil && cookie.Value != "" {
-		currentDeviceID, err = h.subscriptions.CurrentDeviceID(r.Context(), account.ID, cookie.Value)
+	if h.subscriptions != nil {
+		var err error
+		devices, err = h.subscriptions.ListDevices(r.Context(), account.ID)
 		if err != nil {
-			webmiddleware.LogError(r, "find current push device", err)
+			webmiddleware.LogError(r, "list push devices", err)
 			http.Error(w, "load notification settings", http.StatusInternalServerError)
 			return
+		}
+		preference, err = h.subscriptions.Preference(r.Context(), account.ID)
+		if err != nil {
+			webmiddleware.LogError(r, "load push preference", err)
+			http.Error(w, "load notification settings", http.StatusInternalServerError)
+			return
+		}
+		if cookie, err := r.Cookie(webmiddleware.DeviceCookieName); err == nil && cookie.Value != "" {
+			currentDeviceID, err = h.subscriptions.CurrentDeviceID(r.Context(), account.ID, cookie.Value)
+			if err != nil {
+				webmiddleware.LogError(r, "find current push device", err)
+				http.Error(w, "load notification settings", http.StatusInternalServerError)
+				return
+			}
 		}
 	}
 	navigation := components.NavigationState{Viewer: &components.Viewer{ID: account.ID, GameNick: account.GameNick, Role: string(account.Role)}, Section: "account"}

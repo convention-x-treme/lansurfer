@@ -149,13 +149,10 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 		)
 	}
 	realtimeHandler := handler.NewRealtime(dependencies.Realtime)
-	var notificationSettingsHandler *handler.NotificationSettingsHandler
-	if dependencies.Subscriptions != nil {
-		notificationSettingsHandler = handler.NewNotificationSettings(
-			dependencies.Subscriptions, dependencies.VAPIDPublicKey,
-			dependencies.WebPushConfigured, brand, dependencies.SecureCookies,
-		)
-	}
+	notificationSettingsHandler := handler.NewNotificationSettings(
+		dependencies.Subscriptions, dependencies.VAPIDPublicKey,
+		dependencies.WebPushConfigured, brand, dependencies.SecureCookies,
+	)
 	router := chi.NewRouter()
 	router.Use(middleware.RequestID)
 	// RequestTimeout wraps RequestLogging so the logger sees the context the
@@ -224,18 +221,16 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 			account.Post("/link/discord", authenticationHandler.LinkFor("discord"))
 			account.Post("/link/twitch", authenticationHandler.LinkFor("twitch"))
 			account.Post("/identities/{identityID}/unlink", accountHandler.Unlink)
-			if notificationSettingsHandler != nil {
-				account.Route("/notifications", func(notifications chi.Router) {
-					notifications.Get("/", notificationSettingsHandler.Show)
+			account.Route("/notifications", func(notifications chi.Router) {
+				notifications.Get("/", notificationSettingsHandler.Show)
+				if dependencies.Subscriptions != nil {
 					notifications.Post("/subscribe", notificationSettingsHandler.Subscribe)
 					notifications.Post("/disable", notificationSettingsHandler.Disable)
 					notifications.Post("/audience", notificationSettingsHandler.SetAudience)
 					notifications.Post("/reconcile", notificationSettingsHandler.ReconcileCurrentDevice)
 					notifications.Post("/devices/{subscriptionID}/remove", notificationSettingsHandler.RemoveDevice)
-				})
-			}
-		})
-		if dependencies.Discovery != nil {
+				}
+			})
 			authenticated.Route("/games", func(games chi.Router) {
 				games.Use(handler.RequireAuthentication, handler.RequireGameNick)
 				games.Get("/", gamesHandler.Browse)
@@ -244,7 +239,7 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 				games.Post("/{gameID}/follow", gamesHandler.Follow)
 				games.Post("/{gameID}/unfollow", gamesHandler.Unfollow)
 			})
-		}
+		})
 		if dependencies.GameRequests != nil && dependencies.RequestQueries != nil {
 			authenticated.Route("/game-requests", func(requests chi.Router) {
 				requests.Use(handler.RequireAuthentication, handler.RequireGameNick)

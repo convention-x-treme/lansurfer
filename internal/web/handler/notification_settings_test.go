@@ -32,6 +32,19 @@ func TestNotificationSettingsShowRendersForSignedInUser(t *testing.T) {
 		t.Fatalf("query calls = %#v", subscriptions)
 	}
 }
+func TestNotificationSettingsShowRendersWhenWebPushIsNotConfigured(t *testing.T) {
+	handler := NewNotificationSettings(nil, "", false, branding.Default(), true)
+	request := withCurrentUser(httptest.NewRequest(http.MethodGet, "/account/notifications", nil), user.User{ID: "user-1", GameNick: "NightOtter"})
+	response := httptest.NewRecorder()
+
+	handler.Show(response, request)
+
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "Web Push is not configured on this instance.") {
+		t.Fatalf("status/body = %d, want disabled settings page, body: %q", response.Code, response.Body.String())
+	}
+}
+
+
 func TestNotificationSettingsShowMarksOnlyCurrentDeviceWithoutExposingSecrets(t *testing.T) {
 	subscriptions := &stubSubscriptionManager{
 		devices: []notification.PushSubscriptionRecord{
