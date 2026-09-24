@@ -115,3 +115,110 @@ for (const state of [
     expect(await page.evaluate(() => localStorage.getItem("unsubscribe-count"))).toBe(state.expectedUnsubscribes ? "1" : null);
   });
 }
+
+test("explicit enable prompts once, reuses registration, and serializes subscription", async ({ page }) => {
+  let subscribeBody = "";
+  await page.route("**/account/notifications", (route) => route.fulfill({ contentType: "text/html", body: settings(false, 0, false) }));
+  await page.route("**/account/notifications/subscribe", async (route) => {
+    subscribeBody = route.request().postData() ?? "";
+    await route.fulfill({ status: 200, body: "subscribed" });
+  });
+  await page.addInitScript(() => {
+    let permission = "default";
+    let permissionRequests = 0;
+    let subscriptions = 0;
+    let registrations = 0;
+    Object.defineProperty(window, "Notification", {
+      configurable: true,
+      value: {
+        get permission() { return permission; },
+        requestPermission: async () => {
+          permissionRequests++;
+          localStorage.setItem("permission-requests", String(permissionRequests));
+          permission = "granted";
+          return permission;
+        },
+      },
+    });
+    Object.defineProperty(window, "PushManager", { configurable: true, value: function PushManager() {} });
+    Object.defineProperty(navigator, "serviceWorker", {
+      configurable: true,
+      value: {
+        register: async () => {
+          registrations++;
+          localStorage.setItem("registration-count", String(registrations));
+          return {
+            pushManager: {
+              getSubscription: async () => null,
+              subscribe: async (options: PushSubscriptionOptionsInit) => {
+                subscriptions++;
+                localStorage.setItem("subscription-count", String(subscriptions));
+                const serverKey = options.applicationServerKey;
+                const keyBytes = serverKey instanceof ArrayBuffer
+                  ? new Uint8Array(serverKey)
+                  : ArrayBuffer.isView(serverKey)
+                    ? new Uint8Array(serverKey.buffer, serverKey.byteOffset, serverKey.byteLength)
+                    : new Uint8Array();
+                localStorage.setItem("subscription-options", JSON.stringify({
+                  userVisibleOnly: options.userVisibleOnly,
+                  applicationServerKey: Array.from(keyBytes),
+                }));
+                return {
+                  endpoint: "https://push.example/device",
+                  getKey: (name: string) => new Uint8Array(name === "p256dh" ? [1, 2, 3] : [4, 5, 6]).buffer,
+                };
+              },
+            },
+          };
+        },
+      },
+    });
+  });
+  await page.goto("/account/notifications");
+  await expect(page.locator("[data-push-status]")).toHaveAttribute("data-push-state", "disabled");
+  expect(await page.evaluate(() => localStorage.getItem("permission-requests"))).toBeNull();
+  expect(await page.evaluate(() => localStorage.getItem("subscription-count"))).toBeNull();
+  expect(await page.evaluate(() => localStorage.getItem("registration-count"))).toBe("1");
+  await page.getByRole("button", { name: "Enable on this device" }).click();
+  await expect.poll(() => subscribeBody).not.toBe("");
+  const serialized = new URLSearchParams(subscribeBody);
+  expect(serialized.get("csrf_token")).toBe("test");
+  expect(serialized.get("endpoint")).toBe("https://push.example/device");
+  expect(serialized.get("p256dh")).toBe("AQID");
+  expect(serialized.get("auth")).toBe("BAUG");
+  expect(await page.evaluate(() => localStorage.getItem("permission-requests"))).toBe("1");
+  expect(await page.evaluate(() => localStorage.getItem("subscription-count"))).toBe("1");
+  expect(await page.evaluate(() => localStorage.getItem("registration-count"))).toBe("1");
+  expect(await page.evaluate(() => localStorage.getItem("subscription-options"))).toBe('{"userVisibleOnly":true,"applicationServerKey":[1,2,3]}');
+});
+
+for (const state of [
+  { name: "unsupported Push API", insecure: false, removePushManager: true },
+  { name: "insecure context", insecure: true, removePushManager: false },
+]) {
+  test(`${state.name} disables enablement without prompting`, async ({ page }) => {
+    await page.route("**/account/notifications", (route) => route.fulfill({ contentType: "text/html", body: settings(false, 0, false) }));
+    await page.addInitScript(({ insecure, removePushManager }) => {
+      let permissionRequests = 0;
+      Object.defineProperty(window, "isSecureContext", { configurable: true, value: !insecure });
+      Object.defineProperty(window, "Notification", {
+        configurable: true,
+        value: {
+          permission: "default",
+          requestPermission: () => {
+            permissionRequests++;
+            localStorage.setItem("permission-requests", String(permissionRequests));
+            return Promise.resolve("granted");
+          },
+        },
+      });
+      if (removePushManager) Reflect.deleteProperty(window, "PushManager");
+      Object.defineProperty(navigator, "serviceWorker", { configurable: true, value: { register: async () => ({ pushManager: { getSubscription: async () => null } }) } });
+    }, state);
+    await page.goto("/account/notifications");
+    await expect(page.locator("[data-push-status]")).toHaveAttribute("data-push-state", "unavailable");
+    await expect(page.getByRole("button", { name: "Enable on this device" })).toBeDisabled();
+    expect(await page.evaluate(() => localStorage.getItem("permission-requests"))).toBeNull();
+    if (state.removePushManager) expect(await page.evaluate(() => "PushManager" in window)).toBe(false);
+  });
+}
