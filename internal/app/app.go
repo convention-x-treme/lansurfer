@@ -162,46 +162,46 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	if cfg.WebPush != nil {
 		vapidPublicKey = cfg.WebPush.PublicKey
 	}
+	routerDependencies := web.RouterDependencies{
+		Ready:                postgres.ReadyCheck(pool),
+		Authentication:       oauthService,
+		Sessions:             sessionService,
+		PendingIdentities:    flowService,
+		AccountRegistration:  accountRegistration,
+		GameNickClaims:       userService,
+		Identities:           identityStore,
+		IdentityUnlinker:     identityStore,
+		Games:                gameService,
+		Discovery:            gameDiscovery,
+		DiscordSetup:         discordSetup,
+		DiscordAuthorization: discordAuthorization,
+		DiscordConnector:     discordConnector,
+		DiscordLifecycle:     discordLifecycle,
+		DiscordStatus:        notificationStore,
+		GameResolver:         gameDiscovery,
+		GameRequests:         gameRequests,
+		RequestQueries:       gameRequestQueries,
+		NavigationQueries:    gameRequestQueries,
+		NavigationCatalog:    gameDiscovery,
+		Realtime:             realtime,
+		Covers:               covers,
+		ProviderSync:         igdbSyncService,
+		VAPIDPublicKey:       vapidPublicKey,
+		WebPushConfigured:    cfg.WebPush != nil,
+		SecureCookies:        strings.HasPrefix(cfg.BaseURL, "https://"),
+		Logger:               logger,
+		TrustedProxies:       cfg.TrustedProxies,
+		InstanceName:         cfg.InstanceName,
+		Legal: webmiddleware.LegalIdentity{
+			EntityName: cfg.Legal.EntityName, Address: cfg.Legal.Address,
+			ContactEmail: cfg.Legal.ContactEmail, ImprintURL: cfg.Legal.ImprintURL,
+		},
+		BaseURL: cfg.BaseURL,
+	}
+	routerDependencies = withSubscriptionService(routerDependencies, subscriptionService)
 	server := &http.Server{
-		Addr: cfg.ListenAddr,
-		Handler: web.NewRouter(web.RouterDependencies{
-			Ready:                postgres.ReadyCheck(pool),
-			Authentication:       oauthService,
-			Sessions:             sessionService,
-			PendingIdentities:    flowService,
-			AccountRegistration:  accountRegistration,
-			GameNickClaims:       userService,
-			Identities:           identityStore,
-			IdentityUnlinker:     identityStore,
-			Games:                gameService,
-			Discovery:            gameDiscovery,
-			DiscordSetup:         discordSetup,
-			DiscordAuthorization: discordAuthorization,
-			DiscordConnector:     discordConnector,
-			DiscordLifecycle:     discordLifecycle,
-			DiscordStatus:        notificationStore,
-			GameResolver:         gameDiscovery,
-			GameRequests:         gameRequests,
-			RequestQueries:       gameRequestQueries,
-			NavigationQueries:    gameRequestQueries,
-			NavigationCatalog:    gameDiscovery,
-			Realtime:             realtime,
-			Covers:               covers,
-			ProviderSync:         igdbSyncService,
-			Subscriptions:        subscriptionService,
-			PushDevices:          subscriptionService,
-			VAPIDPublicKey:       vapidPublicKey,
-			WebPushConfigured:    cfg.WebPush != nil,
-			SecureCookies:        strings.HasPrefix(cfg.BaseURL, "https://"),
-			Logger:               logger,
-			TrustedProxies:       cfg.TrustedProxies,
-			InstanceName:         cfg.InstanceName,
-			Legal: webmiddleware.LegalIdentity{
-				EntityName: cfg.Legal.EntityName, Address: cfg.Legal.Address,
-				ContactEmail: cfg.Legal.ContactEmail, ImprintURL: cfg.Legal.ImprintURL,
-			},
-			BaseURL: cfg.BaseURL,
-		}),
+		Addr:              cfg.ListenAddr,
+		Handler:           web.NewRouter(routerDependencies),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		IdleTimeout:       60 * time.Second,
@@ -256,4 +256,11 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	}
 
 	return nil
+}
+func withSubscriptionService(dependencies web.RouterDependencies, service *notification.SubscriptionService) web.RouterDependencies {
+	if service != nil {
+		dependencies.Subscriptions = service
+		dependencies.PushDevices = service
+	}
+	return dependencies
 }

@@ -1,9 +1,13 @@
 package app
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
+	"github.com/convention-x-treme/lansurfer/internal/notification"
 	"github.com/convention-x-treme/lansurfer/internal/platform/config"
+	"github.com/convention-x-treme/lansurfer/internal/web"
 )
 
 func TestNotificationTransportsOptionalAndConfigured(t *testing.T) {
@@ -32,6 +36,27 @@ func TestNotificationTransportsOptionalAndConfigured(t *testing.T) {
 	cfg.DataEncryptionKey = nil
 	if _, err := notificationTransports(cfg, nil, nil, nil, nil); err == nil {
 		t.Fatal("missing encryption key accepted")
+	}
+}
+
+func TestSubscriptionServiceRouterDependenciesAreOptional(t *testing.T) {
+	var service *notification.SubscriptionService
+	disabled := withSubscriptionService(web.RouterDependencies{}, service)
+	if disabled.Subscriptions != nil || disabled.PushDevices != nil {
+		t.Fatal("disabled Web Push exposed a subscription dependency")
+	}
+
+	router := web.NewRouter(disabled)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/account/notifications", nil))
+	if response.Code != http.StatusSeeOther {
+		t.Fatalf("disabled notification route status = %d, want %d", response.Code, http.StatusSeeOther)
+	}
+
+	service = new(notification.SubscriptionService)
+	configured := withSubscriptionService(web.RouterDependencies{}, service)
+	if configured.Subscriptions == nil || configured.PushDevices == nil {
+		t.Fatal("configured Web Push did not expose subscription dependencies")
 	}
 }
 
