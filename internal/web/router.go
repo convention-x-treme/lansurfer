@@ -69,6 +69,7 @@ type RouterDependencies struct {
 	DiscordAuthorization handler.DiscordDestinationAuthorization
 	DiscordConnector     handler.DiscordDestinationConnector
 	DiscordLifecycle     handler.DiscordDestinationLifecycle
+	DiscordStatus        handler.DiscordDestinationStatusReader
 	RequestQueries       handler.GameRequestQueries
 	// NavigationQueries and NavigationCatalog back the shared sidebar every
 	// authenticated screen renders. The same concrete read model and
@@ -129,7 +130,9 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 		dependencies.PendingIdentities, dependencies.AccountRegistration, dependencies.GameNickClaims,
 		dependencies.Identities, dependencies.Authentication, brand, dependencies.SecureCookies,
 	)
-	navigation := handler.NewNavigation(dependencies.NavigationQueries, dependencies.NavigationCatalog)
+	discordDeliveryConfigured := dependencies.DiscordSetup != nil && dependencies.DiscordAuthorization != nil &&
+		dependencies.DiscordConnector != nil && dependencies.DiscordLifecycle != nil && dependencies.DiscordStatus != nil
+	navigation := handler.NewNavigation(dependencies.NavigationQueries, dependencies.NavigationCatalog, discordDeliveryConfigured)
 	legalHandler := handler.NewLegal(navigation, brand)
 	accountHandler := handler.NewAccount(dependencies.Identities, dependencies.IdentityUnlinker, dependencies.GameNickClaims, dependencies.Authentication, navigation, brand)
 	administrationHandler := handler.NewAdministration(
@@ -139,11 +142,10 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 	gamesHandler := handler.NewGames(dependencies.Discovery, navigation, brand)
 	gameRequestsHandler := handler.NewGameRequests(dependencies.GameRequests, dependencies.RequestQueries, dependencies.GameResolver, dependencies.Discovery, navigation, brand)
 	var discordDeliveryHandler *handler.DiscordDelivery
-	if dependencies.DiscordSetup != nil && dependencies.DiscordAuthorization != nil &&
-		dependencies.DiscordConnector != nil && dependencies.DiscordLifecycle != nil {
+	if discordDeliveryConfigured {
 		discordDeliveryHandler = handler.NewDiscordDelivery(
 			dependencies.DiscordSetup, dependencies.DiscordAuthorization, dependencies.DiscordConnector,
-			dependencies.DiscordLifecycle, dependencies.SecureCookies,
+			dependencies.DiscordLifecycle, dependencies.DiscordStatus, navigation, brand, dependencies.SecureCookies,
 		)
 	}
 	realtimeHandler := handler.NewRealtime(dependencies.Realtime)
@@ -286,6 +288,7 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 					admin.Get("/pwa", administrationHandler.PWA)
 				}
 				if discordDeliveryHandler != nil {
+					admin.Get("/discord", discordDeliveryHandler.Show)
 					admin.Post("/discord/connect", discordDeliveryHandler.Start)
 					admin.Post("/discord/reconnect", discordDeliveryHandler.Start)
 					admin.Get("/discord/callback", discordDeliveryHandler.Callback)

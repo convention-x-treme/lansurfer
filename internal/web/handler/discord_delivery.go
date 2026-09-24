@@ -6,7 +6,9 @@ import (
 	"net/http"
 
 	"github.com/convention-x-treme/lansurfer/internal/notification"
+	"github.com/convention-x-treme/lansurfer/internal/web/branding"
 	webmiddleware "github.com/convention-x-treme/lansurfer/internal/web/middleware"
+	"github.com/convention-x-treme/lansurfer/internal/web/pages"
 )
 
 type DiscordDestinationSetup interface {
@@ -21,9 +23,12 @@ type DiscordDestinationAuthorization interface {
 type DiscordDestinationConnector interface {
 	Connect(context.Context, string) error
 }
-
 type DiscordDestinationLifecycle interface {
 	Disconnect(context.Context) error
+}
+
+type DiscordDestinationStatusReader interface {
+	GetDiscordDestinationStatus(context.Context) (notification.DiscordDestination, error)
 }
 
 type DiscordDelivery struct {
@@ -31,13 +36,52 @@ type DiscordDelivery struct {
 	authorize     DiscordDestinationAuthorization
 	connector     DiscordDestinationConnector
 	lifecycle     DiscordDestinationLifecycle
+	status        DiscordDestinationStatusReader
+	navigation    *Navigation
+	brand         branding.Brand
 	secureCookies bool
 }
 
-func NewDiscordDelivery(setup DiscordDestinationSetup, authorize DiscordDestinationAuthorization, connector DiscordDestinationConnector, lifecycle DiscordDestinationLifecycle, secureCookies bool) *DiscordDelivery {
-	return &DiscordDelivery{setup: setup, authorize: authorize, connector: connector, lifecycle: lifecycle, secureCookies: secureCookies}
+func NewDiscordDelivery(
+	setup DiscordDestinationSetup,
+	authorize DiscordDestinationAuthorization,
+	connector DiscordDestinationConnector,
+	lifecycle DiscordDestinationLifecycle,
+	status DiscordDestinationStatusReader,
+	navigation *Navigation,
+	brand branding.Brand,
+	secureCookies bool,
+) *DiscordDelivery {
+	return &DiscordDelivery{
+		setup: setup, authorize: authorize, connector: connector, lifecycle: lifecycle,
+		status: status, navigation: navigation, brand: brand, secureCookies: secureCookies,
+	}
 }
 
+func (h *DiscordDelivery) Show(w http.ResponseWriter, r *http.Request) {
+	destination, err := h.status.GetDiscordDestinationStatus(r.Context())
+	if err != nil && !errors.Is(err, notification.ErrDiscordDestinationNotFound) {
+		webmiddleware.LogError(r, "load discord destination status", err)
+		http.Error(w, "Discord delivery status could not be loaded.", http.StatusInternalServerError)
+		return
+	}
+	render(w, r, http.StatusOK, pages.AdminDiscordDelivery(
+		h.brand, h.navigation.For(r, "administration-discord"), destination, discordDeliveryNotice(r),
+	))
+}
+
+func discordDeliveryNotice(r *http.Request) string {
+	switch r.URL.Query().Get("notice") {
+	case "connected":
+		return "Discord destination connected."
+	case "disconnected":
+		return "Discord destination disconnected."
+	case "not-configured":
+		return "Discord destination is not configured."
+	default:
+		return ""
+	}
+}
 func (h *DiscordDelivery) Start(w http.ResponseWriter, r *http.Request) {
 	account, ok := webmiddleware.CurrentUser(r.Context())
 	if !ok {

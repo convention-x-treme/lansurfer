@@ -100,6 +100,57 @@ func TestDiscordDestinationSingletonIsDatabaseEnforced(t *testing.T) {
 	}
 }
 
+func TestDiscordDestinationStatusReturnsSafeConnectedAndBrokenMetadata(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+	store := notificationpostgres.NewStore(pool)
+
+	if _, err := store.GetDiscordDestinationStatus(t.Context()); !errors.Is(err, notification.ErrDiscordDestinationNotFound) {
+		t.Fatalf("GetDiscordDestinationStatus() without destination error = %v, want ErrDiscordDestinationNotFound", err)
+	}
+
+	destination := notification.DiscordDestination{
+		GuildID:     "guild-safe",
+		ChannelID:   "channel-safe",
+		WebhookName: "Game Requests",
+	}
+	if err := store.ConnectDiscordDestination(t.Context(), destination, notification.DiscordCredentialCiphertext("ciphertext-only")); err != nil {
+		t.Fatalf("ConnectDiscordDestination() error = %v", err)
+	}
+	connected, err := store.GetDiscordDestinationStatus(t.Context())
+	if err != nil {
+		t.Fatalf("GetDiscordDestinationStatus() connected error = %v", err)
+	}
+	if connected.State != notification.DiscordDestinationConnected ||
+		connected.GuildID != destination.GuildID ||
+		connected.ChannelID != destination.ChannelID ||
+		connected.WebhookName != destination.WebhookName ||
+		connected.ConnectedAt.IsZero() ||
+		!connected.BrokenAt.IsZero() ||
+		connected.BrokenReason != "" {
+		t.Fatalf("connected status = %#v, want safe connected metadata", connected)
+	}
+
+	const reason = "webhook deleted (10015)"
+	if err := store.MarkDiscordDestinationBroken(t.Context(), reason); err != nil {
+		t.Fatalf("MarkDiscordDestinationBroken() error = %v", err)
+	}
+	broken, err := store.GetDiscordDestinationStatus(t.Context())
+	if err != nil {
+		t.Fatalf("GetDiscordDestinationStatus() broken error = %v", err)
+	}
+	if broken.State != notification.DiscordDestinationBroken ||
+		broken.GuildID != destination.GuildID ||
+		broken.ChannelID != destination.ChannelID ||
+		broken.WebhookName != destination.WebhookName ||
+		broken.BrokenAt.IsZero() ||
+		broken.BrokenReason != reason {
+		t.Fatalf("broken status = %#v, want safe broken metadata", broken)
+	}
+}
+
 // The broken/connected state is tied to the presence of the encrypted
 // credential blob and the broken diagnostics by a table CHECK constraint,
 // not by application code: broken destinations retain safe metadata and

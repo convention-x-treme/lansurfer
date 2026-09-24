@@ -126,6 +126,40 @@ func (q *Queries) GetDiscordDestination(ctx context.Context) (GetDiscordDestinat
 	return i, err
 }
 
+const getDiscordDestinationStatus = `-- name: GetDiscordDestinationStatus :one
+SELECT state, guild_id, channel_id, webhook_name, connected_at, updated_at,
+       broken_at, broken_reason
+FROM notification_discord_destination
+WHERE id = true
+`
+
+type GetDiscordDestinationStatusRow struct {
+	State        string
+	GuildID      string
+	ChannelID    string
+	WebhookName  pgtype.Text
+	ConnectedAt  pgtype.Timestamptz
+	UpdatedAt    pgtype.Timestamptz
+	BrokenAt     pgtype.Timestamptz
+	BrokenReason pgtype.Text
+}
+
+func (q *Queries) GetDiscordDestinationStatus(ctx context.Context) (GetDiscordDestinationStatusRow, error) {
+	row := q.db.QueryRow(ctx, getDiscordDestinationStatus)
+	var i GetDiscordDestinationStatusRow
+	err := row.Scan(
+		&i.State,
+		&i.GuildID,
+		&i.ChannelID,
+		&i.WebhookName,
+		&i.ConnectedAt,
+		&i.UpdatedAt,
+		&i.BrokenAt,
+		&i.BrokenReason,
+	)
+	return i, err
+}
+
 const markDiscordDestinationBroken = `-- name: MarkDiscordDestinationBroken :execrows
 UPDATE notification_discord_destination
 SET state = 'broken', credential_ciphertext = NULL, broken_at = now(),

@@ -179,6 +179,7 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 			DiscordAuthorization: discordAuthorization,
 			DiscordConnector:     discordConnector,
 			DiscordLifecycle:     discordLifecycle,
+			DiscordStatus:        notificationStore,
 			GameResolver:         gameDiscovery,
 			GameRequests:         gameRequests,
 			RequestQueries:       gameRequestQueries,

@@ -57,6 +57,7 @@ type Viewer struct {
 }
 
 type NavigationState struct {
+	DiscordDeliveryEnabled bool
 	Viewer *Viewer
 	LoginAvailable bool
 	Section string
@@ -252,6 +253,13 @@ templ NavigationLinks(state NavigationState) {
 					<span>PWA</span>
 				</a>
 			</li>
+			if state.DiscordDeliveryEnabled {
+				<li>
+					<a class={ navigationSubLinkClass(state.Section == "administration-discord") } href="/admin/discord" aria-current={ navigationCurrent(state.Section == "administration-discord") }>
+						<span>Discord delivery</span>
+					</a>
+				</li>
+			}
 		}
 	</ul>
 }

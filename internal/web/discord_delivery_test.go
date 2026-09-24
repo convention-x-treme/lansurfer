@@ -61,11 +61,21 @@ func (s *discordLifecycleStub) Disconnect(context.Context) error {
 	return nil
 }
 
+type discordDestinationStatusStub struct {
+	destination notification.DiscordDestination
+	err         error
+}
+
+func (s *discordDestinationStatusStub) GetDiscordDestinationStatus(context.Context) (notification.DiscordDestination, error) {
+	return s.destination, s.err
+}
+
 func discordRouter(setup *discordSetupStub, connect *discordConnectStub, lifecycle *discordLifecycleStub, auth *routerAuthentication) http.Handler {
 	return NewRouter(RouterDependencies{
 		Authentication: auth, Sessions: auth,
 		DiscordSetup: setup, DiscordAuthorization: discordAuthorizationStub{url: "https://discord.example/authorize"},
 		DiscordConnector: connect, DiscordLifecycle: lifecycle,
+		DiscordStatus: &discordDestinationStatusStub{err: notification.ErrDiscordDestinationNotFound},
 	})
 }
 
@@ -184,6 +194,27 @@ func TestDiscordCallbackReplayDoesNotReconnect(t *testing.T) {
 	}
 	if setup.consumes != 2 || connect.calls != 1 {
 		t.Fatalf("consume/connect calls = %d/%d", setup.consumes, connect.calls)
+	}
+}
+func TestDiscordAdminPageRendersNotConfiguredAndKeepsLoginSeparate(t *testing.T) {
+	account := &routerAuthentication{account: user.User{ID: "admin-1", GameNick: "Admin", Role: user.RoleAdmin}}
+	router := discordRouter(&discordSetupStub{}, &discordConnectStub{}, &discordLifecycleStub{}, account)
+
+	loginResponse := httptest.NewRecorder()
+	router.ServeHTTP(loginResponse, httptest.NewRequest(http.MethodGet, "/auth/login", nil))
+	if loginResponse.Code != http.StatusOK || !strings.Contains(loginResponse.Body.String(), "Discord") {
+		t.Fatalf("Discord login UI status/body = %d/%s", loginResponse.Code, loginResponse.Body.String())
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/admin/discord", nil)
+	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	body := response.Body.String()
+	if response.Code != http.StatusOK || !strings.Contains(body, "Not configured") ||
+		!strings.Contains(body, "Discord delivery") || !strings.Contains(body, "Discord login stays separate.") ||
+		!strings.Contains(body, `href="/admin/discord"`) || !strings.Contains(body, `action="/admin/discord/connect"`) {
+		t.Fatalf("Discord delivery page status/body = %d/%s", response.Code, body)
 	}
 }
 

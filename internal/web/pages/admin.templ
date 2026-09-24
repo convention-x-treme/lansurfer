@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/convention-x-treme/lansurfer/internal/game"
+	"github.com/convention-x-treme/lansurfer/internal/notification"
 	"github.com/convention-x-treme/lansurfer/internal/web/branding"
 	"github.com/convention-x-treme/lansurfer/internal/web/components"
 )
@@ -538,4 +539,89 @@ func igdbTimestamp(value *time.Time) string {
 		return "Never"
 	}
 	return value.UTC().Format("2006-01-02T15:04Z")
+}
+templ AdminDiscordDelivery(brand branding.Brand, navigation components.NavigationState, destination notification.DiscordDestination, notice string) {
+	@components.Layout(brand, "Discord delivery", navigation) {
+		<header class="app-topbar">
+			<div class="min-w-0">
+				<h1 class="app-title">Discord delivery</h1>
+				<p class="text-sm text-base-content/70">Configure the instance destination for Game Request notifications. Discord login stays separate.</p>
+			</div>
+		</header>
+		<div class="content-page">
+			<div class="max-w-4xl">
+				if notice != "" {
+					<div role="status" class="alert alert-info mb-4"><span>{ notice }</span></div>
+				}
+				if destination.State == notification.DiscordDestinationConnected {
+					<section class="detail-card">
+						<div class="flex flex-wrap items-center justify-between gap-3">
+							<div>
+								<h2 class="text-[1.0625rem] font-semibold">Connected</h2>
+								if destination.WebhookName != "" {
+									<p>{ destination.WebhookName }</p>
+								}
+							</div>
+							<span class="status-chip status-chip-open">Connected</span>
+						</div>
+						<dl class="mt-4 grid gap-4 sm:grid-cols-2">
+							<div><dt class="text-sm text-base-content/60">Guild ID</dt><dd class="data-text break-all">{ destination.GuildID }</dd></div>
+							<div><dt class="text-sm text-base-content/60">Channel ID</dt><dd class="data-text break-all">{ destination.ChannelID }</dd></div>
+							<div><dt class="text-sm text-base-content/60">Connected</dt><dd><time class="data-text" datetime={ destination.ConnectedAt.Format(time.RFC3339) }>{ destination.ConnectedAt.UTC().Format(time.RFC3339) }</time></dd></div>
+						</dl>
+						<div class="mt-4 flex flex-wrap justify-end gap-2">
+							<form method="post" action="/admin/discord/reconnect">
+								@components.CSRFInput()
+								<button class="btn btn-quiet btn-sm" type="submit">Reconnect</button>
+							</form>
+							<form method="post" action="/admin/discord/disconnect" data-confirm="Disconnect this Discord destination? Existing messages stay in Discord.">
+								@components.CSRFInput()
+								<button class="btn btn-danger btn-sm" type="submit">Disconnect</button>
+							</form>
+						</div>
+					</section>
+				} else if destination.State == notification.DiscordDestinationBroken {
+					<section class="detail-card">
+						<div class="flex flex-wrap items-center justify-between gap-3">
+							<div>
+								<h2 class="text-[1.0625rem] font-semibold">Broken</h2>
+								<p role="alert" class="text-sm text-error">Reconnect is required.</p>
+								if destination.WebhookName != "" {
+									<p>{ destination.WebhookName }</p>
+								}
+							</div>
+							<span class="status-chip status-chip-cancelled">Broken</span>
+						</div>
+						<dl class="mt-4 grid gap-4 sm:grid-cols-2">
+							<div><dt class="text-sm text-base-content/60">Guild ID</dt><dd class="data-text break-all">{ destination.GuildID }</dd></div>
+							<div><dt class="text-sm text-base-content/60">Channel ID</dt><dd class="data-text break-all">{ destination.ChannelID }</dd></div>
+							<div><dt class="text-sm text-base-content/60">Broken</dt><dd><time class="data-text" datetime={ destination.BrokenAt.Format(time.RFC3339) }>{ destination.BrokenAt.UTC().Format(time.RFC3339) }</time></dd></div>
+							if destination.BrokenReason != "" {
+								<div class="sm:col-span-2"><dt class="text-sm text-base-content/60">Reason</dt><dd>{ destination.BrokenReason }</dd></div>
+							}
+						</dl>
+						<div class="mt-4 flex flex-wrap justify-end gap-2">
+							<form method="post" action="/admin/discord/reconnect">
+								@components.CSRFInput()
+								<button class="btn btn-primary btn-sm" type="submit">Reconnect</button>
+							</form>
+							<form method="post" action="/admin/discord/disconnect" data-confirm="Disconnect this Discord destination? Existing messages stay in Discord.">
+								@components.CSRFInput()
+								<button class="btn btn-danger btn-sm" type="submit">Disconnect</button>
+							</form>
+						</div>
+					</section>
+				} else {
+					<section class="detail-card">
+						<h2 class="text-[1.0625rem] font-semibold">Not configured</h2>
+						<p class="mt-1 text-sm text-base-content/70">Connect a Discord destination to deliver Game Request notifications.</p>
+						<form method="post" action="/admin/discord/connect" class="mt-4 flex justify-end">
+							@components.CSRFInput()
+							<button class="btn btn-primary btn-sm" type="submit">Connect</button>
+						</form>
+					</section>
+				}
+			</div>
+		</div>
+	}
 }

@@ -454,6 +454,28 @@ func (s *Store) GetDiscordDestination(ctx context.Context) (notification.Discord
 	return destination, ciphertext, nil
 }
 
+// GetDiscordDestinationStatus returns only queryable destination metadata.
+// It never returns the encrypted webhook credential.
+func (s *Store) GetDiscordDestinationStatus(ctx context.Context) (notification.DiscordDestination, error) {
+	row, err := s.queries.GetDiscordDestinationStatus(ctx)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return notification.DiscordDestination{}, notification.ErrDiscordDestinationNotFound
+	}
+	if err != nil {
+		return notification.DiscordDestination{}, fmt.Errorf("get discord destination status: %w", err)
+	}
+	return notification.DiscordDestination{
+		State:        notification.DiscordDestinationState(row.State),
+		GuildID:      row.GuildID,
+		ChannelID:    row.ChannelID,
+		WebhookName:  textString(row.WebhookName),
+		ConnectedAt:  row.ConnectedAt.Time,
+		UpdatedAt:    row.UpdatedAt.Time,
+		BrokenAt:     row.BrokenAt.Time,
+		BrokenReason: textString(row.BrokenReason),
+	}, nil
+}
+
 // ConnectDiscordDestination atomically installs or replaces the singleton
 // destination as connected; see notification_discord_destination's boolean
 // primary key for the database-enforced singleton invariant.

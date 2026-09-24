@@ -4,6 +4,12 @@ SELECT state, credential_ciphertext, guild_id, channel_id, webhook_name,
 FROM notification_discord_destination
 WHERE id = true;
 
+-- name: GetDiscordDestinationStatus :one
+SELECT state, guild_id, channel_id, webhook_name, connected_at, updated_at,
+       broken_at, broken_reason
+FROM notification_discord_destination
+WHERE id = true;
+
 -- name: UpsertDiscordDestination :exec
 INSERT INTO notification_discord_destination
     (id, state, credential_ciphertext, guild_id, channel_id, webhook_name, connected_at, updated_at)
