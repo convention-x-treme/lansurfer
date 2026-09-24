@@ -12,10 +12,7 @@ func TestNotificationTransportsOptionalAndConfigured(t *testing.T) {
 		t.Fatalf("disabled transports = %v, err = %v; want none", disabled, err)
 	}
 
-	cfg := config.Config{BaseURL: "https://lan.example", InstanceName: "Camp Nova", DataEncryptionKey: make([]byte, 32), WebPush: &config.WebPush{
-		PublicKey:  "BAPXjly0gRlUqDTh973k-L9pQbfuajNHt-75lr18ZrG1R9cW6wU9xZ62F7Ndf_nQW7FSAEP2-LXZldrFzngmFhQ",
-		PrivateKey: "QUs8zCpDK_x4zKsunw_iz-nahUva_gFm-jekct86r70", Subject: "mailto:ops@example.test",
-	}}
+	cfg := configuredPushForTest()
 	transports, err := notificationTransports(cfg, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("configured transports: %v", err)
@@ -35,5 +32,26 @@ func TestNotificationTransportsOptionalAndConfigured(t *testing.T) {
 	cfg.DataEncryptionKey = nil
 	if _, err := notificationTransports(cfg, nil, nil, nil, nil); err == nil {
 		t.Fatal("missing encryption key accepted")
+	}
+}
+
+func configuredPushForTest() config.Config {
+	return config.Config{BaseURL: "https://lan.example", InstanceName: "Camp Nova", DataEncryptionKey: make([]byte, 32), WebPush: &config.WebPush{
+		PublicKey:  "BAPXjly0gRlUqDTh973k-L9pQbfuajNHt-75lr18ZrG1R9cW6wU9xZ62F7Ndf_nQW7FSAEP2-LXZldrFzngmFhQ",
+		PrivateKey: "QUs8zCpDK_x4zKsunw_iz-nahUva_gFm-jekct86r70", Subject: "mailto:ops@example.test",
+	}}
+}
+
+func TestCLIRetryTransportConstruction(t *testing.T) {
+	disabled, err := cliNotificationTransports(config.Config{}, nil)
+	if err != nil || len(disabled) != 0 {
+		t.Fatalf("disabled CLI transports = %v, err = %v", disabled, err)
+	}
+	configured, err := cliNotificationTransports(configuredPushForTest(), nil)
+	if err != nil {
+		t.Fatalf("configured CLI transport: %v", err)
+	}
+	if len(configured) != 1 || configured[0].Name() != "webpush" {
+		t.Fatalf("configured CLI transports = %v; want one webpush", configured)
 	}
 }

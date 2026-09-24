@@ -8,12 +8,15 @@ import (
 	"time"
 
 	"github.com/convention-x-treme/lansurfer/internal/game"
+	gamepostgres "github.com/convention-x-treme/lansurfer/internal/game/postgres"
 	"github.com/convention-x-treme/lansurfer/internal/notification"
 	notificationpostgres "github.com/convention-x-treme/lansurfer/internal/notification/postgres"
 	"github.com/convention-x-treme/lansurfer/internal/platform/config"
 	platformpostgres "github.com/convention-x-treme/lansurfer/internal/platform/postgres"
 	gamerequestquery "github.com/convention-x-treme/lansurfer/internal/query/gamerequest"
 	"github.com/convention-x-treme/lansurfer/internal/user"
+	userpostgres "github.com/convention-x-treme/lansurfer/internal/user/postgres"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // newNotificationWorker ties the worker to the caller's root context by
@@ -78,6 +81,20 @@ func (r notificationGameNickReader) GetGameNick(ctx context.Context, userID stri
 	return account.GameNick, nil
 }
 
+// cliNotificationTransports shares runtime construction; provider I/O only
+// happens when a worker later sends a claimed delivery.
+func cliNotificationTransports(cfg config.Config, pool *pgxpool.Pool) ([]notification.Transport, error) {
+	if cfg.WebPush == nil {
+		return nil, nil
+	}
+	gameStore := gamepostgres.NewStore(pool)
+	return notificationTransports(
+		cfg, notificationpostgres.NewStore(pool),
+		game.NewDiscoveryService(gameStore, gameStore, gameStore, nil),
+		gamerequestquery.NewStore(pool), user.NewService(userpostgres.NewStore(pool)),
+	)
+}
+
 // ListNotificationProblems opens its own standalone database connection and
 // reports every exhausted, permanent, or uncertain delivery for operator
 // diagnosis, following the same one-shot pattern as ListUsers.
@@ -139,7 +156,11 @@ func retryNotificationDelivery(ctx context.Context, cfg config.Config, deliveryI
 		return fmt.Errorf("apply database migrations: %w", err)
 	}
 
-	service := notification.NewService(notificationpostgres.NewStore(pool), nil)
+	transports, err := cliNotificationTransports(cfg, pool)
+	if err != nil {
+		return err
+	}
+	service := notification.NewService(notificationpostgres.NewStore(pool), transports)
 	if uncertain {
 		return service.ManualRetryUncertain(ctx, id)
 	}
