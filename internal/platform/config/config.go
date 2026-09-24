@@ -40,6 +40,16 @@ type Discord struct {
 	ClientSecret string
 }
 
+// DiscordDelivery holds optional OAuth credentials for Discord notification
+// delivery (the `webhook.incoming` flow). This is deliberately a distinct
+// type from Discord (login/authentication): the two integrations share a
+// provider but never share credentials, and neither implicitly enables the
+// other.
+type DiscordDelivery struct {
+	ClientID     string
+	ClientSecret string
+}
+
 type Twitch struct {
 	ClientID     string
 	ClientSecret string
@@ -65,13 +75,14 @@ type WebPush struct {
 
 // Config contains the technical settings required by the application foundation.
 type Config struct {
-	DatabaseURL string
-	ListenAddr  string
-	BaseURL     string
-	OIDC        *OIDC
-	Discord     *Discord
-	Twitch      *Twitch
-	WebPush     *WebPush
+	DatabaseURL     string
+	ListenAddr      string
+	BaseURL         string
+	OIDC            *OIDC
+	Discord         *Discord
+	DiscordDelivery *DiscordDelivery
+	Twitch          *Twitch
+	WebPush         *WebPush
 	// DataEncryptionKey is the operator-provided AES-256 key used to encrypt
 	// externally sourced credentials at rest (Web Push subscription material,
 	// later Discord webhook tokens). Required when WebPush is configured;
@@ -121,6 +132,10 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	discordDelivery, err := loadDiscordDelivery()
+	if err != nil {
+		return Config{}, err
+	}
 	twitch, err := loadTwitch()
 	if err != nil {
 		return Config{}, err
@@ -135,6 +150,9 @@ func Load() (Config, error) {
 	}
 	if webPush != nil && dataEncryptionKey == nil {
 		return Config{}, errors.New("LANSURFER_DATA_ENCRYPTION_KEY is required when Web Push is configured")
+	}
+	if discordDelivery != nil && dataEncryptionKey == nil {
+		return Config{}, errors.New("LANSURFER_DATA_ENCRYPTION_KEY is required when Discord delivery is configured")
 	}
 
 	trustedProxies, err := loadTrustedProxies()
@@ -161,6 +179,7 @@ func Load() (Config, error) {
 		BaseURL:           baseURL,
 		OIDC:              oidc,
 		Discord:           discord,
+		DiscordDelivery:   discordDelivery,
 		Twitch:            twitch,
 		WebPush:           webPush,
 		DataEncryptionKey: dataEncryptionKey,
@@ -365,4 +384,16 @@ func loadDiscord() (*Discord, error) {
 		return nil, errors.New("LANSURFER_DISCORD_CLIENT_ID and LANSURFER_DISCORD_CLIENT_SECRET must be configured together")
 	}
 	return &Discord{ClientID: clientID, ClientSecret: clientSecret}, nil
+}
+
+func loadDiscordDelivery() (*DiscordDelivery, error) {
+	clientID := strings.TrimSpace(os.Getenv("LANSURFER_DISCORD_WEBHOOK_CLIENT_ID"))
+	clientSecret := strings.TrimSpace(os.Getenv("LANSURFER_DISCORD_WEBHOOK_CLIENT_SECRET"))
+	if clientID == "" && clientSecret == "" {
+		return nil, nil
+	}
+	if clientID == "" || clientSecret == "" {
+		return nil, errors.New("LANSURFER_DISCORD_WEBHOOK_CLIENT_ID and LANSURFER_DISCORD_WEBHOOK_CLIENT_SECRET must be configured together")
+	}
+	return &DiscordDelivery{ClientID: clientID, ClientSecret: clientSecret}, nil
 }

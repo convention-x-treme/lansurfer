@@ -158,6 +158,111 @@ func TestLoadLeavesDiscordUnsetWhenCredentialsAreEmpty(t *testing.T) {
 	}
 }
 
+func TestLoadDiscordDeliveryDisabledWhenCredentialsAreEmpty(t *testing.T) {
+	clearOptionalEnvironment(t)
+	t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.DiscordDelivery != nil {
+		t.Fatalf("DiscordDelivery = %#v, want nil", cfg.DiscordDelivery)
+	}
+}
+
+func TestLoadDiscordDeliveryValidConfiguration(t *testing.T) {
+	clearOptionalEnvironment(t)
+	t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
+	t.Setenv("LANSURFER_DISCORD_WEBHOOK_CLIENT_ID", "webhook-client")
+	t.Setenv("LANSURFER_DISCORD_WEBHOOK_CLIENT_SECRET", "webhook-secret")
+	t.Setenv("LANSURFER_DATA_ENCRYPTION_KEY", validDataEncryptionKeyForTests)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.DiscordDelivery == nil || cfg.DiscordDelivery.ClientID != "webhook-client" ||
+		cfg.DiscordDelivery.ClientSecret != "webhook-secret" {
+		t.Fatalf("DiscordDelivery = %#v, want populated webhook credentials", cfg.DiscordDelivery)
+	}
+}
+
+func TestLoadRejectsPartialDiscordDeliveryConfiguration(t *testing.T) {
+	clearOptionalEnvironment(t)
+	t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
+	t.Setenv("LANSURFER_DISCORD_WEBHOOK_CLIENT_ID", "webhook-client")
+
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "LANSURFER_DISCORD_WEBHOOK_CLIENT_ID") {
+		t.Fatalf("Load() error = %v, want partial Discord delivery error", err)
+	}
+}
+
+func TestLoadDiscordDeliveryRequiresDataEncryptionKey(t *testing.T) {
+	clearOptionalEnvironment(t)
+	t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
+	t.Setenv("LANSURFER_DISCORD_WEBHOOK_CLIENT_ID", "webhook-client")
+	t.Setenv("LANSURFER_DISCORD_WEBHOOK_CLIENT_SECRET", "webhook-secret")
+
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "LANSURFER_DATA_ENCRYPTION_KEY") {
+		t.Fatalf("Load() error = %v, want a missing-encryption-key error", err)
+	}
+}
+
+func TestLoadDiscordDeliveryRejectsInvalidDataEncryptionKey(t *testing.T) {
+	clearOptionalEnvironment(t)
+	t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
+	t.Setenv("LANSURFER_DISCORD_WEBHOOK_CLIENT_ID", "webhook-client")
+	t.Setenv("LANSURFER_DISCORD_WEBHOOK_CLIENT_SECRET", "webhook-secret")
+	t.Setenv("LANSURFER_DATA_ENCRYPTION_KEY", "not-valid-base64-key")
+
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "LANSURFER_DATA_ENCRYPTION_KEY") {
+		t.Fatalf("Load() error = %v, want an invalid-encryption-key error", err)
+	}
+}
+
+// Discord login and Discord delivery are independent: configuring one must
+// not enable, require, or otherwise affect the other.
+func TestLoadDiscordLoginAndDeliveryAreIndependent(t *testing.T) {
+	clearOptionalEnvironment(t)
+	t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
+	t.Setenv("LANSURFER_LEGAL_ENTITY_NAME", "Example Org")
+	t.Setenv("LANSURFER_LEGAL_CONTACT_EMAIL", "privacy@example.test")
+	t.Setenv("LANSURFER_DISCORD_CLIENT_ID", "login-client")
+	t.Setenv("LANSURFER_DISCORD_CLIENT_SECRET", "login-secret")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Discord == nil {
+		t.Fatalf("Discord = nil, want configured login credentials")
+	}
+	if cfg.DiscordDelivery != nil {
+		t.Fatalf("DiscordDelivery = %#v, want nil when only Discord login is configured", cfg.DiscordDelivery)
+	}
+
+	clearOptionalEnvironment(t)
+	t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
+	t.Setenv("LANSURFER_DISCORD_WEBHOOK_CLIENT_ID", "webhook-client")
+	t.Setenv("LANSURFER_DISCORD_WEBHOOK_CLIENT_SECRET", "webhook-secret")
+	t.Setenv("LANSURFER_DATA_ENCRYPTION_KEY", validDataEncryptionKeyForTests)
+
+	cfg, err = Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.DiscordDelivery == nil {
+		t.Fatalf("DiscordDelivery = nil, want configured delivery credentials")
+	}
+	if cfg.Discord != nil {
+		t.Fatalf("Discord = %#v, want nil when only Discord delivery is configured", cfg.Discord)
+	}
+}
+
 func TestLoadIGDBConfiguration(t *testing.T) {
 	clearOptionalEnvironment(t)
 	t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
@@ -491,6 +596,8 @@ func clearOptionalEnvironment(t *testing.T) {
 		"LANSURFER_OIDC_GAME_NICK_CLAIM",
 		"LANSURFER_DISCORD_CLIENT_ID",
 		"LANSURFER_DISCORD_CLIENT_SECRET",
+		"LANSURFER_DISCORD_WEBHOOK_CLIENT_ID",
+		"LANSURFER_DISCORD_WEBHOOK_CLIENT_SECRET",
 		"LANSURFER_TRUSTED_PROXIES",
 		"LANSURFER_TWITCH_CLIENT_ID",
 		"LANSURFER_TWITCH_CLIENT_SECRET",

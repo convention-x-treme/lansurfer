@@ -128,6 +128,15 @@ In the [Discord Developer Portal](https://discord.com/developers/applications), 
 
 OIDC and Discord identities resolve to the same local User only through an explicit, signed-in `/account` link, or by proving an existing account through the other configured provider during onboarding. LANsurfer never merges accounts by matching email address, name, or Game Nick.
 
+Discord notification delivery (posting Game Request updates to a Discord channel) is a separate, optional integration with its own OAuth credentials:
+
+```sh
+LANSURFER_DISCORD_WEBHOOK_CLIENT_ID=
+LANSURFER_DISCORD_WEBHOOK_CLIENT_SECRET=
+```
+
+Configuring Discord login does not enable delivery, and configuring delivery does not enable login. Delivery additionally requires `LANSURFER_DATA_ENCRYPTION_KEY` to be set, since webhook credentials are encrypted at rest.
+
 ### Configure Twitch login and IGDB discovery
 
 Twitch login and IGDB discovery share one Twitch Developer Application but are independently enabled:
