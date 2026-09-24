@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type Worker } from "@playwright/test";
 
 // Track D's service-worker contract is deliberately narrow: install/activate
 // only, registered once at root scope, swallowing its own failures. These
@@ -211,3 +211,74 @@ test("malformed and unsupported pushes do not crash or notify", async ({ page })
   expect(notifications).toHaveLength(0);
   expect(await page.evaluate(() => navigator.serviceWorker.controller !== null)).toBe(true);
 });
+
+async function getServiceWorker(page: Page): Promise<Worker> {
+  await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
+  const worker = page.context().serviceWorkers().find((candidate) => candidate.url().endsWith("/service-worker.js"));
+  if (!worker) throw new Error("Service worker is unavailable.");
+  return worker;
+}
+
+async function clickNotification(worker: Worker, targetURL: string, withClient: boolean) {
+  return worker.evaluate(async ({ targetURL, withClient }) => {
+    // Worker.evaluate executes this callback inside the real service worker.
+    const scope = globalThis as unknown as ServiceWorkerGlobalScope;
+    const outcome = { closed: false, focused: false, navigated: "", opened: "" };
+    const client = {
+      url: `${scope.location.origin}/game-requests/old-request`,
+      focus: async () => {
+        outcome.focused = true;
+        return client;
+      },
+      navigate: async (url: string) => {
+        outcome.navigated = url;
+        return client;
+      },
+    };
+    Object.defineProperty(scope.clients, "matchAll", {
+      configurable: true,
+      value: async () => withClient ? [client] : [],
+    });
+    Object.defineProperty(scope.clients, "openWindow", {
+      configurable: true,
+      value: async (url: string) => {
+        outcome.opened = url;
+        return null;
+      },
+    });
+    const waits: Promise<unknown>[] = [];
+    const event = new Event("notificationclick");
+    Object.defineProperties(event, {
+      notification: { value: { data: { url: targetURL }, close: () => { outcome.closed = true; } } },
+      waitUntil: { value: (promise: Promise<unknown>) => waits.push(promise) },
+    });
+    scope.dispatchEvent(event);
+    await Promise.all(waits);
+    return outcome;
+  }, { targetURL, withClient });
+}
+
+test("notification click focuses and navigates existing LANsurfer client", async ({ page }) => {
+  await page.goto("/game-requests");
+  const worker = await getServiceWorker(page);
+  const targetURL = new URL("/game-requests/request-123", page.url()).href;
+  const outcome = await clickNotification(worker, targetURL, true);
+  expect(outcome).toEqual({ closed: true, focused: true, navigated: targetURL, opened: "" });
+});
+
+test("notification click opens deep link when no LANsurfer client exists", async ({ page }) => {
+  await page.goto("/game-requests");
+  const worker = await getServiceWorker(page);
+  const targetURL = new URL("/game-requests/request-123", page.url()).href;
+  const outcome = await clickNotification(worker, targetURL, false);
+  expect(outcome).toEqual({ closed: true, focused: false, navigated: "", opened: targetURL });
+});
+
+for (const targetURL of ["https://outside.invalid/game-requests/request-123", "not a URL"]) {
+  test(`notification click rejects invalid target ${targetURL}`, async ({ page }) => {
+    await page.goto("/game-requests");
+    const worker = await getServiceWorker(page);
+    const outcome = await clickNotification(worker, targetURL, true);
+    expect(outcome).toEqual({ closed: true, focused: false, navigated: "", opened: "" });
+  });
+}

@@ -41,6 +41,18 @@ function isPushKind(value: unknown): value is PushKind {
   return value === "created" || value === "joined" || value === "left" || value === "closed" || value === "cancelled";
 }
 
+function gameRequestURL(value: unknown): URL | null {
+  if (typeof value !== "string") return null;
+  try {
+    const url = new URL(value);
+    const requestID = url.pathname.slice("/game-requests/".length);
+    if (url.origin !== self.location.origin || !requestID || requestID.includes("/") || url.search || url.hash) return null;
+    return url;
+  } catch {
+    return null;
+  }
+}
+
 function isPushPayload(value: unknown): value is E2PushPayload {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
   if (!("version" in value) || !("kind" in value) || !("game" in value) || !("instance" in value) || !("title" in value) || !("body" in value) || !("url" in value)) return false;
@@ -60,14 +72,8 @@ function isPushPayload(value: unknown): value is E2PushPayload {
     !Number.isFinite(Date.parse(startsAt))
   )) return false;
 
-  let url: URL;
-  try {
-    url = new URL(value.url);
-  } catch {
-    return false;
-  }
-  if (url.origin !== self.location.origin || !url.pathname.startsWith("/game-requests/") || url.pathname === "/game-requests/" || url.search || url.hash) return false;
-
+  const url = gameRequestURL(value.url);
+  if (!url) return false;
   const actor = typeof actorGameNick === "string" ? actorGameNick : "";
   const title = value.kind === "created"
     ? `New ${value.game} Game Request`
@@ -83,10 +89,16 @@ function parsePushPayload(data: PushMessageData | null): E2PushPayload | null {
   try {
     const value: unknown = JSON.parse(data?.text() ?? "");
     if (!isPushPayload(value)) return null;
-    return { ...value, url: new URL(value.url).href };
+    const url = gameRequestURL(value.url);
+    return url ? { ...value, url: url.href } : null;
   } catch {
     return null;
   }
+}
+
+function notificationURL(data: unknown): URL | null {
+  if (typeof data !== "object" || data === null || Array.isArray(data) || !("url" in data)) return null;
+  return gameRequestURL(data.url);
 }
 
 self.addEventListener("push", (event) => {
@@ -107,5 +119,28 @@ self.addEventListener("push", (event) => {
       body: payload.body,
       data: { url: payload.url },
     });
+  })());
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = notificationURL(event.notification.data);
+  if (!url) return;
+
+  event.waitUntil((async () => {
+    const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    const client = windows.find((windowClient) => {
+      try {
+        return new URL(windowClient.url).origin === self.location.origin;
+      } catch {
+        return false;
+      }
+    });
+    if (client) {
+      await client.focus();
+      await client.navigate(url.href);
+      return;
+    }
+    await self.clients.openWindow(url.href);
   })());
 });
