@@ -38,6 +38,7 @@ type SubscriptionManager interface {
 	SetAudience(ctx context.Context, userID, audience string) error
 	RemoveDevice(ctx context.Context, userID string, subscriptionID int64) error
 	ListDevices(ctx context.Context, userID string) ([]notification.PushSubscriptionRecord, error)
+	RemoveDeviceByHash(ctx context.Context, userID, deviceID string) error
 	CurrentDeviceID(ctx context.Context, userID, deviceID string) (int64, error)
 	Preference(ctx context.Context, userID string) (notification.PushPreference, error)
 }
@@ -183,6 +184,25 @@ func (h *NotificationSettingsHandler) RemoveDevice(w http.ResponseWriter, r *htt
 		return
 	}
 	h.redirect(w, r, "/account/notifications?notice=device-removed")
+}
+
+// ReconcileCurrentDevice removes only the device identified by the HttpOnly
+// cookie. Missing or stale cookies are idempotent; preferences stay intact.
+func (h *NotificationSettingsHandler) ReconcileCurrentDevice(w http.ResponseWriter, r *http.Request) {
+	account, ok := webmiddleware.CurrentUser(r.Context())
+	if !ok {
+		http.Error(w, "authentication required", http.StatusUnauthorized)
+		return
+	}
+	if cookie, err := r.Cookie(webmiddleware.DeviceCookieName); err == nil && cookie.Value != "" {
+		if err := h.subscriptions.RemoveDeviceByHash(r.Context(), account.ID, cookie.Value); err != nil {
+			webmiddleware.LogError(r, "reconcile push device", err)
+			http.Error(w, "reconcile device", http.StatusInternalServerError)
+			return
+		}
+	}
+	http.SetCookie(w, webmiddleware.ExpiredDeviceCookie(h.secureCookies))
+	h.redirect(w, r, "/account/notifications")
 }
 
 func (h *NotificationSettingsHandler) render(w http.ResponseWriter, r *http.Request, status int, formError string) {

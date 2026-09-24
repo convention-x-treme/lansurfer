@@ -329,6 +329,47 @@ func TestNotificationSettingsSetAudienceRejectsAnonymousRequest(t *testing.T) {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusUnauthorized)
 	}
 }
+func TestNotificationSettingsReconcileRemovesOnlyCookieDeviceAndKeepsPreference(t *testing.T) {
+	for _, tc := range []struct {
+		name, cookie, wantRemoved string
+	}{
+		{"known", "device-1", "device-1"},
+		{"unknown", "unknown-device", "unknown-device"},
+		{"missing", "", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			subscriptions := &stubSubscriptionManager{preference: notification.PushPreference{WebPushEnabled: true, NewRequestAudience: notification.AudienceAll}}
+			handler := NewNotificationSettings(subscriptions, "", true, branding.Default(), true)
+			request := withCurrentUser(httptest.NewRequest(http.MethodPost, "/account/notifications/reconcile", strings.NewReader("deviceID=forged&deviceHash=forged")), user.User{ID: "user-1"})
+			if tc.cookie != "" {
+				request.AddCookie(&http.Cookie{Name: "lansurfer_device", Value: tc.cookie})
+			}
+			response := httptest.NewRecorder()
+			handler.ReconcileCurrentDevice(response, request)
+			if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/account/notifications" {
+				t.Fatalf("status/location = %d, %q", response.Code, response.Header().Get("Location"))
+			}
+			if subscriptions.removedByHash != tc.wantRemoved || subscriptions.removedByHashUser != map[bool]string{true: "user-1", false: ""}[tc.cookie != ""] {
+				t.Fatalf("removed user/device = %q/%q", subscriptions.removedByHashUser, subscriptions.removedByHash)
+			}
+			if len(response.Result().Cookies()) == 0 || response.Result().Cookies()[0].MaxAge != -1 {
+				t.Fatal("device cookie not expired")
+			}
+			if subscriptions.disableUserID != "" || subscriptions.audienceUserID != "" || !subscriptions.preference.WebPushEnabled || subscriptions.preference.NewRequestAudience != notification.AudienceAll {
+				t.Fatal("reconciliation changed preference")
+			}
+		})
+	}
+}
+
+func TestNotificationSettingsReconcileRejectsAnonymousRequest(t *testing.T) {
+	subscriptions := &stubSubscriptionManager{}
+	response := httptest.NewRecorder()
+	NewNotificationSettings(subscriptions, "", true, branding.Default(), true).ReconcileCurrentDevice(response, httptest.NewRequest(http.MethodPost, "/account/notifications/reconcile", nil))
+	if response.Code != http.StatusUnauthorized || subscriptions.removedByHash != "" {
+		t.Fatalf("status/removed device = %d/%q", response.Code, subscriptions.removedByHash)
+	}
+}
 
 func TestNotificationSettingsRemoveDeviceParsesIDAndRedirects(t *testing.T) {
 	subscriptions := &stubSubscriptionManager{}
@@ -381,6 +422,8 @@ type stubSubscriptionManager struct {
 	audienceValue  string
 	audienceErr    error
 
+	removedByHash      string
+	removedByHashUser  string
 	removeDeviceUserID string
 	removeDeviceID     int64
 }
@@ -404,6 +447,10 @@ func (s *stubSubscriptionManager) SetAudience(_ context.Context, userID, audienc
 
 func (s *stubSubscriptionManager) RemoveDevice(_ context.Context, userID string, subscriptionID int64) error {
 	s.removeDeviceUserID, s.removeDeviceID = userID, subscriptionID
+	return nil
+}
+func (s *stubSubscriptionManager) RemoveDeviceByHash(_ context.Context, userID, deviceID string) error {
+	s.removedByHashUser, s.removedByHash = userID, deviceID
 	return nil
 }
 
