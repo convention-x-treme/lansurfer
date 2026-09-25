@@ -543,6 +543,10 @@ func TestDiscordConnectServiceReplacementCommitsBeforeRemoteCleanup(t *testing.T
 	}, oldCiphertext); err != nil {
 		t.Fatalf("seed old ConnectDiscordDestination() error = %v", err)
 	}
+	oldDestination, _, err := store.GetDiscordDestination(t.Context())
+	if err != nil || oldDestination.ID == "" {
+		t.Fatalf("old destination identity = %q, error = %v", oldDestination.ID, err)
+	}
 
 	var sawNewGuildIDDuringCleanup string
 	provider := &fakeDiscordWebhookOAuthProviderForConnect{
@@ -578,6 +582,9 @@ func TestDiscordConnectServiceReplacementCommitsBeforeRemoteCleanup(t *testing.T
 	}
 	if destination.GuildID != "guild-new" || destination.State != notification.DiscordDestinationConnected {
 		t.Fatalf("destination = %#v, want exactly the new connected destination", destination)
+	}
+	if destination.ID == oldDestination.ID || destination.ID == "" {
+		t.Fatalf("replacement identity = %q, previous = %q", destination.ID, oldDestination.ID)
 	}
 	decrypted, err := notification.DecryptDiscordCredential(key, ciphertext)
 	if err != nil {
@@ -641,6 +648,10 @@ func TestDiscordConnectServiceStorageFailureAgainstRealStoreLeavesOldDestination
 	}, oldCiphertext); err != nil {
 		t.Fatalf("seed old ConnectDiscordDestination() error = %v", err)
 	}
+	oldDestination, _, err := store.GetDiscordDestination(t.Context())
+	if err != nil || oldDestination.ID == "" {
+		t.Fatalf("old destination identity = %q, error = %v", oldDestination.ID, err)
+	}
 
 	provider := &fakeDiscordWebhookOAuthProviderForConnect{
 		exchangeResult: notification.DiscordWebhookOAuthResult{
@@ -664,7 +675,7 @@ func TestDiscordConnectServiceStorageFailureAgainstRealStoreLeavesOldDestination
 	if err != nil {
 		t.Fatalf("GetDiscordDestination() error = %v", err)
 	}
-	if destination.GuildID != "guild-old" {
+	if destination.GuildID != "guild-old" || destination.ID != oldDestination.ID {
 		t.Fatalf("destination = %#v, want the OLD destination untouched", destination)
 	}
 	decrypted, err := notification.DecryptDiscordCredential(key, ciphertext)
@@ -937,6 +948,10 @@ func TestDiscordLifecycleBreakRetainsSafeMetadataClearsCiphertextAndSuppresses(t
 	}, ciphertext); err != nil {
 		t.Fatalf("ConnectDiscordDestination() error = %v", err)
 	}
+	connected, _, err := store.GetDiscordDestination(t.Context())
+	if err != nil || connected.ID == "" {
+		t.Fatalf("connected destination identity = %q, error = %v", connected.ID, err)
+	}
 
 	discordLifecycleDeliveryFixture(t, pool, store, []notification.Target{
 		{Transport: "discord", Key: "broken-pending-target"},
@@ -962,6 +977,9 @@ func TestDiscordLifecycleBreakRetainsSafeMetadataClearsCiphertextAndSuppresses(t
 	}
 	if destination.BrokenReason != "webhook deleted (10015)" {
 		t.Fatalf("destination.BrokenReason = %q, want the given reason", destination.BrokenReason)
+	}
+	if destination.ID != connected.ID {
+		t.Fatalf("broken destination identity = %q, want %q", destination.ID, connected.ID)
 	}
 	if storedCiphertext != nil {
 		t.Fatal("GetDiscordDestination() returned a non-nil ciphertext for a broken destination")

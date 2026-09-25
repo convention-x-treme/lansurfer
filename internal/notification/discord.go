@@ -30,6 +30,8 @@ const DiscordTransportName = "discord"
 // and never carries or reconstructs a webhook URL. BrokenAt/BrokenReason are
 // only meaningful when State is DiscordDestinationBroken.
 type DiscordDestination struct {
+	// ID identifies this connection generation, not the singleton row or webhook.
+	ID           string
 	State        DiscordDestinationState
 	GuildID      string
 	ChannelID    string
@@ -76,6 +78,9 @@ var (
 	// single error deliberately does not distinguish these to a caller
 	// completing an OAuth callback.
 	ErrDiscordSetupStateInvalid = errors.New("discord setup state is invalid, expired, or already consumed")
+	// ErrDiscordMessageSyncNotFound means no message has been synchronized
+	// for this destination generation and Game Request.
+	ErrDiscordMessageSyncNotFound = errors.New("discord message sync not found")
 )
 
 // DiscordSetupStateRepository is the durable state the Discord destination
@@ -112,25 +117,30 @@ type DiscordDestinationRepository interface {
 	DeleteDiscordDestination(ctx context.Context) error
 }
 
-// DiscordMessageSync is the durable record of which Discord message
-// currently represents one Game Request's synchronized state, and the
-// highest applied update marker used to reject a stale mutation. Its
-// persistence is added by a later task; this interface exists now so the
-// vocabulary in this file does not change shape once that persistence
-// lands.
+// DiscordMessageSync is one destination generation's synchronized message for
+// one Game Request. AppliedVersion is the highest activity sequence applied
+// for this request, never a global activity cursor.
 type DiscordMessageSync struct {
+	DestinationID  string
 	GameRequestID  string
 	MessageID      string
 	AppliedVersion int64
+	CreatedAt      time.Time
 	UpdatedAt      time.Time
 }
 
-// DiscordMessageSyncRepository is the durable state a later Discord message
-// synchronization service needs to read the currently synchronized message
-// for a Game Request and to record a new one after a successful mutation.
+// DiscordMessageSyncRepository keeps message references isolated by
+// destination generation. Advance is a PostgreSQL compare/update: it
+// advances only to a newer version, or fills a cleared reference at the
+// same version. Clear requires the exact current message and version, and
+// never lowers the applied version. A false result means the state changed.
 type DiscordMessageSyncRepository interface {
-	GetDiscordMessageSync(ctx context.Context, gameRequestID string) (DiscordMessageSync, error)
-	RecordDiscordMessageSync(ctx context.Context, sync DiscordMessageSync) error
+	GetDiscordMessageSync(ctx context.Context, destinationID, gameRequestID string) (DiscordMessageSync, error)
+	AdvanceDiscordMessageSync(ctx context.Context, sync DiscordMessageSync) (bool, error)
+	ClearDiscordMessageSync(ctx context.Context, destinationID, gameRequestID, messageID string, appliedVersion int64) (bool, error)
+	// WithDiscordMessageSyncLock serializes one destination/request's
+	// external mutation and state write in a PostgreSQL transaction.
+	WithDiscordMessageSyncLock(ctx context.Context, destinationID, gameRequestID string, apply func(DiscordMessageSyncRepository) error) error
 }
 
 // DiscordWebhookOAuthResult is what a successful `webhook.incoming` OAuth

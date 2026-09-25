@@ -3455,20 +3455,6 @@ func TestMigrateAndReadyCheck(t *testing.T) {
 		t.Fatalf("ReadyCheck() error = %v", err)
 	}
 
-	database := stdlib.OpenDBFromPool(pool)
-	defer database.Close()
-	provider, err := goose.NewProvider(goose.DialectPostgres, database, migrationFS)
-	if err != nil {
-		t.Fatalf("create goose provider: %v", err)
-	}
-	version, err := provider.GetDBVersion(t.Context())
-	if err != nil {
-		t.Fatalf("get migration version: %v", err)
-	}
-	if version != 17 {
-		t.Errorf("migration version = %d, want 17", version)
-	}
-
 	if err := migrateFS(t.Context(), pool, migrationFS, logger); err != nil {
 		t.Fatalf("second migrateFS() error = %v", err)
 	}

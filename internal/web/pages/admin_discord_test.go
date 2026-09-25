@@ -61,7 +61,7 @@ func TestAdminDiscordDeliveryBrokenRequiresReconnect(t *testing.T) {
 func assertDiscordDestinationHasNoCredentialFields(t *testing.T) {
 	t.Helper()
 	typeOfDestination := reflect.TypeOf(notification.DiscordDestination{})
-	allowed := []string{"State", "GuildID", "ChannelID", "WebhookName", "ConnectedAt", "UpdatedAt", "BrokenAt", "BrokenReason"}
+	allowed := []string{"ID", "State", "GuildID", "ChannelID", "WebhookName", "ConnectedAt", "UpdatedAt", "BrokenAt", "BrokenReason"}
 	if typeOfDestination.NumField() != len(allowed) {
 		t.Fatalf("safe destination has %d fields, want exactly %d", typeOfDestination.NumField(), len(allowed))
 	}

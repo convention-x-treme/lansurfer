@@ -11,6 +11,66 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const advanceDiscordMessageSync = `-- name: AdvanceDiscordMessageSync :execrows
+INSERT INTO notification_discord_message_sync (destination_id, game_request_id, message_id, applied_version)
+VALUES ($1::uuid, $2::uuid,
+        $3, $4)
+ON CONFLICT (destination_id, game_request_id) DO UPDATE
+SET message_id = EXCLUDED.message_id, applied_version = EXCLUDED.applied_version, updated_at = now()
+WHERE notification_discord_message_sync.applied_version < EXCLUDED.applied_version
+   OR (notification_discord_message_sync.applied_version = EXCLUDED.applied_version
+       AND notification_discord_message_sync.message_id IS NULL)
+`
+
+type AdvanceDiscordMessageSyncParams struct {
+	DestinationID  pgtype.UUID
+	GameRequestID  pgtype.UUID
+	MessageID      pgtype.Text
+	AppliedVersion int64
+}
+
+func (q *Queries) AdvanceDiscordMessageSync(ctx context.Context, arg AdvanceDiscordMessageSyncParams) (int64, error) {
+	result, err := q.db.Exec(ctx, advanceDiscordMessageSync,
+		arg.DestinationID,
+		arg.GameRequestID,
+		arg.MessageID,
+		arg.AppliedVersion,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const clearDiscordMessageSync = `-- name: ClearDiscordMessageSync :execrows
+UPDATE notification_discord_message_sync
+SET message_id = NULL, updated_at = now()
+WHERE destination_id = $1::uuid
+  AND game_request_id = $2::uuid
+  AND message_id = $3
+  AND applied_version = $4
+`
+
+type ClearDiscordMessageSyncParams struct {
+	DestinationID  pgtype.UUID
+	GameRequestID  pgtype.UUID
+	MessageID      pgtype.Text
+	AppliedVersion int64
+}
+
+func (q *Queries) ClearDiscordMessageSync(ctx context.Context, arg ClearDiscordMessageSyncParams) (int64, error) {
+	result, err := q.db.Exec(ctx, clearDiscordMessageSync,
+		arg.DestinationID,
+		arg.GameRequestID,
+		arg.MessageID,
+		arg.AppliedVersion,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const consumeDiscordSetupState = `-- name: ConsumeDiscordSetupState :one
 UPDATE notification_discord_setup_state
 SET consumed_at = $1
@@ -91,13 +151,14 @@ func (q *Queries) DeleteDiscordDestination(ctx context.Context) (int64, error) {
 }
 
 const getDiscordDestination = `-- name: GetDiscordDestination :one
-SELECT state, credential_ciphertext, guild_id, channel_id, webhook_name,
+SELECT destination_id::text AS destination_id, state, credential_ciphertext, guild_id, channel_id, webhook_name,
        connected_at, updated_at, broken_at, broken_reason
 FROM notification_discord_destination
 WHERE id = true
 `
 
 type GetDiscordDestinationRow struct {
+	DestinationID        string
 	State                string
 	CredentialCiphertext []byte
 	GuildID              string
@@ -113,6 +174,7 @@ func (q *Queries) GetDiscordDestination(ctx context.Context) (GetDiscordDestinat
 	row := q.db.QueryRow(ctx, getDiscordDestination)
 	var i GetDiscordDestinationRow
 	err := row.Scan(
+		&i.DestinationID,
 		&i.State,
 		&i.CredentialCiphertext,
 		&i.GuildID,
@@ -127,27 +189,29 @@ func (q *Queries) GetDiscordDestination(ctx context.Context) (GetDiscordDestinat
 }
 
 const getDiscordDestinationStatus = `-- name: GetDiscordDestinationStatus :one
-SELECT state, guild_id, channel_id, webhook_name, connected_at, updated_at,
+SELECT destination_id::text AS destination_id, state, guild_id, channel_id, webhook_name, connected_at, updated_at,
        broken_at, broken_reason
 FROM notification_discord_destination
 WHERE id = true
 `
 
 type GetDiscordDestinationStatusRow struct {
-	State        string
-	GuildID      string
-	ChannelID    string
-	WebhookName  pgtype.Text
-	ConnectedAt  pgtype.Timestamptz
-	UpdatedAt    pgtype.Timestamptz
-	BrokenAt     pgtype.Timestamptz
-	BrokenReason pgtype.Text
+	DestinationID string
+	State         string
+	GuildID       string
+	ChannelID     string
+	WebhookName   pgtype.Text
+	ConnectedAt   pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
+	BrokenAt      pgtype.Timestamptz
+	BrokenReason  pgtype.Text
 }
 
 func (q *Queries) GetDiscordDestinationStatus(ctx context.Context) (GetDiscordDestinationStatusRow, error) {
 	row := q.db.QueryRow(ctx, getDiscordDestinationStatus)
 	var i GetDiscordDestinationStatusRow
 	err := row.Scan(
+		&i.DestinationID,
 		&i.State,
 		&i.GuildID,
 		&i.ChannelID,
@@ -156,6 +220,42 @@ func (q *Queries) GetDiscordDestinationStatus(ctx context.Context) (GetDiscordDe
 		&i.UpdatedAt,
 		&i.BrokenAt,
 		&i.BrokenReason,
+	)
+	return i, err
+}
+
+const getDiscordMessageSync = `-- name: GetDiscordMessageSync :one
+SELECT destination_id::text AS destination_id, game_request_id::text AS game_request_id,
+       message_id, applied_version, created_at, updated_at
+FROM notification_discord_message_sync
+WHERE destination_id = $1::uuid
+  AND game_request_id = $2::uuid
+`
+
+type GetDiscordMessageSyncParams struct {
+	DestinationID pgtype.UUID
+	GameRequestID pgtype.UUID
+}
+
+type GetDiscordMessageSyncRow struct {
+	DestinationID  string
+	GameRequestID  string
+	MessageID      pgtype.Text
+	AppliedVersion int64
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+}
+
+func (q *Queries) GetDiscordMessageSync(ctx context.Context, arg GetDiscordMessageSyncParams) (GetDiscordMessageSyncRow, error) {
+	row := q.db.QueryRow(ctx, getDiscordMessageSync, arg.DestinationID, arg.GameRequestID)
+	var i GetDiscordMessageSyncRow
+	err := row.Scan(
+		&i.DestinationID,
+		&i.GameRequestID,
+		&i.MessageID,
+		&i.AppliedVersion,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
@@ -182,6 +282,7 @@ VALUES (true, 'connected', $1, $2, $3,
         $4, now(), now())
 ON CONFLICT (id) DO UPDATE SET
     state = 'connected',
+    destination_id = gen_random_uuid(),
     credential_ciphertext = EXCLUDED.credential_ciphertext,
     guild_id = EXCLUDED.guild_id,
     channel_id = EXCLUDED.channel_id,
@@ -199,6 +300,8 @@ type UpsertDiscordDestinationParams struct {
 	WebhookName          pgtype.Text
 }
 
+// Every successful connect gets a new generation; failures keep the old
+// row and generation because the replacement is one atomic statement.
 func (q *Queries) UpsertDiscordDestination(ctx context.Context, arg UpsertDiscordDestinationParams) error {
 	_, err := q.db.Exec(ctx, upsertDiscordDestination,
 		arg.CredentialCiphertext,

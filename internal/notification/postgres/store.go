@@ -438,6 +438,7 @@ func (s *Store) GetDiscordDestination(ctx context.Context) (notification.Discord
 		return notification.DiscordDestination{}, nil, fmt.Errorf("get discord destination: %w", err)
 	}
 	destination := notification.DiscordDestination{
+		ID:           row.DestinationID,
 		State:        notification.DiscordDestinationState(row.State),
 		GuildID:      row.GuildID,
 		ChannelID:    row.ChannelID,
@@ -465,6 +466,7 @@ func (s *Store) GetDiscordDestinationStatus(ctx context.Context) (notification.D
 		return notification.DiscordDestination{}, fmt.Errorf("get discord destination status: %w", err)
 	}
 	return notification.DiscordDestination{
+		ID:           row.DestinationID,
 		State:        notification.DiscordDestinationState(row.State),
 		GuildID:      row.GuildID,
 		ChannelID:    row.ChannelID,
