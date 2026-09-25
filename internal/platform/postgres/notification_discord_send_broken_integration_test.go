@@ -196,8 +196,9 @@ func TestDiscordCreateReservationDoesNotBlockLaterReplacementGeneration(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if reserved, err := store.ReserveDiscordCreate(t.Context(), old.ID, request.ID); err != nil || !reserved {
-		t.Fatalf("reserve old generation create = %v, %v", reserved, err)
+	// A pre-migration unresolved reservation has no provable owner.
+	if _, err := pool.Exec(t.Context(), `INSERT INTO notification_discord_create_reservation (destination_id, game_request_id) VALUES ($1, $2)`, old.ID, request.ID); err != nil {
+		t.Fatalf("reserve old generation create: %v", err)
 	}
 
 	replacement := discordSendConnect(t, store, key, "new-token")

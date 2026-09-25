@@ -161,7 +161,7 @@ func (s *Store) NewerDiscordDelivery(ctx context.Context, sequence int64, gameRe
 // ReserveDiscordCreate commits on its own pooled connection, never on the
 // sync transaction: the reservation must be durable before Discord sees the
 // create. False means an earlier create outcome is still unrecorded.
-func (s *Store) ReserveDiscordCreate(ctx context.Context, destinationID, gameRequestID string) (bool, error) {
+func (s *Store) ReserveDiscordCreate(ctx context.Context, destinationID, gameRequestID string, deliveryID int64) (bool, error) {
 	if s.tx != nil {
 		return false, errors.New("discord create reservation must commit outside the sync transaction")
 	}
@@ -169,7 +169,7 @@ func (s *Store) ReserveDiscordCreate(ctx context.Context, destinationID, gameReq
 	if err != nil {
 		return false, err
 	}
-	rows, err := s.queries.ReserveDiscordCreate(ctx, sqlcgen.ReserveDiscordCreateParams{DestinationID: destination, GameRequestID: request})
+	rows, err := s.queries.ReserveDiscordCreate(ctx, sqlcgen.ReserveDiscordCreateParams{DestinationID: destination, GameRequestID: request, OwnerDeliveryID: deliveryID})
 	if err != nil {
 		return false, fmt.Errorf("reserve discord create: %w", err)
 	}
@@ -178,16 +178,42 @@ func (s *Store) ReserveDiscordCreate(ctx context.Context, destinationID, gameReq
 
 // ReleaseDiscordCreate runs on the sync transaction, so the release commits
 // atomically with the recorded message ID or proven provider rejection.
-func (s *Store) ReleaseDiscordCreate(ctx context.Context, destinationID, gameRequestID string) (bool, error) {
+func (s *Store) ReleaseDiscordCreate(ctx context.Context, destinationID, gameRequestID string, deliveryID int64) (bool, error) {
 	destination, request, err := parseDiscordSyncKey(destinationID, gameRequestID)
 	if err != nil {
 		return false, err
 	}
-	rows, err := s.queries.ReleaseDiscordCreate(ctx, sqlcgen.ReleaseDiscordCreateParams{DestinationID: destination, GameRequestID: request})
+	rows, err := s.queries.ReleaseDiscordCreate(ctx, sqlcgen.ReleaseDiscordCreateParams{DestinationID: destination, GameRequestID: request, OwnerDeliveryID: deliveryID})
 	if err != nil {
 		return false, fmt.Errorf("release discord create: %w", err)
 	}
 	return rows == 1, nil
+}
+
+// ReopenUncertainDiscordDeliveryWithReservation atomically rechecks the
+// connected generation and claim; a reservation can be overridden only by
+// its owning delivery. No-reservation Discord retries use this same boundary.
+func (s *Store) ReopenUncertainDiscordDeliveryWithReservation(ctx context.Context, deliveryID int64, destinationID string) error {
+	destination, err := parseUUID(destinationID)
+	if err != nil {
+		return fmt.Errorf("parse discord destination identity: %w", err)
+	}
+	row, err := s.queries.ReopenUncertainDiscordDeliveryWithReservation(ctx, sqlcgen.ReopenUncertainDiscordDeliveryWithReservationParams{
+		ID: deliveryID, DestinationID: destination,
+	})
+	if err != nil {
+		return fmt.Errorf("reopen uncertain discord delivery with reservation: %w", err)
+	}
+	if !row.GenerationMatches {
+		return notification.ErrNoLongerEligible
+	}
+	if row.ReservationFound && row.DeliveryUncertain && !row.Reopened {
+		return notification.ErrDiscordReservationNotOwned
+	}
+	if !row.Reopened {
+		return notification.ErrDeliveryNotUncertain
+	}
+	return nil
 }
 
 func parseDiscordSyncKey(destinationID, gameRequestID string) (pgtype.UUID, pgtype.UUID, error) {

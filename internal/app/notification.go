@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"strconv"
 	"time"
 
@@ -36,27 +37,46 @@ func newSubscriptionService(store *notificationpostgres.Store, encryptionKey []b
 	return notification.NewSubscriptionService(store, store, encryptionKey)
 }
 
-// notificationTransports constructs the runtime's Web Push transport once for
-// both worker delivery and service eligibility checks.
+const discordWebhookHTTPTimeout = 15 * time.Second
+
+// notificationTransports constructs the runtime's notification transports
+// once for the worker, manual retry, and eligibility rechecks. Each
+// transport is added independently based only on its own operator
+// configuration: Discord being enabled does not require Web Push, and
+// vice versa. Discord operator configuration being enabled does not mean a
+// destination currently exists in the database; Targets() resolves the
+// no-destination, Connected, and Broken states correctly at delivery time,
+// so this never requires a destination to exist at startup and never
+// performs a provider call by itself.
 func notificationTransports(cfg config.Config, store *notificationpostgres.Store, followers *game.DiscoveryService, requests *gamerequestquery.Store, users *user.Service) ([]notification.Transport, error) {
-	if cfg.WebPush == nil {
-		return nil, nil
-	}
-	if len(cfg.DataEncryptionKey) != 32 {
-		return nil, fmt.Errorf("construct Web Push transport: invalid data-encryption key")
-	}
-	sender, err := notification.NewWebPushSender(cfg.WebPush.PublicKey, cfg.WebPush.PrivateKey, cfg.WebPush.Subject)
-	if err != nil {
-		return nil, fmt.Errorf("construct Web Push transport: %w", err)
-	}
 	instanceName := cfg.InstanceName
 	if instanceName == "" {
 		instanceName = "LANsurfer"
 	}
-	return []notification.Transport{notification.NewWebPushTransport(
-		store, store, store, followers, requests, notificationRequestSummaries{requests}, notificationGameNickReader{users},
-		cfg.BaseURL, instanceName, cfg.DataEncryptionKey, sender,
-	)}, nil
+	var transports []notification.Transport
+	if cfg.WebPush != nil {
+		if len(cfg.DataEncryptionKey) != 32 {
+			return nil, fmt.Errorf("construct Web Push transport: invalid data-encryption key")
+		}
+		sender, err := notification.NewWebPushSender(cfg.WebPush.PublicKey, cfg.WebPush.PrivateKey, cfg.WebPush.Subject)
+		if err != nil {
+			return nil, fmt.Errorf("construct Web Push transport: %w", err)
+		}
+		transports = append(transports, notification.NewWebPushTransport(
+			store, store, store, followers, requests, notificationRequestSummaries{requests}, notificationGameNickReader{users},
+			cfg.BaseURL, instanceName, cfg.DataEncryptionKey, sender,
+		))
+	}
+	if cfg.DiscordDelivery != nil {
+		if len(cfg.DataEncryptionKey) != 32 {
+			return nil, fmt.Errorf("construct Discord transport: invalid data-encryption key")
+		}
+		transports = append(transports, notification.NewDiscordSendTransport(
+			store, cfg.DataEncryptionKey, cfg.BaseURL, instanceName,
+			&http.Client{Timeout: discordWebhookHTTPTimeout},
+		))
+	}
+	return transports, nil
 }
 
 type notificationRequestSummaries struct{ requests *gamerequestquery.Store }
@@ -88,7 +108,7 @@ func (r notificationGameNickReader) GetGameNick(ctx context.Context, userID stri
 // cliNotificationTransports shares runtime construction; provider I/O only
 // happens when a worker later sends a claimed delivery.
 func cliNotificationTransports(cfg config.Config, pool *pgxpool.Pool) ([]notification.Transport, error) {
-	if cfg.WebPush == nil {
+	if cfg.WebPush == nil && cfg.DiscordDelivery == nil {
 		return nil, nil
 	}
 	gameStore := gamepostgres.NewStore(pool)

@@ -102,7 +102,7 @@ func (t *DiscordTransport) SendClaimed(ctx context.Context, delivery ClaimedDeli
 		// replay for this destination generation and request creates again.
 		// ponytail: holds a second pool connection per create; an exhausted
 		// pool times out as retryable before any provider call.
-		reserved, err := t.syncStore.ReserveDiscordCreate(ctx, id, delivery.Activity.GameRequestID)
+		reserved, err := t.syncStore.ReserveDiscordCreate(ctx, id, delivery.Activity.GameRequestID, claimID)
 		if err != nil {
 			return err
 		}
@@ -118,13 +118,13 @@ func (t *DiscordTransport) SendClaimed(ctx context.Context, delivery ClaimedDeli
 			if err := advance(repo, provider.MessageID); err != nil {
 				return err
 			}
-			return releaseDiscordCreate(ctx, repo, id, delivery.Activity.GameRequestID)
+			return releaseDiscordCreate(ctx, repo, id, delivery.Activity.GameRequestID, claimID)
 		}
 		if classified.Kind == discordDeliveryBrokenDestination {
 			if err := breakDestination(repo, claimID, "discord webhook no longer exists (10015 unknown webhook)"); err != nil {
 				return err
 			}
-			return releaseDiscordCreate(ctx, repo, id, delivery.Activity.GameRequestID)
+			return releaseDiscordCreate(ctx, repo, id, delivery.Activity.GameRequestID, claimID)
 		}
 		if !discordCreateRejected(provider) {
 			// Keep the reservation: Discord may have created the message.
@@ -132,7 +132,7 @@ func (t *DiscordTransport) SendClaimed(ctx context.Context, delivery ClaimedDeli
 			return errDiscordSendAborted
 		}
 		result = discordSendResult(classified)
-		return releaseDiscordCreate(ctx, repo, id, delivery.Activity.GameRequestID)
+		return releaseDiscordCreate(ctx, repo, id, delivery.Activity.GameRequestID, claimID)
 	}
 	err := t.syncStore.WithDiscordMessageSyncLock(ctx, id, delivery.Activity.GameRequestID, func(repo DiscordMessageSyncRepository) error {
 		destination, ciphertext, err := repo.GetDiscordDestination(ctx)
@@ -251,8 +251,8 @@ func discordCreateRejected(provider discordProviderResult) bool {
 	return provider.Status >= 400
 }
 
-func releaseDiscordCreate(ctx context.Context, repo DiscordMessageSyncRepository, destinationID, gameRequestID string) error {
-	released, err := repo.ReleaseDiscordCreate(ctx, destinationID, gameRequestID)
+func releaseDiscordCreate(ctx context.Context, repo DiscordMessageSyncRepository, destinationID, gameRequestID string, deliveryID int64) error {
+	released, err := repo.ReleaseDiscordCreate(ctx, destinationID, gameRequestID, deliveryID)
 	if err != nil {
 		return err
 	}

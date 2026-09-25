@@ -122,11 +122,12 @@ type DeliveryDetail struct {
 }
 
 var (
-	ErrDeliveryNotFound       = errors.New("notification delivery not found")
-	ErrDeliveryNotRetryable   = errors.New("notification delivery is not exhausted or permanent")
-	ErrDeliveryNotUncertain   = errors.New("notification delivery is not uncertain")
-	ErrNoLongerEligible       = errors.New("target is no longer eligible for delivery")
-	ErrTransportNotConfigured = errors.New("transport is not configured")
+	ErrDeliveryNotFound           = errors.New("notification delivery not found")
+	ErrDeliveryNotRetryable       = errors.New("notification delivery is not exhausted or permanent")
+	ErrDeliveryNotUncertain       = errors.New("notification delivery is not uncertain")
+	ErrNoLongerEligible           = errors.New("target is no longer eligible for delivery")
+	ErrDiscordReservationNotOwned = errors.New("discord create reservation belongs to another delivery")
+	ErrTransportNotConfigured     = errors.New("transport is not configured")
 )
 
 // BaselineInitializer is consumed directly by the composition root: exactly
@@ -156,6 +157,14 @@ type DiagnosticsRepository interface {
 	GetDeliveryDetail(ctx context.Context, deliveryID int64) (DeliveryDetail, error)
 	ReopenDelivery(ctx context.Context, deliveryID int64) (bool, error)
 	ReopenUncertainDelivery(ctx context.Context, deliveryID int64) (bool, error)
+}
+
+// DiscordUncertainRetryRepository atomically rechecks the current connected
+// generation, selected uncertain delivery, and CREATE reservation ownership.
+// It also handles the no-reservation Discord case inside that same boundary.
+// Automatic lease reclamation never invokes this administrator-only method.
+type DiscordUncertainRetryRepository interface {
+	ReopenUncertainDiscordDeliveryWithReservation(ctx context.Context, deliveryID int64, destinationID string) error
 }
 
 // DeliverySupersessionRepository is the Discord-only terminal transition for

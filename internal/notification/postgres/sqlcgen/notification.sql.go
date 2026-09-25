@@ -87,7 +87,7 @@ WHERE d.transport = 'discord' AND d.target_key = $1
   AND w.game_request_id = $3::uuid
   AND d.status = 'claimed'
   AND ($4::bigint = 0 OR d.id = $4::bigint)
-FOR UPDATE OF d
+FOR NO KEY UPDATE OF d
 `
 
 type ClaimedDiscordDeliveryParams struct {

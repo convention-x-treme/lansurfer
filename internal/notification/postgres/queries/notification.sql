@@ -108,7 +108,7 @@ WHERE d.transport = 'discord' AND d.target_key = sqlc.arg(target_key)
   AND w.game_request_id = sqlc.arg(game_request_id)::uuid
   AND d.status = 'claimed'
   AND (sqlc.arg(delivery_id)::bigint = 0 OR d.id = sqlc.arg(delivery_id)::bigint)
-FOR UPDATE OF d;
+FOR NO KEY UPDATE OF d;
 
 -- name: NewerDiscordDelivery :one
 SELECT COALESCE(max(w.activity_sequence), 0)::bigint

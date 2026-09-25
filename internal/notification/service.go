@@ -65,6 +65,21 @@ func (s *Service) reopen(ctx context.Context, deliveryID int64, uncertainOnly bo
 		return ErrNoLongerEligible
 	}
 
+	// The repository rechecks destination generation, exact claim status,
+	// and reservation ownership atomically. No-reservation Discord retries
+	// must use it too; generic reopening would race with reconnect.
+	if uncertainOnly && detail.Target.Transport == DiscordTransportName {
+		reservations, ok := s.repo.(DiscordUncertainRetryRepository)
+		if !ok {
+			return ErrTransportNotConfigured
+		}
+		destinationID, ok := decodeDiscordTarget(detail.Target)
+		if !ok {
+			return ErrNoLongerEligible
+		}
+		return reservations.ReopenUncertainDiscordDeliveryWithReservation(ctx, deliveryID, destinationID)
+	}
+
 	var reopened bool
 	if uncertainOnly {
 		reopened, err = s.repo.ReopenUncertainDelivery(ctx, deliveryID)

@@ -290,34 +290,111 @@ const releaseDiscordCreate = `-- name: ReleaseDiscordCreate :execrows
 DELETE FROM notification_discord_create_reservation
 WHERE destination_id = $1::uuid
   AND game_request_id = $2::uuid
+  AND owner_delivery_id = $3::bigint
 `
 
 type ReleaseDiscordCreateParams struct {
-	DestinationID pgtype.UUID
-	GameRequestID pgtype.UUID
+	DestinationID   pgtype.UUID
+	GameRequestID   pgtype.UUID
+	OwnerDeliveryID int64
 }
 
 func (q *Queries) ReleaseDiscordCreate(ctx context.Context, arg ReleaseDiscordCreateParams) (int64, error) {
-	result, err := q.db.Exec(ctx, releaseDiscordCreate, arg.DestinationID, arg.GameRequestID)
+	result, err := q.db.Exec(ctx, releaseDiscordCreate, arg.DestinationID, arg.GameRequestID, arg.OwnerDeliveryID)
 	if err != nil {
 		return 0, err
 	}
 	return result.RowsAffected(), nil
 }
 
+const reopenUncertainDiscordDeliveryWithReservation = `-- name: ReopenUncertainDiscordDeliveryWithReservation :one
+WITH current_destination AS MATERIALIZED (
+    SELECT destination_id FROM notification_discord_destination
+    WHERE id = true AND state = 'connected'
+      AND destination_id = $1::uuid
+    FOR SHARE
+),
+delivery_lookup AS MATERIALIZED (
+    SELECT d.id, d.status, w.game_request_id
+    FROM notification_delivery d
+    JOIN notification_work w ON w.id = d.work_id
+    JOIN current_destination cd ON d.target_key = 'd1:' || cd.destination_id::text
+    WHERE d.id = $2 AND d.transport = 'discord'
+    FOR UPDATE OF d
+),
+matching_reservation AS MATERIALIZED (
+    SELECT r.owner_delivery_id
+    FROM notification_discord_create_reservation r
+    JOIN delivery_lookup dl ON dl.game_request_id = r.game_request_id
+    WHERE r.destination_id = $1::uuid
+    FOR UPDATE OF r
+),
+deleted_reservation AS (
+    DELETE FROM notification_discord_create_reservation r
+    USING delivery_lookup dl
+    WHERE r.destination_id = $1::uuid
+      AND r.game_request_id = dl.game_request_id
+      AND r.owner_delivery_id = dl.id AND dl.status = 'uncertain'
+      AND EXISTS (SELECT 1 FROM matching_reservation mr WHERE mr.owner_delivery_id = dl.id)
+    RETURNING 1
+),
+reopened AS (
+    UPDATE notification_delivery d
+    SET status = 'pending', attempt_count = 0, next_attempt_at = now(),
+        claimed_until = NULL, last_error = NULL, updated_at = now()
+    WHERE d.id = $2
+      AND EXISTS (SELECT 1 FROM delivery_lookup WHERE status = 'uncertain')
+      AND (NOT EXISTS (SELECT 1 FROM matching_reservation)
+           OR EXISTS (SELECT 1 FROM deleted_reservation))
+    RETURNING 1
+)
+SELECT EXISTS (SELECT 1 FROM current_destination) AS generation_matches,
+       EXISTS (SELECT 1 FROM matching_reservation) AS reservation_found,
+       EXISTS (SELECT 1 FROM delivery_lookup WHERE status = 'uncertain') AS delivery_uncertain,
+       EXISTS (SELECT 1 FROM reopened) AS reopened
+`
+
+type ReopenUncertainDiscordDeliveryWithReservationParams struct {
+	DestinationID pgtype.UUID
+	ID            int64
+}
+
+type ReopenUncertainDiscordDeliveryWithReservationRow struct {
+	GenerationMatches bool
+	ReservationFound  bool
+	DeliveryUncertain bool
+	Reopened          bool
+}
+
+// The destination row lock is the correctness boundary for eligibility:
+// reconnect, disconnect, and break serialize with this statement. An old
+// unowned reservation remains blocking; a competitor cannot delete it.
+func (q *Queries) ReopenUncertainDiscordDeliveryWithReservation(ctx context.Context, arg ReopenUncertainDiscordDeliveryWithReservationParams) (ReopenUncertainDiscordDeliveryWithReservationRow, error) {
+	row := q.db.QueryRow(ctx, reopenUncertainDiscordDeliveryWithReservation, arg.DestinationID, arg.ID)
+	var i ReopenUncertainDiscordDeliveryWithReservationRow
+	err := row.Scan(
+		&i.GenerationMatches,
+		&i.ReservationFound,
+		&i.DeliveryUncertain,
+		&i.Reopened,
+	)
+	return i, err
+}
+
 const reserveDiscordCreate = `-- name: ReserveDiscordCreate :execrows
-INSERT INTO notification_discord_create_reservation (destination_id, game_request_id)
-VALUES ($1::uuid, $2::uuid)
+INSERT INTO notification_discord_create_reservation (destination_id, game_request_id, owner_delivery_id)
+VALUES ($1::uuid, $2::uuid, $3::bigint)
 ON CONFLICT (destination_id, game_request_id) DO NOTHING
 `
 
 type ReserveDiscordCreateParams struct {
-	DestinationID pgtype.UUID
-	GameRequestID pgtype.UUID
+	DestinationID   pgtype.UUID
+	GameRequestID   pgtype.UUID
+	OwnerDeliveryID int64
 }
 
 func (q *Queries) ReserveDiscordCreate(ctx context.Context, arg ReserveDiscordCreateParams) (int64, error) {
-	result, err := q.db.Exec(ctx, reserveDiscordCreate, arg.DestinationID, arg.GameRequestID)
+	result, err := q.db.Exec(ctx, reserveDiscordCreate, arg.DestinationID, arg.GameRequestID, arg.OwnerDeliveryID)
 	if err != nil {
 		return 0, err
 	}

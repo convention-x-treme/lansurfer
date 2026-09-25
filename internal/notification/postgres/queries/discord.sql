@@ -88,11 +88,61 @@ WHERE destination_id = sqlc.arg(destination_id)::uuid
   AND applied_version = sqlc.arg(applied_version);
 
 -- name: ReserveDiscordCreate :execrows
-INSERT INTO notification_discord_create_reservation (destination_id, game_request_id)
-VALUES (sqlc.arg(destination_id)::uuid, sqlc.arg(game_request_id)::uuid)
+INSERT INTO notification_discord_create_reservation (destination_id, game_request_id, owner_delivery_id)
+VALUES (sqlc.arg(destination_id)::uuid, sqlc.arg(game_request_id)::uuid, sqlc.arg(owner_delivery_id)::bigint)
 ON CONFLICT (destination_id, game_request_id) DO NOTHING;
 
 -- name: ReleaseDiscordCreate :execrows
 DELETE FROM notification_discord_create_reservation
 WHERE destination_id = sqlc.arg(destination_id)::uuid
-  AND game_request_id = sqlc.arg(game_request_id)::uuid;
+  AND game_request_id = sqlc.arg(game_request_id)::uuid
+  AND owner_delivery_id = sqlc.arg(owner_delivery_id)::bigint;
+
+-- name: ReopenUncertainDiscordDeliveryWithReservation :one
+-- The destination row lock is the correctness boundary for eligibility:
+-- reconnect, disconnect, and break serialize with this statement. An old
+-- unowned reservation remains blocking; a competitor cannot delete it.
+WITH current_destination AS MATERIALIZED (
+    SELECT destination_id FROM notification_discord_destination
+    WHERE id = true AND state = 'connected'
+      AND destination_id = sqlc.arg(destination_id)::uuid
+    FOR SHARE
+),
+delivery_lookup AS MATERIALIZED (
+    SELECT d.id, d.status, w.game_request_id
+    FROM notification_delivery d
+    JOIN notification_work w ON w.id = d.work_id
+    JOIN current_destination cd ON d.target_key = 'd1:' || cd.destination_id::text
+    WHERE d.id = sqlc.arg(id) AND d.transport = 'discord'
+    FOR UPDATE OF d
+),
+matching_reservation AS MATERIALIZED (
+    SELECT r.owner_delivery_id
+    FROM notification_discord_create_reservation r
+    JOIN delivery_lookup dl ON dl.game_request_id = r.game_request_id
+    WHERE r.destination_id = sqlc.arg(destination_id)::uuid
+    FOR UPDATE OF r
+),
+deleted_reservation AS (
+    DELETE FROM notification_discord_create_reservation r
+    USING delivery_lookup dl
+    WHERE r.destination_id = sqlc.arg(destination_id)::uuid
+      AND r.game_request_id = dl.game_request_id
+      AND r.owner_delivery_id = dl.id AND dl.status = 'uncertain'
+      AND EXISTS (SELECT 1 FROM matching_reservation mr WHERE mr.owner_delivery_id = dl.id)
+    RETURNING 1
+),
+reopened AS (
+    UPDATE notification_delivery d
+    SET status = 'pending', attempt_count = 0, next_attempt_at = now(),
+        claimed_until = NULL, last_error = NULL, updated_at = now()
+    WHERE d.id = sqlc.arg(id)
+      AND EXISTS (SELECT 1 FROM delivery_lookup WHERE status = 'uncertain')
+      AND (NOT EXISTS (SELECT 1 FROM matching_reservation)
+           OR EXISTS (SELECT 1 FROM deleted_reservation))
+    RETURNING 1
+)
+SELECT EXISTS (SELECT 1 FROM current_destination) AS generation_matches,
+       EXISTS (SELECT 1 FROM matching_reservation) AS reservation_found,
+       EXISTS (SELECT 1 FROM delivery_lookup WHERE status = 'uncertain') AS delivery_uncertain,
+       EXISTS (SELECT 1 FROM reopened) AS reopened;

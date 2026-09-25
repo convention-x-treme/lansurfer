@@ -151,14 +151,12 @@ type DiscordMessageSyncRepository interface {
 	ClaimedDiscordDelivery(ctx context.Context, deliveryID, sequence int64, gameRequestID string, target Target) (int64, error)
 	NewerDiscordDelivery(ctx context.Context, sequence int64, gameRequestID string, target Target) (int64, error)
 	RecordSuperseded(ctx context.Context, deliveryID, appliedVersion int64) (bool, error)
-	// ReserveDiscordCreate is called on the outer repository while the sync
-	// lock is held and commits before the provider create. False means an
-	// earlier create for this destination generation and Game Request may
-	// have reached Discord without a recorded message ID; never create again.
-	ReserveDiscordCreate(ctx context.Context, destinationID, gameRequestID string) (bool, error)
+	// ReserveDiscordCreate commits the exact claimed delivery's reservation
+	// before sending. A competing delivery cannot acquire or release it.
+	ReserveDiscordCreate(ctx context.Context, destinationID, gameRequestID string, deliveryID int64) (bool, error)
 	// ReleaseDiscordCreate runs on the sync transaction after a recorded
-	// message ID or a provider-proven rejection.
-	ReleaseDiscordCreate(ctx context.Context, destinationID, gameRequestID string) (bool, error)
+	// message ID or provider-proven rejection, conditional on its owner.
+	ReleaseDiscordCreate(ctx context.Context, destinationID, gameRequestID string, deliveryID int64) (bool, error)
 	// MarkDiscordDestinationBroken runs on the sync transaction, which
 	// already holds the destination row FOR SHARE: it only performs the
 	// state transition (no suppression of its own), trusting the caller's

@@ -38,9 +38,10 @@ type discordSendStore struct {
 	superseded  bool
 	// reserved commits immediately, like the pooled reservation insert;
 	// releases apply only when the sync transaction commits.
-	reserved       bool
-	reserveErr     error
-	releasePending bool
+	reserved         bool
+	reserveErr       error
+	reservationOwner int64
+	releasePending   bool
 	// E3-20 broken-destination/suppression tracking.
 	markBrokenErr       error
 	markBrokenMismatch  bool
@@ -86,7 +87,7 @@ func (s *discordSendStore) SuppressOtherDiscordDeliveries(_ context.Context, tar
 	return 1, nil
 }
 
-func (s *discordSendStore) ReserveDiscordCreate(_ context.Context, destinationID, requestID string) (bool, error) {
+func (s *discordSendStore) ReserveDiscordCreate(_ context.Context, destinationID, requestID string, deliveryID int64) (bool, error) {
 	if !s.locked.Load() || destinationID != discordSendDestinationID || requestID != discordSendRequestID {
 		return false, errors.New("wrong reservation key or unlocked reservation")
 	}
@@ -97,11 +98,12 @@ func (s *discordSendStore) ReserveDiscordCreate(_ context.Context, destinationID
 		return false, nil
 	}
 	s.reserved = true
+	s.reservationOwner = deliveryID
 	return true, nil
 }
 
-func (s *discordSendStore) ReleaseDiscordCreate(_ context.Context, destinationID, requestID string) (bool, error) {
-	if !s.locked.Load() || destinationID != discordSendDestinationID || requestID != discordSendRequestID || !s.reserved {
+func (s *discordSendStore) ReleaseDiscordCreate(_ context.Context, destinationID, requestID string, deliveryID int64) (bool, error) {
+	if !s.locked.Load() || destinationID != discordSendDestinationID || requestID != discordSendRequestID || !s.reserved || s.reservationOwner != deliveryID {
 		return false, nil
 	}
 	s.releasePending = true
