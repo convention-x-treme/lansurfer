@@ -33,8 +33,8 @@ type Activity struct {
 }
 
 // Target names one external delivery target within one transport, for
-// example a Web Push subscription ID or "instance" for the single Discord
-// destination. It is intentionally opaque outside the owning transport.
+// example a Web Push subscription or a Discord destination generation.
+// It is intentionally opaque outside the owning transport.
 type Target struct {
 	Transport string
 	Key       string

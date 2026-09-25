@@ -171,3 +171,84 @@ type DiscordWebhookOAuthProvider interface {
 	// local destination change that already committed.
 	DeleteWebhook(ctx context.Context, credential DiscordWebhookCredential) error
 }
+
+// DiscordTransport materializes generation-scoped targets. E3-18 adds Send
+// only after synchronized provider mutation is available; no placeholder
+// provider call is exposed here.
+type DiscordTransport struct {
+	destinations interface {
+		GetDiscordDestination(context.Context) (DiscordDestination, DiscordCredentialCiphertext, error)
+	}
+}
+
+func NewDiscordTransport(destinations interface {
+	GetDiscordDestination(context.Context) (DiscordDestination, DiscordCredentialCiphertext, error)
+}) *DiscordTransport {
+	return &DiscordTransport{destinations: destinations}
+}
+
+func (*DiscordTransport) Name() string { return DiscordTransportName }
+
+func (t *DiscordTransport) Targets(ctx context.Context, _ Activity) ([]Target, error) {
+	destination, _, err := t.destinations.GetDiscordDestination(ctx)
+	if errors.Is(err, ErrDiscordDestinationNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if destination.State != DiscordDestinationConnected {
+		return nil, nil
+	}
+	if !validDiscordDestinationID(destination.ID) {
+		return nil, errors.New("invalid discord destination identity")
+	}
+	return []Target{{Transport: t.Name(), Key: "d1:" + destination.ID}}, nil
+}
+
+// ResolveTarget never resolves an old generation to the singleton's current
+// credential. The worker also calls Targets before each attempt or retry.
+func (t *DiscordTransport) ResolveTarget(ctx context.Context, target Target) (DiscordDestination, DiscordCredentialCiphertext, error) {
+	id, ok := decodeDiscordTarget(target)
+	if !ok {
+		return DiscordDestination{}, nil, ErrNoLongerEligible
+	}
+	destination, ciphertext, err := t.destinations.GetDiscordDestination(ctx)
+	if errors.Is(err, ErrDiscordDestinationNotFound) {
+		return DiscordDestination{}, nil, ErrNoLongerEligible
+	}
+	if err != nil {
+		return DiscordDestination{}, nil, err
+	}
+	if destination.State != DiscordDestinationConnected || destination.ID != id || len(ciphertext) == 0 {
+		return DiscordDestination{}, nil, ErrNoLongerEligible
+	}
+	return destination, ciphertext, nil
+}
+
+func decodeDiscordTarget(target Target) (string, bool) {
+	if target.Transport != DiscordTransportName || len(target.Key) != 39 || target.Key[:3] != "d1:" {
+		return "", false
+	}
+	id := target.Key[3:]
+	return id, validDiscordDestinationID(id)
+}
+
+func validDiscordDestinationID(id string) bool {
+	if len(id) != 36 {
+		return false
+	}
+	for index := range len(id) {
+		switch index {
+		case 8, 13, 18, 23:
+			if id[index] != '-' {
+				return false
+			}
+		default:
+			if !((id[index] >= '0' && id[index] <= '9') || (id[index] >= 'a' && id[index] <= 'f')) {
+				return false
+			}
+		}
+	}
+	return true
+}
