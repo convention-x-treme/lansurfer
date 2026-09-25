@@ -149,7 +149,14 @@ func (w *Worker) processOne(ctx context.Context, delivery ClaimedDelivery) {
 	}
 
 	sendCtx, cancel := context.WithTimeout(ctx, w.sendTimeout)
-	result := transport.Send(sendCtx, delivery.Activity, delivery.Target)
+	var result SendResult
+	if claimed, ok := transport.(interface {
+		SendClaimed(context.Context, ClaimedDelivery) SendResult
+	}); ok {
+		result = claimed.SendClaimed(sendCtx, delivery)
+	} else {
+		result = transport.Send(sendCtx, delivery.Activity, delivery.Target)
+	}
 	cancel()
 	w.recordOutcome(ctx, delivery, result)
 }
@@ -157,6 +164,10 @@ func (w *Worker) processOne(ctx context.Context, delivery ClaimedDelivery) {
 func (w *Worker) recordOutcome(ctx context.Context, delivery ClaimedDelivery, result SendResult) {
 	var recordErr error
 	switch result.Outcome {
+	case OutcomeAlreadyRecorded:
+		return
+	case OutcomeNoLongerEligible:
+		recordErr = w.repo.RecordSuppressed(ctx, delivery.DeliveryID, ErrNoLongerEligible.Error())
 	case OutcomeSucceeded:
 		recordErr = w.repo.RecordSuccess(ctx, delivery.DeliveryID)
 	case OutcomePermanent:

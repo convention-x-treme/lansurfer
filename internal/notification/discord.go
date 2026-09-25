@@ -138,6 +138,21 @@ type DiscordMessageSyncRepository interface {
 	GetDiscordMessageSync(ctx context.Context, destinationID, gameRequestID string) (DiscordMessageSync, error)
 	AdvanceDiscordMessageSync(ctx context.Context, sync DiscordMessageSync) (bool, error)
 	ClearDiscordMessageSync(ctx context.Context, destinationID, gameRequestID, messageID string, appliedVersion int64) (bool, error)
+	// Send-only reads and transition run on the same transaction handle as
+	// the sync state, after the advisory lock is acquired.
+	GetDiscordDestination(ctx context.Context) (DiscordDestination, DiscordCredentialCiphertext, error)
+	GetGameRequestSummary(ctx context.Context, gameRequestID string) (GameRequestSummary, error)
+	ClaimedDiscordDelivery(ctx context.Context, deliveryID, sequence int64, gameRequestID string, target Target) (int64, error)
+	NewerDiscordDelivery(ctx context.Context, sequence int64, gameRequestID string, target Target) (int64, error)
+	RecordSuperseded(ctx context.Context, deliveryID, appliedVersion int64) (bool, error)
+	// ReserveDiscordCreate is called on the outer repository while the sync
+	// lock is held and commits before the provider create. False means an
+	// earlier create for this destination generation and Game Request may
+	// have reached Discord without a recorded message ID; never create again.
+	ReserveDiscordCreate(ctx context.Context, destinationID, gameRequestID string) (bool, error)
+	// ReleaseDiscordCreate runs on the sync transaction after a recorded
+	// message ID or a provider-proven rejection.
+	ReleaseDiscordCreate(ctx context.Context, destinationID, gameRequestID string) (bool, error)
 	// WithDiscordMessageSyncLock serializes one destination/request's
 	// external mutation and state write in a PostgreSQL transaction.
 	WithDiscordMessageSyncLock(ctx context.Context, destinationID, gameRequestID string, apply func(DiscordMessageSyncRepository) error) error
@@ -172,13 +187,17 @@ type DiscordWebhookOAuthProvider interface {
 	DeleteWebhook(ctx context.Context, credential DiscordWebhookCredential) error
 }
 
-// DiscordTransport materializes generation-scoped targets. E3-18 adds Send
-// only after synchronized provider mutation is available; no placeholder
-// provider call is exposed here.
+// DiscordTransport materializes generation-scoped targets. Its send
+// constructor also installs the PostgreSQL-backed delivery dependencies.
 type DiscordTransport struct {
 	destinations interface {
 		GetDiscordDestination(context.Context) (DiscordDestination, DiscordCredentialCiphertext, error)
 	}
+	syncStore     DiscordMessageSyncRepository
+	encryptionKey []byte
+	baseURL       string
+	instanceName  string
+	webhooks      *discordWebhookClient
 }
 
 func NewDiscordTransport(destinations interface {

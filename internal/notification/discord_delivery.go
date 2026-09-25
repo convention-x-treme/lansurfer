@@ -25,7 +25,7 @@ func classifyDiscordCreate(result discordProviderResult) discordDeliveryResult {
 		return discordDeliveryResult{Kind: discordDeliveryRetryable, RetryAfter: result.RetryAfter}
 	}
 	if result.Status >= 500 {
-		return discordDeliveryResult{Kind: discordDeliveryRetryable}
+		return discordDeliveryResult{Kind: discordDeliveryRetryable, RetryAfter: result.RetryAfter}
 	}
 	if result.DiscordCode == 10015 {
 		return discordDeliveryResult{Kind: discordDeliveryBrokenDestination}

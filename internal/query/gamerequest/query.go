@@ -151,6 +151,12 @@ func NewStore(pool *pgxpool.Pool) *Store {
 	return &Store{queries: sqlcgen.New(pool), now: time.Now}
 }
 
+// NewStoreWithTx binds system reads to an existing transaction. Discord
+// delivery uses it after acquiring its destination/request advisory lock.
+func NewStoreWithTx(tx pgx.Tx) *Store {
+	return &Store{queries: sqlcgen.New(tx), now: time.Now}
+}
+
 func (s *Store) ListActive(ctx context.Context, viewerID string, filter Filter) ([]Request, error) {
 	search := strings.TrimSpace(filter.Search)
 	// Counted in characters, as the game catalog counts its own search term and

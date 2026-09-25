@@ -275,6 +275,44 @@ func (q *Queries) MarkDiscordDestinationBroken(ctx context.Context, brokenReason
 	return result.RowsAffected(), nil
 }
 
+const releaseDiscordCreate = `-- name: ReleaseDiscordCreate :execrows
+DELETE FROM notification_discord_create_reservation
+WHERE destination_id = $1::uuid
+  AND game_request_id = $2::uuid
+`
+
+type ReleaseDiscordCreateParams struct {
+	DestinationID pgtype.UUID
+	GameRequestID pgtype.UUID
+}
+
+func (q *Queries) ReleaseDiscordCreate(ctx context.Context, arg ReleaseDiscordCreateParams) (int64, error) {
+	result, err := q.db.Exec(ctx, releaseDiscordCreate, arg.DestinationID, arg.GameRequestID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const reserveDiscordCreate = `-- name: ReserveDiscordCreate :execrows
+INSERT INTO notification_discord_create_reservation (destination_id, game_request_id)
+VALUES ($1::uuid, $2::uuid)
+ON CONFLICT (destination_id, game_request_id) DO NOTHING
+`
+
+type ReserveDiscordCreateParams struct {
+	DestinationID pgtype.UUID
+	GameRequestID pgtype.UUID
+}
+
+func (q *Queries) ReserveDiscordCreate(ctx context.Context, arg ReserveDiscordCreateParams) (int64, error) {
+	result, err := q.db.Exec(ctx, reserveDiscordCreate, arg.DestinationID, arg.GameRequestID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const upsertDiscordDestination = `-- name: UpsertDiscordDestination :exec
 INSERT INTO notification_discord_destination
     (id, state, credential_ciphertext, guild_id, channel_id, webhook_name, connected_at, updated_at)

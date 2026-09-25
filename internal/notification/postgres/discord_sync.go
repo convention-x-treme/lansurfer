@@ -9,6 +9,8 @@ import (
 	"github.com/convention-x-treme/lansurfer/internal/notification/postgres/sqlcgen"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+
+	gamerequestquery "github.com/convention-x-treme/lansurfer/internal/query/gamerequest"
 )
 
 func (s *Store) GetDiscordMessageSync(ctx context.Context, destinationID, gameRequestID string) (notification.DiscordMessageSync, error) {
@@ -99,11 +101,103 @@ func (s *Store) WithDiscordMessageSyncLock(ctx context.Context, destinationID, g
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1::uuid::text || ':' || $2::uuid::text, 0))`, destination, request); err != nil {
 		return fmt.Errorf("lock discord message sync: %w", err)
 	}
-	if err := apply(&Store{queries: s.queries.WithTx(tx)}); err != nil {
+	if err := apply(&Store{queries: s.queries.WithTx(tx), tx: tx}); err != nil {
 		return err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("commit discord sync transaction: %w", err)
 	}
 	return nil
+}
+
+// These reads run through the transaction-bound Store passed by
+// WithDiscordMessageSyncLock, never through the pool.
+func (s *Store) GetGameRequestSummary(ctx context.Context, requestID string) (notification.GameRequestSummary, error) {
+	if s.tx == nil {
+		return notification.GameRequestSummary{}, errors.New("discord summary read requires sync transaction")
+	}
+	summary, err := gamerequestquery.NewStoreWithTx(s.tx).GetGameRequestSummary(ctx, requestID)
+	if err != nil {
+		return notification.GameRequestSummary{}, fmt.Errorf("get discord current request: %w", err)
+	}
+	return notification.GameRequestSummary{
+		RequestID: summary.RequestID, GameID: summary.GameID, GameName: summary.GameName,
+		StartsAt: summary.StartsAt, Status: string(summary.Status), MemberCount: summary.MemberCount,
+		MaxPlayers: summary.MaxPlayers, CreatorGameNick: summary.CreatorGameNick, Description: summary.Description,
+	}, nil
+}
+
+func (s *Store) ClaimedDiscordDelivery(ctx context.Context, deliveryID, sequence int64, gameRequestID string, target notification.Target) (int64, error) {
+	id, err := parseUUID(gameRequestID)
+	if err != nil {
+		return 0, fmt.Errorf("parse game request identity: %w", err)
+	}
+	claimed, err := s.queries.ClaimedDiscordDelivery(ctx, sqlcgen.ClaimedDiscordDeliveryParams{
+		DeliveryID: deliveryID, ActivitySequence: sequence, GameRequestID: id, TargetKey: target.Key,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("get claimed discord delivery: %w", err)
+	}
+	return claimed, nil
+}
+
+func (s *Store) NewerDiscordDelivery(ctx context.Context, sequence int64, gameRequestID string, target notification.Target) (int64, error) {
+	id, err := parseUUID(gameRequestID)
+	if err != nil {
+		return 0, fmt.Errorf("parse game request identity: %w", err)
+	}
+	version, err := s.queries.NewerDiscordDelivery(ctx, sqlcgen.NewerDiscordDeliveryParams{
+		ActivitySequence: sequence, GameRequestID: id, TargetKey: target.Key,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("get newer discord delivery: %w", err)
+	}
+	return version, nil
+}
+
+// ReserveDiscordCreate commits on its own pooled connection, never on the
+// sync transaction: the reservation must be durable before Discord sees the
+// create. False means an earlier create outcome is still unrecorded.
+func (s *Store) ReserveDiscordCreate(ctx context.Context, destinationID, gameRequestID string) (bool, error) {
+	if s.tx != nil {
+		return false, errors.New("discord create reservation must commit outside the sync transaction")
+	}
+	destination, request, err := parseDiscordSyncKey(destinationID, gameRequestID)
+	if err != nil {
+		return false, err
+	}
+	rows, err := s.queries.ReserveDiscordCreate(ctx, sqlcgen.ReserveDiscordCreateParams{DestinationID: destination, GameRequestID: request})
+	if err != nil {
+		return false, fmt.Errorf("reserve discord create: %w", err)
+	}
+	return rows == 1, nil
+}
+
+// ReleaseDiscordCreate runs on the sync transaction, so the release commits
+// atomically with the recorded message ID or proven provider rejection.
+func (s *Store) ReleaseDiscordCreate(ctx context.Context, destinationID, gameRequestID string) (bool, error) {
+	destination, request, err := parseDiscordSyncKey(destinationID, gameRequestID)
+	if err != nil {
+		return false, err
+	}
+	rows, err := s.queries.ReleaseDiscordCreate(ctx, sqlcgen.ReleaseDiscordCreateParams{DestinationID: destination, GameRequestID: request})
+	if err != nil {
+		return false, fmt.Errorf("release discord create: %w", err)
+	}
+	return rows == 1, nil
+}
+
+func parseDiscordSyncKey(destinationID, gameRequestID string) (pgtype.UUID, pgtype.UUID, error) {
+	destination, err := parseUUID(destinationID)
+	if err != nil {
+		return pgtype.UUID{}, pgtype.UUID{}, fmt.Errorf("parse discord destination identity: %w", err)
+	}
+	request, err := parseUUID(gameRequestID)
+	if err != nil {
+		return pgtype.UUID{}, pgtype.UUID{}, fmt.Errorf("parse game request identity: %w", err)
+	}
+	return destination, request, nil
 }

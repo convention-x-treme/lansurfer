@@ -79,3 +79,13 @@ WHERE destination_id = sqlc.arg(destination_id)::uuid
   AND game_request_id = sqlc.arg(game_request_id)::uuid
   AND message_id = sqlc.arg(message_id)
   AND applied_version = sqlc.arg(applied_version);
+
+-- name: ReserveDiscordCreate :execrows
+INSERT INTO notification_discord_create_reservation (destination_id, game_request_id)
+VALUES (sqlc.arg(destination_id)::uuid, sqlc.arg(game_request_id)::uuid)
+ON CONFLICT (destination_id, game_request_id) DO NOTHING;
+
+-- name: ReleaseDiscordCreate :execrows
+DELETE FROM notification_discord_create_reservation
+WHERE destination_id = sqlc.arg(destination_id)::uuid
+  AND game_request_id = sqlc.arg(game_request_id)::uuid;

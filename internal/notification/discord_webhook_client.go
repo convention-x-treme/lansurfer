@@ -156,7 +156,7 @@ func (c *discordWebhookClient) do(request *http.Request) discordProviderResult {
 			result.DiscordCode = envelope.Code
 		}
 	}
-	if result.Status == http.StatusTooManyRequests {
+	if result.Status == http.StatusTooManyRequests || result.Status >= 500 {
 		if value := strings.TrimSpace(response.Header.Get("Retry-After")); value != "" {
 			result.RetryAfter = discordRetrySeconds(value)
 			if result.RetryAfter == nil {
@@ -166,7 +166,7 @@ func (c *discordWebhookClient) do(request *http.Request) discordProviderResult {
 				}
 			}
 		}
-		if result.RetryAfter == nil && envelope.RetryAfter > 0 && envelope.RetryAfter <= float64(math.MaxInt64)/float64(time.Second) {
+		if result.Status == http.StatusTooManyRequests && result.RetryAfter == nil && envelope.RetryAfter > 0 && envelope.RetryAfter <= float64(math.MaxInt64)/float64(time.Second) {
 			delay := time.Duration(envelope.RetryAfter * float64(time.Second))
 			result.RetryAfter = &delay
 		}

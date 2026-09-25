@@ -50,6 +50,10 @@ const (
 	OutcomeRetryable
 	OutcomePermanent
 	OutcomeUncertain
+	// Discord only: no longer eligible is suppressed; already recorded means
+	// the exact claimed delivery was closed inside its sync transaction.
+	OutcomeNoLongerEligible
+	OutcomeAlreadyRecorded
 )
 
 // SendResult is what a Transport reports for one delivery attempt.

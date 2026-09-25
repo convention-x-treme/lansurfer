@@ -745,6 +745,13 @@ For one claimed Discord delivery:
 6. After success, atomically persist message ID/highest applied version.
 7. An older delivery must never overwrite state recorded by a newer one.
 8. Render from current snapshot, not original activity contents.
+9. Classify a CREATE outcome as: known pre-transmission failure => retryable
+   (release reservation); explicit 429 => retryable (release reservation,
+   preserve `Retry-After`); explicit 5xx => retryable (release reservation,
+   preserve `Retry-After`); ambiguous timeout/connection loss that may have
+   reached Discord => uncertain (retain reservation). Only Discord's absence
+   of a definitive HTTP response is ambiguous; any HTTP status Discord
+   returns is definitive.
 
 **Dependencies**
 
@@ -754,7 +761,11 @@ E3-13, E3-14, E3-16, E3-17.
 
 - concurrency integration test proves two deliveries for same destination+request cannot externally apply in stale order;
 - rapid activities may result in one create/latest edit and superseded intermediate deliveries;
-- no process-local mutex is the durability mechanism.
+- no process-local mutex is the durability mechanism;
+- an explicit Discord 5xx response to CREATE releases the reservation, reports
+  retryable, and permits an immediate automatic retry;
+- an ambiguous CREATE outcome without an HTTP response retains the
+  reservation and reports uncertain.
 
 ---
 
@@ -855,6 +866,26 @@ Make E3 available to the same worker/manual-retry infrastructure as Web Push wit
    - `admin notifications retry`;
    - `retry-uncertain`.
 5. No provider call occurs merely from listing diagnostics.
+6. Wire `retry-uncertain` for an uncertain Discord delivery with an
+   unresolved CREATE reservation (recorded by E3-18): before re-invoking
+   `SendClaimed`,
+   - verify the exact delivery is still `uncertain`;
+   - verify target/destination generation still matches and is eligible;
+   - verify the reservation belongs to that exact destination + request
+     (the CREATE attempt this delivery represents);
+   - atomically clear that reservation and reopen the uncertain delivery in
+     the same transaction that verifies the above;
+   - only this explicit administrator action may override the normal
+     at-most-one-automatic-create guard from E3-18; automatic lease
+     expiry/reclaim must never clear the reservation;
+   - if destination generation changed, fail as no-longer-eligible rather
+     than clearing another generation's reservation;
+   - reconnect is not required merely to retry an uncertain delivery.
+7. Do not add an automatic timeout/expiry for reservations. The existing
+   `retry-uncertain` command is itself the explicit administrator
+   acknowledgement of duplicate risk required by the E1 contract
+   (`ManualRetryUncertain` explicitly retries despite possible
+   externally-visible duplication).
 
 **Dependencies**
 
@@ -865,6 +896,10 @@ E3-20.
 - configured runtime registers `discord`;
 - disabled runtime does not;
 - CLI retry can re-check current destination eligibility;
+- `retry-uncertain` against an uncertain Discord delivery with an unresolved
+  CREATE reservation atomically clears that exact reservation and reopens
+  the delivery, but only for a still-matching destination generation;
+  automatic lease expiry never clears it;
 - `go test ./internal/app/... ./cmd/lansurfer/... -count=1` passes.
 
 ---

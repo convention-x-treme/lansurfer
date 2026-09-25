@@ -17,6 +17,7 @@ import (
 type Store struct {
 	pool    *pgxpool.Pool
 	queries *sqlcgen.Queries
+	tx      pgx.Tx // set only for the repository passed to a sync-lock callback
 }
 
 func NewStore(pool *pgxpool.Pool) *Store {
@@ -443,6 +444,22 @@ func (s *Store) SetPreference(ctx context.Context, userID string, preference not
 // the destination is broken; callers decrypt it only immediately before a
 // provider call.
 func (s *Store) GetDiscordDestination(ctx context.Context) (notification.DiscordDestination, notification.DiscordCredentialCiphertext, error) {
+	if s.tx != nil {
+		// SHARE prevents replacement/disconnect from changing the credential
+		// until the external mutation and sync transaction finish.
+		var destination notification.DiscordDestination
+		var ciphertext notification.DiscordCredentialCiphertext
+		err := s.tx.QueryRow(ctx, `SELECT destination_id::text, state, credential_ciphertext
+			FROM notification_discord_destination WHERE id = true FOR SHARE`).
+			Scan(&destination.ID, &destination.State, &ciphertext)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return notification.DiscordDestination{}, nil, notification.ErrDiscordDestinationNotFound
+		}
+		if err != nil {
+			return notification.DiscordDestination{}, nil, fmt.Errorf("get locked discord destination: %w", err)
+		}
+		return destination, ciphertext, nil
+	}
 	row, err := s.queries.GetDiscordDestination(ctx)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return notification.DiscordDestination{}, nil, notification.ErrDiscordDestinationNotFound

@@ -79,6 +79,38 @@ func (q *Queries) ClaimDueDeliveries(ctx context.Context, arg ClaimDueDeliveries
 	return items, nil
 }
 
+const claimedDiscordDelivery = `-- name: ClaimedDiscordDelivery :one
+SELECT d.id FROM notification_delivery d
+JOIN notification_work w ON w.id = d.work_id
+WHERE d.transport = 'discord' AND d.target_key = $1
+  AND w.activity_sequence = $2
+  AND w.game_request_id = $3::uuid
+  AND d.status = 'claimed'
+  AND ($4::bigint = 0 OR d.id = $4::bigint)
+FOR UPDATE OF d
+`
+
+type ClaimedDiscordDeliveryParams struct {
+	TargetKey        string
+	ActivitySequence int64
+	GameRequestID    pgtype.UUID
+	DeliveryID       int64
+}
+
+// Lock the exact claim before provider mutation. A zero ID resolves the
+// unique (activity, target) claim for the legacy Transport.Send entry point.
+func (q *Queries) ClaimedDiscordDelivery(ctx context.Context, arg ClaimedDiscordDeliveryParams) (int64, error) {
+	row := q.db.QueryRow(ctx, claimedDiscordDelivery,
+		arg.TargetKey,
+		arg.ActivitySequence,
+		arg.GameRequestID,
+		arg.DeliveryID,
+	)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
 const discoverNewActivity = `-- name: DiscoverNewActivity :many
 SELECT a.sequence, a.game_request_id::text AS game_request_id, a.actor_id::text AS actor_id,
        a.kind, a.occurred_at
@@ -295,6 +327,29 @@ ON CONFLICT (activity_sequence) DO NOTHING
 func (q *Queries) MaterializeBaselineWork(ctx context.Context) error {
 	_, err := q.db.Exec(ctx, materializeBaselineWork)
 	return err
+}
+
+const newerDiscordDelivery = `-- name: NewerDiscordDelivery :one
+SELECT COALESCE(max(w.activity_sequence), 0)::bigint
+FROM notification_delivery d
+JOIN notification_work w ON w.id = d.work_id
+WHERE d.transport = 'discord' AND d.target_key = $1
+  AND w.game_request_id = $2::uuid
+  AND w.activity_sequence > $3
+  AND d.status IN ('pending', 'claimed')
+`
+
+type NewerDiscordDeliveryParams struct {
+	TargetKey        string
+	GameRequestID    pgtype.UUID
+	ActivitySequence int64
+}
+
+func (q *Queries) NewerDiscordDelivery(ctx context.Context, arg NewerDiscordDeliveryParams) (int64, error) {
+	row := q.db.QueryRow(ctx, newerDiscordDelivery, arg.TargetKey, arg.GameRequestID, arg.ActivitySequence)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
 }
 
 const recordDeliveryExhausted = `-- name: RecordDeliveryExhausted :exec

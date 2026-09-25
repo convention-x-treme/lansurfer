@@ -98,6 +98,27 @@ SET status = 'superseded', claimed_until = NULL,
 WHERE id = sqlc.arg(id) AND transport = 'discord'
   AND status IN ('pending', 'claimed') AND sqlc.arg(applied_version)::bigint > 0;
 
+-- name: ClaimedDiscordDelivery :one
+-- Lock the exact claim before provider mutation. A zero ID resolves the
+-- unique (activity, target) claim for the legacy Transport.Send entry point.
+SELECT d.id FROM notification_delivery d
+JOIN notification_work w ON w.id = d.work_id
+WHERE d.transport = 'discord' AND d.target_key = sqlc.arg(target_key)
+  AND w.activity_sequence = sqlc.arg(activity_sequence)
+  AND w.game_request_id = sqlc.arg(game_request_id)::uuid
+  AND d.status = 'claimed'
+  AND (sqlc.arg(delivery_id)::bigint = 0 OR d.id = sqlc.arg(delivery_id)::bigint)
+FOR UPDATE OF d;
+
+-- name: NewerDiscordDelivery :one
+SELECT COALESCE(max(w.activity_sequence), 0)::bigint
+FROM notification_delivery d
+JOIN notification_work w ON w.id = d.work_id
+WHERE d.transport = 'discord' AND d.target_key = sqlc.arg(target_key)
+  AND w.game_request_id = sqlc.arg(game_request_id)::uuid
+  AND w.activity_sequence > sqlc.arg(activity_sequence)
+  AND d.status IN ('pending', 'claimed');
+
 -- name: SuppressDeliveriesByTransport :execrows
 -- Bulk-suppresses every still-pending or still-claimed delivery for one
 -- transport, e.g. when a Discord destination disconnects or breaks. It
