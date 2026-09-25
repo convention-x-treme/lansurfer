@@ -59,34 +59,44 @@ JOIN notification_work w ON w.id = c.work_id;
 -- name: RecordDeliverySuccess :exec
 UPDATE notification_delivery
 SET status = 'succeeded', claimed_until = NULL, last_error = NULL, updated_at = now()
-WHERE id = sqlc.arg(id);
+WHERE id = sqlc.arg(id) AND status = 'claimed';
 
 -- name: RecordDeliveryRetry :exec
 UPDATE notification_delivery
 SET status = 'pending', attempt_count = attempt_count + 1, next_attempt_at = sqlc.arg(next_attempt_at),
     claimed_until = NULL, last_error = sqlc.narg(last_error), updated_at = now()
-WHERE id = sqlc.arg(id);
+WHERE id = sqlc.arg(id) AND status = 'claimed';
 
 -- name: RecordDeliveryExhausted :exec
 UPDATE notification_delivery
 SET status = 'exhausted', attempt_count = attempt_count + 1,
     claimed_until = NULL, last_error = sqlc.narg(last_error), updated_at = now()
-WHERE id = sqlc.arg(id);
+WHERE id = sqlc.arg(id) AND status = 'claimed';
 
 -- name: RecordDeliveryPermanent :exec
 UPDATE notification_delivery
 SET status = 'permanent', claimed_until = NULL, last_error = sqlc.narg(last_error), updated_at = now()
-WHERE id = sqlc.arg(id);
+WHERE id = sqlc.arg(id) AND status = 'claimed';
 
 -- name: RecordDeliveryUncertain :exec
 UPDATE notification_delivery
 SET status = 'uncertain', claimed_until = NULL, last_error = sqlc.narg(last_error), updated_at = now()
-WHERE id = sqlc.arg(id);
+WHERE id = sqlc.arg(id) AND status = 'claimed';
 
 -- name: RecordDeliverySuppressed :exec
 UPDATE notification_delivery
 SET status = 'suppressed', claimed_until = NULL, last_error = sqlc.narg(last_error), updated_at = now()
-WHERE id = sqlc.arg(id);
+WHERE id = sqlc.arg(id) AND status = 'claimed';
+
+-- name: RecordDeliverySuperseded :execrows
+-- Only Discord orchestration can supersede unfinished Discord work. Keep
+-- the reason a server-generated activity sequence, never provider text.
+UPDATE notification_delivery
+SET status = 'superseded', claimed_until = NULL,
+    last_error = 'superseded by activity sequence ' || sqlc.arg(applied_version)::bigint::text,
+    updated_at = now()
+WHERE id = sqlc.arg(id) AND transport = 'discord'
+  AND status IN ('pending', 'claimed') AND sqlc.arg(applied_version)::bigint > 0;
 
 -- name: SuppressDeliveriesByTransport :execrows
 -- Bulk-suppresses every still-pending or still-claimed delivery for one

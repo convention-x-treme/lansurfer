@@ -215,6 +215,19 @@ func (s *Store) RecordSuppressed(ctx context.Context, deliveryID int64, reason s
 	return nil
 }
 
+// RecordSuperseded only closes unfinished Discord deliveries. PostgreSQL
+// constructs the diagnostic reference from an internal activity sequence;
+// provider credentials and message contents cannot enter the reason.
+func (s *Store) RecordSuperseded(ctx context.Context, deliveryID, appliedVersion int64) (bool, error) {
+	rows, err := s.queries.RecordDeliverySuperseded(ctx, sqlcgen.RecordDeliverySupersededParams{
+		ID: deliveryID, AppliedVersion: appliedVersion,
+	})
+	if err != nil {
+		return false, fmt.Errorf("record discord delivery superseded: %w", err)
+	}
+	return rows == 1, nil
+}
+
 // ListProblemDeliveries returns every delivery in a terminal problem state
 // (exhausted, permanent, uncertain, or suppressed), most recently updated
 // first, for authorized diagnostics.

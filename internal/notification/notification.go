@@ -84,6 +84,7 @@ const (
 	StatusExhausted  DeliveryStatus = "exhausted"
 	StatusUncertain  DeliveryStatus = "uncertain"
 	StatusSuppressed DeliveryStatus = "suppressed"
+	StatusSuperseded DeliveryStatus = "superseded"
 )
 
 // ClaimedDelivery is one delivery row the Worker has just claimed, together
@@ -151,6 +152,13 @@ type DiagnosticsRepository interface {
 	GetDeliveryDetail(ctx context.Context, deliveryID int64) (DeliveryDetail, error)
 	ReopenDelivery(ctx context.Context, deliveryID int64) (bool, error)
 	ReopenUncertainDelivery(ctx context.Context, deliveryID int64) (bool, error)
+}
+
+// DeliverySupersessionRepository is the Discord-only terminal transition for
+// obsolete deliveries. The version is a safe request activity sequence;
+// persistence constructs the reason without provider or user material.
+type DeliverySupersessionRepository interface {
+	RecordSuperseded(ctx context.Context, deliveryID, appliedVersion int64) (bool, error)
 }
 
 // PushSubscriptionRecord is one stored browser Push subscription.

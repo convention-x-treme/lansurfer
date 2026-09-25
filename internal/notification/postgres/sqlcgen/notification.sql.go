@@ -301,7 +301,7 @@ const recordDeliveryExhausted = `-- name: RecordDeliveryExhausted :exec
 UPDATE notification_delivery
 SET status = 'exhausted', attempt_count = attempt_count + 1,
     claimed_until = NULL, last_error = $1, updated_at = now()
-WHERE id = $2
+WHERE id = $2 AND status = 'claimed'
 `
 
 type RecordDeliveryExhaustedParams struct {
@@ -317,7 +317,7 @@ func (q *Queries) RecordDeliveryExhausted(ctx context.Context, arg RecordDeliver
 const recordDeliveryPermanent = `-- name: RecordDeliveryPermanent :exec
 UPDATE notification_delivery
 SET status = 'permanent', claimed_until = NULL, last_error = $1, updated_at = now()
-WHERE id = $2
+WHERE id = $2 AND status = 'claimed'
 `
 
 type RecordDeliveryPermanentParams struct {
@@ -334,7 +334,7 @@ const recordDeliveryRetry = `-- name: RecordDeliveryRetry :exec
 UPDATE notification_delivery
 SET status = 'pending', attempt_count = attempt_count + 1, next_attempt_at = $1,
     claimed_until = NULL, last_error = $2, updated_at = now()
-WHERE id = $3
+WHERE id = $3 AND status = 'claimed'
 `
 
 type RecordDeliveryRetryParams struct {
@@ -351,7 +351,7 @@ func (q *Queries) RecordDeliveryRetry(ctx context.Context, arg RecordDeliveryRet
 const recordDeliverySuccess = `-- name: RecordDeliverySuccess :exec
 UPDATE notification_delivery
 SET status = 'succeeded', claimed_until = NULL, last_error = NULL, updated_at = now()
-WHERE id = $1
+WHERE id = $1 AND status = 'claimed'
 `
 
 func (q *Queries) RecordDeliverySuccess(ctx context.Context, id int64) error {
@@ -359,10 +359,34 @@ func (q *Queries) RecordDeliverySuccess(ctx context.Context, id int64) error {
 	return err
 }
 
+const recordDeliverySuperseded = `-- name: RecordDeliverySuperseded :execrows
+UPDATE notification_delivery
+SET status = 'superseded', claimed_until = NULL,
+    last_error = 'superseded by activity sequence ' || $1::bigint::text,
+    updated_at = now()
+WHERE id = $2 AND transport = 'discord'
+  AND status IN ('pending', 'claimed') AND $1::bigint > 0
+`
+
+type RecordDeliverySupersededParams struct {
+	AppliedVersion int64
+	ID             int64
+}
+
+// Only Discord orchestration can supersede unfinished Discord work. Keep
+// the reason a server-generated activity sequence, never provider text.
+func (q *Queries) RecordDeliverySuperseded(ctx context.Context, arg RecordDeliverySupersededParams) (int64, error) {
+	result, err := q.db.Exec(ctx, recordDeliverySuperseded, arg.AppliedVersion, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const recordDeliverySuppressed = `-- name: RecordDeliverySuppressed :exec
 UPDATE notification_delivery
 SET status = 'suppressed', claimed_until = NULL, last_error = $1, updated_at = now()
-WHERE id = $2
+WHERE id = $2 AND status = 'claimed'
 `
 
 type RecordDeliverySuppressedParams struct {
@@ -378,7 +402,7 @@ func (q *Queries) RecordDeliverySuppressed(ctx context.Context, arg RecordDelive
 const recordDeliveryUncertain = `-- name: RecordDeliveryUncertain :exec
 UPDATE notification_delivery
 SET status = 'uncertain', claimed_until = NULL, last_error = $1, updated_at = now()
-WHERE id = $2
+WHERE id = $2 AND status = 'claimed'
 `
 
 type RecordDeliveryUncertainParams struct {
