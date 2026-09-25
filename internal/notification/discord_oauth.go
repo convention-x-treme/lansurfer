@@ -162,19 +162,5 @@ func (c *DiscordWebhookOAuthClient) Exchange(ctx context.Context, code string) (
 // this method never distinguishes "already gone" from other failures, so
 // callers must not infer destination state from it.
 func (c *DiscordWebhookOAuthClient) DeleteWebhook(ctx context.Context, credential DiscordWebhookCredential) error {
-	endpoint := discordWebhookAPIURL + "/" + url.PathEscape(credential.WebhookID) + "/" + url.PathEscape(credential.WebhookToken)
-	request, err := http.NewRequestWithContext(ctx, http.MethodDelete, endpoint, nil)
-	if err != nil {
-		return fmt.Errorf("create discord webhook delete request: %w", err)
-	}
-	response, err := c.httpClient.Do(request)
-	if err != nil {
-		return fmt.Errorf("delete discord webhook: %w", err)
-	}
-	defer response.Body.Close()
-	_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, discordTokenBodyLimit))
-	if response.StatusCode != http.StatusOK && response.StatusCode != http.StatusNoContent && response.StatusCode != http.StatusNotFound {
-		return fmt.Errorf("delete discord webhook: status %d", response.StatusCode)
-	}
-	return nil
+	return newDiscordWebhookClient(c.httpClient, discordWebhookAPIURL).DeleteWebhook(ctx, credential)
 }
