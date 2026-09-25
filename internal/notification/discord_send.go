@@ -6,17 +6,16 @@ import (
 	"net/http"
 )
 
-// Recovery and broken-destination handling are separate E3-19/E3-20 work.
-// Keep their signals distinct without changing destination or sync state here.
-var (
-	ErrDiscordMessageRecoveryPending  = errors.New("discord message recovery is not configured")
-	ErrDiscordDestinationBreakPending = errors.New("discord destination break handling is not configured")
-)
+// ErrDiscordDestinationBreakPending marks a definitive 10015 Unknown Webhook
+// result distinctly until E3-20 implements the destination-broken
+// transition. It never changes destination or sync state here.
+var ErrDiscordDestinationBreakPending = errors.New("discord destination break handling is not configured")
 
 var errDiscordSendAborted = errors.New("discord send transaction intentionally rolled back")
 
-// errDiscordCreateUnrecorded means an earlier automatic create may have
-// reached Discord without a durable message ID. Creating again could duplicate.
+// errDiscordCreateUnrecorded means an earlier automatic create (including an
+// E3-19 replacement create) may have reached Discord without a durable
+// message ID. Creating again could duplicate.
 var errDiscordCreateUnrecorded = errors.New("discord create already attempted without recorded outcome")
 
 // NewDiscordSendTransport is the isolated E3-18 transport constructor. Runtime
@@ -70,6 +69,50 @@ func (t *DiscordTransport) SendClaimed(ctx context.Context, delivery ClaimedDeli
 		}
 		return nil
 	}
+	// createCurrent renders the latest current Game Request snapshot (never
+	// historical/intermediate activity, and freshly resolved rather than
+	// reused from a failed edit's snapshot) and creates exactly one
+	// replacement message under the same E3-18 durable pre-send reservation
+	// used by a fresh create: an E3-19 10008-recovery create is externally
+	// non-idempotent exactly like the initial create, so it must not bypass
+	// that protection or introduce a second reservation mechanism.
+	createCurrent := func(repo DiscordMessageSyncRepository, credential DiscordWebhookCredential) error {
+		summary, err := repo.GetGameRequestSummary(ctx, delivery.Activity.GameRequestID)
+		if err != nil {
+			return err
+		}
+		message := buildDiscordMessage(summary, t.baseURL, t.instanceName)
+		// The reservation commits on its own connection before Discord sees
+		// the create. If the message ID or outcome is then lost, no automatic
+		// replay for this destination generation and request creates again.
+		// ponytail: holds a second pool connection per create; an exhausted
+		// pool times out as retryable before any provider call.
+		reserved, err := t.syncStore.ReserveDiscordCreate(ctx, id, delivery.Activity.GameRequestID)
+		if err != nil {
+			return err
+		}
+		if !reserved {
+			result = SendResult{Outcome: OutcomeUncertain, Err: errDiscordCreateUnrecorded}
+			return errDiscordSendAborted
+		}
+		created = true
+		provider := t.webhooks.CreateMessage(ctx, credential, message)
+		classified := classifyDiscordCreate(provider)
+		if classified.Kind == discordDeliverySucceeded {
+			result = SendResult{Outcome: OutcomeSucceeded}
+			if err := advance(repo, provider.MessageID); err != nil {
+				return err
+			}
+			return releaseDiscordCreate(ctx, repo, id, delivery.Activity.GameRequestID)
+		}
+		if !discordCreateRejected(provider) {
+			// Keep the reservation: Discord may have created the message.
+			result = SendResult{Outcome: OutcomeUncertain, Err: errors.New("discord create outcome uncertain")}
+			return errDiscordSendAborted
+		}
+		result = discordSendResult(classified)
+		return releaseDiscordCreate(ctx, repo, id, delivery.Activity.GameRequestID)
+	}
 	err := t.syncStore.WithDiscordMessageSyncLock(ctx, id, delivery.Activity.GameRequestID, func(repo DiscordMessageSyncRepository) error {
 		destination, ciphertext, err := repo.GetDiscordDestination(ctx)
 		if errors.Is(err, ErrDiscordDestinationNotFound) {
@@ -105,7 +148,14 @@ func (t *DiscordTransport) SendClaimed(ctx context.Context, delivery ClaimedDeli
 		if sync.AppliedVersion > version {
 			version = sync.AppliedVersion
 		}
-		if version >= delivery.Activity.Sequence {
+		// Equal version with an empty message slot is not "already applied":
+		// an E3-19 compare-and-clear recovery may have cleared the reference
+		// at this exact version without yet creating its replacement (an
+		// uncertain outcome, a lost commit, or a crash between the two). That
+		// pending recovery must still reach the create branch below, never
+		// be marked superseded merely because the version already matches.
+		alreadyApplied := version == delivery.Activity.Sequence && sync.MessageID != ""
+		if version > delivery.Activity.Sequence || alreadyApplied {
 			changed, err := repo.RecordSuperseded(ctx, claimID, version)
 			if err != nil {
 				return err
@@ -116,53 +166,40 @@ func (t *DiscordTransport) SendClaimed(ctx context.Context, delivery ClaimedDeli
 			result = SendResult{Outcome: OutcomeAlreadyRecorded}
 			return nil
 		}
-		summary, err := repo.GetGameRequestSummary(ctx, delivery.Activity.GameRequestID)
-		if err != nil {
-			return err
-		}
 		credential, err := DecryptDiscordCredential(t.encryptionKey, ciphertext)
 		if err != nil {
 			return errors.New("decrypt discord delivery credential failed")
 		}
-		message := buildDiscordMessage(summary, t.baseURL, t.instanceName)
-		if sync.MessageID != "" {
-			classified := classifyDiscordEdit(t.webhooks.EditMessage(ctx, credential, sync.MessageID, message))
-			result = discordSendResult(classified)
-			if classified.Kind != discordDeliverySucceeded {
-				return errDiscordSendAborted
-			}
-			return advance(repo, sync.MessageID)
+		if sync.MessageID == "" {
+			return createCurrent(repo, credential)
 		}
-		// The reservation commits on its own connection before Discord sees
-		// the create. If the message ID or outcome is then lost, no automatic
-		// replay for this destination generation and request creates again.
-		// ponytail: holds a second pool connection per create; an exhausted
-		// pool times out as retryable before any provider call.
-		reserved, err := t.syncStore.ReserveDiscordCreate(ctx, id, delivery.Activity.GameRequestID)
+		summary, err := repo.GetGameRequestSummary(ctx, delivery.Activity.GameRequestID)
 		if err != nil {
 			return err
 		}
-		if !reserved {
-			result = SendResult{Outcome: OutcomeUncertain, Err: errDiscordCreateUnrecorded}
-			return errDiscordSendAborted
-		}
-		created = true
-		provider := t.webhooks.CreateMessage(ctx, credential, message)
-		classified := classifyDiscordCreate(provider)
-		if classified.Kind == discordDeliverySucceeded {
-			result = SendResult{Outcome: OutcomeSucceeded}
-			if err := advance(repo, provider.MessageID); err != nil {
+		message := buildDiscordMessage(summary, t.baseURL, t.instanceName)
+		provider := t.webhooks.EditMessage(ctx, credential, sync.MessageID, message)
+		classified := classifyDiscordEdit(provider)
+		if classified.Kind == discordDeliveryRecoverMessage {
+			// Compare-and-clear only the exact stale reference this read saw:
+			// never a message ID/version a concurrent mutation already moved
+			// past. Clearing never lowers the applied version, and the
+			// replacement create below reuses this same serialization
+			// boundary rather than starting a second one.
+			cleared, err := repo.ClearDiscordMessageSync(ctx, id, delivery.Activity.GameRequestID, sync.MessageID, sync.AppliedVersion)
+			if err != nil {
 				return err
 			}
-			return releaseDiscordCreate(ctx, repo, id, delivery.Activity.GameRequestID)
-		}
-		if !discordCreateRejected(provider) {
-			// Keep the reservation: Discord may have created the message.
-			result = SendResult{Outcome: OutcomeUncertain, Err: errors.New("discord create outcome uncertain")}
-			return errDiscordSendAborted
+			if !cleared {
+				return errors.New("discord message reference already changed")
+			}
+			return createCurrent(repo, credential)
 		}
 		result = discordSendResult(classified)
-		return releaseDiscordCreate(ctx, repo, id, delivery.Activity.GameRequestID)
+		if classified.Kind != discordDeliverySucceeded {
+			return errDiscordSendAborted
+		}
+		return advance(repo, sync.MessageID)
 	})
 	if errors.Is(err, errDiscordSendAborted) {
 		return result
@@ -201,6 +238,12 @@ func releaseDiscordCreate(ctx context.Context, repo DiscordMessageSyncRepository
 	return nil
 }
 
+// discordSendResult maps a classification that SendClaimed does not handle
+// with dedicated recovery logic of its own: discordDeliveryRecoverMessage
+// (10008) is always intercepted before reaching here (E3-19 recovers it
+// inline under the same serialization boundary), and
+// discordDeliveryBrokenDestination (10015) remains a distinct pending signal
+// until E3-20 implements the destination-broken transition.
 func discordSendResult(classified discordDeliveryResult) SendResult {
 	switch classified.Kind {
 	case discordDeliverySucceeded:
@@ -209,8 +252,6 @@ func discordSendResult(classified discordDeliveryResult) SendResult {
 		return SendResult{Outcome: OutcomeRetryable, RetryAfter: classified.RetryAfter, Err: errors.New("discord provider retryable failure")}
 	case discordDeliveryUncertain:
 		return SendResult{Outcome: OutcomeUncertain, Err: errors.New("discord create outcome uncertain")}
-	case discordDeliveryRecoverMessage:
-		return SendResult{Outcome: OutcomePermanent, Err: ErrDiscordMessageRecoveryPending}
 	case discordDeliveryBrokenDestination:
 		return SendResult{Outcome: OutcomePermanent, Err: ErrDiscordDestinationBreakPending}
 	default:

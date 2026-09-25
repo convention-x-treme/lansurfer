@@ -28,6 +28,7 @@ type discordSendStore struct {
 	hasSync     bool
 	lockErr     error
 	advanceErr  error
+	clearErr    error
 	commitErr   error
 	readErr     error
 	advanceMiss bool
@@ -134,8 +135,21 @@ func (s *discordSendStore) AdvanceDiscordMessageSync(_ context.Context, sync Dis
 	return true, nil
 }
 
-func (*discordSendStore) ClearDiscordMessageSync(context.Context, string, string, string, int64) (bool, error) {
-	panic("deleted-message recovery belongs to E3-19")
+func (s *discordSendStore) ClearDiscordMessageSync(_ context.Context, destinationID, requestID, messageID string, appliedVersion int64) (bool, error) {
+	if !s.locked.Load() {
+		return false, errors.New("clear outside lock")
+	}
+	if destinationID != discordSendDestinationID || requestID != discordSendRequestID {
+		return false, errors.New("wrong clear key")
+	}
+	if s.clearErr != nil {
+		return false, s.clearErr
+	}
+	if !s.hasSync || s.sync.MessageID != messageID || s.sync.AppliedVersion != appliedVersion {
+		return false, nil
+	}
+	s.sync.MessageID = ""
+	return true, nil
 }
 
 func (s *discordSendStore) ClaimedDiscordDelivery(_ context.Context, id, sequence int64, requestID string, target Target) (int64, error) {
@@ -446,15 +460,13 @@ func TestDiscordSendClaimedSupersedesOlderVersionBeforeMutation(t *testing.T) {
 	}
 }
 
-func TestDiscordSendClaimedKeepsMissingMessageAndWebhookSignalsDistinct(t *testing.T) {
+func TestDiscordSendClaimedKeepsUnknownWebhookSignalPendingForE3_20(t *testing.T) {
 	for _, tc := range []struct {
 		name, body string
 		existing   bool
-		want       error
 	}{
-		{"missing message", `{"code":10008,"message":"Unknown Message"}`, true, ErrDiscordMessageRecoveryPending},
-		{"missing webhook on edit", `{"code":10015,"message":"Unknown Webhook"}`, true, ErrDiscordDestinationBreakPending},
-		{"missing webhook on create", `{"code":10015,"message":"Unknown Webhook"}`, false, ErrDiscordDestinationBreakPending},
+		{"missing webhook on edit", `{"code":10015,"message":"Unknown Webhook"}`, true},
+		{"missing webhook on create", `{"code":10015,"message":"Unknown Webhook"}`, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			store, delivery, key := discordSendFixture(t)
@@ -471,14 +483,14 @@ func TestDiscordSendClaimedKeepsMissingMessageAndWebhookSignalsDistinct(t *testi
 			}))
 			defer server.Close()
 			result := NewDiscordSendTransport(store, key, "https://play.example", "", discordSendClient(server)).SendClaimed(t.Context(), delivery)
-			if result.Outcome != OutcomePermanent || !errors.Is(result.Err, tc.want) || calls.Load() != 1 {
-				t.Fatalf("provider %s outcome = %v, signal matched = %v; calls = %d, want distinct pending signal and one call", tc.name, result.Outcome, errors.Is(result.Err, tc.want), calls.Load())
+			if result.Outcome != OutcomePermanent || !errors.Is(result.Err, ErrDiscordDestinationBreakPending) || calls.Load() != 1 {
+				t.Fatalf("provider %s outcome = %v, signal matched = %v; calls = %d, want distinct pending signal and one call", tc.name, result.Outcome, errors.Is(result.Err, ErrDiscordDestinationBreakPending), calls.Load())
 			}
 			if strings.Contains(result.Err.Error(), discordSendSecret) || strings.Contains(result.Err.Error(), "webhook-id") {
 				t.Fatal("provider error leaked webhook credential")
 			}
 			if store.destination.State != DiscordDestinationConnected || (tc.existing && store.sync.MessageID != "message-old") || (!tc.existing && store.hasSync) {
-				t.Fatal("E3-18 must leave recovery/broken transition to E3-19/20")
+				t.Fatal("E3-19 must leave the broken-destination transition to E3-20")
 			}
 		})
 	}
