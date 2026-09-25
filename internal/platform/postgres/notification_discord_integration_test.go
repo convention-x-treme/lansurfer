@@ -134,8 +134,8 @@ func TestDiscordDestinationStatusReturnsSafeConnectedAndBrokenMetadata(t *testin
 	}
 
 	const reason = "webhook deleted (10015)"
-	if err := store.MarkDiscordDestinationBroken(t.Context(), reason); err != nil {
-		t.Fatalf("MarkDiscordDestinationBroken() error = %v", err)
+	if matched, err := store.MarkDiscordDestinationBroken(t.Context(), connected.ID, reason); err != nil || !matched {
+		t.Fatalf("MarkDiscordDestinationBroken() matched = %v, error = %v", matched, err)
 	}
 	broken, err := store.GetDiscordDestinationStatus(t.Context())
 	if err != nil {
@@ -168,7 +168,17 @@ func TestDiscordDestinationBrokenStateInvariantIsDatabaseEnforced(t *testing.T) 
 		t.Fatalf("UpsertDiscordDestination() error = %v", err)
 	}
 
-	affected, err := queries.MarkDiscordDestinationBroken(t.Context(), pgtype.Text{String: "webhook deleted (10015)", Valid: true})
+	before, err := queries.GetDiscordDestination(t.Context())
+	if err != nil {
+		t.Fatalf("GetDiscordDestination() error = %v", err)
+	}
+	var destinationID pgtype.UUID
+	if err := destinationID.Scan(before.DestinationID); err != nil {
+		t.Fatalf("parse destination identity: %v", err)
+	}
+	affected, err := queries.MarkDiscordDestinationBroken(t.Context(), sqlcgen.MarkDiscordDestinationBrokenParams{
+		BrokenReason: pgtype.Text{String: "webhook deleted (10015)", Valid: true}, DestinationID: destinationID,
+	})
 	if err != nil {
 		t.Fatalf("MarkDiscordDestinationBroken() error = %v", err)
 	}
@@ -339,8 +349,8 @@ func TestDiscordDestinationPersistsOnlyEncryptedCredential(t *testing.T) {
 
 	// Broken state deletes the ciphertext but keeps the safe metadata and a
 	// diagnostic reason, and the reason itself carries no secret material.
-	if err := store.MarkDiscordDestinationBroken(t.Context(), "webhook deleted (10015)"); err != nil {
-		t.Fatalf("MarkDiscordDestinationBroken() error = %v", err)
+	if matched, err := store.MarkDiscordDestinationBroken(t.Context(), destination.ID, "webhook deleted (10015)"); err != nil || !matched {
+		t.Fatalf("MarkDiscordDestinationBroken() matched = %v, error = %v", matched, err)
 	}
 	broken, _, err := store.GetDiscordDestination(t.Context())
 	if err != nil {
@@ -738,12 +748,11 @@ func TestDiscordConnectServiceRemoteCleanupFailureAgainstRealStoreLeavesNewDesti
 // delivery per given (transport, targetKey, status) triple, so lifecycle
 // tests exercise real rows rather than hand-inserted ones disconnected
 // from notification_work's foreign keys.
-func discordLifecycleDeliveryFixture(t *testing.T, pool *pgxpool.Pool, store *notificationpostgres.Store, targets []notification.Target, statuses []string) {
+func discordLifecycleDeliveryFixture(t *testing.T, pool *pgxpool.Pool, store *notificationpostgres.Store, fixture notificationFixture, targets []notification.Target, statuses []string) {
 	t.Helper()
 	if len(targets) != len(statuses) {
 		t.Fatalf("targets/statuses length mismatch: %d vs %d", len(targets), len(statuses))
 	}
-	fixture := newNotificationFixture(t, pool)
 	created, err := fixture.requests.Create(t.Context(), fixture.host.ID, fixture.gameID, nil, time.Now().Add(time.Hour), "Lifecycle round")
 	if err != nil {
 		t.Fatalf("create game request: %v", err)
@@ -786,9 +795,10 @@ func deliveryStatus(t *testing.T, pool *pgxpool.Pool, transport, targetKey strin
 	return status
 }
 
-// Disconnect suppresses this destination's still-pending and still-claimed
-// Discord deliveries, but leaves Web Push deliveries and already-succeeded
-// Discord deliveries completely untouched.
+// Disconnect suppresses only this exact destination generation's still-
+// pending and still-claimed Discord deliveries, leaves Web Push and
+// already-succeeded Discord deliveries untouched, and never reaches a
+// different generation's deliveries (the fixed broad-suppression seam).
 func TestDiscordLifecycleDisconnectSuppressesOnlyPendingAndClaimedDiscordDeliveries(t *testing.T) {
 	pool := newTestPool(t)
 	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
@@ -806,13 +816,19 @@ func TestDiscordLifecycleDisconnectSuppressesOnlyPendingAndClaimedDiscordDeliver
 	if err := store.ConnectDiscordDestination(t.Context(), notification.DiscordDestination{GuildID: "guild-1", ChannelID: "channel-1"}, ciphertext); err != nil {
 		t.Fatalf("ConnectDiscordDestination() error = %v", err)
 	}
+	connected, _, err := store.GetDiscordDestination(t.Context())
+	if err != nil || connected.ID == "" {
+		t.Fatalf("connected destination identity = %q, error = %v", connected.ID, err)
+	}
+	sameGeneration := "d1:" + connected.ID
+	otherGeneration := "d1:bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+	fixture := newNotificationFixture(t, pool)
 
-	discordLifecycleDeliveryFixture(t, pool, store, []notification.Target{
-		{Transport: "discord", Key: "pending-target"},
-		{Transport: "discord", Key: "claimed-target"},
-		{Transport: "discord", Key: "succeeded-target"},
-		{Transport: "webpush", Key: "webpush-target"},
-	}, []string{"pending", "claimed", "succeeded", "pending"})
+	discordLifecycleDeliveryFixture(t, pool, store, fixture, []notification.Target{{Transport: "discord", Key: sameGeneration}}, []string{"pending"})
+	discordLifecycleDeliveryFixture(t, pool, store, fixture, []notification.Target{{Transport: "discord", Key: sameGeneration}}, []string{"claimed"})
+	discordLifecycleDeliveryFixture(t, pool, store, fixture, []notification.Target{{Transport: "discord", Key: sameGeneration}}, []string{"succeeded"})
+	discordLifecycleDeliveryFixture(t, pool, store, fixture, []notification.Target{{Transport: "discord", Key: otherGeneration}}, []string{"pending"})
+	discordLifecycleDeliveryFixture(t, pool, store, fixture, []notification.Target{{Transport: "webpush", Key: "webpush-target"}}, []string{"pending"})
 
 	provider := &fakeDiscordWebhookOAuthProviderForConnect{}
 	lifecycle := notification.NewDiscordLifecycleService(store, provider, key, nil)
@@ -820,14 +836,12 @@ func TestDiscordLifecycleDisconnectSuppressesOnlyPendingAndClaimedDiscordDeliver
 		t.Fatalf("Disconnect() error = %v", err)
 	}
 
-	if status := deliveryStatus(t, pool, "discord", "pending-target"); status != "suppressed" {
-		t.Fatalf("pending discord delivery status = %q, want suppressed", status)
+	statuses := discordLifecycleTargetStatuses(t, pool, "discord", sameGeneration)
+	if len(statuses) != 3 || statuses[0] != "suppressed" || statuses[1] != "suppressed" || statuses[2] != "succeeded" {
+		t.Fatalf("same-generation delivery statuses = %v, want [suppressed suppressed succeeded]", statuses)
 	}
-	if status := deliveryStatus(t, pool, "discord", "claimed-target"); status != "suppressed" {
-		t.Fatalf("claimed discord delivery status = %q, want suppressed", status)
-	}
-	if status := deliveryStatus(t, pool, "discord", "succeeded-target"); status != "succeeded" {
-		t.Fatalf("succeeded discord delivery status = %q, want it untouched (succeeded)", status)
+	if status := deliveryStatus(t, pool, "discord", otherGeneration); status != "pending" {
+		t.Fatalf("different-generation discord delivery status = %q, want it untouched (pending)", status)
 	}
 	if status := deliveryStatus(t, pool, "webpush", "webpush-target"); status != "pending" {
 		t.Fatalf("webpush delivery status = %q, want it untouched (pending)", status)
@@ -839,6 +853,29 @@ func TestDiscordLifecycleDisconnectSuppressesOnlyPendingAndClaimedDiscordDeliver
 	if provider.deleteCalls != 1 {
 		t.Fatalf("DeleteWebhook calls = %d, want 1", provider.deleteCalls)
 	}
+}
+
+// discordLifecycleTargetStatuses returns every delivery's status for
+// transport/targetKey in insertion order, for a fixture that materializes
+// more than one delivery on the exact same target key.
+func discordLifecycleTargetStatuses(t *testing.T, pool *pgxpool.Pool, transport, targetKey string) []string {
+	t.Helper()
+	rows, err := pool.Query(t.Context(), `
+		SELECT status FROM notification_delivery WHERE transport = $1 AND target_key = $2 ORDER BY id
+	`, transport, targetKey)
+	if err != nil {
+		t.Fatalf("read delivery statuses for %s/%s: %v", transport, targetKey, err)
+	}
+	defer rows.Close()
+	var statuses []string
+	for rows.Next() {
+		var status string
+		if err := rows.Scan(&status); err != nil {
+			t.Fatalf("scan delivery status: %v", err)
+		}
+		statuses = append(statuses, status)
+	}
+	return statuses
 }
 
 // Local disconnect commits before any remote cleanup is attempted: the
@@ -953,15 +990,17 @@ func TestDiscordLifecycleBreakRetainsSafeMetadataClearsCiphertextAndSuppresses(t
 		t.Fatalf("connected destination identity = %q, error = %v", connected.ID, err)
 	}
 
-	discordLifecycleDeliveryFixture(t, pool, store, []notification.Target{
-		{Transport: "discord", Key: "broken-pending-target"},
-		{Transport: "discord", Key: "broken-succeeded-target"},
-		{Transport: "webpush", Key: "broken-webpush-target"},
-	}, []string{"pending", "succeeded", "pending"})
+	sameGeneration := "d1:" + connected.ID
+	otherGeneration := "d1:cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+	fixture := newNotificationFixture(t, pool)
+	discordLifecycleDeliveryFixture(t, pool, store, fixture, []notification.Target{{Transport: "discord", Key: sameGeneration}}, []string{"pending"})
+	discordLifecycleDeliveryFixture(t, pool, store, fixture, []notification.Target{{Transport: "discord", Key: sameGeneration}}, []string{"succeeded"})
+	discordLifecycleDeliveryFixture(t, pool, store, fixture, []notification.Target{{Transport: "discord", Key: otherGeneration}}, []string{"pending"})
+	discordLifecycleDeliveryFixture(t, pool, store, fixture, []notification.Target{{Transport: "webpush", Key: "broken-webpush-target"}}, []string{"pending"})
 
 	provider := &fakeDiscordWebhookOAuthProviderForConnect{}
 	lifecycle := notification.NewDiscordLifecycleService(store, provider, key, nil)
-	if err := lifecycle.Break(t.Context(), "webhook deleted (10015)"); err != nil {
+	if err := lifecycle.Break(t.Context(), connected.ID, "webhook deleted (10015)"); err != nil {
 		t.Fatalf("Break() error = %v", err)
 	}
 
@@ -985,11 +1024,11 @@ func TestDiscordLifecycleBreakRetainsSafeMetadataClearsCiphertextAndSuppresses(t
 		t.Fatal("GetDiscordDestination() returned a non-nil ciphertext for a broken destination")
 	}
 
-	if status := deliveryStatus(t, pool, "discord", "broken-pending-target"); status != "suppressed" {
-		t.Fatalf("pending discord delivery status = %q, want suppressed", status)
+	if statuses := discordLifecycleTargetStatuses(t, pool, "discord", sameGeneration); len(statuses) != 2 || statuses[0] != "suppressed" || statuses[1] != "succeeded" {
+		t.Fatalf("same-generation delivery statuses = %v, want [suppressed succeeded]", statuses)
 	}
-	if status := deliveryStatus(t, pool, "discord", "broken-succeeded-target"); status != "succeeded" {
-		t.Fatalf("succeeded discord delivery status = %q, want it untouched (succeeded)", status)
+	if status := deliveryStatus(t, pool, "discord", otherGeneration); status != "pending" {
+		t.Fatalf("different-generation discord delivery status = %q, want it untouched (pending)", status)
 	}
 	if status := deliveryStatus(t, pool, "webpush", "broken-webpush-target"); status != "pending" {
 		t.Fatalf("webpush delivery status = %q, want it untouched (pending)", status)

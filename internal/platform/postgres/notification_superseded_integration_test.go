@@ -20,7 +20,8 @@ func TestDiscordSupersededDeliveryIsTerminalAndNotDiagnostic(t *testing.T) {
 	if err := store.InitializeBaseline(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	discordLifecycleDeliveryFixture(t, pool, store, []notification.Target{
+	fixture := newNotificationFixture(t, pool)
+	discordLifecycleDeliveryFixture(t, pool, store, fixture, []notification.Target{
 		{Transport: "discord", Key: "supersede-pending"},
 		{Transport: "discord", Key: "supersede-claimed"},
 		{Transport: "webpush", Key: "push-pending"},
@@ -100,7 +101,8 @@ func TestDiscordSupersessionCannotOverwriteTerminalOrBeReopenedByWorker(t *testi
 	for index, status := range statuses {
 		targets[index] = notification.Target{Transport: "discord", Key: "state-" + status}
 	}
-	discordLifecycleDeliveryFixture(t, pool, store, targets, statuses)
+	fixture := newNotificationFixture(t, pool)
+	discordLifecycleDeliveryFixture(t, pool, store, fixture, targets, statuses)
 	for _, status := range statuses {
 		key := "state-" + status
 		var deliveryID int64

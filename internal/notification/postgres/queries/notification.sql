@@ -119,15 +119,23 @@ WHERE d.transport = 'discord' AND d.target_key = sqlc.arg(target_key)
   AND w.activity_sequence > sqlc.arg(activity_sequence)
   AND d.status IN ('pending', 'claimed');
 
--- name: SuppressDeliveriesByTransport :execrows
--- Bulk-suppresses every still-pending or still-claimed delivery for one
--- transport, e.g. when a Discord destination disconnects or breaks. It
--- never touches a delivery already in a terminal state (succeeded,
--- permanent, exhausted, uncertain, or already suppressed): suppression
--- only ever intercepts work that has not finished yet.
+-- name: SuppressDiscordDeliveriesByTarget :execrows
+-- Generation-scoped: suppresses only still-pending/claimed Discord
+-- deliveries whose target key belongs to the exact destination generation
+-- being broken or disconnected (e.g. "d1:<destination UUID>"), never a
+-- broader transport-wide sweep that could reach a later replacement
+-- generation's deliveries. exclude_delivery_id lets one delivery (the
+-- exact claim whose own terminal outcome the caller records separately,
+-- such as the current 10015 delivery) opt out, so this call can never
+-- turn it into an ambiguous suppressed state. It never touches a delivery
+-- already in a terminal state (succeeded, permanent, exhausted,
+-- uncertain, or already suppressed): suppression only ever intercepts
+-- work that has not finished yet.
 UPDATE notification_delivery
 SET status = 'suppressed', claimed_until = NULL, last_error = sqlc.narg(last_error), updated_at = now()
-WHERE transport = sqlc.arg(transport) AND status IN ('pending', 'claimed');
+WHERE transport = 'discord' AND target_key = sqlc.arg(target_key)
+  AND status IN ('pending', 'claimed')
+  AND (sqlc.arg(exclude_delivery_id)::bigint = 0 OR id != sqlc.arg(exclude_delivery_id)::bigint);
 
 -- name: ListProblemDeliveries :many
 SELECT d.id, d.transport, d.target_key, d.status, d.attempt_count, d.last_error, d.updated_at,

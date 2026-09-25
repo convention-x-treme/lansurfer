@@ -30,13 +30,20 @@ ON CONFLICT (id) DO UPDATE SET
     broken_reason = NULL;
 
 -- name: MarkDiscordDestinationBroken :execrows
+-- Generation-scoped: matches only if destination_id is still the exact
+-- current connected generation, so a caller that raced a replacement can
+-- never break the new destination.
 UPDATE notification_discord_destination
 SET state = 'broken', credential_ciphertext = NULL, broken_at = now(),
     broken_reason = sqlc.arg(broken_reason), updated_at = now()
-WHERE id = true AND state = 'connected';
+WHERE id = true AND state = 'connected' AND destination_id = sqlc.arg(destination_id)::uuid;
 
--- name: DeleteDiscordDestination :execrows
-DELETE FROM notification_discord_destination WHERE id = true;
+-- name: DeleteDiscordDestination :one
+-- Returns the disconnected generation's identity so the caller can
+-- generation-scope suppression to exactly that target, never a broader
+-- transport-wide sweep.
+DELETE FROM notification_discord_destination WHERE id = true
+RETURNING destination_id::text AS destination_id;
 
 -- name: CreateDiscordSetupState :one
 INSERT INTO notification_discord_setup_state

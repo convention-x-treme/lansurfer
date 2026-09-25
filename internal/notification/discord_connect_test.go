@@ -15,9 +15,11 @@ type fakeDiscordDestinationRepository struct {
 	connectedDestination DiscordDestination
 	connectedCredential  DiscordCredentialCiphertext
 
-	markBrokenErr error
-	brokenCalls   int
-	brokenReason  string
+	markBrokenErr      error
+	markBrokenMismatch bool
+	brokenCalls        int
+	brokenReason       string
+	brokenDestination  string
 
 	deleteErr   error
 	deleteCalls int
@@ -40,14 +42,17 @@ func (f *fakeDiscordDestinationRepository) ConnectDiscordDestination(_ context.C
 	return nil
 }
 
-func (f *fakeDiscordDestinationRepository) MarkDiscordDestinationBroken(_ context.Context, reason string) error {
+func (f *fakeDiscordDestinationRepository) MarkDiscordDestinationBroken(_ context.Context, destinationID, reason string) (bool, error) {
 	if f.markBrokenErr != nil {
-		return f.markBrokenErr
+		return false, f.markBrokenErr
+	}
+	if f.markBrokenMismatch {
+		return false, nil
 	}
 	f.brokenCalls++
-	f.brokenReason = reason
+	f.brokenReason, f.brokenDestination = reason, destinationID
 	f.destination.State, f.credentialCiphertext = DiscordDestinationBroken, nil
-	return nil
+	return true, nil
 }
 
 func (f *fakeDiscordDestinationRepository) DeleteDiscordDestination(context.Context) error {

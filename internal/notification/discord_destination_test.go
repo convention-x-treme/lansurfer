@@ -126,16 +126,19 @@ func TestDiscordLifecycleServiceDisconnectSkipsCleanupForBrokenDestination(t *te
 func TestDiscordLifecycleServiceBreakNeverAttemptsRemoteCleanup(t *testing.T) {
 	_, key := testDiscordConnectFixture()
 	repository := &fakeDiscordDestinationRepository{
-		destination: DiscordDestination{State: DiscordDestinationConnected, GuildID: "guild-1", ChannelID: "channel-1"},
+		destination: DiscordDestination{ID: "destination-1", State: DiscordDestinationConnected, GuildID: "guild-1", ChannelID: "channel-1"},
 	}
 	provider := &fakeDiscordWebhookOAuthProvider{}
 	service := NewDiscordLifecycleService(repository, provider, key, nil)
 
-	if err := service.Break(t.Context(), "webhook deleted (10015)"); err != nil {
+	if err := service.Break(t.Context(), "destination-1", "webhook deleted (10015)"); err != nil {
 		t.Fatalf("Break() error = %v", err)
 	}
 	if provider.deleteCalls != 0 {
 		t.Fatalf("DeleteWebhook calls = %d, want 0: Break never contacts the provider", provider.deleteCalls)
+	}
+	if repository.brokenDestination != "destination-1" {
+		t.Fatalf("broken destination = %q, want destination-1", repository.brokenDestination)
 	}
 }
 
@@ -147,7 +150,32 @@ func TestDiscordLifecycleServiceBreakPropagatesRepositoryFailure(t *testing.T) {
 	provider := &fakeDiscordWebhookOAuthProvider{}
 	service := NewDiscordLifecycleService(repository, provider, key, nil)
 
-	if err := service.Break(t.Context(), "reason"); !errors.Is(err, ErrDiscordDestinationNotFound) {
+	if err := service.Break(t.Context(), "destination-1", "reason"); !errors.Is(err, ErrDiscordDestinationNotFound) {
 		t.Fatalf("Break() error = %v, want ErrDiscordDestinationNotFound", err)
+	}
+}
+
+// A destination generation that no longer matches the current connected
+// destination (already replaced or already broken) must surface
+// ErrDiscordDestinationNotFound without touching the new/current
+// destination or contacting the provider: a caller that raced a
+// replacement must never break it.
+func TestDiscordLifecycleServiceBreakNeverTouchesReplacedDestination(t *testing.T) {
+	_, key := testDiscordConnectFixture()
+	repository := &fakeDiscordDestinationRepository{
+		destination:        DiscordDestination{ID: "destination-2", State: DiscordDestinationConnected, GuildID: "guild-2", ChannelID: "channel-2"},
+		markBrokenMismatch: true,
+	}
+	provider := &fakeDiscordWebhookOAuthProvider{}
+	service := NewDiscordLifecycleService(repository, provider, key, nil)
+
+	if err := service.Break(t.Context(), "destination-1-old", "webhook deleted (10015)"); !errors.Is(err, ErrDiscordDestinationNotFound) {
+		t.Fatalf("Break() error = %v, want ErrDiscordDestinationNotFound", err)
+	}
+	if repository.brokenCalls != 0 || repository.destination.State != DiscordDestinationConnected {
+		t.Fatalf("replaced destination was touched: calls = %d, state = %v", repository.brokenCalls, repository.destination.State)
+	}
+	if provider.deleteCalls != 0 {
+		t.Fatalf("DeleteWebhook calls = %d, want 0", provider.deleteCalls)
 	}
 }

@@ -182,8 +182,8 @@ func TestDiscordDestinationReconnectAfterBreakAndDisconnectGetsNewIdentity(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.MarkDiscordDestinationBroken(t.Context(), "webhook deleted"); err != nil {
-		t.Fatal(err)
+	if matched, err := store.MarkDiscordDestinationBroken(t.Context(), first.ID, "webhook deleted"); err != nil || !matched {
+		t.Fatalf("MarkDiscordDestinationBroken() matched = %v, error = %v", matched, err)
 	}
 	broken, _, err := store.GetDiscordDestination(t.Context())
 	if err != nil || broken.ID != first.ID {

@@ -500,24 +500,33 @@ func (q *Queries) ReopenUncertainDeliveryForManualRetry(ctx context.Context, id 
 	return id_2, err
 }
 
-const suppressDeliveriesByTransport = `-- name: SuppressDeliveriesByTransport :execrows
+const suppressDiscordDeliveriesByTarget = `-- name: SuppressDiscordDeliveriesByTarget :execrows
 UPDATE notification_delivery
 SET status = 'suppressed', claimed_until = NULL, last_error = $1, updated_at = now()
-WHERE transport = $2 AND status IN ('pending', 'claimed')
+WHERE transport = 'discord' AND target_key = $2
+  AND status IN ('pending', 'claimed')
+  AND ($3::bigint = 0 OR id != $3::bigint)
 `
 
-type SuppressDeliveriesByTransportParams struct {
-	LastError pgtype.Text
-	Transport string
+type SuppressDiscordDeliveriesByTargetParams struct {
+	LastError         pgtype.Text
+	TargetKey         string
+	ExcludeDeliveryID int64
 }
 
-// Bulk-suppresses every still-pending or still-claimed delivery for one
-// transport, e.g. when a Discord destination disconnects or breaks. It
-// never touches a delivery already in a terminal state (succeeded,
-// permanent, exhausted, uncertain, or already suppressed): suppression
-// only ever intercepts work that has not finished yet.
-func (q *Queries) SuppressDeliveriesByTransport(ctx context.Context, arg SuppressDeliveriesByTransportParams) (int64, error) {
-	result, err := q.db.Exec(ctx, suppressDeliveriesByTransport, arg.LastError, arg.Transport)
+// Generation-scoped: suppresses only still-pending/claimed Discord
+// deliveries whose target key belongs to the exact destination generation
+// being broken or disconnected (e.g. "d1:<destination UUID>"), never a
+// broader transport-wide sweep that could reach a later replacement
+// generation's deliveries. exclude_delivery_id lets one delivery (the
+// exact claim whose own terminal outcome the caller records separately,
+// such as the current 10015 delivery) opt out, so this call can never
+// turn it into an ambiguous suppressed state. It never touches a delivery
+// already in a terminal state (succeeded, permanent, exhausted,
+// uncertain, or already suppressed): suppression only ever intercepts
+// work that has not finished yet.
+func (q *Queries) SuppressDiscordDeliveriesByTarget(ctx context.Context, arg SuppressDiscordDeliveriesByTargetParams) (int64, error) {
+	result, err := q.db.Exec(ctx, suppressDiscordDeliveriesByTarget, arg.LastError, arg.TargetKey, arg.ExcludeDeliveryID)
 	if err != nil {
 		return 0, err
 	}

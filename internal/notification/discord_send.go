@@ -6,11 +6,6 @@ import (
 	"net/http"
 )
 
-// ErrDiscordDestinationBreakPending marks a definitive 10015 Unknown Webhook
-// result distinctly until E3-20 implements the destination-broken
-// transition. It never changes destination or sync state here.
-var ErrDiscordDestinationBreakPending = errors.New("discord destination break handling is not configured")
-
 var errDiscordSendAborted = errors.New("discord send transaction intentionally rolled back")
 
 // errDiscordCreateUnrecorded means an earlier automatic create (including an
@@ -69,6 +64,26 @@ func (t *DiscordTransport) SendClaimed(ctx context.Context, delivery ClaimedDeli
 		}
 		return nil
 	}
+	// The destination, exact current claim, and other same-generation
+	// deliveries are finalized together on the sync transaction. Worker
+	// recording the Permanent result afterward is a guarded no-op.
+	breakDestination := func(repo DiscordMessageSyncRepository, claimID int64, reason string) error {
+		broken, err := repo.MarkDiscordDestinationBroken(ctx, id, reason)
+		if err != nil {
+			return err
+		}
+		if !broken {
+			return errors.New("discord destination generation changed during break")
+		}
+		if err := repo.RecordPermanent(ctx, claimID, reason); err != nil {
+			return err
+		}
+		if _, err := repo.SuppressOtherDiscordDeliveries(ctx, delivery.Target.Key, claimID, reason); err != nil {
+			return err
+		}
+		result = SendResult{Outcome: OutcomePermanent, Err: errors.New(reason)}
+		return nil
+	}
 	// createCurrent renders the latest current Game Request snapshot (never
 	// historical/intermediate activity, and freshly resolved rather than
 	// reused from a failed edit's snapshot) and creates exactly one
@@ -76,7 +91,7 @@ func (t *DiscordTransport) SendClaimed(ctx context.Context, delivery ClaimedDeli
 	// used by a fresh create: an E3-19 10008-recovery create is externally
 	// non-idempotent exactly like the initial create, so it must not bypass
 	// that protection or introduce a second reservation mechanism.
-	createCurrent := func(repo DiscordMessageSyncRepository, credential DiscordWebhookCredential) error {
+	createCurrent := func(repo DiscordMessageSyncRepository, claimID int64, credential DiscordWebhookCredential) error {
 		summary, err := repo.GetGameRequestSummary(ctx, delivery.Activity.GameRequestID)
 		if err != nil {
 			return err
@@ -101,6 +116,12 @@ func (t *DiscordTransport) SendClaimed(ctx context.Context, delivery ClaimedDeli
 		if classified.Kind == discordDeliverySucceeded {
 			result = SendResult{Outcome: OutcomeSucceeded}
 			if err := advance(repo, provider.MessageID); err != nil {
+				return err
+			}
+			return releaseDiscordCreate(ctx, repo, id, delivery.Activity.GameRequestID)
+		}
+		if classified.Kind == discordDeliveryBrokenDestination {
+			if err := breakDestination(repo, claimID, "discord webhook no longer exists (10015 unknown webhook)"); err != nil {
 				return err
 			}
 			return releaseDiscordCreate(ctx, repo, id, delivery.Activity.GameRequestID)
@@ -171,7 +192,7 @@ func (t *DiscordTransport) SendClaimed(ctx context.Context, delivery ClaimedDeli
 			return errors.New("decrypt discord delivery credential failed")
 		}
 		if sync.MessageID == "" {
-			return createCurrent(repo, credential)
+			return createCurrent(repo, claimID, credential)
 		}
 		summary, err := repo.GetGameRequestSummary(ctx, delivery.Activity.GameRequestID)
 		if err != nil {
@@ -193,7 +214,10 @@ func (t *DiscordTransport) SendClaimed(ctx context.Context, delivery ClaimedDeli
 			if !cleared {
 				return errors.New("discord message reference already changed")
 			}
-			return createCurrent(repo, credential)
+			return createCurrent(repo, claimID, credential)
+		}
+		if classified.Kind == discordDeliveryBrokenDestination {
+			return breakDestination(repo, claimID, "discord webhook no longer exists (10015 unknown webhook)")
 		}
 		result = discordSendResult(classified)
 		if classified.Kind != discordDeliverySucceeded {
@@ -239,11 +263,11 @@ func releaseDiscordCreate(ctx context.Context, repo DiscordMessageSyncRepository
 }
 
 // discordSendResult maps a classification that SendClaimed does not handle
-// with dedicated recovery logic of its own: discordDeliveryRecoverMessage
-// (10008) is always intercepted before reaching here (E3-19 recovers it
-// inline under the same serialization boundary), and
-// discordDeliveryBrokenDestination (10015) remains a distinct pending signal
-// until E3-20 implements the destination-broken transition.
+// with dedicated recovery/broken-destination logic of its own:
+// discordDeliveryRecoverMessage (10008) and discordDeliveryBrokenDestination
+// (10015) are always intercepted before reaching here, since both require
+// mutating destination/sync state under the same serialization boundary
+// (E3-19 recovery, E3-20 broken-destination transition).
 func discordSendResult(classified discordDeliveryResult) SendResult {
 	switch classified.Kind {
 	case discordDeliverySucceeded:
@@ -252,8 +276,6 @@ func discordSendResult(classified discordDeliveryResult) SendResult {
 		return SendResult{Outcome: OutcomeRetryable, RetryAfter: classified.RetryAfter, Err: errors.New("discord provider retryable failure")}
 	case discordDeliveryUncertain:
 		return SendResult{Outcome: OutcomeUncertain, Err: errors.New("discord create outcome uncertain")}
-	case discordDeliveryBrokenDestination:
-		return SendResult{Outcome: OutcomePermanent, Err: ErrDiscordDestinationBreakPending}
 	default:
 		return SendResult{Outcome: OutcomePermanent, Err: errors.New("discord provider permanent failure")}
 	}

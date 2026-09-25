@@ -138,16 +138,19 @@ func (q *Queries) CreateDiscordSetupState(ctx context.Context, arg CreateDiscord
 	return i, err
 }
 
-const deleteDiscordDestination = `-- name: DeleteDiscordDestination :execrows
+const deleteDiscordDestination = `-- name: DeleteDiscordDestination :one
 DELETE FROM notification_discord_destination WHERE id = true
+RETURNING destination_id::text AS destination_id
 `
 
-func (q *Queries) DeleteDiscordDestination(ctx context.Context) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteDiscordDestination)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
+// Returns the disconnected generation's identity so the caller can
+// generation-scope suppression to exactly that target, never a broader
+// transport-wide sweep.
+func (q *Queries) DeleteDiscordDestination(ctx context.Context) (string, error) {
+	row := q.db.QueryRow(ctx, deleteDiscordDestination)
+	var destination_id string
+	err := row.Scan(&destination_id)
+	return destination_id, err
 }
 
 const getDiscordDestination = `-- name: GetDiscordDestination :one
@@ -264,11 +267,19 @@ const markDiscordDestinationBroken = `-- name: MarkDiscordDestinationBroken :exe
 UPDATE notification_discord_destination
 SET state = 'broken', credential_ciphertext = NULL, broken_at = now(),
     broken_reason = $1, updated_at = now()
-WHERE id = true AND state = 'connected'
+WHERE id = true AND state = 'connected' AND destination_id = $2::uuid
 `
 
-func (q *Queries) MarkDiscordDestinationBroken(ctx context.Context, brokenReason pgtype.Text) (int64, error) {
-	result, err := q.db.Exec(ctx, markDiscordDestinationBroken, brokenReason)
+type MarkDiscordDestinationBrokenParams struct {
+	BrokenReason  pgtype.Text
+	DestinationID pgtype.UUID
+}
+
+// Generation-scoped: matches only if destination_id is still the exact
+// current connected generation, so a caller that raced a replacement can
+// never break the new destination.
+func (q *Queries) MarkDiscordDestinationBroken(ctx context.Context, arg MarkDiscordDestinationBrokenParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markDiscordDestinationBroken, arg.BrokenReason, arg.DestinationID)
 	if err != nil {
 		return 0, err
 	}

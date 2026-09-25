@@ -523,42 +523,88 @@ func (s *Store) ConnectDiscordDestination(ctx context.Context, destination notif
 	return nil
 }
 
-// MarkDiscordDestinationBroken atomically transitions a connected
+// MarkDiscordDestinationBroken transitions destinationID's connected
 // destination to broken, deleting its now-unusable credential ciphertext
-// while retaining safe metadata, and suppresses this destination's
-// still-pending/claimed Discord deliveries in the same transaction: both
-// happen together, or neither does. It returns
-// notification.ErrDiscordDestinationNotFound if no destination is
-// currently connected.
-func (s *Store) MarkDiscordDestinationBroken(ctx context.Context, reason string) error {
+// while retaining safe metadata.
+//
+// Called while s.tx is set (from inside the Discord send transaction's
+// WithDiscordMessageSyncLock callback, which already holds the
+// destination row FOR SHARE), it only performs that UPDATE on the
+// existing transaction: the caller's own transaction and prior read
+// already guarantee atomicity and exact generation matching, and the
+// caller suppresses other deliveries separately with its own exclusion.
+//
+// Called standalone (s.tx nil; the administrator/lifecycle path), it
+// additionally suppresses every still-pending/claimed Discord delivery
+// for that destination generation in its own local transaction: both
+// happen together, or neither does.
+//
+// Either way, it returns false, without error, when destinationID is not
+// the current connected destination (already replaced, already broken,
+// or unknown), so a caller that raced a replacement never touches the
+// new generation.
+func (s *Store) MarkDiscordDestinationBroken(ctx context.Context, destinationID, reason string) (bool, error) {
+	destination, err := parseUUID(destinationID)
+	if err != nil {
+		return false, fmt.Errorf("parse discord destination identity: %w", err)
+	}
+	if s.tx != nil {
+		affected, err := s.queries.MarkDiscordDestinationBroken(ctx, sqlcgen.MarkDiscordDestinationBrokenParams{
+			BrokenReason: nullableText(reason), DestinationID: destination,
+		})
+		if err != nil {
+			return false, fmt.Errorf("mark discord destination broken: %w", err)
+		}
+		return affected == 1, nil
+	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
-		return fmt.Errorf("begin mark discord destination broken transaction: %w", err)
+		return false, fmt.Errorf("begin mark discord destination broken transaction: %w", err)
 	}
 	defer tx.Rollback(ctx)
 	queries := s.queries.WithTx(tx)
 
-	affected, err := queries.MarkDiscordDestinationBroken(ctx, nullableText(reason))
+	affected, err := queries.MarkDiscordDestinationBroken(ctx, sqlcgen.MarkDiscordDestinationBrokenParams{
+		BrokenReason: nullableText(reason), DestinationID: destination,
+	})
 	if err != nil {
-		return fmt.Errorf("mark discord destination broken: %w", err)
+		return false, fmt.Errorf("mark discord destination broken: %w", err)
 	}
 	if affected == 0 {
-		return notification.ErrDiscordDestinationNotFound
+		return false, nil
 	}
-	if _, err := queries.SuppressDeliveriesByTransport(ctx, sqlcgen.SuppressDeliveriesByTransportParams{
-		Transport: notification.DiscordTransportName, LastError: nullableText(reason),
+	if _, err := queries.SuppressDiscordDeliveriesByTarget(ctx, sqlcgen.SuppressDiscordDeliveriesByTargetParams{
+		TargetKey: "d1:" + destinationID, LastError: nullableText(reason), ExcludeDeliveryID: 0,
 	}); err != nil {
-		return fmt.Errorf("suppress discord deliveries: %w", err)
+		return false, fmt.Errorf("suppress discord deliveries: %w", err)
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("commit mark discord destination broken transaction: %w", err)
+		return false, fmt.Errorf("commit mark discord destination broken transaction: %w", err)
 	}
-	return nil
+	return true, nil
+}
+
+// SuppressOtherDiscordDeliveries suppresses every other still-pending/
+// claimed Discord delivery whose target key is targetKey, excluding
+// excludeDeliveryID. It runs on s.tx when set (the Discord send
+// transaction), so it commits atomically with that transaction's other
+// writes.
+func (s *Store) SuppressOtherDiscordDeliveries(ctx context.Context, targetKey string, excludeDeliveryID int64, reason string) (int64, error) {
+	affected, err := s.queries.SuppressDiscordDeliveriesByTarget(ctx, sqlcgen.SuppressDiscordDeliveriesByTargetParams{
+		TargetKey: targetKey, LastError: nullableText(reason), ExcludeDeliveryID: excludeDeliveryID,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("suppress discord deliveries: %w", err)
+	}
+	return affected, nil
 }
 
 // DeleteDiscordDestination atomically removes the destination entirely
-// (disconnect) and suppresses its still-pending/claimed Discord deliveries
-// in the same transaction: both happen together, or neither does.
+// (disconnect) and suppresses only that exact generation's still-pending/
+// claimed Discord deliveries in the same transaction: both happen
+// together, or neither does. The DELETE's RETURNING destination_id
+// captures the disconnected generation atomically with its own removal,
+// so suppression can never target a later replacement generation.
 func (s *Store) DeleteDiscordDestination(ctx context.Context) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -567,15 +613,15 @@ func (s *Store) DeleteDiscordDestination(ctx context.Context) error {
 	defer tx.Rollback(ctx)
 	queries := s.queries.WithTx(tx)
 
-	affected, err := queries.DeleteDiscordDestination(ctx)
+	destinationID, err := queries.DeleteDiscordDestination(ctx)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return notification.ErrDiscordDestinationNotFound
+	}
 	if err != nil {
 		return fmt.Errorf("delete discord destination: %w", err)
 	}
-	if affected == 0 {
-		return notification.ErrDiscordDestinationNotFound
-	}
-	if _, err := queries.SuppressDeliveriesByTransport(ctx, sqlcgen.SuppressDeliveriesByTransportParams{
-		Transport: notification.DiscordTransportName, LastError: nullableText("discord destination disconnected"),
+	if _, err := queries.SuppressDiscordDeliveriesByTarget(ctx, sqlcgen.SuppressDiscordDeliveriesByTargetParams{
+		TargetKey: "d1:" + destinationID, LastError: nullableText("discord destination disconnected"), ExcludeDeliveryID: 0,
 	}); err != nil {
 		return fmt.Errorf("suppress discord deliveries: %w", err)
 	}

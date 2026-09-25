@@ -55,14 +55,25 @@ func (s *DiscordLifecycleService) Disconnect(ctx context.Context) error {
 	return nil
 }
 
-// Break transitions a connected destination to broken: MarkDiscordDestinationBroken
-// atomically retains safe metadata, deletes the now-unusable credential
-// ciphertext, records reason, and suppresses still-pending/claimed
-// deliveries, all in one local transaction. Break never attempts a remote
-// cleanup: a broken transition means the webhook is already known
-// unusable/deleted, so there is nothing left to delete remotely.
-func (s *DiscordLifecycleService) Break(ctx context.Context, reason string) error {
-	return s.destinations.MarkDiscordDestinationBroken(ctx, reason)
+// Break transitions destinationID's connected destination to broken:
+// MarkDiscordDestinationBroken atomically retains safe metadata, deletes
+// the now-unusable credential ciphertext, records reason, and suppresses
+// that exact generation's still-pending/claimed deliveries, all in one
+// local transaction. Break never attempts a remote cleanup: a broken
+// transition means the webhook is already known unusable/deleted, so
+// there is nothing left to delete remotely. It returns
+// ErrDiscordDestinationNotFound when destinationID is not the current
+// connected destination, so a caller that raced a replacement never
+// touches the new generation.
+func (s *DiscordLifecycleService) Break(ctx context.Context, destinationID, reason string) error {
+	broken, err := s.destinations.MarkDiscordDestinationBroken(ctx, destinationID, reason)
+	if err != nil {
+		return err
+	}
+	if !broken {
+		return ErrDiscordDestinationNotFound
+	}
+	return nil
 }
 
 // cleanupWebhook decrypts ciphertext only in memory, in this immediate

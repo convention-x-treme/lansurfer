@@ -108,12 +108,18 @@ type DiscordDestinationRepository interface {
 	// ConnectDiscordDestination atomically installs or replaces the
 	// singleton destination as connected.
 	ConnectDiscordDestination(ctx context.Context, destination DiscordDestination, credential DiscordCredentialCiphertext) error
-	// MarkDiscordDestinationBroken transitions a connected destination to
-	// broken, deleting its now-unusable credential ciphertext while
-	// retaining safe metadata.
-	MarkDiscordDestinationBroken(ctx context.Context, reason string) error
+	// MarkDiscordDestinationBroken transitions destinationID's connected
+	// destination to broken, deleting its now-unusable credential
+	// ciphertext while retaining safe metadata, and suppresses that exact
+	// generation's still-pending/claimed Discord deliveries, all in one
+	// local transaction. It returns false, without error, when
+	// destinationID is not the current connected destination (already
+	// replaced, already broken, or unknown), so a caller that raced a
+	// replacement never touches the new generation.
+	MarkDiscordDestinationBroken(ctx context.Context, destinationID, reason string) (bool, error)
 	// DeleteDiscordDestination removes the destination entirely
-	// (disconnect).
+	// (disconnect) and suppresses only that exact generation's
+	// still-pending/claimed Discord deliveries.
 	DeleteDiscordDestination(ctx context.Context) error
 }
 
@@ -153,6 +159,18 @@ type DiscordMessageSyncRepository interface {
 	// ReleaseDiscordCreate runs on the sync transaction after a recorded
 	// message ID or a provider-proven rejection.
 	ReleaseDiscordCreate(ctx context.Context, destinationID, gameRequestID string) (bool, error)
+	// MarkDiscordDestinationBroken runs on the sync transaction, which
+	// already holds the destination row FOR SHARE: it only performs the
+	// state transition (no suppression of its own), trusting the caller's
+	// transaction and prior read for exact generation matching and
+	// atomicity. It returns false, without error, when destinationID no
+	// longer matches the current connected destination.
+	MarkDiscordDestinationBroken(ctx context.Context, destinationID, reason string) (bool, error)
+	// RecordPermanent closes the exact 10015 claim on the sync transaction.
+	RecordPermanent(ctx context.Context, deliveryID int64, reason string) error
+	// SuppressOtherDiscordDeliveries suppresses unfinished work for this
+	// generation, excluding the current claim already made permanent.
+	SuppressOtherDiscordDeliveries(ctx context.Context, targetKey string, excludeDeliveryID int64, reason string) (int64, error)
 	// WithDiscordMessageSyncLock serializes one destination/request's
 	// external mutation and state write in a PostgreSQL transaction.
 	WithDiscordMessageSyncLock(ctx context.Context, destinationID, gameRequestID string, apply func(DiscordMessageSyncRepository) error) error

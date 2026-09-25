@@ -41,6 +41,49 @@ type discordSendStore struct {
 	reserved       bool
 	reserveErr     error
 	releasePending bool
+	// E3-20 broken-destination/suppression tracking.
+	markBrokenErr       error
+	markBrokenMismatch  bool
+	brokenReason        string
+	suppressCalls       int
+	suppressedTargetKey string
+	suppressedExcludeID int64
+	suppressedReason    string
+	suppressErr         error
+}
+
+func (s *discordSendStore) MarkDiscordDestinationBroken(_ context.Context, destinationID, reason string) (bool, error) {
+	if !s.locked.Load() {
+		return false, errors.New("mark broken outside lock")
+	}
+	if s.markBrokenErr != nil {
+		return false, s.markBrokenErr
+	}
+	if s.markBrokenMismatch || destinationID != s.destination.ID || s.destination.State != DiscordDestinationConnected {
+		return false, nil
+	}
+	s.destination.State, s.ciphertext = DiscordDestinationBroken, nil
+	s.brokenReason = reason
+	return true, nil
+}
+
+func (s *discordSendStore) RecordPermanent(_ context.Context, _ int64, _ string) error {
+	if !s.locked.Load() {
+		return errors.New("record permanent outside lock")
+	}
+	return nil
+}
+
+func (s *discordSendStore) SuppressOtherDiscordDeliveries(_ context.Context, targetKey string, excludeDeliveryID int64, reason string) (int64, error) {
+	if !s.locked.Load() {
+		return 0, errors.New("suppress outside lock")
+	}
+	if s.suppressErr != nil {
+		return 0, s.suppressErr
+	}
+	s.suppressCalls++
+	s.suppressedTargetKey, s.suppressedExcludeID, s.suppressedReason = targetKey, excludeDeliveryID, reason
+	return 1, nil
 }
 
 func (s *discordSendStore) ReserveDiscordCreate(_ context.Context, destinationID, requestID string) (bool, error) {
@@ -85,15 +128,18 @@ func (s *discordSendStore) WithDiscordMessageSyncLock(_ context.Context, destina
 		return s.lockErr
 	}
 	before, hadSync := s.sync, s.hasSync
+	beforeDestination, beforeCiphertext := s.destination, s.ciphertext
 	s.releasePending = false
 	s.locked.Store(true)
 	defer s.locked.Store(false)
 	if err := apply(s); err != nil {
 		s.sync, s.hasSync = before, hadSync
+		s.destination, s.ciphertext = beforeDestination, beforeCiphertext
 		return err
 	}
 	if s.commitErr != nil {
 		s.sync, s.hasSync = before, hadSync
+		s.destination, s.ciphertext = beforeDestination, beforeCiphertext
 		return s.commitErr
 	}
 	if s.releasePending {
@@ -460,7 +506,7 @@ func TestDiscordSendClaimedSupersedesOlderVersionBeforeMutation(t *testing.T) {
 	}
 }
 
-func TestDiscordSendClaimedKeepsUnknownWebhookSignalPendingForE3_20(t *testing.T) {
+func TestDiscordSendClaimed10015BreaksDestinationOnCreateAndEdit(t *testing.T) {
 	for _, tc := range []struct {
 		name, body string
 		existing   bool
@@ -483,14 +529,17 @@ func TestDiscordSendClaimedKeepsUnknownWebhookSignalPendingForE3_20(t *testing.T
 			}))
 			defer server.Close()
 			result := NewDiscordSendTransport(store, key, "https://play.example", "", discordSendClient(server)).SendClaimed(t.Context(), delivery)
-			if result.Outcome != OutcomePermanent || !errors.Is(result.Err, ErrDiscordDestinationBreakPending) || calls.Load() != 1 {
-				t.Fatalf("provider %s outcome = %v, signal matched = %v; calls = %d, want distinct pending signal and one call", tc.name, result.Outcome, errors.Is(result.Err, ErrDiscordDestinationBreakPending), calls.Load())
+			if result.Outcome != OutcomePermanent || result.Err == nil || calls.Load() != 1 {
+				t.Fatalf("provider %s outcome = %v, err = %v; calls = %d, want terminal permanent and one call", tc.name, result.Outcome, result.Err, calls.Load())
 			}
 			if strings.Contains(result.Err.Error(), discordSendSecret) || strings.Contains(result.Err.Error(), "webhook-id") {
 				t.Fatal("provider error leaked webhook credential")
 			}
-			if store.destination.State != DiscordDestinationConnected || (tc.existing && store.sync.MessageID != "message-old") || (!tc.existing && store.hasSync) {
-				t.Fatal("E3-19 must leave the broken-destination transition to E3-20")
+			if store.destination.State != DiscordDestinationBroken || store.ciphertext != nil {
+				t.Fatalf("destination state = %v, ciphertext = %v; want broken with cleared credential", store.destination.State, store.ciphertext)
+			}
+			if store.suppressCalls != 1 || store.suppressedTargetKey != "d1:"+discordSendDestinationID || store.suppressedExcludeID != 27 {
+				t.Fatalf("suppression calls = %d, target = %q, excluded = %d; want one generation-scoped call excluding the current claim", store.suppressCalls, store.suppressedTargetKey, store.suppressedExcludeID)
 			}
 		})
 	}
