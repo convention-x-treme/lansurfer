@@ -114,15 +114,9 @@ func (h *NotificationSettingsHandler) Subscribe(w http.ResponseWriter, r *http.R
 	h.redirect(w, r, "/account/notifications?notice=push-enabled")
 }
 
-// validPushEndpoint reports whether endpoint is a parseable absolute HTTPS
-// URL with a host and no userinfo component, mirroring the shape check
-// config.Load applies to LANSURFER_BASE_URL. It returns the endpoint
-// normalized by a Parse/String round-trip (which normalizes things like
-// scheme/host case), so the value used for fingerprinting and later
-// delivery is never the raw, unnormalized form the browser submitted -
-// serving the "one endpoint belongs to at most one user" uniqueness
-// invariant and guarding against the delivery worker later being pointed
-// at an arbitrary non-HTTPS or private-network URL (SSRF).
+// validPushEndpoint checks URL shape and normalizes the submitted endpoint for
+// fingerprinting and the one-endpoint-per-user invariant. Outbound Web Push
+// transport enforces the public-network boundary at DNS resolution and dial.
 func validPushEndpoint(endpoint string) (string, bool) {
 	parsed, err := url.Parse(endpoint)
 	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil {

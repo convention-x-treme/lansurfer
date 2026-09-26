@@ -39,6 +39,9 @@ func newWebPushSender(publicKey, privateKey, subject string, httpClient webpush.
 	if err := json.Unmarshal(keyJSON, &keys); err != nil {
 		return nil, errors.New("invalid Web Push VAPID keys")
 	}
+	if httpClient == nil {
+		httpClient = newWebPushHTTPClient(nil, nil)
+	}
 	return &libraryWebPushSender{client: webpush.NewClient(webpush.Config{HTTPClient: httpClient}), keys: keys, subject: subject}, nil
 }
 
