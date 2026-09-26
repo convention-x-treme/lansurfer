@@ -21,7 +21,7 @@ func TestDiscordOAuthConnectPersistsOnlyEncryptedWebhookCredential(t *testing.T)
 			if request.URL.Host != "discord.com" || request.URL.Path != "/api/oauth2/token" {
 				t.Errorf("wrong OAuth endpoint: %s", request.URL.Host)
 			}
-			return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"access_token":"oauth-access-secret","refresh_token":"oauth-refresh-secret","webhook":{"id":"private-webhook-id","token":"private-webhook-token","guild_id":"guild-1","channel_id":"channel-1","name":"Weekly Games"}}`))}, nil
+			return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"access_token":"fake-oauth-access-token","refresh_token":"fake-oauth-refresh-token","webhook":{"id":"fake-webhook-id","token":"fake-webhook-token","guild_id":"guild-1","channel_id":"channel-1","name":"Weekly Games"}}`))}, nil
 		})},
 	})
 	connect := notification.NewDiscordConnectService(store, provider, key, nil)
@@ -33,14 +33,14 @@ func TestDiscordOAuthConnectPersistsOnlyEncryptedWebhookCredential(t *testing.T)
 		t.Fatalf("stored safe destination = %+v, %v", destination, err)
 	}
 	credential, err := notification.DecryptDiscordCredential(key, ciphertext)
-	if err != nil || credential.WebhookID != "private-webhook-id" || credential.WebhookToken != "private-webhook-token" {
+	if err != nil || credential.WebhookID != "fake-webhook-id" || credential.WebhookToken != "fake-webhook-token" {
 		t.Fatal("credential was not stored encrypted and usable")
 	}
 	var persisted string
 	if err := pool.QueryRow(t.Context(), `SELECT row_to_json(d)::text FROM notification_discord_destination d`).Scan(&persisted); err != nil {
 		t.Fatal(err)
 	}
-	for _, secret := range []string{"private-webhook-id", "private-webhook-token", "oauth-access-secret", "oauth-refresh-secret"} {
+	for _, secret := range []string{"fake-webhook-id", "fake-webhook-token", "fake-oauth-access-token", "fake-oauth-refresh-token"} {
 		if strings.Contains(persisted, secret) {
 			t.Fatal("provider secret persisted in destination row")
 		}

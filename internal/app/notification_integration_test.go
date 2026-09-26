@@ -85,7 +85,7 @@ func TestNotificationAppConstructionDeliversDiscordAndDisablesIndependently(t *t
 	}
 	requests := gamerequest.NewService(gamerequestpostgres.NewStore(pool), games, nil)
 	key := cfg.DataEncryptionKey
-	ciphertext, err := notification.EncryptDiscordCredential(key, notification.DiscordWebhookCredential{WebhookID: "webhook-id", WebhookToken: "private-token"})
+	ciphertext, err := notification.EncryptDiscordCredential(key, notification.DiscordWebhookCredential{WebhookID: "fake-webhook-id", WebhookToken: "fake-webhook-token"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +96,7 @@ func TestNotificationAppConstructionDeliversDiscordAndDisablesIndependently(t *t
 	previous := http.DefaultTransport
 	http.DefaultTransport = appDiscordRoundTrip(func(request *http.Request) (*http.Response, error) {
 		calls.Add(1)
-		if request.Method != http.MethodPost || !strings.HasSuffix(request.URL.Path, "/webhook-id/private-token") {
+		if request.Method != http.MethodPost || !strings.HasSuffix(request.URL.Path, "/fake-webhook-id/fake-webhook-token") {
 			t.Errorf("unexpected provider operation: %s", request.Method)
 		}
 		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"id":"runtime-message"}`))}, nil

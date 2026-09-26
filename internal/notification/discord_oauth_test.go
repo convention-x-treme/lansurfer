@@ -95,20 +95,20 @@ func TestDiscordWebhookAuthorizationURLRedirectURI(t *testing.T) {
 }
 
 const discordWebhookTokenFixture = `{
-	"access_token": "super-secret-access-token",
+  "access_token": "fake-oauth-access-token",
 	"token_type": "Bearer",
 	"expires_in": 604800,
-	"refresh_token": "super-secret-refresh-token",
+  "refresh_token": "fake-oauth-refresh-token",
 	"scope": "webhook.incoming",
 	"webhook": {
 		"type": 1,
-		"id": "webhook-id-123",
+    "id": "fake-webhook-id",
 		"name": "Game Requests",
 		"avatar": null,
 		"channel_id": "channel-456",
 		"guild_id": "guild-789",
 		"application_id": "app-1",
-		"token": "webhook-token-secret"
+    "token": "fake-webhook-token"
 	}
 }`
 
@@ -128,7 +128,7 @@ func TestDiscordWebhookExchangeExtractsCredentialAndSafeMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Exchange() error = %v", err)
 	}
-	if result.Credential.WebhookID != "webhook-id-123" || result.Credential.WebhookToken != "webhook-token-secret" {
+	if result.Credential.WebhookID != "fake-webhook-id" || result.Credential.WebhookToken != "fake-webhook-token" {
 		t.Fatalf("Credential = %#v", result.Credential)
 	}
 	if result.GuildID != "guild-789" || result.ChannelID != "channel-456" || result.WebhookName != "Game Requests" {
@@ -147,7 +147,7 @@ func TestDiscordWebhookExchangeAccessTokenNeverLeavesAdapter(t *testing.T) {
 		t.Fatalf("Exchange() error = %v", err)
 	}
 	rendered := fmt.Sprintf("%#v", result)
-	if strings.Contains(rendered, "super-secret-access-token") {
+	if strings.Contains(rendered, "fake-oauth-access-token") {
 		t.Fatalf("result leaked the OAuth access token: %s", rendered)
 	}
 }
@@ -163,7 +163,7 @@ func TestDiscordWebhookExchangeRefreshTokenNeverLeavesAdapter(t *testing.T) {
 		t.Fatalf("Exchange() error = %v", err)
 	}
 	rendered := fmt.Sprintf("%#v", result)
-	if strings.Contains(rendered, "super-secret-refresh-token") {
+	if strings.Contains(rendered, "fake-oauth-refresh-token") {
 		t.Fatalf("result leaked the OAuth refresh token: %s", rendered)
 	}
 }
@@ -171,13 +171,12 @@ func TestDiscordWebhookExchangeRefreshTokenNeverLeavesAdapter(t *testing.T) {
 func TestDiscordWebhookExchangeMalformedWebhookFailsClosedWithoutLeakingSecrets(t *testing.T) {
 	client := testDiscordWebhookOAuthClient(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		// A response that carries real OAuth secrets but no usable webhook
-		// object (e.g. Discord returned webhook.incoming's created webhook
-		// with a missing/blank token, which must never surface).
+		// Fake OAuth values accompany a malformed webhook response; neither
+		// value may surface in the returned error.
 		_, _ = w.Write([]byte(`{
-			"access_token": "super-secret-access-token",
-			"refresh_token": "super-secret-refresh-token",
-			"webhook": {"id": "webhook-id-123", "token": "", "guild_id": "guild-789", "channel_id": "channel-456"}
+            "access_token": "fake-oauth-access-token",
+            "refresh_token": "fake-oauth-refresh-token",
+            "webhook": {"id": "fake-webhook-id", "token": "", "guild_id": "guild-789", "channel_id": "channel-456"}
 		}`))
 	})
 
@@ -188,7 +187,7 @@ func TestDiscordWebhookExchangeMalformedWebhookFailsClosedWithoutLeakingSecrets(
 	if !strings.Contains(err.Error(), "did not include a usable webhook") {
 		t.Fatalf("Exchange() error = %v, want ErrDiscordWebhookOAuthResponseInvalid", err)
 	}
-	if strings.Contains(err.Error(), "super-secret-access-token") || strings.Contains(err.Error(), "super-secret-refresh-token") {
+	if strings.Contains(err.Error(), "fake-oauth-access-token") || strings.Contains(err.Error(), "fake-oauth-refresh-token") {
 		t.Fatalf("error leaked an OAuth secret: %v", err)
 	}
 }
@@ -196,7 +195,7 @@ func TestDiscordWebhookExchangeMalformedWebhookFailsClosedWithoutLeakingSecrets(
 func TestDiscordWebhookExchangeMissingWebhookFailsClosed(t *testing.T) {
 	client := testDiscordWebhookOAuthClient(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"access_token": "token", "refresh_token": "refresh"}`))
+		_, _ = w.Write([]byte(`{"access_token": "fake-access-token", "refresh_token": "fake-refresh-token"}`))
 	})
 
 	_, err := client.Exchange(context.Background(), "the-code")
@@ -208,7 +207,7 @@ func TestDiscordWebhookExchangeMissingWebhookFailsClosed(t *testing.T) {
 func TestDiscordWebhookExchangeHTTPFailureIsClassifiedNotRetried(t *testing.T) {
 	client := testDiscordWebhookOAuthClient(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = w.Write([]byte(`{"access_token": "super-secret-access-token", "error": "server_error"}`))
+		_, _ = w.Write([]byte(`{"access_token": "fake-oauth-access-token", "error": "server_error"}`))
 	})
 
 	_, err := client.Exchange(context.Background(), "the-code")
@@ -218,7 +217,7 @@ func TestDiscordWebhookExchangeHTTPFailureIsClassifiedNotRetried(t *testing.T) {
 	if !strings.Contains(err.Error(), "status 500") {
 		t.Fatalf("Exchange() error = %v, want it to name the HTTP status", err)
 	}
-	if strings.Contains(err.Error(), "super-secret-access-token") {
+	if strings.Contains(err.Error(), "fake-oauth-access-token") {
 		t.Fatalf("error leaked an OAuth secret from a failure body: %v", err)
 	}
 }

@@ -303,7 +303,7 @@ func TestDiscordDestinationPersistsOnlyEncryptedCredential(t *testing.T) {
 		key[i] = byte(i + 7)
 	}
 	credential := notification.DiscordWebhookCredential{
-		WebhookID: "123456789012345678", WebhookToken: "super-secret-webhook-token-value",
+		WebhookID: "fake-webhook-id", WebhookToken: "fake-webhook-token",
 	}
 	ciphertext, err := notification.EncryptDiscordCredential(key, credential)
 	if err != nil {

@@ -44,7 +44,6 @@ func TestNotificationSettingsShowRendersWhenWebPushIsNotConfigured(t *testing.T)
 	}
 }
 
-
 func TestNotificationSettingsShowMarksOnlyCurrentDeviceWithoutExposingSecrets(t *testing.T) {
 	subscriptions := &stubSubscriptionManager{
 		devices: []notification.PushSubscriptionRecord{
