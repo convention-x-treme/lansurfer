@@ -45,14 +45,17 @@ var webPushProhibitedRanges = []netip.Prefix{
 	netip.MustParsePrefix("2002::/16"),
 	netip.MustParsePrefix("64:ff9b::/96"),
 	netip.MustParsePrefix("64:ff9b:1::/48"),
+	netip.MustParsePrefix("3fff::/20"),
 }
+
+var webPushPublicIPv6 = netip.MustParsePrefix("2000::/3")
 
 func publicWebPushAddress(ip netip.Addr) bool {
 	if !ip.IsValid() || ip.Zone() != "" {
 		return false
 	}
 	ip = ip.Unmap()
-	if !ip.IsGlobalUnicast() || ip.IsPrivate() {
+	if !ip.IsGlobalUnicast() || ip.IsPrivate() || (ip.Is6() && !webPushPublicIPv6.Contains(ip)) {
 		return false
 	}
 	for _, prefix := range webPushProhibitedRanges {

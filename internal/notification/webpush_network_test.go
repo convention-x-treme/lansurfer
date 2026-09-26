@@ -21,8 +21,9 @@ func (f webPushRoundTripFunc) RoundTrip(r *http.Request) (*http.Response, error)
 func TestWebPushNetworkRejectsProhibitedDestinations(t *testing.T) {
 	for _, host := range []string{
 		"127.0.0.1", "[::1]", "10.0.0.2", "172.16.0.1", "192.168.1.1", "169.254.0.1",
-		"[fc00::1]", "[fe80::1]", "[::ffff:127.0.0.1]", "100.64.0.1", "[2001:db8::1]",
-		"[64:ff9b::7f00:1]", "[fe80::1%25eth0]", "0.1.2.3", "192.0.2.1", "198.18.0.1",
+		"[fc00::1]", "[fe80::1]", "[fec0::1]", "[4000::1]", "[3fff::1]",
+		"[::ffff:127.0.0.1]", "100.64.0.1", "[2001:db8::1]", "[64:ff9b::7f00:1]",
+		"[fe80::1%25eth0]", "0.1.2.3", "192.0.2.1", "198.18.0.1",
 	} {
 		t.Run(host, func(t *testing.T) {
 			dials := 0
