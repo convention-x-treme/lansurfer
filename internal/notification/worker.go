@@ -146,6 +146,8 @@ func (w *Worker) processOne(ctx context.Context, delivery ClaimedDelivery) {
 	targets, err := transport.Targets(ctx, delivery.Activity)
 	if err != nil {
 		w.logger.Error("recheck transport eligibility", "transport", transport.Name(), "error", err)
+		w.recordOutcome(ctx, delivery, SendResult{Outcome: OutcomeRetryable, Err: err})
+		return
 	} else if !containsTarget(targets, delivery.Target) {
 		if recordErr := w.repo.RecordSuppressed(ctx, delivery.DeliveryID, ErrNoLongerEligible.Error()); recordErr != nil && ctx.Err() == nil {
 			w.logger.Error("record notification delivery suppressed", "delivery_id", delivery.DeliveryID, "error", recordErr)

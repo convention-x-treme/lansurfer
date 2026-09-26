@@ -94,10 +94,10 @@ func (r *materializationRepo) RecordSuccess(context.Context, int64) error { retu
 func (r *materializationRepo) RecordRetry(context.Context, int64, time.Time, string) error {
 	return nil
 }
-func (r *materializationRepo) RecordExhausted(context.Context, int64, string) error { return nil }
-func (r *materializationRepo) RecordPermanent(context.Context, int64, string) error { return nil }
+func (r *materializationRepo) RecordExhausted(context.Context, int64, string) error  { return nil }
+func (r *materializationRepo) RecordPermanent(context.Context, int64, string) error  { return nil }
 func (r *materializationRepo) RecordSuppressed(context.Context, int64, string) error { return nil }
-func (r *materializationRepo) RecordUncertain(context.Context, int64, string) error { return nil }
+func (r *materializationRepo) RecordUncertain(context.Context, int64, string) error  { return nil }
 
 type materializationTransport struct {
 	name    string
@@ -158,5 +158,84 @@ func TestWorkerMaterializeZeroTargets(t *testing.T) {
 	worker.Tick(t.Context())
 	if len(repo.work) != 1 || len(repo.work[0]) != 0 {
 		t.Fatalf("zero-target work = %v, want one row and no deliveries", repo.work)
+	}
+}
+
+type eligibilityRepo struct {
+	materializationRepo
+	delivery              ClaimedDelivery
+	retryAt               time.Time
+	retryID               int64
+	exhausted             int64
+	recorded              string
+	suppressed, succeeded int
+}
+
+func (r *eligibilityRepo) ClaimDueDeliveries(context.Context, int, time.Time) ([]ClaimedDelivery, error) {
+	return []ClaimedDelivery{r.delivery}, nil
+}
+func (r *eligibilityRepo) RecordRetry(_ context.Context, id int64, when time.Time, reason string) error {
+	r.retryID, r.retryAt, r.recorded = id, when, reason
+	return nil
+}
+func (r *eligibilityRepo) RecordExhausted(_ context.Context, id int64, reason string) error {
+	r.exhausted, r.recorded = id, reason
+	return nil
+}
+func (r *eligibilityRepo) RecordSuppressed(context.Context, int64, string) error {
+	r.suppressed++
+	return nil
+}
+func (r *eligibilityRepo) RecordSuccess(context.Context, int64) error {
+	r.succeeded++
+	return nil
+}
+
+type eligibilityTransport struct {
+	materializationTransport
+	sendCalls int
+}
+
+func (t *eligibilityTransport) Send(context.Context, Activity, Target) SendResult {
+	t.sendCalls++
+	return SendResult{Outcome: OutcomeSucceeded}
+}
+
+type eligibilityClaimedTransport struct{ *eligibilityTransport }
+
+func (t *eligibilityClaimedTransport) SendClaimed(context.Context, ClaimedDelivery) SendResult {
+	t.sendCalls++
+	return SendResult{Outcome: OutcomeSucceeded}
+}
+
+func TestWorkerEligibilityErrorRetriesWithoutSend(t *testing.T) {
+	for _, claimed := range []bool{false, true} {
+		t.Run(map[bool]string{false: "Send", true: "SendClaimed"}[claimed], func(t *testing.T) {
+			now := time.Date(2026, 9, 26, 12, 0, 0, 0, time.UTC)
+			repo := &eligibilityRepo{delivery: ClaimedDelivery{DeliveryID: 42, Target: Target{Transport: "push", Key: "a"}}}
+			transport := &eligibilityTransport{materializationTransport: materializationTransport{name: "push", fail: true}}
+			var sender Transport = transport
+			if claimed {
+				sender = &eligibilityClaimedTransport{transport}
+			}
+			worker := NewWorker(repo, []Transport{sender}, nil, func() time.Time { return now })
+			worker.jitter = func(d time.Duration) time.Duration { return d }
+			worker.Tick(t.Context())
+			if transport.sendCalls != 0 || repo.retryID != 42 || !repo.retryAt.Equal(now.Add(5*time.Second)) ||
+				repo.suppressed != 0 || repo.succeeded != 0 {
+				t.Fatalf("unknown eligibility: sends=%d retry=%d at=%v suppressed=%d succeeded=%d", transport.sendCalls, repo.retryID, repo.retryAt, repo.suppressed, repo.succeeded)
+			}
+		})
+	}
+}
+
+func TestWorkerEligibilityErrorExhaustsWithoutSend(t *testing.T) {
+	repo := &eligibilityRepo{delivery: ClaimedDelivery{
+		DeliveryID: 42, AttemptCount: MaxAutomaticAttempts - 1, Target: Target{Transport: "push", Key: "a"},
+	}}
+	transport := &eligibilityTransport{materializationTransport: materializationTransport{name: "push", fail: true}}
+	NewWorker(repo, []Transport{transport}, nil, time.Now).Tick(t.Context())
+	if transport.sendCalls != 0 || repo.exhausted != 42 || repo.retryID != 0 || repo.suppressed != 0 || repo.succeeded != 0 {
+		t.Fatalf("final unknown eligibility: sends=%d exhausted=%d retry=%d suppressed=%d succeeded=%d", transport.sendCalls, repo.exhausted, repo.retryID, repo.suppressed, repo.succeeded)
 	}
 }

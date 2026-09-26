@@ -623,6 +623,44 @@ func TestNotificationPermanentFailureIsTerminal(t *testing.T) {
 	}
 }
 
+func TestNotificationEligibilityReadErrorRetriesWithoutSend(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate(): %v", err)
+	}
+	fixture := newNotificationFixture(t, pool)
+	store := notificationpostgres.NewStore(pool)
+	if err := store.InitializeBaseline(t.Context()); err != nil {
+		t.Fatalf("InitializeBaseline(): %v", err)
+	}
+	created, err := fixture.requests.Create(t.Context(), fixture.host.ID, fixture.gameID, nil, time.Now().Add(time.Hour), "Unknown eligibility")
+	if err != nil {
+		t.Fatalf("create request: %v", err)
+	}
+	transport := newFakeTransport("test", []notification.Target{{Transport: "test", Key: "target-1"}})
+	activities, err := store.DiscoverActivity(t.Context(), 10)
+	if err != nil || len(activities) != 1 {
+		t.Fatalf("DiscoverActivity() = %v, %v", activities, err)
+	}
+	materializeOneActivityWithTransport(t, store, activities[0], transport)
+	transport.targetsErr = errors.New("eligibility read unavailable")
+	before := time.Now()
+	newTestWorker(store, []notification.Transport{transport}).Tick(t.Context())
+
+	var status string
+	var attempts int
+	var next time.Time
+	if err := pool.QueryRow(t.Context(),
+		"SELECT d.status, d.attempt_count, d.next_attempt_at FROM notification_delivery d JOIN notification_work w ON w.id = d.work_id WHERE w.game_request_id = $1",
+		created.ID,
+	).Scan(&status, &attempts, &next); err != nil {
+		t.Fatal(err)
+	}
+	if status != "pending" || attempts != 1 || !next.After(before) || len(transport.sendCalls) != 0 {
+		t.Fatalf("unknown eligibility: status=%s attempts=%d next=%v sends=%d", status, attempts, next, len(transport.sendCalls))
+	}
+}
+
 // TestNotificationSuppressesDeliveryWhenTargetBecomesIneligibleBeforeSend
 // proves the eligibility recheck the worker performs before every send: a
 // delivery materialized when a target was eligible must not be sent once
