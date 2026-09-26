@@ -286,6 +286,50 @@ func TestNotificationMaterializationIsIdempotentUnderRepeatedDiscovery(t *testin
 	}
 }
 
+func TestNotificationTargetResolutionFailsClosed(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate(): %v", err)
+	}
+	fixture := newNotificationFixture(t, pool)
+	store := notificationpostgres.NewStore(pool)
+	if err := store.InitializeBaseline(t.Context()); err != nil {
+		t.Fatalf("InitializeBaseline(): %v", err)
+	}
+	created, err := fixture.requests.Create(t.Context(), fixture.host.ID, fixture.gameID, nil, time.Now().Add(time.Hour), "Retry resolution")
+	if err != nil {
+		t.Fatalf("create request: %v", err)
+	}
+	push := newFakeTransport("push", []notification.Target{{Transport: "push", Key: "push-one"}})
+	discord := newFakeTransport("discord", []notification.Target{{Transport: "discord", Key: "discord-one"}})
+	push.targetsErr = errors.New("temporary read failure")
+	worker := newTestWorker(store, []notification.Transport{push, discord})
+	worker.Tick(t.Context())
+	var work, deliveries int
+	if err := pool.QueryRow(t.Context(), "SELECT count(*) FROM notification_work WHERE game_request_id = $1", created.ID).Scan(&work); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(t.Context(), "SELECT count(*) FROM notification_delivery").Scan(&deliveries); err != nil {
+		t.Fatal(err)
+	}
+	discovered, err := store.DiscoverActivity(t.Context(), 10)
+	if err != nil || work != 0 || deliveries != 0 || len(discovered) != 1 || discovered[0].GameRequestID != created.ID {
+		t.Fatalf("failed resolution: work=%d deliveries=%d rediscovered=%v error=%v", work, deliveries, discovered, err)
+	}
+	push.targetsErr = nil
+	worker.Tick(t.Context())
+	worker.Tick(t.Context())
+	if err := pool.QueryRow(t.Context(), "SELECT count(*) FROM notification_work WHERE game_request_id = $1", created.ID).Scan(&work); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(t.Context(), "SELECT count(*) FROM notification_delivery").Scan(&deliveries); err != nil {
+		t.Fatal(err)
+	}
+	if work != 1 || deliveries != 2 {
+		t.Fatalf("retry work/deliveries = %d/%d, want 1/2", work, deliveries)
+	}
+}
+
 func TestNotificationWorkWithNoEligibleTargetsCompletesWithoutFutureReplay(t *testing.T) {
 	pool := newTestPool(t)
 	if err := Migrate(t.Context(), pool, testLogger()); err != nil {

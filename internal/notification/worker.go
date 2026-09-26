@@ -96,13 +96,18 @@ func (w *Worker) materialize(ctx context.Context) {
 	}
 	for _, activity := range activities {
 		var targets []Target
+		resolutionFailed := false
 		for _, transport := range w.transports {
 			transportTargets, err := transport.Targets(ctx, activity)
 			if err != nil {
 				w.logger.Error("resolve transport targets", "transport", transport.Name(), "error", err)
+				resolutionFailed = true
 				continue
 			}
 			targets = append(targets, transportTargets...)
+		}
+		if resolutionFailed {
+			continue
 		}
 		if err := w.repo.MaterializeWork(ctx, activity, targets); err != nil && ctx.Err() == nil {
 			w.logger.Error("materialize notification work", "activity_sequence", activity.Sequence, "error", err)

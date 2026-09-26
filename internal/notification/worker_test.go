@@ -2,6 +2,7 @@ package notification
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 )
@@ -68,5 +69,94 @@ func TestWorkerWaitBlocksUntilRunReturnsAfterShutdown(t *testing.T) {
 	case <-runReturned:
 	case <-time.After(time.Second):
 		t.Fatal("Wait returned before Run had actually finished")
+	}
+}
+
+type materializationRepo struct {
+	activity Activity
+	work     [][]Target
+}
+
+func (r *materializationRepo) DiscoverActivity(context.Context, int) ([]Activity, error) {
+	if len(r.work) != 0 {
+		return nil, nil
+	}
+	return []Activity{r.activity}, nil
+}
+func (r *materializationRepo) MaterializeWork(_ context.Context, _ Activity, targets []Target) error {
+	r.work = append(r.work, append([]Target(nil), targets...))
+	return nil
+}
+func (r *materializationRepo) ClaimDueDeliveries(context.Context, int, time.Time) ([]ClaimedDelivery, error) {
+	return nil, nil
+}
+func (r *materializationRepo) RecordSuccess(context.Context, int64) error { return nil }
+func (r *materializationRepo) RecordRetry(context.Context, int64, time.Time, string) error {
+	return nil
+}
+func (r *materializationRepo) RecordExhausted(context.Context, int64, string) error { return nil }
+func (r *materializationRepo) RecordPermanent(context.Context, int64, string) error { return nil }
+func (r *materializationRepo) RecordSuppressed(context.Context, int64, string) error { return nil }
+func (r *materializationRepo) RecordUncertain(context.Context, int64, string) error { return nil }
+
+type materializationTransport struct {
+	name    string
+	targets []Target
+	fail    bool
+	calls   int
+}
+
+func (t *materializationTransport) Name() string { return t.name }
+func (t *materializationTransport) Targets(context.Context, Activity) ([]Target, error) {
+	t.calls++
+	if t.fail {
+		return nil, errors.New("temporary target read failure")
+	}
+	return t.targets, nil
+}
+func (t *materializationTransport) Send(context.Context, Activity, Target) SendResult {
+	panic("materialization test must not send")
+}
+
+func TestWorkerMaterializeRetriesAllTransports(t *testing.T) {
+	repo := &materializationRepo{activity: Activity{Sequence: 1}}
+	a := &materializationTransport{name: "push", targets: []Target{{Transport: "push", Key: "a"}}, fail: true}
+	b := &materializationTransport{name: "discord", targets: []Target{{Transport: "discord", Key: "b"}}}
+	worker := NewWorker(repo, []Transport{a, b}, nil, time.Now)
+	worker.Tick(t.Context())
+	if len(repo.work) != 0 || a.calls != 1 || b.calls != 1 {
+		t.Fatalf("failed resolution materialized partial work: work=%v calls=%d/%d", repo.work, a.calls, b.calls)
+	}
+	a.fail = false
+	worker.Tick(t.Context())
+	worker.Tick(t.Context())
+	if len(repo.work) != 1 || len(repo.work[0]) != 2 ||
+		repo.work[0][0] != a.targets[0] || repo.work[0][1] != b.targets[0] {
+		t.Fatalf("retry work = %v, want one complete work row", repo.work)
+	}
+}
+
+func TestWorkerMaterializeRetriesSingleTransport(t *testing.T) {
+	repo := &materializationRepo{activity: Activity{Sequence: 1}}
+	transport := &materializationTransport{name: "push", targets: []Target{{Transport: "push", Key: "a"}}, fail: true}
+	worker := NewWorker(repo, []Transport{transport}, nil, time.Now)
+	worker.Tick(t.Context())
+	if len(repo.work) != 0 {
+		t.Fatalf("failed single transport created work: %v", repo.work)
+	}
+	transport.fail = false
+	worker.Tick(t.Context())
+	if len(repo.work) != 1 || len(repo.work[0]) != 1 || repo.work[0][0] != transport.targets[0] {
+		t.Fatalf("single transport retry work = %v", repo.work)
+	}
+}
+
+func TestWorkerMaterializeZeroTargets(t *testing.T) {
+	repo := &materializationRepo{activity: Activity{Sequence: 1}}
+	worker := NewWorker(repo, []Transport{&materializationTransport{name: "push"}}, nil, time.Now)
+	worker.Tick(t.Context())
+	worker.Tick(t.Context())
+	if len(repo.work) != 1 || len(repo.work[0]) != 0 {
+		t.Fatalf("zero-target work = %v, want one row and no deliveries", repo.work)
 	}
 }
