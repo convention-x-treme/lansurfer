@@ -535,7 +535,7 @@ Run cross-track integration checks as contracts land. The formal stable-1.0 Inte
 - Minimum instance identity, manifest, service worker, same-origin IGDB cover proxy, and CSP without a third-party IGDB image allowance coexist correctly.
 - Track G's canonical default branding/UI system is applied across stable-1.0 surfaces in both supported themes without introducing administrator branding customization or a parallel visual system.
 - Production-generated UI assets, fonts, and licenses are embedded and compatible with the release/operations path.
-- A populated prototype installation upgrades through 1.0 migrations without data loss.
+- A populated installation from an earlier `main` revision upgrades through 1.0 migrations without data loss; feature-branch databases are disposable.
 - Production build, Compose deployment, backup/restore, and documented operator flows are exercised against the integrated application.
 
 ## Blocker policy

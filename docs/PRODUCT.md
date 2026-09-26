@@ -104,7 +104,7 @@ The stable 1.0 release delivers these capabilities through parallel roadmap trac
 - request discovery by Game name/aliases, followed/My Games and open capacity, a compact request-based Trending view, and durable request-local activity history
 - fixed LANsurfer branding with only the minimum instance identity needed for a recognizable deployment, plus an installable PWA/service-worker shell
 - durable Web Push and one instance-level Discord delivery integration without a persistent inbox
-- production release artifacts, operational documentation, and a tested prototype-to-1.0 upgrade path
+- production release artifacts, operational documentation, and a tested upgrade path from a populated earlier `main` revision to 1.0
 
 The 1.0 product UI is English-only. Internationalization/localization is not a stable-1.0 prerequisite.
 
@@ -438,7 +438,7 @@ The stable 1.0 distribution includes:
 - version, healthcheck, encryption-key-generation, and Web Push key-generation commands
 - configuration, reverse-proxy/TLS, administrator bootstrap, backup/restore, key backup, and upgrade documentation
 
-TLS and the reverse proxy remain operator responsibilities. The project documents each release's supported upgrade path rather than guaranteeing arbitrary direct upgrades across all 1.x versions. Migrations are forward-only, and the populated prototype-to-1.0 path is tested.
+TLS and the reverse proxy remain operator responsibilities. The project documents each release's supported upgrade path rather than guaranteeing arbitrary direct upgrades across all 1.x versions. Migrations are forward-only, and an upgrade from a populated earlier `main` revision to 1.0 is tested. Feature-branch databases are disposable prototype state, not supported upgrade sources.
 
 The selected LAN pilot has a narrower release-artifact requirement than stable 1.0, but it still requires a production deployment path, clean-host installation, an exercised backup/restore, and at least one exercised upgrade path with existing data. The roadmap's Pilot Gate owns those validation requirements.
 
