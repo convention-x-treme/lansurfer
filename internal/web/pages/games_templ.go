@@ -68,7 +68,7 @@ func GameCatalog(brand branding.Brand, navigation components.NavigationState, pa
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<a class=\"btn btn-primary btn-sm\" href=\"/game-requests/new\">Create Game Request</a></header><div class=\"content-page\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<a class=\"btn btn-primary btn-sm\" href=\"/game-requests/new\"><i class=\"ph ph-plus\" aria-hidden=\"true\"></i>Create Game Request</a></header><div class=\"content-page\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -528,7 +528,7 @@ func GameCard(item game.DiscoveryItem, followedOnly bool) templ.Component {
 			}
 		}
 		if item.Subscribed {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "<span class=\"game-card-tag\">Following</span>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "<span class=\"game-card-tag icon-label\"><i class=\"ph-fill ph-heart\" aria-hidden=\"true\"></i>Following</span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -585,7 +585,7 @@ func GameCard(item game.DiscoveryItem, followedOnly bool) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "\">Find Players</a>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "\"><i class=\"ph ph-users-three\" aria-hidden=\"true\"></i>Find Players</a>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -676,7 +676,7 @@ func GameCardFollowControl(item game.DiscoveryItem, followedOnly bool) templ.Com
 				return templ_7745c5c3_Err
 			}
 		} else if item.Subscribed {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 46, "<span class=\"status-chip status-chip-joined\">Following</span>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 46, "<span class=\"status-chip status-chip-joined icon-label\"><i class=\"ph-fill ph-heart\" aria-hidden=\"true\"></i>Following</span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -719,7 +719,7 @@ func GameCardFollowControl(item game.DiscoveryItem, followedOnly bool) templ.Com
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, "<button class=\"btn btn-primary btn-sm\" type=\"submit\">Follow</button></form>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, "<button class=\"btn btn-primary btn-sm\" type=\"submit\"><i class=\"ph ph-heart\" aria-hidden=\"true\"></i>Follow</button></form>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -762,7 +762,7 @@ func GameCardFollowControl(item game.DiscoveryItem, followedOnly bool) templ.Com
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, "<button class=\"btn btn-primary btn-sm\" type=\"submit\">Follow</button></form>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, "<button class=\"btn btn-primary btn-sm\" type=\"submit\"><i class=\"ph ph-heart\" aria-hidden=\"true\"></i>Follow</button></form>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

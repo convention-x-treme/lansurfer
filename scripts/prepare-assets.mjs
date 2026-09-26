@@ -1,4 +1,4 @@
-import { cp, mkdir, rm } from "node:fs/promises";
+import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 
 const output = new URL("../internal/web/assets/dist/", import.meta.url);
 
@@ -62,3 +62,21 @@ await cp(
   new URL("../node_modules/daisyui/LICENSE", import.meta.url),
   new URL("licenses/daisyui-MIT.txt", output),
 );
+
+// Phosphor ships Regular and Fill as separate stylesheets whose @font-face
+// lists woff2/woff/ttf/svg beside the stylesheet. Only the woff2 faces are
+// bundled, so each src is rewritten to the one embedded font under /assets/.
+const phosphor = new URL("../node_modules/@phosphor-icons/web/src/", import.meta.url);
+let phosphorCSS = "";
+for (const [weight, font] of [
+  ["regular", "Phosphor"],
+  ["fill", "Phosphor-Fill"],
+]) {
+  await cp(new URL(`${weight}/${font}.woff2`, phosphor), new URL(`fonts/${font}.woff2`, output));
+  const css = await readFile(new URL(`${weight}/style.css`, phosphor), "utf8");
+  const rewritten = css.replace(/src:[^;]*;/, `src: url("/assets/fonts/${font}.woff2") format("woff2");`);
+  if (rewritten === css) throw new Error(`Phosphor ${weight} stylesheet has no @font-face src to rewrite`);
+  phosphorCSS += rewritten;
+}
+await writeFile(new URL("phosphor.css", output), phosphorCSS);
+await cp(new URL("../node_modules/@phosphor-icons/web/LICENSE", import.meta.url), new URL("licenses/phosphor-icons-MIT.txt", output));

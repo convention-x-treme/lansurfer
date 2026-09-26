@@ -156,6 +156,14 @@ LANsurfer owns a local User record. External identities authenticate that user b
 - Provider name and email are visible only to the account owner, not to other players or global administrators through normal product UI.
 - 1.0 does not require biographies, per-Game handles, richer public profile pages, or avatar uploads.
 
+### Avatars
+
+- A player may show one avatar next to the Game Nick. The source is an explicit account choice: one of the player's own linked identities that provides a profile picture (Discord avatar, Twitch or OIDC `picture`), or **Default**.
+- Default, and any missing or failed image, renders the local Game Nick initial. No external avatar service is used.
+- A new account initially selects the creating identity if it has a picture. Later logins, links, and metadata refreshes never change the choice; unlinking the selected identity falls back to Default.
+- Provider avatars are served same-origin through LANsurfer; player browsers never contact Discord, Twitch, or OIDC image hosts. On a cache miss LANsurfer fetches only the selected identity's stored picture server-side, which exposes the server's egress IP address and request timing to that host. Avatar URLs reveal no provider name, subject, username, or email.
+- There are no avatar uploads, cropping, or galleries.
+
 ### Authentication
 
 - Generic OpenID Connect remains provider-neutral.
@@ -409,13 +417,13 @@ The fixed visual system uses the canonical LANsurfer design and bundled applicat
 
 Stable 1.0 does **not** require a full administrator-managed branding surface. In particular, 1.0 does not require configurable welcome text, contact link, uploaded logo, uploaded app icon, custom colors, white-labeling, or theme editing.
 
-Operator legal identity is the one configurable exception: legal entity name, postal address, contact email, and an optional external imprint URL are operator configuration, because each deployment is its own data controller. LANsurfer serves a public Terms of Service (`/terms`) and Privacy Policy (`/privacy`) filled from these values, links them together with a contact/reporting entry and the imprint from the footer of every screen, and states on the login screen that logging in accepts the Terms. Support, abuse, Discord, and data requests go to the contact email; software bugs go to the project's issue tracker. This does not reintroduce welcome text, logos, colors, or free-form legal text as configuration.
+Operator legal identity is the one configurable exception: legal entity name, postal address, contact email, and an optional external imprint URL are operator configuration, because each deployment is its own data controller. LANsurfer serves a public Terms of Service (`/terms`) and Privacy Policy (`/privacy`) filled from these values, links them and the imprint from the footer of every screen (the contact/reporting details live in the Terms), and states on the login screen that logging in accepts the Terms. Support, abuse, Discord, and data requests go to the contact email; software bugs go to the project's issue tracker. This does not reintroduce welcome text, logos, colors, or free-form legal text as configuration.
 
 A deployment may expose the minimum configurable instance identity needed to distinguish a LANsurfer installation. The application otherwise uses fixed/default LANsurfer branding and bundled assets.
 
 The web app manifest uses a stable application identity and start URL, and the minimal service-worker shell supports installation plus Web Push integration. Installation does not imply offline application support.
 
-The IGDB cover proxy concerns catalog content and does not permit remote instance branding or broader theme customization.
+The IGDB cover and provider-avatar proxies concern catalog and player content and do not permit remote instance branding or broader theme customization.
 
 ## 15. Self-Hosting and Release Experience
 

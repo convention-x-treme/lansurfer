@@ -55,7 +55,7 @@ func (a *PendingIdentityAttacher) AttachPending(ctx context.Context, pendingID, 
 	}
 	_, err = identities.Create(ctx, auth.Identity{
 		UserID: userID, ProviderKind: pending.ProviderKind, ProviderKey: pending.ProviderKey,
-		Subject: pending.Subject, DisplayName: pending.DisplayName, Email: pending.Email,
+		Subject: pending.Subject, DisplayName: pending.DisplayName, Email: pending.Email, AvatarRef: pending.AvatarRef,
 	})
 	if errors.Is(err, auth.ErrIdentityExists) {
 		// The pre-check above raced with a concurrent identical attach

@@ -178,7 +178,7 @@ func TestRecentlyViewedKeepsClosedRequestsAndStatesTheirStatus(t *testing.T) {
 	}
 	body := renderNavigation(t, state)
 
-	for _, want := range []string{"Warcraft III", "W3", "2m", "Counter-Strike 2", "closed", "6m"} {
+	for _, want := range []string{"Warcraft III", "2m", "Counter-Strike 2", "closed", "6m"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("recently viewed is missing %q: %s", want, body)
 		}

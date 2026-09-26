@@ -96,7 +96,13 @@ type RouterDependencies struct {
 	// wired (which also requires DataEncryptionKey).
 	WebPushConfigured bool
 	// Covers serves public same-origin IGDB cover images.
-	Covers         handler.CoverImages
+	Covers handler.MediaImages
+	// Avatars serves public same-origin selected provider avatars.
+	Avatars handler.MediaImages
+	// ViewerAvatars resolves the signed-in viewer's selected avatar key.
+	ViewerAvatars handler.ViewerAvatars
+	// AvatarSelector changes the signed-in user's avatar source.
+	AvatarSelector handler.AvatarSelector
 	SecureCookies  bool
 	Logger         *slog.Logger
 	TrustedProxies []netip.Prefix
@@ -132,9 +138,9 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 	)
 	discordDeliveryConfigured := dependencies.DiscordSetup != nil && dependencies.DiscordAuthorization != nil &&
 		dependencies.DiscordConnector != nil && dependencies.DiscordLifecycle != nil && dependencies.DiscordStatus != nil
-	navigation := handler.NewNavigation(dependencies.NavigationQueries, dependencies.NavigationCatalog, discordDeliveryConfigured)
+	navigation := handler.NewNavigation(dependencies.NavigationQueries, dependencies.NavigationCatalog, dependencies.ViewerAvatars, discordDeliveryConfigured)
 	legalHandler := handler.NewLegal(navigation, brand)
-	accountHandler := handler.NewAccount(dependencies.Identities, dependencies.IdentityUnlinker, dependencies.GameNickClaims, dependencies.Authentication, navigation, brand)
+	accountHandler := handler.NewAccount(dependencies.Identities, dependencies.IdentityUnlinker, dependencies.AvatarSelector, dependencies.GameNickClaims, dependencies.Authentication, navigation, brand)
 	administrationHandler := handler.NewAdministration(
 		dependencies.Games, dependencies.ProviderSync, navigation, brand,
 		resolvedInstanceName, dependencies.BaseURL, SecureContextStatus(dependencies.BaseURL),
@@ -173,9 +179,11 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 	router.Handle("/assets/*", http.StripPrefix("/assets/", assets.Handler()))
 	// Covers are public like /assets/: an anonymous page may show them, and
 	// the handler never touches the session.
-	media := handler.NewMedia(dependencies.Covers)
+	media := handler.NewMedia(dependencies.Covers, dependencies.Avatars)
 	router.Get("/media/igdb/{size}/{imageID}", media.IGDBCover)
 	router.Head("/media/igdb/{size}/{imageID}", media.IGDBCover)
+	router.Get("/media/avatar/{avatarKey}", media.Avatar)
+	router.Head("/media/avatar/{avatarKey}", media.Avatar)
 	manifest := manifestHandler(brand, resolvedInstanceName)
 	router.Get("/manifest.webmanifest", manifest)
 	router.Head("/manifest.webmanifest", manifest)
@@ -221,6 +229,7 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 			account.Post("/link/discord", authenticationHandler.LinkFor("discord"))
 			account.Post("/link/twitch", authenticationHandler.LinkFor("twitch"))
 			account.Post("/identities/{identityID}/unlink", accountHandler.Unlink)
+			account.Post("/avatar", accountHandler.SelectAvatar)
 			account.Route("/notifications", func(notifications chi.Router) {
 				notifications.Get("/", notificationSettingsHandler.Show)
 				if dependencies.Subscriptions != nil {
@@ -231,6 +240,8 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 					notifications.Post("/devices/{subscriptionID}/remove", notificationSettingsHandler.RemoveDevice)
 				}
 			})
+		})
+		if dependencies.Discovery != nil {
 			authenticated.Route("/games", func(games chi.Router) {
 				games.Use(handler.RequireAuthentication, handler.RequireGameNick)
 				games.Get("/", gamesHandler.Browse)
@@ -239,7 +250,7 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 				games.Post("/{gameID}/follow", gamesHandler.Follow)
 				games.Post("/{gameID}/unfollow", gamesHandler.Unfollow)
 			})
-		})
+		}
 		if dependencies.GameRequests != nil && dependencies.RequestQueries != nil {
 			authenticated.Route("/game-requests", func(requests chi.Router) {
 				requests.Use(handler.RequireAuthentication, handler.RequireGameNick)

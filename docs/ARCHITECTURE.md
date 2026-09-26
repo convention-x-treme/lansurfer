@@ -472,6 +472,8 @@ Both providers resolve to the same local User/session model. Required Game Nick 
 
 Post-1.0 Twitch authentication is a third provider adapter in the same registry. It reuses OIDC discovery, PKCE, nonce, authorization-code exchange, ID-token validation, and the existing OAuth flow service. Its fixed `provider_kind` and `provider_key` are both `twitch`; its verified Twitch `sub` remains the external identity subject. It requests `openid` and the `preferred_username` ID-token claim, never email. The same local identity, linking, onboarding, and session paths apply unchanged.
 
+`auth` owns provider avatars. Each identity stores an optional `avatar_ref` (Discord avatar hash; Twitch or OIDC `https` `picture` URL, Twitch limited to `static-cdn.jtvnw.net`), a derived content key `avatar_key` (`hex(sha256(kind|subject|avatar_ref))[:32]`), and `avatar_selected`. A partial unique index allows at most one selected identity per user; no selected row means Default. Every login/link refreshes `avatar_ref`/`avatar_key` but never `avatar_selected`; unlinking deletes the row and therefore the selection. An invalid or missing avatar never fails authentication. Read models join the selected `avatar_key` read-only.
+
 Provider names and email addresses are private account data. Normal player and global administrator views must not expose them to anyone except the account owner.
 
 ---
@@ -518,7 +520,7 @@ LANSURFER_IMPRINT_URL
 
 Twitch application credentials are shared only by Twitch authentication and IGDB discovery. Each capability is disabled by default and enabled with its own strict boolean flag; enabling either requires both shared credentials. The two capabilities do not share access tokens, clients, retries, or runtime state. Legacy `LANSURFER_IGDB_CLIENT_ID` and `LANSURFER_IGDB_CLIENT_SECRET` are not supported.
 
-`LANSURFER_COVER_CACHE_DIR` selects the IGDB cover cache store. When set, LANsurfer uses that writable directory as the persistent disk cache; when unset, it uses a fixed 64 MiB in-process LRU. The cache uses one store or the other, not a two-tier cache.
+`LANSURFER_COVER_CACHE_DIR` selects the media cache store shared by IGDB covers and provider avatars. When set, LANsurfer uses that writable directory as the persistent disk cache; when unset, it uses a fixed 64 MiB in-process LRU. The cache uses one store or the other, not a two-tier cache.
 
 Discord authentication and Discord delivery use separate configuration pairs; an operator may point both at the same Discord application, but configuring one does not enable the other. Web Push is disabled when both VAPID keys are absent; partial/invalid VAPID configuration is an error, and configured Web Push also requires `LANSURFER_WEBPUSH_SUBJECT` plus a valid data-encryption key. Configured Discord delivery likewise requires a valid data-encryption key.
 
@@ -621,6 +623,8 @@ Do not couple the primary `games` table schema to IGDB-specific fields. Use gene
 
 IGDB cover bytes are served same-origin through a bounded LANsurfer proxy/cache; player browsers never contact IGDB directly. The browser supplies only `size` (`small` or `big`) and an image ID matching `^[a-z0-9]{1,32}$`; on a cache miss the ID must also exist in `igdb_game_index.cover_image_id` or `game_igdb_enrichment.cover_image_id`. LANsurfer constructs the upstream URL server-side from a fixed `images.igdb.com` origin and fixed size mapping, with a combined 5-second catalog-and-fetch deadline, a 5-second upstream client timeout, redirects disabled, a 1 MiB response cap, and body-sniffed JPEG/PNG/WebP acceptance. Unknown IDs and failed fetches use a fixed 4,096-entry in-memory negative cache for up to 10 minutes. At most eight shared cold-miss operations run per process; a new cold key receives `503` without queuing when saturated, while cache hits and callers joining an existing singleflight do not consume another slot. The cache is either the configured disk store or the fixed 64 MiB in-process LRU, and missing/failed covers retain the local placeholder. Never accept arbitrary upstream URLs or generalize this into a remote-asset proxy.
 
+The bounded proxy core (validation hook, store, negative cache, singleflight, admission, deadline) lives in `internal/platform/mediaproxy` and is instantiated twice: IGDB covers and provider avatars. Both instances share one store (bucket `small`/`big`/`avatar`) and have separate negative caches and slots. `GET /media/avatar/{avatarKey}` is public, accepts only `^[a-f0-9]{32}$`, and on a cache miss the key must belong to a currently selected identity. The upstream URL comes only from that stored row: `https://cdn.discordapp.com/avatars/{subject}/{hash}.png?size=128` for Discord, the stored `https` URL for Twitch/OIDC. Limits, headers, and failure behavior equal the cover proxy. Because OIDC hosts are operator-configured, the avatar fetcher additionally refuses non-default ports and dials to loopback, private, link-local, unspecified, and multicast addresses, and uses no environment proxy.
+
 ---
 
 ## 18. Frontend Architecture
@@ -694,7 +698,7 @@ Important baseline controls:
 - careful trusted-proxy configuration
 - one-use, browser-bound authentication/link flow state
 - provider identity privacy
-- server-constructed IGDB cover fetches with no third-party requests from player browsers
+- server-constructed IGDB cover and provider-avatar fetches with no third-party requests from player browsers
 - encrypted Discord webhook credentials with key rotation/backup guidance
 - Web Push payload data minimization and explicit permission/consent
 

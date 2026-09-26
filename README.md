@@ -152,6 +152,8 @@ Set either enable flag to `true` only after configuring both credentials. Regist
 
 IGDB covers are served same-origin through LANsurfer; player browsers do not contact `images.igdb.com`. On a cache miss LANsurfer fetches a known cover from that fixed origin server-side. `LANSURFER_COVER_CACHE_DIR` selects a persistent disk cache; when it is unset, LANsurfer uses a fixed 64 MiB in-process LRU. The production Compose configuration sets it to `/var/cache/lansurfer/covers` and mounts the `cover-cache` named volume there. Deleting the configured cache directory resets the disk cache; known covers are fetched again on demand.
 
+Provider avatars (Discord avatar, Twitch or OIDC `picture`) use the same proxy and cache: browsers load `/media/avatar/{key}` from LANsurfer only, and on a cache miss the server fetches the user's selected picture from the provider host.
+
 When LANsurfer runs behind a reverse proxy, set `LANSURFER_BASE_URL` to the
 public HTTPS origin. Set `LANSURFER_TRUSTED_PROXIES` to a comma-separated list
 of the proxy IP addresses or CIDR ranges only when client-IP logging should use

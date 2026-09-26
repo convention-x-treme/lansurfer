@@ -50,7 +50,8 @@ function describeToggles(theme: Theme): void {
     button.setAttribute("aria-label", isDark ? "Use light theme" : "Use dark theme");
     button.setAttribute("title", isDark ? "Use light theme" : "Use dark theme");
     const icon = button.querySelector<HTMLElement>("[data-theme-icon]");
-    if (icon) icon.textContent = isDark ? "☾" : "☀";
+    icon?.classList.toggle("ph-moon", isDark);
+    icon?.classList.toggle("ph-sun", !isDark);
   });
 }
 

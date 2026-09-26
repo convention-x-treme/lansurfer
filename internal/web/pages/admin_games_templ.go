@@ -84,7 +84,7 @@ func AdminGames(brand branding.Brand, navigation components.NavigationState, gam
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "\">Add game</a></header><div class=\"content-page catalog-shell\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "\"><i class=\"ph ph-plus\" aria-hidden=\"true\"></i>Add game</a></header><div class=\"content-page catalog-shell\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -445,7 +445,7 @@ func AdminGameEntry(item game.Game, expanded bool, message string) templ.Compone
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "<span class=\"catalog-entry-disclosure\" aria-hidden=\"true\">Edit</span></span></summary><div class=\"catalog-panel\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "<span class=\"catalog-entry-disclosure icon-label\" aria-hidden=\"true\"><i class=\"ph ph-pencil-simple\" aria-hidden=\"true\"></i>Edit</span></span></summary><div class=\"catalog-panel\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -594,7 +594,7 @@ func AdminGameEditSection(item game.Game) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "<div class=\"sm:col-span-2 flex justify-end\"><button class=\"btn btn-primary btn-sm\" type=\"submit\">Save name and slug</button></div></form></section>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "<div class=\"sm:col-span-2 flex justify-end\"><button class=\"btn btn-primary btn-sm\" type=\"submit\"><i class=\"ph ph-check\" aria-hidden=\"true\"></i>Save name and slug</button></div></form></section>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -700,7 +700,7 @@ func AdminGameAliasSection(item game.Game) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, " <span class=\"alias-chip-remove\" aria-hidden=\"true\">×</span></button></form>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, " <i class=\"ph ph-x alias-chip-remove\" aria-hidden=\"true\"></i></button></form>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -823,7 +823,7 @@ func AdminGameProviderSection(item game.Game) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 62, "\" target=\"_blank\" rel=\"noopener noreferrer\">Open on IGDB <span class=\"sr-only\">(opens in a new tab)</span> <span class=\"external-mark\" aria-hidden=\"true\">↗</span></a> ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 62, "\" target=\"_blank\" rel=\"noopener noreferrer\">Open on IGDB <span class=\"sr-only\">(opens in a new tab)</span> <i class=\"ph ph-arrow-square-out external-mark\" aria-hidden=\"true\"></i></a> ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -841,7 +841,7 @@ func AdminGameProviderSection(item game.Game) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 64, "\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 64, "\"><i class=\"ph ph-link\" aria-hidden=\"true\"></i> ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -863,13 +863,13 @@ func AdminGameProviderSection(item game.Game) templ.Component {
 		var templ_7745c5c3_Var34 templ.SafeURL
 		templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinURLErrs("/admin/games/" + item.ID + "/merge")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin_games.templ`, Line: 212, Col: 78}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin_games.templ`, Line: 213, Col: 78}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var34))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 68, "\">Merge duplicate</a></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 68, "\"><i class=\"ph ph-git-merge\" aria-hidden=\"true\"></i>Merge duplicate</a></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -933,7 +933,7 @@ func AdminGameDangerSection(item game.Game) templ.Component {
 		var templ_7745c5c3_Var36 templ.SafeURL
 		templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.JoinURLErrs("/admin/games/" + item.ID + "/active")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin_games.templ`, Line: 234, Col: 69}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin_games.templ`, Line: 235, Col: 69}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var36))
 		if templ_7745c5c3_Err != nil {
@@ -946,7 +946,7 @@ func AdminGameDangerSection(item game.Game) templ.Component {
 		var templ_7745c5c3_Var37 string
 		templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.ResolveAttributeValue(gameActiveConfirmation(item.Active))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin_games.templ`, Line: 234, Col: 120}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin_games.templ`, Line: 235, Col: 120}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var37)
 		if templ_7745c5c3_Err != nil {
@@ -969,12 +969,12 @@ func AdminGameDangerSection(item game.Game) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		if item.Active {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 77, "<input type=\"hidden\" name=\"active\" value=\"false\"><button class=\"btn btn-step-back btn-sm\" type=\"submit\">Deactivate game</button>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 77, "<input type=\"hidden\" name=\"active\" value=\"false\"><button class=\"btn btn-step-back btn-sm\" type=\"submit\"><i class=\"ph ph-eye-slash\" aria-hidden=\"true\"></i>Deactivate game</button>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 78, "<input type=\"hidden\" name=\"active\" value=\"true\"><button class=\"btn btn-quiet btn-sm\" type=\"submit\">Activate game</button>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 78, "<input type=\"hidden\" name=\"active\" value=\"true\"><button class=\"btn btn-quiet btn-sm\" type=\"submit\"><i class=\"ph ph-eye\" aria-hidden=\"true\"></i>Activate game</button>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -984,12 +984,12 @@ func AdminGameDangerSection(item game.Game) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		if item.GameRequestCount > 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 80, "<p class=\"catalog-decision-text\">This game has Game Requests and cannot be deleted. Deactivate or merge it instead.</p><button class=\"btn btn-danger btn-sm\" type=\"button\" disabled>Delete permanently</button>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 80, "<p class=\"catalog-decision-text\">This game has Game Requests and cannot be deleted. Deactivate or merge it instead.</p><button class=\"btn btn-danger btn-sm\" type=\"button\" disabled><i class=\"ph ph-trash\" aria-hidden=\"true\"></i>Delete permanently</button>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else if item.SubscriptionCount > 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 81, "<p class=\"catalog-decision-text\">This game is followed by users. Merge or remove those relationships before deleting.</p><button class=\"btn btn-danger btn-sm\" type=\"button\" disabled>Delete permanently</button>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 81, "<p class=\"catalog-decision-text\">This game is followed by users. Merge or remove those relationships before deleting.</p><button class=\"btn btn-danger btn-sm\" type=\"button\" disabled><i class=\"ph ph-trash\" aria-hidden=\"true\"></i>Delete permanently</button>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1001,7 +1001,7 @@ func AdminGameDangerSection(item game.Game) templ.Component {
 			var templ_7745c5c3_Var38 templ.SafeURL
 			templ_7745c5c3_Var38, templ_7745c5c3_Err = templ.JoinURLErrs("/admin/games/" + item.ID + "/delete")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin_games.templ`, Line: 252, Col: 70}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin_games.templ`, Line: 253, Col: 70}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var38))
 			if templ_7745c5c3_Err != nil {
@@ -1014,7 +1014,7 @@ func AdminGameDangerSection(item game.Game) templ.Component {
 			var templ_7745c5c3_Var39 string
 			templ_7745c5c3_Var39, templ_7745c5c3_Err = templ.ResolveAttributeValue("Permanently delete " + item.Name + "? This cannot be undone.")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin_games.templ`, Line: 252, Col: 150}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin_games.templ`, Line: 253, Col: 150}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var39)
 			if templ_7745c5c3_Err != nil {
@@ -1028,7 +1028,7 @@ func AdminGameDangerSection(item game.Game) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 85, "<button class=\"btn btn-danger btn-sm\" type=\"submit\">Delete permanently</button></form>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 85, "<button class=\"btn btn-danger btn-sm\" type=\"submit\"><i class=\"ph ph-trash\" aria-hidden=\"true\"></i>Delete permanently</button></form>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1079,7 +1079,7 @@ func AdminGameComposer() templ.Component {
 		var templ_7745c5c3_Var41 string
 		templ_7745c5c3_Var41, templ_7745c5c3_Err = templ.ResolveAttributeValue(adminComposerID)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin_games.templ`, Line: 272, Col: 30}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin_games.templ`, Line: 273, Col: 30}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var41)
 		if templ_7745c5c3_Err != nil {
@@ -1097,7 +1097,7 @@ func AdminGameComposer() templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 89, "<div class=\"sm:col-span-2 flex justify-end\"><button class=\"btn btn-primary btn-sm\" type=\"submit\">Add game</button></div></form></details>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 89, "<div class=\"sm:col-span-2 flex justify-end\"><button class=\"btn btn-primary btn-sm\" type=\"submit\"><i class=\"ph ph-plus\" aria-hidden=\"true\"></i>Add game</button></div></form></details>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1133,7 +1133,7 @@ func GameFields(name, slug string) templ.Component {
 		var templ_7745c5c3_Var43 string
 		templ_7745c5c3_Var43, templ_7745c5c3_Err = templ.ResolveAttributeValue(name)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin_games.templ`, Line: 286, Col: 168}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin_games.templ`, Line: 287, Col: 168}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var43)
 		if templ_7745c5c3_Err != nil {
@@ -1146,7 +1146,7 @@ func GameFields(name, slug string) templ.Component {
 		var templ_7745c5c3_Var44 string
 		templ_7745c5c3_Var44, templ_7745c5c3_Err = templ.ResolveAttributeValue(slug)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin_games.templ`, Line: 287, Col: 178}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/admin_games.templ`, Line: 288, Col: 178}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var44)
 		if templ_7745c5c3_Err != nil {

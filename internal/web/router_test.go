@@ -14,8 +14,8 @@ import (
 
 	"github.com/convention-x-treme/lansurfer/internal/auth"
 	"github.com/convention-x-treme/lansurfer/internal/game"
-	"github.com/convention-x-treme/lansurfer/internal/game/cover"
 	"github.com/convention-x-treme/lansurfer/internal/gamerequest"
+	"github.com/convention-x-treme/lansurfer/internal/platform/mediaproxy"
 	requestquery "github.com/convention-x-treme/lansurfer/internal/query/gamerequest"
 	"github.com/convention-x-treme/lansurfer/internal/user"
 	"github.com/convention-x-treme/lansurfer/internal/web/handler"
@@ -1883,8 +1883,8 @@ func TestIGDBCoverRoute(t *testing.T) {
 		cacheControl string
 	}{
 		{"hit", routerCovers{image: jpeg}, http.StatusOK, "public, max-age=31536000, immutable"},
-		{"not found", routerCovers{err: cover.ErrNotFound}, http.StatusNotFound, "no-store"},
-		{"busy", routerCovers{err: cover.ErrBusy}, http.StatusServiceUnavailable, "no-store"},
+		{"not found", routerCovers{err: mediaproxy.ErrNotFound}, http.StatusNotFound, "no-store"},
+		{"busy", routerCovers{err: mediaproxy.ErrBusy}, http.StatusServiceUnavailable, "no-store"},
 		{"internal", routerCovers{err: errors.New("db down")}, http.StatusInternalServerError, "no-store"},
 	}
 	for _, test := range tests {
@@ -1906,6 +1906,31 @@ func TestIGDBCoverRoute(t *testing.T) {
 				t.Errorf("Retry-After = %q, want 1", response.Header().Get("Retry-After"))
 			}
 		})
+	}
+}
+
+type routerAvatars struct {
+	bucket, id string
+}
+
+func (a *routerAvatars) Get(_ context.Context, bucket, id string) ([]byte, error) {
+	a.bucket, a.id = bucket, id
+	return []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}, nil
+}
+
+// Avatars go through the same public same-origin proxy contract as covers,
+// always in the avatar bucket regardless of the requested path.
+func TestAvatarRouteIsPublicAndUsesAvatarBucket(t *testing.T) {
+	avatars := &routerAvatars{}
+	response := httptest.NewRecorder()
+	NewRouter(RouterDependencies{Avatars: avatars}).
+		ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/media/avatar/0123456789abcdef0123456789abcdef", nil))
+	if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "public, max-age=31536000, immutable" ||
+		response.Header().Get("Content-Type") != "image/png" {
+		t.Fatalf("status/headers = %d %v", response.Code, response.Header())
+	}
+	if avatars.bucket != "avatar" || avatars.id != "0123456789abcdef0123456789abcdef" {
+		t.Fatalf("Get(%q, %q)", avatars.bucket, avatars.id)
 	}
 }
 

@@ -49,6 +49,8 @@ func (r *AccountRegistration) Register(ctx context.Context, pendingID, browserBi
 	_, err = authpostgres.NewIdentityStoreDB(tx).Create(ctx, auth.Identity{
 		UserID: account.ID, ProviderKind: pending.ProviderKind, ProviderKey: pending.ProviderKey,
 		Subject: pending.Subject, DisplayName: pending.DisplayName, Email: pending.Email,
+		// A new account starts with the creating identity's picture, if any.
+		AvatarRef: pending.AvatarRef, AvatarSelected: pending.AvatarRef != "",
 	})
 	if errors.Is(err, auth.ErrIdentityExists) {
 		// A concurrent registration for the same pending identity (e.g. two

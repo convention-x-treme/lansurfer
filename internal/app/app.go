@@ -12,7 +12,6 @@ import (
 	"github.com/convention-x-treme/lansurfer/internal/auth"
 	authpostgres "github.com/convention-x-treme/lansurfer/internal/auth/postgres"
 	"github.com/convention-x-treme/lansurfer/internal/game"
-	"github.com/convention-x-treme/lansurfer/internal/game/cover"
 	"github.com/convention-x-treme/lansurfer/internal/game/igdb"
 	gamepostgres "github.com/convention-x-treme/lansurfer/internal/game/postgres"
 	"github.com/convention-x-treme/lansurfer/internal/gamerequest"
@@ -20,6 +19,7 @@ import (
 	"github.com/convention-x-treme/lansurfer/internal/notification"
 	notificationpostgres "github.com/convention-x-treme/lansurfer/internal/notification/postgres"
 	"github.com/convention-x-treme/lansurfer/internal/platform/config"
+	"github.com/convention-x-treme/lansurfer/internal/platform/mediaproxy"
 	"github.com/convention-x-treme/lansurfer/internal/platform/postgres"
 	"github.com/convention-x-treme/lansurfer/internal/platform/sse"
 	gamerequestquery "github.com/convention-x-treme/lansurfer/internal/query/gamerequest"
@@ -115,15 +115,18 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 
 	gameStore := gamepostgres.NewStore(pool)
 	gameService := game.NewService(gameStore)
-	var coverStore cover.Store = cover.NewMemoryStore(cover.MemoryCapacity)
+	// One media store backs both proxies; each keeps its own limits.
+	var mediaStore mediaproxy.Store = mediaproxy.NewMemoryStore(mediaproxy.MemoryCapacity)
 	if cfg.CoverCacheDir != "" {
-		diskStore, err := cover.NewDiskStore(cfg.CoverCacheDir)
+		diskStore, err := mediaproxy.NewDiskStore(cfg.CoverCacheDir, "small", "big", "avatar")
 		if err != nil {
-			return fmt.Errorf("open cover cache: %w", err)
+			return fmt.Errorf("open media cache: %w", err)
 		}
-		coverStore = diskStore
+		mediaStore = diskStore
 	}
-	covers := cover.NewService(coverStore, igdb.NewCoverFetcher(), gameStore, logger)
+	covers := mediaproxy.NewService(mediaStore, igdb.NewCoverFetcher(), gameStore.CoverImageKnown, logger, "small", "big")
+	avatarSource := auth.NewAvatarSource(identityStore)
+	avatars := mediaproxy.NewService(mediaStore, avatarSource, avatarSource.Known, logger, "avatar")
 	realtime := sse.NewBroker()
 	gameRequests := gamerequest.NewService(gamerequestpostgres.NewStore(pool), gameService, realtime)
 	gameRequestQueries := gamerequestquery.NewStore(pool)
@@ -163,40 +166,45 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		vapidPublicKey = cfg.WebPush.PublicKey
 	}
 	routerDependencies := web.RouterDependencies{
-		Ready:                postgres.ReadyCheck(pool),
-		Authentication:       oauthService,
-		Sessions:             sessionService,
-		PendingIdentities:    flowService,
-		AccountRegistration:  accountRegistration,
-		GameNickClaims:       userService,
-		Identities:           identityStore,
-		IdentityUnlinker:     identityStore,
-		Games:                gameService,
-		Discovery:            gameDiscovery,
-		DiscordSetup:         discordSetup,
-		DiscordAuthorization: discordAuthorization,
-		DiscordConnector:     discordConnector,
-		DiscordLifecycle:     discordLifecycle,
-		DiscordStatus:        notificationStore,
-		GameResolver:         gameDiscovery,
-		GameRequests:         gameRequests,
-		RequestQueries:       gameRequestQueries,
-		NavigationQueries:    gameRequestQueries,
-		NavigationCatalog:    gameDiscovery,
-		Realtime:             realtime,
-		Covers:               covers,
-		ProviderSync:         igdbSyncService,
-		VAPIDPublicKey:       vapidPublicKey,
-		WebPushConfigured:    cfg.WebPush != nil,
-		SecureCookies:        strings.HasPrefix(cfg.BaseURL, "https://"),
-		Logger:               logger,
-		TrustedProxies:       cfg.TrustedProxies,
-		InstanceName:         cfg.InstanceName,
+		Ready:               postgres.ReadyCheck(pool),
+		Authentication:      oauthService,
+		Sessions:            sessionService,
+		PendingIdentities:   flowService,
+		AccountRegistration: accountRegistration,
+		GameNickClaims:      userService,
+		Identities:          identityStore,
+		IdentityUnlinker:    identityStore,
+		AvatarSelector:      identityStore,
+		ViewerAvatars:       identityStore,
+		Games:               gameService,
+		Discovery:           gameDiscovery,
+		DiscordStatus:       notificationStore,
+		GameResolver:        gameDiscovery,
+		GameRequests:        gameRequests,
+		RequestQueries:      gameRequestQueries,
+		NavigationQueries:   gameRequestQueries,
+		NavigationCatalog:   gameDiscovery,
+		Realtime:            realtime,
+		Covers:              covers,
+		Avatars:             avatars,
+		ProviderSync:        igdbSyncService,
+		VAPIDPublicKey:      vapidPublicKey,
+		WebPushConfigured:   cfg.WebPush != nil,
+		SecureCookies:       strings.HasPrefix(cfg.BaseURL, "https://"),
+		Logger:              logger,
+		TrustedProxies:      cfg.TrustedProxies,
+		InstanceName:        cfg.InstanceName,
 		Legal: webmiddleware.LegalIdentity{
 			EntityName: cfg.Legal.EntityName, Address: cfg.Legal.Address,
 			ContactEmail: cfg.Legal.ContactEmail, ImprintURL: cfg.Legal.ImprintURL,
 		},
 		BaseURL: cfg.BaseURL,
+	}
+	if cfg.DiscordDelivery != nil {
+		routerDependencies.DiscordSetup = discordSetup
+		routerDependencies.DiscordAuthorization = discordAuthorization
+		routerDependencies.DiscordConnector = discordConnector
+		routerDependencies.DiscordLifecycle = discordLifecycle
 	}
 	routerDependencies = withSubscriptionService(routerDependencies, subscriptionService)
 	server := &http.Server{

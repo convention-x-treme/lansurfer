@@ -26,6 +26,7 @@ import (
 	gamepostgres "github.com/convention-x-treme/lansurfer/internal/game/postgres"
 	"github.com/convention-x-treme/lansurfer/internal/gamerequest"
 	gamerequestpostgres "github.com/convention-x-treme/lansurfer/internal/gamerequest/postgres"
+	notificationpostgres "github.com/convention-x-treme/lansurfer/internal/notification/postgres"
 	gamerequestquery "github.com/convention-x-treme/lansurfer/internal/query/gamerequest"
 	"github.com/convention-x-treme/lansurfer/internal/user"
 	userpostgres "github.com/convention-x-treme/lansurfer/internal/user/postgres"
@@ -3455,8 +3456,75 @@ func TestMigrateAndReadyCheck(t *testing.T) {
 		t.Fatalf("ReadyCheck() error = %v", err)
 	}
 
+	database := stdlib.OpenDBFromPool(pool)
+	defer database.Close()
+	provider, err := goose.NewProvider(goose.DialectPostgres, database, migrationFS)
+	if err != nil {
+		t.Fatalf("create goose provider: %v", err)
+	}
+	version, err := provider.GetDBVersion(t.Context())
+	if err != nil {
+		t.Fatalf("get migration version: %v", err)
+	}
+	if version != 22 {
+		t.Errorf("migration version = %d, want 22", version)
+	}
 	if err := migrateFS(t.Context(), pool, migrationFS, logger); err != nil {
 		t.Fatalf("second migrateFS() error = %v", err)
+	}
+}
+
+// The main schema (including selected avatars) upgrades to notification
+// delivery without losing existing identities, requests, or baseline history.
+func TestNotificationMigrationsUpgradeFromMain(t *testing.T) {
+	pool := newTestPool(t)
+	migrateToVersion(t, pool, productionMigrationFS(t), 14)
+	fixture := newNotificationFixture(t, pool)
+	created, err := fixture.requests.Create(t.Context(), fixture.host.ID, fixture.gameID, nil, time.Now().Add(time.Hour), "Existing request")
+	if err != nil {
+		t.Fatalf("create main-schema request: %v", err)
+	}
+	const avatarKey = "fedcba9876543210fedcba9876543210"
+	if _, err := pool.Exec(t.Context(), `
+		INSERT INTO user_identities (user_id, provider_kind, provider_key, subject, avatar_ref, avatar_key, avatar_selected)
+		VALUES ($1, 'discord', 'discord', 'main-avatar-host', '0123456789abcdef0123456789abcdef', $2, true)
+	`, fixture.host.ID, avatarKey); err != nil {
+		t.Fatalf("insert main-schema selected avatar: %v", err)
+	}
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("upgrade main schema: %v", err)
+	}
+	var gotAvatar string
+	if err := pool.QueryRow(t.Context(), "SELECT avatar_key FROM user_identities WHERE user_id = $1 AND avatar_selected", fixture.host.ID).Scan(&gotAvatar); err != nil || gotAvatar != avatarKey {
+		t.Fatalf("selected avatar after upgrade = %q, %v", gotAvatar, err)
+	}
+	var requestID, creatorID, description string
+	if err := pool.QueryRow(t.Context(), "SELECT id::text, creator_id::text, description FROM game_requests WHERE id = $1", created.ID).Scan(&requestID, &creatorID, &description); err != nil ||
+		requestID != created.ID || creatorID != fixture.host.ID || description != "Existing request" {
+		t.Fatalf("request after upgrade = %q/%q/%q, %v", requestID, creatorID, description, err)
+	}
+	store := notificationpostgres.NewStore(pool)
+	if err := store.InitializeBaseline(t.Context()); err != nil {
+		t.Fatalf("initialize baseline: %v", err)
+	}
+	var baselineCount, deliveryCount int
+	if err := pool.QueryRow(t.Context(), "SELECT count(*) FROM notification_work WHERE baseline").Scan(&baselineCount); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(t.Context(), "SELECT count(*) FROM notification_delivery").Scan(&deliveryCount); err != nil {
+		t.Fatal(err)
+	}
+	activity, err := store.DiscoverActivity(t.Context(), 10)
+	if err != nil || baselineCount != 1 || deliveryCount != 0 || len(activity) != 0 {
+		t.Fatalf("post-upgrade baseline: work=%d delivery=%d discovered=%v error=%v", baselineCount, deliveryCount, activity, err)
+	}
+	fresh, err := fixture.requests.Create(t.Context(), fixture.host.ID, fixture.gameID, nil, time.Now().Add(2*time.Hour), "After upgrade")
+	if err != nil {
+		t.Fatal(err)
+	}
+	activity, err = store.DiscoverActivity(t.Context(), 10)
+	if err != nil || len(activity) != 1 || activity[0].GameRequestID != fresh.ID {
+		t.Fatalf("post-upgrade live discovery = %v, %v", activity, err)
 	}
 }
 

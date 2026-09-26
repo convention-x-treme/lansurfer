@@ -35,6 +35,9 @@ func TestShowPendingRendersSuggestionAndResolveOptions(t *testing.T) {
 	if !strings.Contains(body, `href="/auth/oidc?resolve=pending-1"`) || strings.Contains(body, "/auth/discord?resolve=pending-1") {
 		t.Fatalf("resolve options should only offer the other provider: %q", body)
 	}
+	if !strings.Contains(body, `class="ph ph-key"`) {
+		t.Fatalf("resolve option should carry the OIDC provider glyph: %q", body)
+	}
 	if pending.lookedUpID != "pending-1" || pending.lookedUpBinding != "binding" {
 		t.Fatalf("pending lookup = %q, %q", pending.lookedUpID, pending.lookedUpBinding)
 	}

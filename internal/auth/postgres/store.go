@@ -17,6 +17,7 @@ import (
 )
 
 type IdentityStore struct {
+	db      sqlcgen.DBTX
 	queries *sqlcgen.Queries
 }
 
@@ -29,7 +30,7 @@ func NewIdentityStore(pool *pgxpool.Pool) *IdentityStore {
 }
 
 func NewIdentityStoreDB(db sqlcgen.DBTX) *IdentityStore {
-	return &IdentityStore{queries: sqlcgen.New(db)}
+	return &IdentityStore{db: db, queries: sqlcgen.New(db)}
 }
 
 func NewSessionStore(pool *pgxpool.Pool) *SessionStore {
@@ -58,7 +59,7 @@ func (s *IdentityStore) ListByUser(ctx context.Context, userID string) ([]auth.I
 	}
 	identities := make([]auth.Identity, 0, len(rows))
 	for _, row := range rows {
-		identities = append(identities, auth.Identity{ID: row.ID, UserID: row.UserID, ProviderKind: row.ProviderKind, ProviderKey: row.ProviderKey, Subject: row.Subject, DisplayName: row.DisplayName.String, Email: row.Email.String, CreatedAt: row.CreatedAt.Time})
+		identities = append(identities, identityFromGetRow(sqlcgen.GetIdentityRow(row)))
 	}
 	return identities, nil
 }
@@ -69,12 +70,15 @@ func (s *IdentityStore) Create(ctx context.Context, identity auth.Identity) (aut
 		return auth.Identity{}, fmt.Errorf("parse identity user ID: %w", err)
 	}
 	row, err := s.queries.CreateIdentity(ctx, sqlcgen.CreateIdentityParams{
-		UserID:       userID,
-		ProviderKind: identity.ProviderKind,
-		ProviderKey:  identity.ProviderKey,
-		Subject:      identity.Subject,
-		DisplayName:  nullableText(identity.DisplayName),
-		Email:        nullableText(identity.Email),
+		UserID:         userID,
+		ProviderKind:   identity.ProviderKind,
+		ProviderKey:    identity.ProviderKey,
+		Subject:        identity.Subject,
+		DisplayName:    nullableText(identity.DisplayName),
+		Email:          nullableText(identity.Email),
+		AvatarRef:      nullableText(identity.AvatarRef),
+		AvatarKey:      nullableText(auth.AvatarKey(identity.ProviderKind, identity.Subject, identity.AvatarRef)),
+		AvatarSelected: identity.AvatarSelected && identity.AvatarRef != "",
 	})
 	if isUniqueViolation(err) {
 		return auth.Identity{}, auth.ErrIdentityExists
@@ -82,29 +86,95 @@ func (s *IdentityStore) Create(ctx context.Context, identity auth.Identity) (aut
 	if err != nil {
 		return auth.Identity{}, fmt.Errorf("create identity: %w", err)
 	}
-	return auth.Identity{
-		ID:           row.ID,
-		UserID:       row.UserID,
-		ProviderKind: row.ProviderKind,
-		ProviderKey:  row.ProviderKey,
-		Subject:      row.Subject,
-		DisplayName:  row.DisplayName.String,
-		Email:        row.Email.String,
-		CreatedAt:    row.CreatedAt.Time,
-	}, nil
+	return identityFromGetRow(sqlcgen.GetIdentityRow(row)), nil
 }
 
-func (s *IdentityStore) UpdateMetadata(ctx context.Context, providerKind, providerKey, subject, displayName, email string) error {
+// UpdateMetadata refreshes provider metadata, including the picture, but
+// never the avatar selection.
+func (s *IdentityStore) UpdateMetadata(ctx context.Context, profile auth.Profile) error {
 	if err := s.queries.UpdateIdentityMetadata(ctx, sqlcgen.UpdateIdentityMetadataParams{
-		ProviderKind: providerKind,
-		ProviderKey:  providerKey,
-		Subject:      subject,
-		DisplayName:  nullableText(displayName),
-		Email:        nullableText(email),
+		ProviderKind: profile.ProviderKind,
+		ProviderKey:  profile.ProviderKey,
+		Subject:      profile.Subject,
+		DisplayName:  nullableText(profile.Name),
+		Email:        nullableText(profile.Email),
+		AvatarRef:    nullableText(profile.AvatarRef),
+		AvatarKey:    nullableText(auth.AvatarKey(profile.ProviderKind, profile.Subject, profile.AvatarRef)),
 	}); err != nil {
 		return fmt.Errorf("update identity metadata: %w", err)
 	}
 	return nil
+}
+
+// SelectAvatar replaces the user's avatar selection in one transaction. An
+// empty identityID selects Default. The target must belong to userID and
+// currently offer a picture; otherwise ErrIdentityNotFound and nothing changes.
+func (s *IdentityStore) SelectAvatar(ctx context.Context, userID, identityID string) error {
+	databaseUserID, err := parseUUID(userID)
+	if err != nil {
+		return auth.ErrIdentityNotFound
+	}
+	var databaseIdentityID pgtype.UUID
+	if identityID != "" {
+		if databaseIdentityID, err = parseUUID(identityID); err != nil {
+			return auth.ErrIdentityNotFound
+		}
+	}
+	return s.inTx(ctx, func(queries *sqlcgen.Queries) error {
+		if err := queries.ClearAvatarSelection(ctx, databaseUserID); err != nil {
+			return fmt.Errorf("clear avatar selection: %w", err)
+		}
+		if identityID == "" {
+			return nil
+		}
+		selected, err := queries.SelectAvatarIdentity(ctx, sqlcgen.SelectAvatarIdentityParams{ID: databaseIdentityID, UserID: databaseUserID})
+		if err != nil {
+			return fmt.Errorf("select avatar identity: %w", err)
+		}
+		if selected == 0 {
+			return auth.ErrIdentityNotFound
+		}
+		return nil
+	})
+}
+
+func (s *IdentityStore) inTx(ctx context.Context, fn func(*sqlcgen.Queries) error) error {
+	beginner, ok := s.db.(interface {
+		Begin(context.Context) (pgx.Tx, error)
+	})
+	if !ok {
+		return errors.New("identity store cannot begin a transaction")
+	}
+	tx, err := beginner.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin avatar selection: %w", err)
+	}
+	defer func() { _ = tx.Rollback(context.Background()) }()
+	if err := fn(s.queries.WithTx(tx)); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func (s *IdentityStore) SelectedAvatarKnown(ctx context.Context, key string) (bool, error) {
+	return s.queries.SelectedAvatarKnown(ctx, nullableText(key))
+}
+
+func (s *IdentityStore) SelectedAvatarByKey(ctx context.Context, key string) (auth.StoredAvatar, error) {
+	row, err := s.queries.SelectedAvatarByKey(ctx, nullableText(key))
+	if err != nil {
+		return auth.StoredAvatar{}, err
+	}
+	return auth.StoredAvatar{ProviderKind: row.ProviderKind, Subject: row.Subject, AvatarRef: row.AvatarRef}, nil
+}
+
+// SelectedAvatarKey returns the user's selected avatar key, or "" for Default.
+func (s *IdentityStore) SelectedAvatarKey(ctx context.Context, userID string) (string, error) {
+	databaseUserID, err := parseUUID(userID)
+	if err != nil {
+		return "", nil
+	}
+	return s.queries.SelectedAvatarKeyByUser(ctx, databaseUserID)
 }
 
 func (s *IdentityStore) Unlink(ctx context.Context, userID, identityID string) error {
@@ -170,14 +240,17 @@ func (s *SessionStore) Delete(ctx context.Context, idHash [sha256.Size]byte) err
 
 func identityFromGetRow(row sqlcgen.GetIdentityRow) auth.Identity {
 	return auth.Identity{
-		ID:           row.ID,
-		UserID:       row.UserID,
-		ProviderKind: row.ProviderKind,
-		ProviderKey:  row.ProviderKey,
-		Subject:      row.Subject,
-		DisplayName:  row.DisplayName.String,
-		Email:        row.Email.String,
-		CreatedAt:    row.CreatedAt.Time,
+		ID:             row.ID,
+		UserID:         row.UserID,
+		ProviderKind:   row.ProviderKind,
+		ProviderKey:    row.ProviderKey,
+		Subject:        row.Subject,
+		DisplayName:    row.DisplayName.String,
+		Email:          row.Email.String,
+		AvatarRef:      row.AvatarRef.String,
+		AvatarKey:      row.AvatarKey.String,
+		AvatarSelected: row.AvatarSelected,
+		CreatedAt:      row.CreatedAt.Time,
 	}
 }
 
