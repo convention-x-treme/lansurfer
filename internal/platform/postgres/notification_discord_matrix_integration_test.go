@@ -189,6 +189,10 @@ func TestDiscordDisconnectReconnectSkipsOldWorkThenCreatesOnNewActivity(t *testi
 	if err := fixture.requests.Close(t.Context(), request.ID, fixture.host.ID); err != nil {
 		t.Fatal(err)
 	}
+	var closeSequence int64
+	if err := pool.QueryRow(t.Context(), `SELECT sequence FROM game_request_activity WHERE game_request_id=$1 AND kind='closed' AND origin='live'`, request.ID).Scan(&closeSequence); err != nil {
+		t.Fatal(err)
+	}
 	worker.Tick(t.Context())
 	worker.Tick(t.Context())
 	call := discordSendNextCall(t, calls)
@@ -200,7 +204,7 @@ func TestDiscordDisconnectReconnectSkipsOldWorkThenCreatesOnNewActivity(t *testi
 		t.Fatal("more than one new-generation create")
 	}
 	sync, err := store.GetDiscordMessageSync(t.Context(), fresh.ID, request.ID)
-	if err != nil || sync.MessageID != "new-message" {
-		t.Fatalf("reconnected sync = %+v, %v", sync, err)
+	if err != nil || sync.DestinationID != fresh.ID || sync.GameRequestID != request.ID || sync.MessageID != "new-message" || sync.AppliedVersion != closeSequence {
+		t.Fatalf("reconnected sync = %+v, close activity sequence = %d, error = %v", sync, closeSequence, err)
 	}
 }
