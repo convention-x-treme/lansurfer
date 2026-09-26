@@ -38,7 +38,7 @@ templ AdminGameIGDB(brand branding.Brand, navigation components.NavigationState,
 						if item.IGDBExternalID != "" {
 							<form method="post" action={ "/admin/games/" + item.ID + "/igdb/unlink" } data-confirm="Unlink this IGDB record? The local Game, aliases, followers, and Game Requests will remain.">
 								@components.CSRFInput()
-								<button class="btn btn-step-back btn-sm" type="submit">Unlink IGDB</button>
+								<button class="btn btn-step-back btn-sm" type="submit"><i class="ph ph-link-break" aria-hidden="true"></i>Unlink IGDB</button>
 							</form>
 						}
 					</div>
@@ -105,13 +105,13 @@ templ AdminIGDBLinkResult(target game.Game, result game.AdminProviderGame) {
 					<form method="post" action={ "/admin/games/" + target.ID + "/igdb" }>
 						@components.CSRFInput()
 						<input type="hidden" name="external_id" value={ result.ExternalID }/>
-						<button class="btn btn-primary btn-sm whitespace-nowrap" type="submit">Link this record</button>
+						<button class="btn btn-primary btn-sm whitespace-nowrap" type="submit"><i class="ph ph-link" aria-hidden="true"></i>Link this record</button>
 					</form>
 					if result.Slug != "" {
 						<a class="btn btn-quiet btn-sm whitespace-nowrap" href={ igdbGameURL(result.Slug) } target="_blank" rel="noopener noreferrer">
 							Open on IGDB
 							<span class="sr-only">(opens in a new tab)</span>
-							<span class="external-mark" aria-hidden="true">↗</span>
+							<i class="ph ph-arrow-square-out external-mark" aria-hidden="true"></i>
 						</a>
 					}
 				</div>
@@ -120,7 +120,7 @@ templ AdminIGDBLinkResult(target game.Game, result game.AdminProviderGame) {
 			} else {
 				<div class="text-right">
 					<p class="text-sm text-base-content/70">Linked to { result.LinkedGameName }</p>
-					<a class="btn btn-quiet btn-sm mt-2" href={ "/admin/games/" + target.ID + "/merge?source=" + result.LinkedGameID + "&notice=igdb-link-conflict" }>Review merge</a>
+					<a class="btn btn-quiet btn-sm mt-2" href={ "/admin/games/" + target.ID + "/merge?source=" + result.LinkedGameID + "&notice=igdb-link-conflict" }><i class="ph ph-git-merge" aria-hidden="true"></i>Review merge</a>
 				</div>
 			}
 		</div>
@@ -340,7 +340,7 @@ templ AdminGameMerge(brand branding.Brand, navigation components.NavigationState
 								}
 							</select>
 						</label>
-						<button class="btn btn-quiet" type="submit">Review merge</button>
+						<button class="btn btn-quiet" type="submit"><i class="ph ph-git-merge" aria-hidden="true"></i>Review merge</button>
 					</form>
 				</section>
 				if source.ID != "" {
@@ -432,7 +432,7 @@ templ AdminIGDBStatus(status game.ProviderStatus) {
 		if status.State != game.ProviderDisabled && status.State != game.ProviderSyncing {
 			<form method="post" action="/admin/igdb/sync" class="flex justify-end">
 				@components.CSRFInput()
-				<button class="btn btn-primary btn-sm" type="submit">Sync now</button>
+				<button class="btn btn-primary btn-sm" type="submit"><i class="ph ph-arrows-clockwise" aria-hidden="true"></i>Sync now</button>
 			</form>
 		}
 	</section>

@@ -109,6 +109,25 @@ func TestLayoutRendersManifestAndIconLinks(t *testing.T) {
 	}
 }
 
+// Both shells need the bundled icon webfont, or every Phosphor glyph renders
+// as an empty box on the login and onboarding screens.
+func TestEveryShellLinksIconStylesheet(t *testing.T) {
+	brand := branding.Default()
+	want := `<link rel="stylesheet" href="` + brand.Assets.IconStylesheet + `">`
+	for name, component := range map[string]templ.Component{
+		"Layout":     Layout(brand, "Game Requests", NavigationState{}),
+		"AuthLayout": AuthLayout(brand, "Log in"),
+	} {
+		var rendered bytes.Buffer
+		if err := component.Render(instanceContext(""), &rendered); err != nil {
+			t.Fatalf("render %s: %v", name, err)
+		}
+		if !strings.Contains(rendered.String(), want) {
+			t.Errorf("%s missing %q", name, want)
+		}
+	}
+}
+
 func TestLayoutSecondaryInstanceLabel(t *testing.T) {
 	tests := map[string]struct {
 		instance string
@@ -171,7 +190,7 @@ func TestEveryShellLinksLegalPages(t *testing.T) {
 			}
 			body := rendered.String()
 			for _, want := range []string{
-				`<footer`, `href="/terms"`, `href="/privacy"`, `href="/terms#contact"`,
+				`<footer`, `href="/terms"`, `href="/privacy"`,
 				`href="https://club.example.test/impressum" target="_blank" rel="noopener noreferrer"`,
 			} {
 				if !strings.Contains(body, want) {

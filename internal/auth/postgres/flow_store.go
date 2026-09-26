@@ -154,6 +154,7 @@ func (s *FlowStore) CreatePending(ctx context.Context, pending auth.PendingIdent
 		Subject: nullableText(pending.Subject), InitiatingUserID: initiatingUserID, ParentFlowID: parentFlowID,
 		BrowserBindingHash: pending.BrowserBindingHash[:], DisplayName: nullableText(pending.DisplayName),
 		Email: nullableText(pending.Email), GameNickSuggestion: nullableText(pending.GameNickSuggestion),
+		AvatarRef: nullableText(pending.AvatarRef),
 		ExpiresAt: pgtype.Timestamptz{Time: pending.ExpiresAt, Valid: true},
 	})
 	if err != nil {
@@ -261,6 +262,7 @@ func pendingFromCreate(row sqlcgen.CreatePendingIdentityRow) auth.PendingIdentit
 		ProviderKey: row.ProviderKey, Subject: row.Subject.String, InitiatingUserID: uuidString(row.InitiatingUserID),
 		ParentFlowID: uuidString(row.ParentFlowID), BrowserBindingHash: hashArray(row.BrowserBindingHash),
 		DisplayName: row.DisplayName.String, Email: row.Email.String, GameNickSuggestion: row.GameNickSuggestion.String,
+		AvatarRef: row.AvatarRef.String,
 		ExpiresAt: row.ExpiresAt.Time}
 }
 
@@ -269,5 +271,6 @@ func pendingFromGet(row sqlcgen.GetPendingIdentityRow) auth.PendingIdentity {
 		ProviderKey: row.ProviderKey, Subject: row.Subject.String, InitiatingUserID: uuidString(row.InitiatingUserID),
 		ParentFlowID: uuidString(row.ParentFlowID), BrowserBindingHash: hashArray(row.BrowserBindingHash),
 		DisplayName: row.DisplayName.String, Email: row.Email.String, GameNickSuggestion: row.GameNickSuggestion.String,
+		AvatarRef: row.AvatarRef.String,
 		ExpiresAt: row.ExpiresAt.Time}
 }

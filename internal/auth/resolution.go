@@ -60,7 +60,7 @@ func (s *ResolutionService) ResolveLogin(ctx context.Context, profile Profile, b
 	}
 	identity, err := s.identities.ByProviderSubject(ctx, profile.ProviderKind, profile.ProviderKey, profile.Subject)
 	if err == nil {
-		if err := s.identities.UpdateMetadata(ctx, profile.ProviderKind, profile.ProviderKey, profile.Subject, profile.Name, profile.Email); err != nil {
+		if err := s.identities.UpdateMetadata(ctx, profile); err != nil {
 			return Resolution{}, fmt.Errorf("refresh identity metadata: %w", err)
 		}
 		account, err := s.users.ByID(ctx, identity.UserID)
@@ -79,7 +79,7 @@ func (s *ResolutionService) ResolveLogin(ctx context.Context, profile Profile, b
 	pending, err := s.flows.CreatePending(ctx, PendingIdentityInput{
 		BrowserBinding: browserBinding, ProviderKind: profile.ProviderKind, ProviderKey: profile.ProviderKey,
 		Subject: profile.Subject, Operation: FlowLogin, DisplayName: profile.Name, Email: profile.Email,
-		GameNickSuggestion: profile.GameNickSuggestion,
+		GameNickSuggestion: profile.GameNickSuggestion, AvatarRef: profile.AvatarRef,
 	})
 	if err != nil {
 		return Resolution{}, err
@@ -97,7 +97,7 @@ func (s *ResolutionService) Link(ctx context.Context, profile Profile, userID st
 		if existing.UserID != userID {
 			return Identity{}, ErrIdentityConflict
 		}
-		if err := s.identities.UpdateMetadata(ctx, profile.ProviderKind, profile.ProviderKey, profile.Subject, profile.Name, profile.Email); err != nil {
+		if err := s.identities.UpdateMetadata(ctx, profile); err != nil {
 			return Identity{}, err
 		}
 		return existing, nil
@@ -116,7 +116,7 @@ func (s *ResolutionService) Link(ctx context.Context, profile Profile, userID st
 	}
 	identity, err := s.identities.Create(ctx, Identity{
 		UserID: userID, ProviderKind: profile.ProviderKind, ProviderKey: profile.ProviderKey,
-		Subject: profile.Subject, DisplayName: profile.Name, Email: profile.Email,
+		Subject: profile.Subject, DisplayName: profile.Name, Email: profile.Email, AvatarRef: profile.AvatarRef,
 	})
 	if errors.Is(err, ErrIdentityExists) {
 		// The pre-check above raced with a concurrent identical link request
@@ -147,7 +147,7 @@ func (s *ResolutionService) ProveExisting(ctx context.Context, proof Profile, pe
 	if err != nil {
 		return Resolution{}, err
 	}
-	if err := s.identities.UpdateMetadata(ctx, proof.ProviderKind, proof.ProviderKey, proof.Subject, proof.Name, proof.Email); err != nil {
+	if err := s.identities.UpdateMetadata(ctx, proof); err != nil {
 		return Resolution{}, fmt.Errorf("refresh proof identity metadata: %w", err)
 	}
 	pending, err := s.flows.Pending(ctx, pendingID, browserBinding)

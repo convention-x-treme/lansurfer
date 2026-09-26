@@ -2,7 +2,7 @@
 
 Issue: [#45](https://github.com/convention-x-treme/lansurfer/issues/45)
 Branch: `feat/issue-45-local-igdb-covers`
-Status: approved design, 2026-09-22
+Status: approved design, 2026-09-22. The proxy core has since moved to `internal/platform/mediaproxy` and is shared with provider avatars (#64).
 
 ## 1. Goal
 

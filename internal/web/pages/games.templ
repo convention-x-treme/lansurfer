@@ -24,7 +24,7 @@ templ GameCatalog(brand branding.Brand, navigation components.NavigationState, p
 		<header class="app-topbar">
 			<h1 class="app-title sr-only">Games</h1>
 			@GameSearchForm(search, followedOnly)
-			<a class="btn btn-primary btn-sm" href="/game-requests/new">Create Game Request</a>
+			<a class="btn btn-primary btn-sm" href="/game-requests/new"><i class="ph ph-plus" aria-hidden="true"></i>Create Game Request</a>
 		</header>
 		<div class="content-page">
 			@GameCatalogResults(brand, page, search, followedOnly, message, navigation.Viewer)
@@ -172,7 +172,7 @@ templ GameCard(item game.DiscoveryItem, followedOnly bool) {
 				<span class="game-card-genre">{ shortGenre(item.GenreNames[0]) }</span>
 			}
 			if item.Subscribed {
-				<span class="game-card-tag">Following</span>
+				<span class="game-card-tag icon-label"><i class="ph-fill ph-heart" aria-hidden="true"></i>Following</span>
 			}
 		</div>
 		<div class="game-card-body">
@@ -182,7 +182,7 @@ templ GameCard(item game.DiscoveryItem, followedOnly bool) {
 			</div>
 			<p class="game-card-meta">{ gameCardMeta(item.GamePresentation) }</p>
 			<div class="game-card-actions">
-				<a class="btn btn-quiet btn-sm" href={ gameRequestAction(item) }>Find Players</a>
+				<a class="btn btn-quiet btn-sm" href={ gameRequestAction(item) }><i class="ph ph-users-three" aria-hidden="true"></i>Find Players</a>
 				@GameCardFollowControl(item, followedOnly)
 			</div>
 		</div>
@@ -207,18 +207,18 @@ templ GameCardFollowControl(item game.DiscoveryItem, followedOnly bool) {
 			<button class="btn btn-ghost btn-sm text-[var(--ink-accent)]" type="submit">Unfollow</button>
 		</form>
 	} else if item.Subscribed {
-		<span class="status-chip status-chip-joined">Following</span>
+		<span class="status-chip status-chip-joined icon-label"><i class="ph-fill ph-heart" aria-hidden="true"></i>Following</span>
 	} else if item.LocalGameID != "" {
 		<form class="game-card-follow" method="post" action={ "/games/" + item.LocalGameID + "/follow" } hx-post={ "/games/" + item.LocalGameID + "/follow" } hx-target="closest article" hx-swap="outerHTML" hx-sync="this:drop" hx-disabled-elt="find button">
 			@components.CSRFInput()
 			@followedViewInput(followedOnly)
-			<button class="btn btn-primary btn-sm" type="submit">Follow</button>
+			<button class="btn btn-primary btn-sm" type="submit"><i class="ph ph-heart" aria-hidden="true"></i>Follow</button>
 		</form>
 	} else {
 		<form class="game-card-follow" method="post" action={ providerFollowAction(item.Reference) } hx-post={ providerFollowAction(item.Reference) } hx-target="closest article" hx-swap="outerHTML" hx-sync="this:drop" hx-disabled-elt="find button">
 			@components.CSRFInput()
 			@followedViewInput(followedOnly)
-			<button class="btn btn-primary btn-sm" type="submit">Follow</button>
+			<button class="btn btn-primary btn-sm" type="submit"><i class="ph ph-heart" aria-hidden="true"></i>Follow</button>
 		</form>
 	}
 }

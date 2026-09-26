@@ -286,6 +286,50 @@ func TestNotificationMaterializationIsIdempotentUnderRepeatedDiscovery(t *testin
 	}
 }
 
+func TestNotificationTargetResolutionFailsClosed(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate(): %v", err)
+	}
+	fixture := newNotificationFixture(t, pool)
+	store := notificationpostgres.NewStore(pool)
+	if err := store.InitializeBaseline(t.Context()); err != nil {
+		t.Fatalf("InitializeBaseline(): %v", err)
+	}
+	created, err := fixture.requests.Create(t.Context(), fixture.host.ID, fixture.gameID, nil, time.Now().Add(time.Hour), "Retry resolution")
+	if err != nil {
+		t.Fatalf("create request: %v", err)
+	}
+	push := newFakeTransport("push", []notification.Target{{Transport: "push", Key: "push-one"}})
+	discord := newFakeTransport("discord", []notification.Target{{Transport: "discord", Key: "discord-one"}})
+	push.targetsErr = errors.New("temporary read failure")
+	worker := newTestWorker(store, []notification.Transport{push, discord})
+	worker.Tick(t.Context())
+	var work, deliveries int
+	if err := pool.QueryRow(t.Context(), "SELECT count(*) FROM notification_work WHERE game_request_id = $1", created.ID).Scan(&work); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(t.Context(), "SELECT count(*) FROM notification_delivery").Scan(&deliveries); err != nil {
+		t.Fatal(err)
+	}
+	discovered, err := store.DiscoverActivity(t.Context(), 10)
+	if err != nil || work != 0 || deliveries != 0 || len(discovered) != 1 || discovered[0].GameRequestID != created.ID {
+		t.Fatalf("failed resolution: work=%d deliveries=%d rediscovered=%v error=%v", work, deliveries, discovered, err)
+	}
+	push.targetsErr = nil
+	worker.Tick(t.Context())
+	worker.Tick(t.Context())
+	if err := pool.QueryRow(t.Context(), "SELECT count(*) FROM notification_work WHERE game_request_id = $1", created.ID).Scan(&work); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(t.Context(), "SELECT count(*) FROM notification_delivery").Scan(&deliveries); err != nil {
+		t.Fatal(err)
+	}
+	if work != 1 || deliveries != 2 {
+		t.Fatalf("retry work/deliveries = %d/%d, want 1/2", work, deliveries)
+	}
+}
+
 func TestNotificationWorkWithNoEligibleTargetsCompletesWithoutFutureReplay(t *testing.T) {
 	pool := newTestPool(t)
 	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
@@ -576,6 +620,44 @@ func TestNotificationPermanentFailureIsTerminal(t *testing.T) {
 	}
 	if len(transport.sendCalls) != 1 {
 		t.Fatalf("Send() was called %d times, want exactly 1 (a permanent delivery must not be reclaimed)", len(transport.sendCalls))
+	}
+}
+
+func TestNotificationEligibilityReadErrorRetriesWithoutSend(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate(): %v", err)
+	}
+	fixture := newNotificationFixture(t, pool)
+	store := notificationpostgres.NewStore(pool)
+	if err := store.InitializeBaseline(t.Context()); err != nil {
+		t.Fatalf("InitializeBaseline(): %v", err)
+	}
+	created, err := fixture.requests.Create(t.Context(), fixture.host.ID, fixture.gameID, nil, time.Now().Add(time.Hour), "Unknown eligibility")
+	if err != nil {
+		t.Fatalf("create request: %v", err)
+	}
+	transport := newFakeTransport("test", []notification.Target{{Transport: "test", Key: "target-1"}})
+	activities, err := store.DiscoverActivity(t.Context(), 10)
+	if err != nil || len(activities) != 1 {
+		t.Fatalf("DiscoverActivity() = %v, %v", activities, err)
+	}
+	materializeOneActivityWithTransport(t, store, activities[0], transport)
+	transport.targetsErr = errors.New("eligibility read unavailable")
+	before := time.Now()
+	newTestWorker(store, []notification.Transport{transport}).Tick(t.Context())
+
+	var status string
+	var attempts int
+	var next time.Time
+	if err := pool.QueryRow(t.Context(),
+		"SELECT d.status, d.attempt_count, d.next_attempt_at FROM notification_delivery d JOIN notification_work w ON w.id = d.work_id WHERE w.game_request_id = $1",
+		created.ID,
+	).Scan(&status, &attempts, &next); err != nil {
+		t.Fatal(err)
+	}
+	if status != "pending" || attempts != 1 || !next.After(before) || len(transport.sendCalls) != 0 {
+		t.Fatalf("unknown eligibility: status=%s attempts=%d next=%v sends=%d", status, attempts, next, len(transport.sendCalls))
 	}
 }
 

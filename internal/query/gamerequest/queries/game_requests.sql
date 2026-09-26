@@ -69,9 +69,11 @@ WHERE gr.id = sqlc.arg(id)::uuid
 GROUP BY gr.id, g.id, g.name, g.slug, enrichment.game_id, u.game_nick;
 
 -- name: ListGameRequestMembers :many
-SELECT u.id::text AS user_id, u.game_nick AS member_game_nick, m.joined_at
+SELECT u.id::text AS user_id, u.game_nick AS member_game_nick, m.joined_at,
+       COALESCE(avatar.avatar_key, '')::text AS avatar_key
 FROM game_request_members m
 JOIN users u ON u.id = m.user_id
+LEFT JOIN user_identities avatar ON avatar.user_id = u.id AND avatar.avatar_selected
 WHERE m.game_request_id = sqlc.arg(game_request_id)::uuid
 ORDER BY m.joined_at, u.id;
 

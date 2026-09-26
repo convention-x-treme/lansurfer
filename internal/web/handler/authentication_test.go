@@ -58,13 +58,18 @@ func TestLoginUsesProviderBrandButtons(t *testing.T) {
 	handler := NewAuthentication(&stubAuthentication{available: true, providers: []auth.ProviderAvailability{
 		{Kind: "discord", DisplayName: "Discord"},
 		{Kind: "twitch", DisplayName: "Twitch"},
+		{Kind: "oidc", DisplayName: "Discord-compatible SSO"},
 	}}, &stubSessions{}, branding.Default(), true, nil)
 	response := httptest.NewRecorder()
 
 	handler.Login(response, httptest.NewRequest(http.MethodGet, "/auth/login", nil))
 
 	body := response.Body.String()
-	for _, want := range []string{`class="btn btn-provider-discord`, `class="btn btn-provider-twitch`} {
+	// The provider glyph follows the kind, not the operator-chosen name.
+	if strings.Count(body, "ph-discord-logo") != 1 {
+		t.Fatalf("login response should render exactly one Discord glyph: %q", body)
+	}
+	for _, want := range []string{`class="btn btn-provider-discord`, `class="btn btn-provider-twitch`, `class="ph ph-twitch-logo"`, `class="ph ph-key"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("login response missing %q: %q", want, body)
 		}

@@ -71,6 +71,7 @@ func (p *DiscordProvider) Exchange(ctx context.Context, code, _, _ string) (Prof
 		ID         string  `json:"id"`
 		Username   string  `json:"username"`
 		GlobalName *string `json:"global_name"`
+		Avatar     *string `json:"avatar"`
 	}
 	decoder := json.NewDecoder(io.LimitReader(response.Body, discordProfileLimit))
 	if err := decoder.Decode(&currentUser); err != nil {
@@ -89,8 +90,12 @@ func (p *DiscordProvider) Exchange(ctx context.Context, code, _, _ string) (Prof
 	if displayName == "" {
 		displayName = currentUser.Username
 	}
+	avatar := ""
+	if currentUser.Avatar != nil {
+		avatar = *currentUser.Avatar
+	}
 	return Profile{
-		ProviderKind: "discord", ProviderKey: "discord", Subject: currentUser.ID,
+		ProviderKind: "discord", ProviderKey: "discord", Subject: currentUser.ID, AvatarRef: avatar,
 		Name: displayName, PreferredUsername: currentUser.Username,
 		GameNickSuggestion: discordGameNickSuggestion(globalName, currentUser.Username),
 	}, nil

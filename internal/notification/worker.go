@@ -96,13 +96,18 @@ func (w *Worker) materialize(ctx context.Context) {
 	}
 	for _, activity := range activities {
 		var targets []Target
+		resolutionFailed := false
 		for _, transport := range w.transports {
 			transportTargets, err := transport.Targets(ctx, activity)
 			if err != nil {
 				w.logger.Error("resolve transport targets", "transport", transport.Name(), "error", err)
+				resolutionFailed = true
 				continue
 			}
 			targets = append(targets, transportTargets...)
+		}
+		if resolutionFailed {
+			continue
 		}
 		if err := w.repo.MaterializeWork(ctx, activity, targets); err != nil && ctx.Err() == nil {
 			w.logger.Error("materialize notification work", "activity_sequence", activity.Sequence, "error", err)
@@ -141,6 +146,8 @@ func (w *Worker) processOne(ctx context.Context, delivery ClaimedDelivery) {
 	targets, err := transport.Targets(ctx, delivery.Activity)
 	if err != nil {
 		w.logger.Error("recheck transport eligibility", "transport", transport.Name(), "error", err)
+		w.recordOutcome(ctx, delivery, SendResult{Outcome: OutcomeRetryable, Err: err})
+		return
 	} else if !containsTarget(targets, delivery.Target) {
 		if recordErr := w.repo.RecordSuppressed(ctx, delivery.DeliveryID, ErrNoLongerEligible.Error()); recordErr != nil && ctx.Err() == nil {
 			w.logger.Error("record notification delivery suppressed", "delivery_id", delivery.DeliveryID, "error", recordErr)

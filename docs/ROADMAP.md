@@ -27,6 +27,8 @@ Post-1.0 items are intentionally **not scheduled to a version** unless the roadm
 
 Implemented post-1.0 scope includes [#40](https://github.com/convention-x-treme/lansurfer/issues/40): optional Twitch authentication. Twitch is a third independently configured login provider using the existing local identity/linking/session model; it shares Twitch application credentials with independently enabled IGDB discovery and does not request email.
 
+It also includes [#64](https://github.com/convention-x-treme/lansurfer/issues/64): provider-backed avatars. A user explicitly selects one linked identity's picture or Default; images are served through the same bounded same-origin proxy as IGDB covers, and the Game Nick initial is the local fallback. No uploads.
+
 ## Completed prototype baseline
 
 The completed prototype established:
@@ -431,7 +433,7 @@ Ship the canonical LANsurfer brand and design system as the fixed/default presen
 - Provide one shared application shell, centralized design tokens, reusable components, consistent action/state semantics, responsive behavior, keyboard focus, reduced-motion behavior, and supported contrast behavior.
 - Keep dark mode and light mode as equally supported presentations of the same default design system; theme choice is a user presentation preference, not instance branding.
 - Keep production rendering in templ/HTMX with Tailwind and DaisyUI plus limited progressive TypeScript. Bundle approved fonts and product assets with the application; runtime font CDNs are not allowed.
-- Keep generated frontend assets reproducible and embedded for production. The IGDB same-origin cover proxy remains a catalog concern and does not permit remote brand assets or a generic remote-asset proxy.
+- Keep generated frontend assets reproducible and embedded for production. The same-origin IGDB cover and provider-avatar proxies do not permit remote brand assets or a generic remote-asset proxy.
 
 ### Feature-surface adoption
 
@@ -533,7 +535,7 @@ Run cross-track integration checks as contracts land. The formal stable-1.0 Inte
 - Minimum instance identity, manifest, service worker, same-origin IGDB cover proxy, and CSP without a third-party IGDB image allowance coexist correctly.
 - Track G's canonical default branding/UI system is applied across stable-1.0 surfaces in both supported themes without introducing administrator branding customization or a parallel visual system.
 - Production-generated UI assets, fonts, and licenses are embedded and compatible with the release/operations path.
-- A populated prototype installation upgrades through 1.0 migrations without data loss.
+- A populated installation from an earlier `main` revision upgrades through 1.0 migrations without data loss; feature-branch databases are disposable.
 - Production build, Compose deployment, backup/restore, and documented operator flows are exercised against the integrated application.
 
 ## Blocker policy

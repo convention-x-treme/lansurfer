@@ -85,7 +85,7 @@ func TestDiscordManualRetryCannotClearAnotherDeliveryReservation(t *testing.T) {
 
 func TestDiscordReservationMigrationKeepsLegacyCreateUnowned(t *testing.T) {
 	pool := newTestPool(t)
-	migrateToVersion(t, pool, productionMigrationFS(t), 20)
+	migrateToVersion(t, pool, productionMigrationFS(t), 21)
 	fixture := newNotificationFixture(t, pool)
 	request, err := fixture.requests.Create(t.Context(), fixture.host.ID, fixture.gameID, nil, time.Now().Add(time.Hour), "Legacy")
 	if err != nil {

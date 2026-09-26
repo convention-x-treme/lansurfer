@@ -311,9 +311,11 @@ func (q *Queries) ListGameRequestActivity(ctx context.Context, gameRequestID pgt
 }
 
 const listGameRequestMembers = `-- name: ListGameRequestMembers :many
-SELECT u.id::text AS user_id, u.game_nick AS member_game_nick, m.joined_at
+SELECT u.id::text AS user_id, u.game_nick AS member_game_nick, m.joined_at,
+       COALESCE(avatar.avatar_key, '')::text AS avatar_key
 FROM game_request_members m
 JOIN users u ON u.id = m.user_id
+LEFT JOIN user_identities avatar ON avatar.user_id = u.id AND avatar.avatar_selected
 WHERE m.game_request_id = $1::uuid
 ORDER BY m.joined_at, u.id
 `
@@ -322,6 +324,7 @@ type ListGameRequestMembersRow struct {
 	UserID         string
 	MemberGameNick pgtype.Text
 	JoinedAt       pgtype.Timestamptz
+	AvatarKey      string
 }
 
 func (q *Queries) ListGameRequestMembers(ctx context.Context, gameRequestID pgtype.UUID) ([]ListGameRequestMembersRow, error) {
@@ -333,7 +336,12 @@ func (q *Queries) ListGameRequestMembers(ctx context.Context, gameRequestID pgty
 	var items []ListGameRequestMembersRow
 	for rows.Next() {
 		var i ListGameRequestMembersRow
-		if err := rows.Scan(&i.UserID, &i.MemberGameNick, &i.JoinedAt); err != nil {
+		if err := rows.Scan(
+			&i.UserID,
+			&i.MemberGameNick,
+			&i.JoinedAt,
+			&i.AvatarKey,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

@@ -100,7 +100,7 @@ func (h *DiscordDelivery) Start(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not start Discord setup. Please try again.", http.StatusInternalServerError)
 		return
 	}
-	http.Redirect(w, r, h.authorize.AuthorizationURL(state), http.StatusSeeOther)
+	render(w, r, http.StatusOK, pages.Redirecting(h.brand, h.authorize.AuthorizationURL(state)))
 }
 
 func (h *DiscordDelivery) Callback(w http.ResponseWriter, r *http.Request) {

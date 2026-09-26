@@ -9,21 +9,27 @@ import (
 // owner. PrivateName/PrivateEmail are provider-account metadata, never
 // public identity, and this page is the only surface that renders them.
 type AccountIdentityRow struct {
+	Kind         string
 	Label        string
 	PrivateName  string
 	PrivateEmail string
 	CanUnlink    bool
 	UnlinkPath   string
+	// ID, HasAvatar, and AvatarSelected drive the avatar source choice.
+	ID             string
+	HasAvatar      bool
+	AvatarSelected bool
 }
 
 // AccountProviderOption offers a configured provider the account has not
 // linked yet.
 type AccountProviderOption struct {
+	Kind  string
 	Label string
 	Href  string
 }
 
-templ Account(brand branding.Brand, navigation components.NavigationState, currentGameNick string, identities []AccountIdentityRow, linkable []AccountProviderOption, linkError bool, gameNickInput, gameNickError string) {
+templ Account(brand branding.Brand, navigation components.NavigationState, currentGameNick, avatarKey string, identities []AccountIdentityRow, linkable []AccountProviderOption, linkError bool, gameNickInput, gameNickError string) {
 	@components.Layout(brand, "Account", navigation) {
 		<header class="app-topbar">
 			<h1 class="app-title">Account</h1>
@@ -54,12 +60,40 @@ templ Account(brand branding.Brand, navigation components.NavigationState, curre
 				</form>
 			</section>
 			<section class="auth-panel">
+				<h2 class="text-xl font-bold">Avatar</h2>
+				<p class="mt-1 text-sm text-base-content/70">Shown next to your Game Nick. Pictures come from a linked sign-in method and are served by LANsurfer.</p>
+				<form method="post" action="/account/avatar" class="mt-4 grid gap-3">
+					@components.CSRFInput()
+					<div class="flex items-center gap-3">
+						@components.Avatar("avatar-placeholder", currentGameNick, avatarKey)
+						<span class="text-sm font-semibold">Current avatar</span>
+					</div>
+					<fieldset class="grid gap-2">
+						<legend class="sr-only">Avatar source</legend>
+						for _, identity := range identities {
+							<label class="icon-label gap-2 text-sm">
+								<input class="radio radio-sm" type="radio" name="identity" value={ identity.ID } checked?={ identity.AvatarSelected } disabled?={ !identity.HasAvatar }/>
+								<i class={ providerIcon(identity.Kind) } aria-hidden="true"></i>{ identity.Label }
+								if !identity.HasAvatar {
+									<span class="text-xs text-base-content/50">No picture</span>
+								}
+							</label>
+						}
+						<label class="icon-label gap-2 text-sm">
+							<input class="radio radio-sm" type="radio" name="identity" value="default" checked?={ avatarKey == "" }/>
+							Default (Game Nick initial)
+						</label>
+					</fieldset>
+					<button class="btn btn-primary btn-sm w-fit" type="submit">Save avatar</button>
+				</form>
+			</section>
+			<section class="auth-panel">
 				<h2 class="text-xl font-bold">Linked sign-in methods</h2>
 				<ul class="mt-4 grid gap-3">
 					for _, identity := range identities {
 						<li class="flex items-center justify-between gap-3 rounded-field border border-base-300 p-3">
 							<div class="min-w-0">
-								<p class="font-semibold">{ identity.Label }</p>
+								<p class="icon-label font-semibold"><i class={ providerIcon(identity.Kind) } aria-hidden="true"></i>{ identity.Label }</p>
 								if identity.PrivateName != "" {
 									<p class="truncate text-xs text-base-content/70">{ identity.PrivateName }</p>
 								}
@@ -70,7 +104,7 @@ templ Account(brand branding.Brand, navigation components.NavigationState, curre
 							if identity.CanUnlink {
 								<form method="post" action={ templ.SafeURL(identity.UnlinkPath) }>
 									@components.CSRFInput()
-									<button class="btn btn-ghost btn-sm" type="submit">Unlink</button>
+									<button class="btn btn-ghost btn-sm" type="submit"><i class="ph ph-link-break" aria-hidden="true"></i>Unlink</button>
 								</form>
 							} else {
 								<span class="text-xs text-base-content/50">Only sign-in method</span>
@@ -83,7 +117,7 @@ templ Account(brand branding.Brand, navigation components.NavigationState, curre
 						for _, option := range linkable {
 							<form method="post" action={ templ.SafeURL(option.Href) }>
 								@components.CSRFInput()
-								<button class="btn btn-quiet btn-sm w-full justify-start" type="submit">Link { option.Label }</button>
+								<button class="btn btn-quiet btn-sm w-full justify-start" type="submit"><i class={ providerIcon(option.Kind) } aria-hidden="true"></i>Link { option.Label }</button>
 							</form>
 						}
 					</div>

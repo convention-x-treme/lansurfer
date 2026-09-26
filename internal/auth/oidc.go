@@ -62,7 +62,7 @@ func DiscoverTwitchProvider(ctx context.Context, cfg TwitchConfig) (*OIDCProvide
 	return discoverOIDCProvider(ctx, oidcProviderConfig{
 		OIDCConfig:   OIDCConfig{IssuerURL: "https://id.twitch.tv/oauth2", ClientID: cfg.ClientID, ClientSecret: cfg.ClientSecret, RedirectURL: cfg.RedirectURL},
 		ProviderKind: "twitch", ProviderKey: "twitch", Scopes: []string{oidc.ScopeOpenID},
-		AuthorizationOptions: []oauth2.AuthCodeOption{twitchUsernameClaims()}, UsePreferredUsernameAsName: true,
+		AuthorizationOptions: []oauth2.AuthCodeOption{twitchProfileClaims()}, UsePreferredUsernameAsName: true,
 	})
 }
 
@@ -149,11 +149,12 @@ func (p *OIDCProvider) profileFromClaims(subject string, claims map[string]any) 
 		PreferredUsername:  preferredUsername,
 		Email:              email,
 		GameNickSuggestion: oidcGameNickSuggestion(claims, p.gameNickClaim),
+		AvatarRef:          stringClaim(claims, "picture"),
 	}
 }
 
-func twitchUsernameClaims() oauth2.AuthCodeOption {
-	return oauth2.SetAuthURLParam("claims", `{"id_token":{"preferred_username":null}}`)
+func twitchProfileClaims() oauth2.AuthCodeOption {
+	return oauth2.SetAuthURLParam("claims", `{"id_token":{"preferred_username":null,"picture":null}}`)
 }
 
 func oidcGameNickSuggestion(claims map[string]any, customClaim string) string {
