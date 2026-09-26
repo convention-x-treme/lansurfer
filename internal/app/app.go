@@ -173,10 +173,6 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		IdentityUnlinker:     identityStore,
 		Games:                gameService,
 		Discovery:            gameDiscovery,
-		DiscordSetup:         discordSetup,
-		DiscordAuthorization: discordAuthorization,
-		DiscordConnector:     discordConnector,
-		DiscordLifecycle:     discordLifecycle,
 		DiscordStatus:        notificationStore,
 		GameResolver:         gameDiscovery,
 		GameRequests:         gameRequests,
@@ -197,6 +193,12 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 			ContactEmail: cfg.Legal.ContactEmail, ImprintURL: cfg.Legal.ImprintURL,
 		},
 		BaseURL: cfg.BaseURL,
+	}
+	if cfg.DiscordDelivery != nil {
+		routerDependencies.DiscordSetup = discordSetup
+		routerDependencies.DiscordAuthorization = discordAuthorization
+		routerDependencies.DiscordConnector = discordConnector
+		routerDependencies.DiscordLifecycle = discordLifecycle
 	}
 	routerDependencies = withSubscriptionService(routerDependencies, subscriptionService)
 	server := &http.Server{
