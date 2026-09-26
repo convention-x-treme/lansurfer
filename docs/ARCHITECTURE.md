@@ -154,7 +154,7 @@ WebSockets are not part of the initial architecture. Introducing them requires a
 
 ### Web Push
 
-Web Push uses VAPID behind a narrow adapter around the approved `github.com/marknefedov/go-webpush/v2` dependency and extends Track D's single existing service worker with push/click behavior rather than registering another worker. E2 adds no offline shell or fetch caching. Automated browser coverage is separate from real-device validation; see [Track E Web Push validation](validation/track-e-web-push.md).
+Web Push uses VAPID behind a narrow adapter around the approved `github.com/marknefedov/go-webpush/v2` dependency and extends Track D's single existing service worker with push/click behavior rather than registering another worker. E2 adds no offline shell or fetch caching. Manual observations confirm real-browser permission/subscription registration, Push receipt, and visible-window OS-notification suppression; click/deep-link, logout/device removal, session-expiry, and exact browser/device-version evidence remain open. See [Track E Web Push validation](validation/track-e-web-push.md).
 
 Store multiple labeled subscriptions per user. Browser permission, active subscription/device state, LANsurfer enablement, and new-request audience preference remain separate. New Game Requests use followed/My Games by default or all new requests through explicit opt-in. Join/leave/close/cancel notify current request participants independently of that creation-audience setting. The activity actor is excluded from their own personal push.
 
@@ -166,26 +166,28 @@ Treat PushSubscription endpoint/key material as secret-adjacent application data
 
 ### Discord delivery
 
-Discord delivery uses independently configurable OAuth credentials and the `webhook.incoming` scope rather than Discord authentication credentials, pasted URLs, or a bot/gateway. Setup is a short-lived one-use administrator OAuth flow; access/refresh tokens are discarded after the created webhook is durably stored.
+Discord authentication/login and Discord notification delivery are separate integrations. Delivery uses separate operator OAuth configuration and the `webhook.incoming` scope. Setup uses OAuth; it does not use a bot, Gateway, pasted webhook URL, or test-message workflow. OAuth access/refresh tokens are discarded after webhook setup. Webhook ID/token are encrypted together at rest; secret-bearing diagnostic output is prohibited.
 
-Encrypt both webhook ID and token together as a versioned AES-GCM credential blob using the Track E data-encryption key. Safe destination metadata such as guild/channel IDs, display name, connection state, and diagnostic timestamps may remain queryable; never reconstruct or display the webhook URL or secret credentials.
+At most one Discord destination is current per instance. Every successful connect, reconnect, or replacement creates a new non-secret destination-generation UUID. Targets include that generation and never resolve to a later one. Disconnect suppresses only work for the disconnected generation. A `10015 Unknown Webhook` response breaks only the exact current generation, clears its encrypted credential, retains safe diagnostic metadata, terminates the current delivery, and suppresses its remaining pending work. Reconnect never replays historical work.
 
-Create one Discord message per Game Request with `wait=true`, retain the returned message ID, and edit that same message from the current Game Request snapshot as state changes. Mutations for one destination + Game Request are serialized so an older external mutation cannot overwrite a newer state. Rapid activity may be coalesced and obsolete intermediate deliveries may become `superseded`; Discord is not an activity feed.
+Each destination generation and Game Request has one synchronized Discord message. Initial delivery uses webhook execute with `wait=true` and stores the returned message ID; later activity edits that message. Rendering reads current Game Request state, not historical activity payloads. Rapid intermediate activity may be superseded/coalesced. PostgreSQL serialization protects external ordering. Message sync retains the highest applied activity version.
 
-The public message may contain:
+Automatic message CREATE is non-idempotent. Before a CREATE, LANsurfer durably records a reservation. At most one automatic CREATE attempt may proceed while its outcome remains unresolved. An ambiguous outcome becomes `uncertain` and is never automatically replayed. Automatic lease expiry or restart never clears the reservation. An explicit administrator `retry-uncertain` may override the guard only after atomically revalidating the exact current destination generation and reservation owner; the administrator accepts the documented possibility of an external duplicate. This is not distributed exactly-once delivery.
 
-- Game
-- planned start time
-- current request status
-- current capacity/free-place summary
-- creator's public LANsurfer Game Nick
-- short sanitized/plain-content request description
-- deep link to LANsurfer
-- minimum instance context
+CREATE known pre-transmission failures, explicit 429 responses, and explicit 5xx responses are retryable; a result that may have transmitted without a definitive response is uncertain. Other definitive non-retryable provider responses are permanent. EDIT network failures, 429 responses, and 5xx responses are retryable because replaying an edit to the known message is safe. `10008 Unknown Message` clears only the matching message reference and creates exactly one replacement from current state; the destination remains connected. `10015 Unknown Webhook` follows the generation-scoped Broken transition above.
 
-Do not mirror the full participant roster or durable activity history. Provider identity names/emails are not public identity. Send an empty `allowed_mentions` policy on every create and edit.
+The compact approved embed includes:
 
-A definitive missing/deleted webhook breaks the destination and requires administrator reconnect. A missing message with an otherwise valid webhook is recovered by creating a replacement message from the current request snapshot. Ambiguous initial message creation may become `uncertain` because automatic replay could create a duplicate; edits to a known message ID are replay-safe for the same current snapshot and use normal retry behavior.
+- Game;
+- planned start time;
+- current request status;
+- current capacity/free-place summary;
+- creator's public Game Nick;
+- short sanitized/plain-content description;
+- LANsurfer deep link;
+- minimum instance context.
+
+It never includes the full participant roster or activity history and never uses Discord login identity as LANsurfer public player identity. Every create/edit sends empty `allowed_mentions`.
 
 ---
 

@@ -4,19 +4,19 @@ Real Web Push evidence for Track E2. Record only behavior observed against a rea
 
 ## Deployment under test
 
-No real deployment was available for this validation run.
+The initial E2-C9 automated-validation run had no real deployment available. Later manual observations are recorded below without an exact deployment, revision, or browser/device version.
 
-- **Tested Git revision:** `8d650d648f5710f0fea4774e7c49b90e1284977d` (E2-C9 branch HEAD; no real-device validation performed)
+- **Tested Git revision:** `8d650d648f5710f0fea4774e7c49b90e1284977d` (initial E2-C9 automated-validation run; no real-device validation performed in that run)
 - **Instance name:** Not observed
 - **Base URL:** Not available; no reachable HTTPS test instance was supplied or configured for this run
 
 ## Real browser/device validation
 
-**Status: BLOCKED / PENDING.** No real browser/device session against a reachable HTTPS deployment with valid VAPID configuration was available. No real Push was sent or received. No platform is marked as passing.
+**Status: PARTIALLY VERIFIED; remaining manual validation is open.** Real-browser permission/subscription registration, real Push receipt, and visible-window suppression were later observed. Exact test environment and revision were not recorded. No platform/version matrix is claimed.
 
 | Environment | Browser / OS / device version | Permission flow | Subscription creation | Real Push receipt | Visible-window suppression | Notification click / deep link | Logout / current-device removal | Session expiry | Limits / blockers |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| None tested | Not available | Not tested | Not tested | Not tested | Not tested | Not tested | Not tested | Not tested | Missing reachable HTTPS test instance and real browser/device session; valid deployment VAPID configuration could not be exercised. |
+| Real browser/device; details not recorded | Not recorded | Observed | Observed | Observed | Observed | Not recorded | Not recorded | Not recorded | Exact revision, deployment, browser/OS/device versions unavailable; click, logout/removal, and session-expiry evidence remains open. |
 
 ## Automated checks (not real-device evidence)
 
@@ -29,6 +29,11 @@ The E2-C9 automation baseline supplied for this run reports:
 
 These automated checks do not verify real Push service delivery, real browser permission prompts, or real-device behavior. The browser test contract explicitly requires no real third-party Push provider.
 
-## Blocker to clear
+## Remaining manual validation
 
-Provide a reachable HTTPS test instance with valid VAPID configuration and an available supported browser/device. Record exact revision, instance name, base URL, browser and OS/device versions, and each observed behavior above. Keep all subscription secrets out of this document.
+- Observe notification click/deep-link behavior.
+- Observe logout and current-device removal behavior.
+- Observe session-expiry behavior.
+- Record exact tested revision, deployment, supported browser, OS, and device versions.
+
+The earlier “no notification” observation was the intentional service-worker suppression while a LANsurfer window was visible; it was not a failed Push receipt.
