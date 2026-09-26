@@ -38,7 +38,9 @@ func (s *discordSetupStub) Consume(_ context.Context, admin, binding, state stri
 
 type discordAuthorizationStub struct{ url string }
 
-func (s discordAuthorizationStub) AuthorizationURL(string) string { return s.url }
+func (s discordAuthorizationStub) AuthorizationURL(state string) string {
+	return s.url + "?state=" + url.QueryEscape(state)
+}
 
 type discordConnectStub struct {
 	calls int
@@ -96,7 +98,7 @@ func TestDiscordConnectStartRequiresAdminAndCSRF(t *testing.T) {
 		withSession, csrf bool
 		want              int
 	}{
-		{name: "admin", user: user.User{ID: "admin-1", GameNick: "Admin", Role: user.RoleAdmin}, withSession: true, csrf: true, want: http.StatusSeeOther},
+		{name: "admin", user: user.User{ID: "admin-1", GameNick: "Admin", Role: user.RoleAdmin}, withSession: true, csrf: true, want: http.StatusOK},
 		{name: "non-admin", user: user.User{ID: "user-1", GameNick: "Player", Role: user.RoleUser}, withSession: true, csrf: true, want: http.StatusForbidden},
 		{name: "unauthenticated", want: http.StatusSeeOther},
 		{name: "csrf rejected", user: user.User{ID: "admin-1", GameNick: "Admin", Role: user.RoleAdmin}, withSession: true, want: http.StatusForbidden},
@@ -117,8 +119,14 @@ func TestDiscordConnectStartRequiresAdminAndCSRF(t *testing.T) {
 				t.Fatalf("status = %d, want %d", response.Code, tc.want)
 			}
 			if tc.name == "admin" {
-				if setup.starts != 1 || response.Header().Get("Location") != "https://discord.example/authorize" {
+				if setup.starts != 1 || response.Header().Get("Location") != "" {
 					t.Fatalf("start calls/location = %d/%q", setup.starts, response.Header().Get("Location"))
+				}
+				body := response.Body.String()
+				if !strings.Contains(body, `content="0;url=https://discord.example/authorize?state=setup-state"`) ||
+					!strings.Contains(body, `href="https://discord.example/authorize?state=setup-state"`) ||
+					!strings.Contains(response.Header().Get("Content-Security-Policy"), "form-action 'self'") {
+					t.Fatalf("missing OAuth bridge or CSP: body=%q CSP=%q", body, response.Header().Get("Content-Security-Policy"))
 				}
 				if setup.startAdmin != "admin-1" || setup.startBinding == "" {
 					t.Fatalf("setup binding = admin %q, browser %q", setup.startAdmin, setup.startBinding)
@@ -141,8 +149,12 @@ func TestDiscordReconnectStartKeepsCurrentDestination(t *testing.T) {
 	request := discordAdminRequest(http.MethodPost, "/admin/discord/reconnect", account, true)
 	response := httptest.NewRecorder()
 	discordRouter(setup, &discordConnectStub{}, lifecycle, account).ServeHTTP(response, request)
-	if response.Code != http.StatusSeeOther || setup.starts != 1 || lifecycle.calls != 0 || lifecycle.destination != current {
+	if response.Code != http.StatusOK || setup.starts != 1 || lifecycle.calls != 0 || lifecycle.destination != current {
 		t.Fatalf("status/setup/lifecycle/destination = %d/%d/%d/%#v", response.Code, setup.starts, lifecycle.calls, lifecycle.destination)
+	}
+	if !strings.Contains(response.Body.String(), `href="https://discord.example/authorize?state=state"`) ||
+		response.Header().Get("Location") != "" {
+		t.Fatalf("reconnect bridge missing or external redirect: location=%q body=%q", response.Header().Get("Location"), response.Body.String())
 	}
 }
 
