@@ -66,14 +66,14 @@ func NotificationSettings(brand branding.Brand, navigation components.Navigation
 				return templ_7745c5c3_Err
 			}
 			if view.Notice != "" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<div role=\"alert\" class=\"alert alert-success\"><span>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<div role=\"status\" class=\"alert alert-info\"><span>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var3 string
 				templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(view.Notice)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/notification_settings.templ`, Line: 31, Col: 24}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/notification_settings.templ`, Line: 30, Col: 67}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 				if templ_7745c5c3_Err != nil {
@@ -92,7 +92,7 @@ func NotificationSettings(brand branding.Brand, navigation components.Navigation
 				var templ_7745c5c3_Var4 string
 				templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(view.FormError)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/notification_settings.templ`, Line: 36, Col: 27}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/notification_settings.templ`, Line: 34, Col: 27}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 				if templ_7745c5c3_Err != nil {
@@ -116,7 +116,7 @@ func NotificationSettings(brand branding.Brand, navigation components.Navigation
 				var templ_7745c5c3_Var5 string
 				templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.ResolveAttributeValue(view.VAPIDPublicKey)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/notification_settings.templ`, Line: 44, Col: 75}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/notification_settings.templ`, Line: 42, Col: 75}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var5)
 				if templ_7745c5c3_Err != nil {
@@ -129,7 +129,7 @@ func NotificationSettings(brand branding.Brand, navigation components.Navigation
 				var templ_7745c5c3_Var6 string
 				templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.ResolveAttributeValue(strconv.FormatInt(view.CurrentDeviceID, 10))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/notification_settings.templ`, Line: 44, Col: 146}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/notification_settings.templ`, Line: 42, Col: 146}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var6)
 				if templ_7745c5c3_Err != nil {
@@ -142,7 +142,7 @@ func NotificationSettings(brand branding.Brand, navigation components.Navigation
 				var templ_7745c5c3_Var7 string
 				templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.ResolveAttributeValue(strconv.Itoa(len(view.Devices)))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/notification_settings.templ`, Line: 44, Col: 200}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/notification_settings.templ`, Line: 42, Col: 200}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var7)
 				if templ_7745c5c3_Err != nil {
@@ -155,7 +155,7 @@ func NotificationSettings(brand branding.Brand, navigation components.Navigation
 				var templ_7745c5c3_Var8 string
 				templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.ResolveAttributeValue(strconv.FormatBool(view.Preference.WebPushEnabled))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/notification_settings.templ`, Line: 44, Col: 273}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/notification_settings.templ`, Line: 42, Col: 273}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var8)
 				if templ_7745c5c3_Err != nil {
@@ -254,7 +254,7 @@ func NotificationSettings(brand branding.Brand, navigation components.Navigation
 						var templ_7745c5c3_Var9 string
 						templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.ResolveAttributeValue(strconv.FormatBool(device.ID == view.CurrentDeviceID))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/notification_settings.templ`, Line: 104, Col: 176}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/notification_settings.templ`, Line: 102, Col: 176}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var9)
 						if templ_7745c5c3_Err != nil {
@@ -267,7 +267,7 @@ func NotificationSettings(brand branding.Brand, navigation components.Navigation
 						var templ_7745c5c3_Var10 string
 						templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.ResolveAttributeValue(strconv.FormatInt(device.ID, 10))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/notification_settings.templ`, Line: 105, Col: 97}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/notification_settings.templ`, Line: 103, Col: 97}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var10)
 						if templ_7745c5c3_Err != nil {
@@ -280,7 +280,7 @@ func NotificationSettings(brand branding.Brand, navigation components.Navigation
 						var templ_7745c5c3_Var11 string
 						templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(deviceLabel(device))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/notification_settings.templ`, Line: 105, Col: 121}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/notification_settings.templ`, Line: 103, Col: 121}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 						if templ_7745c5c3_Err != nil {
@@ -303,7 +303,7 @@ func NotificationSettings(brand branding.Brand, navigation components.Navigation
 						var templ_7745c5c3_Var12 templ.SafeURL
 						templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(deviceRemovePath(device)))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/notification_settings.templ`, Line: 109, Col: 77}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/notification_settings.templ`, Line: 107, Col: 77}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 						if templ_7745c5c3_Err != nil {
@@ -316,7 +316,7 @@ func NotificationSettings(brand branding.Brand, navigation components.Navigation
 						var templ_7745c5c3_Var13 string
 						templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.ResolveAttributeValue(strconv.FormatBool(device.ID == view.CurrentDeviceID))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/notification_settings.templ`, Line: 109, Col: 162}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/notification_settings.templ`, Line: 107, Col: 162}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var13)
 						if templ_7745c5c3_Err != nil {

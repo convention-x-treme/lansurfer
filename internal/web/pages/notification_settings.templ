@@ -27,9 +27,7 @@ templ NotificationSettings(brand branding.Brand, navigation components.Navigatio
 		</header>
 		<div class="content-page grid gap-6">
 			if view.Notice != "" {
-				<div role="alert" class="alert alert-success">
-					<span>{ view.Notice }</span>
-				</div>
+				<div role="status" class="alert alert-info"><span>{ view.Notice }</span></div>
 			}
 			if view.FormError != "" {
 				<div role="alert" class="alert alert-error text-sm">

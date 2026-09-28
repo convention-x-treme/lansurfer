@@ -33,24 +33,29 @@ templ Account(brand branding.Brand, navigation components.NavigationState, curre
 	@components.Layout(brand, "Account", navigation) {
 		<header class="app-topbar">
 			<h1 class="app-title">Account</h1>
+			<a class="btn btn-quiet btn-sm" href="/account/notifications"><i class="ph ph-bell" aria-hidden="true"></i>Notification settings</a>
 		</header>
-		<div class="content-page grid gap-6">
+		<div class="content-page account-page">
 			if linkError {
 				<div role="alert" class="alert alert-error">
 					<span>That sign-in method could not be linked. It may already belong to a different LANsurfer account.</span>
 				</div>
 			}
-			<section class="auth-panel">
-				<h2 class="text-xl font-bold">Notifications</h2>
-				<p class="mt-1 text-sm text-base-content/70">Manage push notifications and which devices receive them.</p>
-				<a class="btn btn-quiet btn-sm mt-4 w-fit" href="/account/notifications">Notification settings</a>
-			</section>
-			<section class="auth-panel">
-				<h2 class="text-xl font-bold">Game Nick</h2>
-				<p class="mt-1 text-sm text-base-content/70">Your public name on Game Requests and request activity.</p>
-				<form method="post" action="/account/game-nick" class="mt-4 grid max-w-sm gap-3">
+			<div class="account-identity">
+				@components.Avatar("avatar-placeholder account-avatar", currentGameNick, avatarKey)
+				<div class="min-w-0">
+					<p class="account-identity-nick">{ currentGameNick }</p>
+					<p class="text-sm text-base-content/70">How other players see you on Game Requests and request activity.</p>
+				</div>
+			</div>
+			<section class="account-section" aria-labelledby="account-game-nick">
+				<div class="account-section-intro">
+					<h2 id="account-game-nick" class="account-section-title">Game Nick</h2>
+					<p>Your public name. Unique on this LANsurfer, ignoring letter case.</p>
+				</div>
+				<form method="post" action="/account/game-nick" class="grid max-w-sm gap-3">
 					@components.CSRFInput()
-					<input class="input input-bordered w-full" type="text" name="game_nick" value={ accountGameNickValue(gameNickInput, currentGameNick) } maxlength="32" required/>
+					<input class="input input-bordered w-full" type="text" name="game_nick" aria-labelledby="account-game-nick" value={ accountGameNickValue(gameNickInput, currentGameNick) } maxlength="32" required/>
 					if gameNickError != "" {
 						<div role="alert" class="alert alert-error text-sm">
 							<span>{ gameNickError }</span>
@@ -59,69 +64,72 @@ templ Account(brand branding.Brand, navigation components.NavigationState, curre
 					<button class="btn btn-primary btn-sm w-fit" type="submit">Rename</button>
 				</form>
 			</section>
-			<section class="auth-panel">
-				<h2 class="text-xl font-bold">Avatar</h2>
-				<p class="mt-1 text-sm text-base-content/70">Shown next to your Game Nick. Pictures come from a linked sign-in method and are served by LANsurfer.</p>
-				<form method="post" action="/account/avatar" class="mt-4 grid gap-3">
+			<section class="account-section" aria-labelledby="account-avatar">
+				<div class="account-section-intro">
+					<h2 id="account-avatar" class="account-section-title">Avatar</h2>
+					<p>Pictures come from a linked sign-in method and are served by LANsurfer.</p>
+				</div>
+				<form method="post" action="/account/avatar" class="grid max-w-sm gap-3">
 					@components.CSRFInput()
-					<div class="flex items-center gap-3">
-						@components.Avatar("avatar-placeholder", currentGameNick, avatarKey)
-						<span class="text-sm font-semibold">Current avatar</span>
-					</div>
-					<fieldset class="grid gap-2">
+					<fieldset class="account-choices">
 						<legend class="sr-only">Avatar source</legend>
 						for _, identity := range identities {
-							<label class="icon-label gap-2 text-sm">
+							<label class="account-choice">
 								<input class="radio radio-sm" type="radio" name="identity" value={ identity.ID } checked?={ identity.AvatarSelected } disabled?={ !identity.HasAvatar }/>
-								<i class={ providerIcon(identity.Kind) } aria-hidden="true"></i>{ identity.Label }
+								<span class="icon-label"><i class={ providerIcon(identity.Kind) } aria-hidden="true"></i>{ identity.Label }</span>
 								if !identity.HasAvatar {
-									<span class="text-xs text-base-content/50">No picture</span>
+									<span class="ml-auto text-xs text-base-content/60">No picture</span>
 								}
 							</label>
 						}
-						<label class="icon-label gap-2 text-sm">
+						<label class="account-choice">
 							<input class="radio radio-sm" type="radio" name="identity" value="default" checked?={ avatarKey == "" }/>
-							Default (Game Nick initial)
+							<span>Default <span class="text-base-content/60">(Game Nick initial)</span></span>
 						</label>
 					</fieldset>
 					<button class="btn btn-primary btn-sm w-fit" type="submit">Save avatar</button>
 				</form>
 			</section>
-			<section class="auth-panel">
-				<h2 class="text-xl font-bold">Linked sign-in methods</h2>
-				<ul class="mt-4 grid gap-3">
-					for _, identity := range identities {
-						<li class="flex items-center justify-between gap-3 rounded-field border border-base-300 p-3">
-							<div class="min-w-0">
-								<p class="icon-label font-semibold"><i class={ providerIcon(identity.Kind) } aria-hidden="true"></i>{ identity.Label }</p>
-								if identity.PrivateName != "" {
-									<p class="truncate text-xs text-base-content/70">{ identity.PrivateName }</p>
+			<section class="account-section" aria-labelledby="account-sign-in">
+				<div class="account-section-intro">
+					<h2 id="account-sign-in" class="account-section-title">Sign-in methods</h2>
+					<p>Provider names and emails are visible only to you.</p>
+				</div>
+				<div class="grid max-w-lg gap-3">
+					<ul class="account-choices">
+						for _, identity := range identities {
+							<li class="account-identity-row">
+								<div class="min-w-0">
+									<p class="icon-label font-semibold"><i class={ providerIcon(identity.Kind) } aria-hidden="true"></i>{ identity.Label }</p>
+									if identity.PrivateName != "" {
+										<p class="truncate text-xs text-base-content/70">{ identity.PrivateName }</p>
+									}
+									if identity.PrivateEmail != "" {
+										<p class="truncate text-xs text-base-content/70">{ identity.PrivateEmail }</p>
+									}
+								</div>
+								if identity.CanUnlink {
+									<form method="post" action={ templ.SafeURL(identity.UnlinkPath) }>
+										@components.CSRFInput()
+										<button class="btn btn-ghost btn-sm" type="submit"><i class="ph ph-link-break" aria-hidden="true"></i>Unlink</button>
+									</form>
+								} else {
+									<span class="shrink-0 text-xs text-base-content/60">Only sign-in method</span>
 								}
-								if identity.PrivateEmail != "" {
-									<p class="truncate text-xs text-base-content/70">{ identity.PrivateEmail }</p>
-								}
-							</div>
-							if identity.CanUnlink {
-								<form method="post" action={ templ.SafeURL(identity.UnlinkPath) }>
-									@components.CSRFInput()
-									<button class="btn btn-ghost btn-sm" type="submit"><i class="ph ph-link-break" aria-hidden="true"></i>Unlink</button>
-								</form>
-							} else {
-								<span class="text-xs text-base-content/50">Only sign-in method</span>
-							}
-						</li>
-					}
-				</ul>
-				if len(linkable) > 0 {
-					<div class="mt-4 grid gap-2">
-						for _, option := range linkable {
-							<form method="post" action={ templ.SafeURL(option.Href) }>
-								@components.CSRFInput()
-								<button class="btn btn-quiet btn-sm w-full justify-start" type="submit"><i class={ providerIcon(option.Kind) } aria-hidden="true"></i>Link { option.Label }</button>
-							</form>
+							</li>
 						}
-					</div>
-				}
+					</ul>
+					if len(linkable) > 0 {
+						<div class="flex flex-wrap gap-2">
+							for _, option := range linkable {
+								<form method="post" action={ templ.SafeURL(option.Href) }>
+									@components.CSRFInput()
+									<button class="btn btn-quiet btn-sm" type="submit"><i class={ providerIcon(option.Kind) } aria-hidden="true"></i>Link { option.Label }</button>
+								</form>
+							}
+						</div>
+					}
+				</div>
 			</section>
 		</div>
 	}
