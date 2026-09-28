@@ -1,6 +1,6 @@
-// Track D owns this worker. It claims clients but does not intercept fetches
-// or cache responses. Track E extends this worker for Web Push without adding
-// another worker or registration path. LANsurfer has no offline shell.
+// LANsurfer uses one service worker for installability and Web Push. It claims
+// clients but does not intercept fetches or cache responses, and no second
+// worker or registration path is introduced. LANsurfer has no offline shell.
 
 // An empty export makes this file a module rather than a global script, so
 // the narrower ServiceWorkerGlobalScope declaration below can shadow the
@@ -25,7 +25,7 @@ self.addEventListener("activate", (event) => {
 
 type PushKind = "created" | "joined" | "left" | "closed" | "cancelled";
 
-interface E2PushPayload {
+interface PushPayload {
   version: 1;
   kind: PushKind;
   game: string;
@@ -53,7 +53,7 @@ function gameRequestURL(value: unknown): URL | null {
   }
 }
 
-function isPushPayload(value: unknown): value is E2PushPayload {
+function isPushPayload(value: unknown): value is PushPayload {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
   if (!("version" in value) || !("kind" in value) || !("game" in value) || !("instance" in value) || !("title" in value) || !("body" in value) || !("url" in value)) return false;
   if (value.version !== 1 || !isPushKind(value.kind)) return false;
@@ -85,7 +85,7 @@ function isPushPayload(value: unknown): value is E2PushPayload {
 }
 
 
-function parsePushPayload(data: PushMessageData | null): E2PushPayload | null {
+function parsePushPayload(data: PushMessageData | null): PushPayload | null {
   try {
     const value: unknown = JSON.parse(data?.text() ?? "");
     if (!isPushPayload(value)) return null;
