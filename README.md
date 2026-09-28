@@ -15,7 +15,7 @@ Hundreds of players. Dozens of games. And somewhere in the room, someone else is
 
 [The idea](#-what-is-lansurfer) · [How it works](#-how-it-works) · [Project status](#-project-status) · [Get involved](#-get-involved)
 
-> 🚧 **Pre-1.0:** the single-event Game Request core, Game Nick/authentication, and IGDB discovery tracks are implemented on `main`. Instance identity/PWA, durable notifications, production distribution/operations, remaining cross-track UI work, and pilot/release validation still remain before stable 1.0.
+> 🚧 **Pre-1.0:** the single-event Game Request core, Game Nick/authentication, and IGDB discovery capabilities are implemented on `main`. Instance identity/PWA validation, durable notification validation, production distribution/operations, remaining UI-system work, and pilot/release validation still remain before stable 1.0.
 
 ## 🎮 What is LANsurfer?
 
@@ -72,7 +72,7 @@ The [visual branding guide](docs/BRANDING.md) defines the palette, typography, m
 
 The current development build already uses the focused 1.0 operating model: **one LANsurfer installation serves one LAN party or gaming event context**. It includes instance-wide Game Requests with discovery scopes and filtering, request-based Trending and durable activity, concurrency-safe joining, unique public Game Nicks, generic OIDC plus Discord authentication with explicit linking, an authoritative local Game catalog with optional synchronized IGDB discovery/materialization, and live SSE updates.
 
-The remaining stable-1.0 work is concentrated in instance identity/PWA, durable Web Push and Discord notifications, production distribution/operations, remaining cross-track UI integration and validation, and the formal Pilot/Integration/Release gates. Multi-Event participation, Open Play, and Clans remain post-1.0 candidates rather than required 1.0 features.
+The remaining stable-1.0 work is concentrated in instance identity/PWA, durable Web Push and Discord notifications, production distribution/operations, remaining UI-system integration and validation, and the formal Pilot/Integration/Release gates. Multi-Event participation, Open Play, and Clans remain post-1.0 candidates rather than required 1.0 features.
 
 The [roadmap](docs/ROADMAP.md) tracks the parallel development model, dependencies, integration gate, and acceptance criteria. The [product definition](docs/PRODUCT.md#5-release-scope) distinguishes the implemented prototype from the approved 1.0 scope and post-1.0 candidates. The design and database may still change before the stable release.
 
