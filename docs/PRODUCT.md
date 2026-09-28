@@ -374,7 +374,7 @@ The durable notification system has Web Push and Discord transports. External de
 - Join/leave notifications may name the actor by public Game Nick. Close/cancel notifications remain actor-neutral.
 - Recipient/device sets are not expanded later for old work. Delayed/retried delivery re-checks current eligibility and suppresses a delivery that is no longer permitted rather than sending stale personal notification work.
 - When LANsurfer is already visibly open in the browser, the service worker suppresses the duplicate OS notification and SSE remains the in-browser live-update path.
-- Push payloads contain only the minimum data needed to render the notification: activity kind, Game, planned time, deep link, minimum instance context, and optional join/leave actor Game Nick. They omit description, roster, provider identity data, and activity history.
+- Push payloads contain only the minimum data needed to render the notification: activity kind, Game, optional creator Game Nick, current player count and optional capacity, planned time, deep link, minimum instance context, and optional join/leave actor Game Nick. The notification uses the Game Requests list title; its body shows viewer-local planned time and current player count/capacity without repeating the Game, with activity context on changes. Payloads omit description, roster, cover, provider identity data, and activity history.
 
 ### Discord delivery
 
@@ -383,7 +383,7 @@ The durable notification system has Web Push and Discord transports. External de
 - Global administrators connect, reconnect, disconnect, and diagnose the destination.
 - LANsurfer maintains one synchronized Discord message per Game Request in the current destination. It creates the message with `wait=true`, stores the returned message ID, and edits that same message as request state changes.
 - Discord reflects the current Game Request snapshot rather than replaying request activity. Rapid changes may collapse into one newer edit, and a new live change after reconnect may create the current request's first message in the new destination without replaying older work.
-- The message contains the Game, planned start time, current request status, current capacity/free-place summary, the creator's public LANsurfer Game Nick, a short sanitized request description, a deep link back to LANsurfer, and minimal instance context.
+- The message uses the Game Requests list title with creator Game Nick and Game. It includes a viewer-local `Start` field, status with a color-coded embed accent, current capacity/free-place summary, a short sanitized request description, an explicit `Im Browser öffnen ↗` link below the metadata, and minimal instance context. The optional provider Game cover appears as a Discord thumbnail linked directly from IGDB. The web UI keeps covers same-origin; a local base URL still prevents Discord users from opening the deep link.
 - The full participant roster and durable request activity remain in LANsurfer and are not mirrored into Discord.
 - Provider identity data such as Discord usernames or email addresses is never used as public identity in the message.
 - User-authored descriptions are treated as plain content and Discord mentions are disabled on every create/edit.

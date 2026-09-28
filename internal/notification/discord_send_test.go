@@ -322,6 +322,7 @@ func assertDiscordSendPayload(t *testing.T, body []byte, status, game, descripti
 	var payload struct {
 		AllowedMentions map[string]any `json:"allowed_mentions"`
 		Embeds          []struct {
+			Title       string `json:"title"`
 			URL         string `json:"url"`
 			Description string `json:"description"`
 			Fields      []struct {
@@ -337,15 +338,16 @@ func assertDiscordSendPayload(t *testing.T, body []byte, status, game, descripti
 		t.Fatal("unsafe mention policy or embed count in sent payload")
 	}
 	embed := payload.Embeds[0]
-	if embed.URL != "https://play.example/game-requests/"+discordSendRequestID || embed.Description != description {
-		t.Fatal("sent stale URL or description")
+	if embed.URL != "https://play.example/game-requests/"+discordSendRequestID || embed.Title != "Current Nick is looking for "+game || embed.Description != description {
+		t.Fatal("sent stale URL, title, or description")
 	}
 	fields := make(map[string]string, len(embed.Fields))
 	for _, field := range embed.Fields {
 		fields[field.Name] = field.Value
 	}
-	if fields["Game"] != game || fields["Status"] != status || fields["Players"] != "3 players (unlimited)" || fields["Creator"] != "Current Nick" {
-		t.Fatal("sent stale current state")
+	if fields["Status"] != status || fields["Players"] != "3 players (unlimited)" ||
+		fields["Link"] != "[Im Browser öffnen ↗](https://play.example/game-requests/"+discordSendRequestID+")" {
+		t.Fatal("sent stale current state or missing browser link")
 	}
 }
 

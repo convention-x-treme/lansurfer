@@ -2,6 +2,7 @@ package notification
 
 import (
 	"encoding/json"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -14,17 +15,18 @@ func TestDiscordMessageCurrentState(t *testing.T) {
 		name, status, description, places string
 		members                           int64
 		capacity                          *int32
+		color                             int
 	}{
-		{"open", "open", "Bring snacks", "2/4 players (2 free)", 2, &four},
-		{"full", "open", "", "3/3 players (full)", 3, &three},
-		{"unlimited", "open", "ok", "7 players (unlimited)", 7, nil},
-		{"closed", "closed", "", "2/4 players (2 free)", 2, &four},
-		{"cancelled", "cancelled", "", "2/4 players (2 free)", 2, &four},
+		{"open", "open", "Bring snacks", "2/4 players (2 free)", 2, &four, 0x00B4D8},
+		{"full", "open", "", "3/3 players (full)", 3, &three, 0x00B4D8},
+		{"unlimited", "open", "ok", "7 players (unlimited)", 7, nil, 0x00B4D8},
+		{"closed", "closed", "", "2/4 players (2 free)", 2, &four, 0xBED3DF},
+		{"cancelled", "cancelled", "", "2/4 players (2 free)", 2, &four, 0xFF3F73},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			payload := buildDiscordMessage(GameRequestSummary{
-				RequestID: "request/one", GameName: "Chess", StartsAt: time.Date(2026, 9, 25, 18, 30, 0, 0, time.UTC),
+				RequestID: "request/one", GameName: "Chess", CoverImageID: "co1abc", StartsAt: time.Date(2026, 9, 25, 18, 30, 0, 0, time.UTC),
 				Status: tc.status, MemberCount: tc.members, MaxPlayers: tc.capacity, CreatorGameNick: "Ada", Description: tc.description,
 			}, "https://play.example/", "Friday Club")
 			encoded, err := json.Marshal(payload)
@@ -43,18 +45,31 @@ func TestDiscordMessageCurrentState(t *testing.T) {
 				t.Fatalf("embeds = %v", data["embeds"])
 			}
 			embed := embeds[0].(map[string]any)
-			if embed["url"] != "https://play.example/game-requests/request%2Fone" || embed["title"] != "Game Request" {
+			if embed["url"] != "https://play.example/game-requests/request%2Fone" || embed["title"] != "Ada is looking for Chess" {
 				t.Fatalf("link/title = %v", embed)
+			}
+			if image := embed["thumbnail"].(map[string]any)["url"]; image != "https://images.igdb.com/igdb/image/upload/t_cover_big/co1abc.jpg" {
+				t.Fatalf("thumbnail = %v", image)
+			}
+			if embed["image"] != nil || embed["color"] != float64(tc.color) {
+				t.Fatalf("unexpected image or status color = %v", embed)
 			}
 			fields := map[string]string{}
 			for _, raw := range embed["fields"].([]any) {
 				field := raw.(map[string]any)
 				fields[field["name"].(string)] = field["value"].(string)
 			}
-			for key, want := range map[string]string{"Game": "Chess", "Planned start": "2026-09-25T18:30:00Z", "Status": tc.status, "Players": tc.places, "Creator": "Ada"} {
+			for key, want := range map[string]string{"Start": "<t:" + strconv.FormatInt(time.Date(2026, 9, 25, 18, 30, 0, 0, time.UTC).Unix(), 10) + ":F>", "Status": tc.status, "Players": tc.places} {
 				if fields[key] != want {
 					t.Errorf("%s = %q, want %q", key, fields[key], want)
 				}
+			}
+			if len(fields) != 4 || fields["Link"] != "[Im Browser öffnen ↗](https://play.example/game-requests/request%2Fone)" {
+				t.Fatalf("missing browser link = %v", fields)
+			}
+			last := embed["fields"].([]any)[3].(map[string]any)
+			if last["name"] != "Link" {
+				t.Errorf("browser link is not last: %v", embed["fields"])
 			}
 			if tc.description == "" && embed["description"] != nil {
 				t.Errorf("empty description = %v", embed["description"])
@@ -107,6 +122,48 @@ func TestDiscordMessagePlainDescription(t *testing.T) {
 	}
 	if !strings.Contains(got, "click") || !strings.Contains(got, "secret") || data.Embeds[0].URL != "https://play.example/game-requests/one" || data.Embeds[0].Footer.Text != "LANsurfer" {
 		t.Errorf("payload = %s", encoded)
+	}
+}
+
+func TestDiscordCoverUsesIGDBWhenInstanceIsLocal(t *testing.T) {
+	embed := buildDiscordMessage(GameRequestSummary{
+		RequestID: "one", GameName: "Chess", CoverImageID: "co1abc",
+	}, "http://localhost:8080", "").Embeds[0]
+	if embed.URL != "http://localhost:8080/game-requests/one" || embed.Thumbnail == nil ||
+		embed.Thumbnail.URL != "https://images.igdb.com/igdb/image/upload/t_cover_big/co1abc.jpg" {
+		t.Fatalf("local instance Discord embed = %#v", embed)
+	}
+}
+
+func TestDiscordMessageTitleFallbackAndNoCover(t *testing.T) {
+	embed := buildDiscordMessage(GameRequestSummary{GameName: "Chess"}, "https://play.example", "").Embeds[0]
+	if embed.Title != "Chess" || embed.Thumbnail != nil || embed.Fields[0].Value != "Not set" {
+		t.Fatalf("embed = %#v", embed)
+	}
+}
+
+func TestDiscordMessageTitleSanitizesMentions(t *testing.T) {
+	embed := buildDiscordMessage(GameRequestSummary{
+		CreatorGameNick: "@everyone", GameName: "<@123> **Chess**",
+	}, "https://play.example", "").Embeds[0]
+	if strings.Contains(embed.Title, "@everyone") || strings.Contains(embed.Title, "<@123>") || strings.Contains(embed.Title, "**") {
+		t.Fatalf("unsafe title = %q", embed.Title)
+	}
+	if !strings.Contains(embed.Title, "is looking for") || !strings.Contains(embed.Title, "Chess") {
+		t.Fatalf("missing list title = %q", embed.Title)
+	}
+}
+
+func TestDiscordMessageTitleFitsDiscordLimitAfterEscaping(t *testing.T) {
+	embed := buildDiscordMessage(GameRequestSummary{
+		CreatorGameNick: strings.Repeat("A", 32),
+		GameName:        strings.Repeat("*", 120),
+	}, "https://play.example", "").Embeds[0]
+	if len([]rune(embed.Title)) > 256 || strings.HasSuffix(embed.Title, "\\") {
+		t.Fatalf("Discord title too long or dangling escape: %q", embed.Title)
+	}
+	if !strings.Contains(embed.Title, "is looking for") {
+		t.Fatalf("missing request heading: %q", embed.Title)
 	}
 }
 

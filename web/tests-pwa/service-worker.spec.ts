@@ -141,14 +141,15 @@ for (const state of [
 
 
 const pushPayload = (origin: string) => ({
-  version: 1,
+  version: 3,
   kind: "created",
   game: "Demo",
+  member_count: 1,
+  max_players: 4,
+  creator_game_nick: "Ada",
   starts_at: "2026-09-24T12:00:00Z",
   url: `${origin}/game-requests/request-123`,
   instance: "LANsurfer",
-  title: "New Demo Game Request",
-  body: "LANsurfer · Starts 2026-09-24T12:00:00Z",
 });
 
 async function openPushChannel(page: Page) {
@@ -182,22 +183,37 @@ test("visible LANsurfer window suppresses OS push notification", async ({ page }
   expect(notifications).toHaveLength(0);
 });
 
-test("push without visible LANsurfer window shows one OS notification", async ({ page }) => {
+test("push without visible LANsurfer window shows localized created, joined, and cancelled notifications", async ({ page }) => {
   await page.context().grantPermissions(["notifications"]);
   await page.goto("/game-requests");
   await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
   const channel = await openPushChannel(page);
+  const worker = await getServiceWorker(page);
   await page.goto("about:blank");
   await channel.cdp.send("ServiceWorker.deliverPushMessage", {
     origin: channel.origin,
     registrationId: channel.registrationId,
     data: JSON.stringify(pushPayload(channel.origin)),
   });
+  await channel.cdp.send("ServiceWorker.deliverPushMessage", {
+    origin: channel.origin,
+    registrationId: channel.registrationId,
+    data: JSON.stringify({ ...pushPayload(channel.origin), kind: "joined", actor_game_nick: "Bo", starts_at: undefined }),
+  });
+  await channel.cdp.send("ServiceWorker.deliverPushMessage", {
+    origin: channel.origin,
+    registrationId: channel.registrationId,
+    data: JSON.stringify({ ...pushPayload(channel.origin), kind: "cancelled", creator_game_nick: undefined, starts_at: undefined, max_players: undefined, member_count: 7 }),
+  });
+  await expect.poll(() => worker.evaluate(async () => (await (globalThis as unknown as ServiceWorkerGlobalScope).registration.getNotifications()).length)).toBe(3);
   await page.goto("/game-requests");
   const notifications = await page.evaluate(async () => (await navigator.serviceWorker.getRegistration("/"))?.getNotifications().then((items) => items.map(({ title, body }) => ({ title, body }))));
-  expect(notifications).toHaveLength(1);
-  expect(notifications?.[0].title).toBe("New Demo Game Request");
-  expect(notifications?.[0].body).toBe("LANsurfer · Starts 2026-09-24T12:00:00Z");
+  expect(notifications).toHaveLength(3);
+  expect(notifications?.map(({ title }) => title)).toEqual(["Ada is looking for Demo", "Ada is looking for Demo", "Demo"]);
+  const localStart = new Intl.DateTimeFormat(undefined, { dateStyle: "full", timeStyle: "short" }).format(new Date("2026-09-24T12:00:00Z"));
+  expect(notifications?.map(({ body }) => body)).toContain(`${localStart} · 1/4 players · LANsurfer`);
+  expect(notifications?.map(({ body }) => body)).toContain("Bo joined · Not set · 1/4 players · LANsurfer");
+  expect(notifications?.map(({ body }) => body)).toContain("Request cancelled · Not set · 7 players (unlimited) · LANsurfer");
   await channel.cdp.detach();
 });
 
@@ -205,11 +221,23 @@ test("malformed and unsupported pushes do not crash or notify", async ({ page })
   await page.context().grantPermissions(["notifications"]);
   await page.goto("/game-requests");
   await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
-  await deliverPush(page, "{");
-  await deliverPush(page, JSON.stringify({ ...pushPayload(new URL(page.url()).origin), version: 2 }));
+  const channel = await openPushChannel(page);
+  await page.goto("about:blank");
+  for (const data of [
+    "{",
+    JSON.stringify({ ...pushPayload(channel.origin), version: 2 }),
+    JSON.stringify({ ...pushPayload(channel.origin), creator_game_nick: 12 }),
+    JSON.stringify({ ...pushPayload(channel.origin), starts_at: "invalid" }),
+    JSON.stringify({ ...pushPayload(channel.origin), url: `${channel.origin}/elsewhere/request-123` }),
+    JSON.stringify({ ...pushPayload(channel.origin), member_count: -1 }),
+    JSON.stringify({ ...pushPayload(channel.origin), max_players: 0 }),
+  ]) {
+    await channel.cdp.send("ServiceWorker.deliverPushMessage", { origin: channel.origin, registrationId: channel.registrationId, data });
+  }
+  await page.goto("/game-requests");
   const notifications = await page.evaluate(async () => (await navigator.serviceWorker.getRegistration("/"))?.getNotifications());
   expect(notifications).toHaveLength(0);
-  expect(await page.evaluate(() => navigator.serviceWorker.controller !== null)).toBe(true);
+  await channel.cdp.detach();
 });
 
 async function getServiceWorker(page: Page): Promise<Worker> {

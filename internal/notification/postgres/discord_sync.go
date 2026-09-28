@@ -121,7 +121,7 @@ func (s *Store) GetGameRequestSummary(ctx context.Context, requestID string) (no
 		return notification.GameRequestSummary{}, fmt.Errorf("get discord current request: %w", err)
 	}
 	return notification.GameRequestSummary{
-		RequestID: summary.RequestID, GameID: summary.GameID, GameName: summary.GameName,
+		RequestID: summary.RequestID, GameID: summary.GameID, GameName: summary.GameName, CoverImageID: summary.CoverImageID,
 		StartsAt: summary.StartsAt, Status: string(summary.Status), MemberCount: summary.MemberCount,
 		MaxPlayers: summary.MaxPlayers, CreatorGameNick: summary.CreatorGameNick, Description: summary.Description,
 	}, nil

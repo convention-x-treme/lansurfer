@@ -4,7 +4,6 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"time"
 	"unicode"
 )
 
@@ -19,8 +18,14 @@ type discordEmbed struct {
 	Title       string         `json:"title"`
 	URL         string         `json:"url"`
 	Description string         `json:"description,omitempty"`
+	Thumbnail   *discordImage  `json:"thumbnail,omitempty"`
+	Color       int            `json:"color,omitempty"`
 	Fields      []discordField `json:"fields"`
 	Footer      discordFooter  `json:"footer"`
+}
+
+type discordImage struct {
+	URL string `json:"url"`
 }
 
 type discordField struct {
@@ -52,21 +57,50 @@ func buildDiscordMessage(summary GameRequestSummary, baseURL, instanceName strin
 	}
 	startsAt := "Not set"
 	if !summary.StartsAt.IsZero() {
-		startsAt = summary.StartsAt.Format(time.RFC3339)
+		startsAt = "<t:" + strconv.FormatInt(summary.StartsAt.Unix(), 10) + ":F>"
 	}
-	return discordMessage{Embeds: []discordEmbed{{
-		Title:       "Game Request",
-		URL:         strings.TrimRight(baseURL, "/") + "/game-requests/" + url.PathEscape(summary.RequestID),
+	title := discordPlainText(summary.GameName, 256)
+	if creator := discordPlainText(summary.CreatorGameNick, 256); creator != "" {
+		title = creator + " is looking for " + title
+	}
+	if len(title) > 256 {
+		units := 0
+		for offset, r := range title {
+			units++
+			if r > 0xffff {
+				units++
+			}
+			if units > 256 {
+				title = strings.TrimSuffix(title[:offset], "\\")
+				break
+			}
+		}
+	}
+	requestURL := strings.TrimRight(baseURL, "/") + "/game-requests/" + url.PathEscape(summary.RequestID)
+	embed := discordEmbed{
+		Title:       title,
+		URL:         requestURL,
 		Description: discordPlainText(summary.Description, 240),
 		Fields: []discordField{
-			{Name: "Game", Value: discordPlainText(summary.GameName, 1024)},
-			{Name: "Planned start", Value: startsAt},
+			{Name: "Start", Value: startsAt},
 			{Name: "Status", Value: discordPlainText(summary.Status, 1024)},
 			{Name: "Players", Value: players},
-			{Name: "Creator", Value: discordPlainText(summary.CreatorGameNick, 1024)},
+			{Name: "Link", Value: "[Im Browser öffnen ↗](" + requestURL + ")"},
 		},
 		Footer: discordFooter{Text: discordPlainText(instanceName, 2048)},
-	}}}
+	}
+	switch summary.Status {
+	case "open":
+		embed.Color = 0x00B4D8
+	case "closed":
+		embed.Color = 0xBED3DF
+	case "cancelled":
+		embed.Color = 0xFF3F73
+	}
+	if summary.CoverImageID != "" {
+		embed.Thumbnail = &discordImage{URL: "https://images.igdb.com/igdb/image/upload/t_cover_big/" + url.PathEscape(summary.CoverImageID) + ".jpg"}
+	}
+	return discordMessage{Embeds: []discordEmbed{embed}}
 }
 
 // discordPlainText removes control/format characters, collapses whitespace,

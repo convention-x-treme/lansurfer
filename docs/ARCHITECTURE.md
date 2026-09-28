@@ -160,7 +160,7 @@ Store multiple labeled subscriptions per user. Browser permission, active subscr
 
 The positive recipient/device set is materialized once when work is first processed. Delayed/retried sends re-check current eligibility and may terminate an existing delivery as `suppressed`, but old work never gains newly eligible users or devices.
 
-Push payloads are versioned, structured, and privacy-minimized: activity kind, Game, planned time, same-origin deep link, minimum instance context, and optional public Game Nick for join/leave. Do not include request description, roster, provider identity data, or activity history. The service worker suppresses the OS notification while a same-origin LANsurfer window is visible so SSE remains the in-browser path.
+Push payloads use wire version 3 and remain structured and privacy-minimized: activity kind, Game, optional creator public Game Nick, current member count and optional maximum players, planned time, same-origin deep link, minimum instance context, and optional actor public Game Nick for join/leave. The service worker renders the list-style title and planned time in the device's locale and timezone, with current player count/capacity and activity context in the body, without repeating the Game. Do not include request description, roster, cover, provider identity data, or activity history. The service worker suppresses the OS notification while a same-origin LANsurfer window is visible so SSE remains the in-browser path.
 
 Treat PushSubscription endpoint/key material as secret-adjacent application data: encrypt endpoint, `p256dh`, and `auth` with AES-GCM using the notification capability data-encryption key, never log or display decrypted material, and use a keyed endpoint fingerprint for equality/uniqueness lookup without storing the raw endpoint alongside ciphertext. A separate long-lived opaque browser-device cookie is stored only as a server-side hash and is independent of the authentication-session lifetime.
 
@@ -176,15 +176,11 @@ Automatic message CREATE is non-idempotent. Before a CREATE, LANsurfer durably r
 
 CREATE known pre-transmission failures, explicit 429 responses, and explicit 5xx responses are retryable; a result that may have transmitted without a definitive response is uncertain. Other definitive non-retryable provider responses are permanent. EDIT network failures, 429 responses, and 5xx responses are retryable because replaying an edit to the known message is safe. `10008 Unknown Message` clears only the matching message reference and creates exactly one replacement from current state; the destination remains connected. `10015 Unknown Webhook` follows the generation-scoped Broken transition above.
 
-The compact approved embed includes:
+The compact approved embed uses the Game Requests list title (creator Game Nick and Game), a Discord-localized `Start` field, and an optional Game cover thumbnail from the fixed `images.igdb.com` origin. Discord can fetch the cover even when the instance's base URL is local; the deep link still uses that configured base URL. This external cover reference applies only to Discord embeds: the LANsurfer web UI continues to serve covers same-origin. The status remains readable text and colors the embed accent: surf blue for open, muted for closed, coral for cancelled. Other content is:
 
-- Game;
-- planned start time;
-- current request status;
 - current capacity/free-place summary;
-- creator's public Game Nick;
 - short sanitized/plain-content description;
-- LANsurfer deep link;
+- a final embed field with a clickable `Im Browser öffnen ↗` link to the configured LANsurfer deep link;
 - minimum instance context.
 
 It never includes the full participant roster or activity history and never uses Discord login identity as LANsurfer public player identity. Every create/edit sends empty `allowed_mentions`.

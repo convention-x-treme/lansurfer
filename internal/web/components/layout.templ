@@ -260,7 +260,7 @@ templ NavigationLinks(state NavigationState) {
 			if state.DiscordDeliveryEnabled {
 				<li>
 					<a class={ navigationSubLinkClass(state.Section == "administration-discord") } href="/admin/discord" aria-current={ navigationCurrent(state.Section == "administration-discord") }>
-						<span>Discord delivery</span>
+						<i class="ph ph-discord-logo" aria-hidden="true"></i><span>Discord delivery</span>
 					</a>
 				</li>
 			}
