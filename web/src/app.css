@@ -1769,10 +1769,6 @@
     color: var(--brand-white-sand);
   }
 
-  .auth-header .btn {
-    color: inherit;
-  }
-
   /* The stage stays dark in both themes, so its focus ring stays Golden Hour. */
   .auth-header,
   .auth-stage {
@@ -1879,6 +1875,12 @@
 .btn-provider-discord {
   --btn-color: #5865f2;
   --btn-fg: #fff;
+}
+
+/* The auth header sits on the always-dark stage in both themes. Unlayered so
+   it beats DaisyUI's .btn-ghost ink, which is Deep Ocean in the light theme. */
+.auth-header .btn {
+  color: inherit;
 }
 
 .btn-provider-twitch {

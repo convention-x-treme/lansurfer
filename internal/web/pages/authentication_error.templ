@@ -35,7 +35,10 @@ templ Login(brand branding.Brand, providers []auth.ProviderAvailability) {
 			</svg>
 			<img class="auth-mascot" src="/assets/images/mascot-welcome-pose.webp" alt="LANsurfer otter ready to help players find a game"/>
 			<div class="auth-panel">
-				<h1 class="text-[1.75rem] font-black leading-tight tracking-tight">Find your crew.<br/>Catch the next game.</h1>
+				<div class="flex items-center gap-4">
+					<img class="size-16 shrink-0" src={ brand.Assets.Icons.Any192 } width="64" height="64" alt=""/>
+					<h1 class="text-[1.75rem] font-black leading-tight tracking-tight">Find your crew.<br/>Catch the next game.</h1>
+				</div>
 				<p class="mt-2.5 text-base-content/70">Sign in with the account you already have. LANsurfer never stores a password.</p>
 				if len(providers) > 0 {
 					<div class="mt-7 flex flex-col gap-3">
