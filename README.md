@@ -66,7 +66,7 @@ An otter with a headset and a surfboard feels right at home here: social, at eas
 
 The otter brings a little personality to LANsurfer's ocean-inspired identity. In the application, the wording stays familiar: games, players, and joining a game.
 
-The [visual branding guide](docs/BRANDING.md) defines the palette, typography, mascot usage, dark/light interface direction, and the limited 1.0 instance-identity boundary.
+The [visual branding guide](docs/BRANDING.md) defines the palette, typography, mascot usage, dark/light interface direction, and the limited instance-identity boundary.
 
 ## 🗺️ Project status
 
@@ -74,7 +74,7 @@ The current development build already uses the focused 1.0 operating model: **on
 
 The remaining stable-1.0 work is concentrated in instance identity/PWA, durable Web Push and Discord notifications, production distribution/operations, remaining UI-system integration and validation, and the formal Pilot/Integration/Release gates. Multi-Event participation, Open Play, and Clans remain post-1.0 candidates rather than required 1.0 features.
 
-The [roadmap](docs/ROADMAP.md) tracks the parallel development model, dependencies, integration gate, and acceptance criteria. The [product definition](docs/PRODUCT.md#5-release-scope) distinguishes the implemented prototype from the approved 1.0 scope and post-1.0 candidates. The design and database may still change before the stable release.
+The [roadmap](docs/ROADMAP.md) is a planning landing page; current work, dependencies, and release gates live in GitHub Issues and the active milestone. The [product definition](docs/PRODUCT.md#5-release-scope) owns approved release scope and future candidates. The design and database may still change before the stable release.
 
 ## 🐳 Run the current development build
 
