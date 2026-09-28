@@ -78,6 +78,27 @@ func TestAuthenticationReportsStoreFailure(t *testing.T) {
 	}
 }
 
+func TestCurrentOrNewDeviceIDReturnsExistingCookie(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	request.AddCookie(&http.Cookie{Name: DeviceCookieName, Value: "existing-device-id"})
+
+	deviceID, err := CurrentOrNewDeviceID(request)
+
+	if err != nil || deviceID != "existing-device-id" {
+		t.Fatalf("device ID/err = %q, %v", deviceID, err)
+	}
+}
+
+func TestCurrentOrNewDeviceIDGeneratesFreshValueWhenAbsent(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+
+	deviceID, err := CurrentOrNewDeviceID(request)
+
+	if err != nil || deviceID == "" {
+		t.Fatalf("device ID/err = %q, %v", deviceID, err)
+	}
+}
+
 type authenticatorFunc func(context.Context, string) (user.User, error)
 
 func (f authenticatorFunc) Authenticate(ctx context.Context, token string) (user.User, error) {

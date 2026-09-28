@@ -17,3 +17,16 @@ func TestPromoteUserID(t *testing.T) {
 		}
 	}
 }
+
+func TestNotificationDeliveryID(t *testing.T) {
+	deliveryID, err := notificationDeliveryID([]string{"--delivery-id", "42"})
+	if err != nil || deliveryID != "42" {
+		t.Fatalf("notificationDeliveryID() = %q, %v", deliveryID, err)
+	}
+
+	for _, arguments := range [][]string{nil, {"--delivery-id", ""}, {"unexpected"}} {
+		if _, err := notificationDeliveryID(arguments); err == nil || !strings.Contains(err.Error(), "usage:") {
+			t.Errorf("notificationDeliveryID(%q) error = %v, want usage error", arguments, err)
+		}
+	}
+}

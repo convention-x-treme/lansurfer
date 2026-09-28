@@ -59,6 +59,7 @@ type Viewer struct {
 }
 
 type NavigationState struct {
+	DiscordDeliveryEnabled bool
 	Viewer *Viewer
 	LoginAvailable bool
 	Section string
@@ -256,6 +257,13 @@ templ NavigationLinks(state NavigationState) {
 					<i class="ph ph-device-mobile" aria-hidden="true"></i><span>PWA</span>
 				</a>
 			</li>
+			if state.DiscordDeliveryEnabled {
+				<li>
+					<a class={ navigationSubLinkClass(state.Section == "administration-discord") } href="/admin/discord" aria-current={ navigationCurrent(state.Section == "administration-discord") }>
+						<span>Discord delivery</span>
+					</a>
+				</li>
+			}
 		}
 	</ul>
 }
@@ -338,7 +346,7 @@ templ ViewerPanel(viewer *Viewer) {
 }
 
 templ LogoutControl() {
-	<form method="post" action="/auth/logout">
+	<form method="post" action="/auth/logout" data-logout-form>
 		@CSRFInput()
 		<button type="submit" class="btn btn-ghost btn-sm px-0 text-sm text-base-content/70"><i class="ph ph-sign-out" aria-hidden="true"></i>Log out</button>
 	</form>

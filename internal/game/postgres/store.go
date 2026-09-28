@@ -298,6 +298,18 @@ func (s *Store) Unfollow(ctx context.Context, userID, gameID string) error {
 	return nil
 }
 
+func (s *Store) ListFollowers(ctx context.Context, gameID string) ([]string, error) {
+	databaseGameID, err := parseUUID(gameID)
+	if err != nil {
+		return nil, fmt.Errorf("parse game ID: %w", err)
+	}
+	followers, err := s.queries.ListGameFollowers(ctx, databaseGameID)
+	if err != nil {
+		return nil, fmt.Errorf("list game followers: %w", err)
+	}
+	return followers, nil
+}
+
 func fromGame(id, name, slug string, active bool, createdAt, updatedAt pgtype.Timestamptz) game.Game {
 	return game.Game{ID: id, Name: name, Slug: slug, Active: active, CreatedAt: createdAt.Time, UpdatedAt: updatedAt.Time, Aliases: []game.Alias{}}
 }

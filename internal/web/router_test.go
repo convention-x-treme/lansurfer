@@ -18,8 +18,55 @@ import (
 	"github.com/convention-x-treme/lansurfer/internal/platform/mediaproxy"
 	requestquery "github.com/convention-x-treme/lansurfer/internal/query/gamerequest"
 	"github.com/convention-x-treme/lansurfer/internal/user"
+	"github.com/convention-x-treme/lansurfer/internal/web/handler"
 	webmiddleware "github.com/convention-x-treme/lansurfer/internal/web/middleware"
 )
+
+type reconcileSubscriptions struct {
+	handler.SubscriptionManager
+	removed string
+}
+
+func (s *reconcileSubscriptions) RemoveDeviceByHash(_ context.Context, _, deviceID string) error {
+	s.removed = deviceID
+	return nil
+}
+
+func TestNotificationReconcileRouteRequiresSessionAndCSRF(t *testing.T) {
+	for _, tc := range []struct {
+		name, session, csrf string
+		want                int
+	}{
+		{"signed in", "opaque-session", "valid", http.StatusSeeOther},
+		{"anonymous", "", "valid", http.StatusSeeOther},
+		{"missing csrf", "opaque-session", "", http.StatusForbidden},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			subscriptions := &reconcileSubscriptions{}
+			account := &routerAuthentication{account: user.User{ID: "user-1", GameNick: "NightOtter"}}
+			router := NewRouter(RouterDependencies{Authentication: account, Sessions: account, Subscriptions: subscriptions, WebPushConfigured: true})
+			request := httptest.NewRequest(http.MethodPost, "/account/notifications/reconcile", nil)
+			if tc.session != "" {
+				request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: tc.session})
+			}
+			request.AddCookie(&http.Cookie{Name: webmiddleware.DeviceCookieName, Value: "device-1"})
+			if tc.csrf != "" {
+				addCSRF(request)
+			}
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, request)
+			if response.Code != tc.want {
+				t.Fatalf("status = %d, want %d", response.Code, tc.want)
+			}
+			if tc.name == "signed in" && (subscriptions.removed != "device-1" || response.Header().Get("Location") != "/account/notifications") {
+				t.Fatalf("removed/location = %q/%q", subscriptions.removed, response.Header().Get("Location"))
+			}
+			if tc.name != "signed in" && subscriptions.removed != "" {
+				t.Fatalf("unexpected removal: %q", subscriptions.removed)
+			}
+		})
+	}
+}
 
 func TestHealth(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/healthz", nil)
@@ -220,6 +267,25 @@ func TestAuthLoginStartRedirectsSignedInUserToAccount(t *testing.T) {
 
 	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/account" || authentication.began.ProviderKind != "" {
 		t.Fatalf("status/location/begin = %d, %q, %#v", response.Code, response.Header().Get("Location"), authentication.began)
+	}
+}
+
+// /auth/logout lives in the authenticated middleware group (so Logout can
+// read CurrentUser to best-effort remove the signed-out device's Push
+// subscription), but RequireAuthentication is never applied to it: an
+// anonymous request (no session cookie) must still succeed as a no-op
+// logout, not be rejected as unauthenticated.
+func TestAuthLogoutSucceedsForAnonymousRequest(t *testing.T) {
+	request := httptest.NewRequest(http.MethodPost, "/auth/logout", nil)
+	addCSRF(request)
+	response := httptest.NewRecorder()
+
+	NewRouter(RouterDependencies{
+		Ready: func(context.Context) error { return nil },
+	}).ServeHTTP(response, request)
+
+	if response.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want %d (anonymous logout must succeed as a no-op, not be rejected)", response.Code, http.StatusSeeOther)
 	}
 }
 

@@ -80,7 +80,7 @@ func Account(brand branding.Brand, navigation components.NavigationState, curren
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<section class=\"auth-panel\"><h2 class=\"text-xl font-bold\">Game Nick</h2><p class=\"mt-1 text-sm text-base-content/70\">Your public name on Game Requests and request activity.</p><form method=\"post\" action=\"/account/game-nick\" class=\"mt-4 grid max-w-sm gap-3\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<section class=\"auth-panel\"><h2 class=\"text-xl font-bold\">Notifications</h2><p class=\"mt-1 text-sm text-base-content/70\">Manage push notifications and which devices receive them.</p><a class=\"btn btn-quiet btn-sm mt-4 w-fit\" href=\"/account/notifications\">Notification settings</a></section><section class=\"auth-panel\"><h2 class=\"text-xl font-bold\">Game Nick</h2><p class=\"mt-1 text-sm text-base-content/70\">Your public name on Game Requests and request activity.</p><form method=\"post\" action=\"/account/game-nick\" class=\"mt-4 grid max-w-sm gap-3\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -95,7 +95,7 @@ func Account(brand branding.Brand, navigation components.NavigationState, curren
 			var templ_7745c5c3_Var3 string
 			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.ResolveAttributeValue(accountGameNickValue(gameNickInput, currentGameNick))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/account.templ`, Line: 48, Col: 137}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/account.templ`, Line: 53, Col: 137}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var3)
 			if templ_7745c5c3_Err != nil {
@@ -113,7 +113,7 @@ func Account(brand branding.Brand, navigation components.NavigationState, curren
 				var templ_7745c5c3_Var4 string
 				templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(gameNickError)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/account.templ`, Line: 51, Col: 28}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/account.templ`, Line: 56, Col: 28}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 				if templ_7745c5c3_Err != nil {
@@ -152,7 +152,7 @@ func Account(brand branding.Brand, navigation components.NavigationState, curren
 				var templ_7745c5c3_Var5 string
 				templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.ResolveAttributeValue(identity.ID)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/account.templ`, Line: 70, Col: 86}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/account.templ`, Line: 75, Col: 86}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var5)
 				if templ_7745c5c3_Err != nil {
@@ -203,7 +203,7 @@ func Account(brand branding.Brand, navigation components.NavigationState, curren
 				var templ_7745c5c3_Var8 string
 				templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(identity.Label)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/account.templ`, Line: 71, Col: 88}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/account.templ`, Line: 76, Col: 88}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 				if templ_7745c5c3_Err != nil {
@@ -268,7 +268,7 @@ func Account(brand branding.Brand, navigation components.NavigationState, curren
 				var templ_7745c5c3_Var11 string
 				templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(identity.Label)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/account.templ`, Line: 91, Col: 124}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/account.templ`, Line: 96, Col: 124}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 				if templ_7745c5c3_Err != nil {
@@ -286,7 +286,7 @@ func Account(brand branding.Brand, navigation components.NavigationState, curren
 					var templ_7745c5c3_Var12 string
 					templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(identity.PrivateName)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/account.templ`, Line: 93, Col: 80}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/account.templ`, Line: 98, Col: 80}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 					if templ_7745c5c3_Err != nil {
@@ -305,7 +305,7 @@ func Account(brand branding.Brand, navigation components.NavigationState, curren
 					var templ_7745c5c3_Var13 string
 					templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(identity.PrivateEmail)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/account.templ`, Line: 96, Col: 81}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/account.templ`, Line: 101, Col: 81}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 					if templ_7745c5c3_Err != nil {
@@ -328,7 +328,7 @@ func Account(brand branding.Brand, navigation components.NavigationState, curren
 					var templ_7745c5c3_Var14 templ.SafeURL
 					templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(identity.UnlinkPath))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/account.templ`, Line: 100, Col: 71}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/account.templ`, Line: 105, Col: 71}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
 					if templ_7745c5c3_Err != nil {
@@ -374,7 +374,7 @@ func Account(brand branding.Brand, navigation components.NavigationState, curren
 					var templ_7745c5c3_Var15 templ.SafeURL
 					templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(option.Href))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/account.templ`, Line: 113, Col: 62}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/account.templ`, Line: 118, Col: 62}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
 					if templ_7745c5c3_Err != nil {
@@ -417,7 +417,7 @@ func Account(brand branding.Brand, navigation components.NavigationState, curren
 					var templ_7745c5c3_Var18 string
 					templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(option.Label)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/account.templ`, Line: 115, Col: 161}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/account.templ`, Line: 120, Col: 161}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
 					if templ_7745c5c3_Err != nil {

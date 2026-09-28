@@ -7,12 +7,14 @@ LANsurfer is a self-hosted Looking-for-Group web application and a modular Go mo
 Use the smallest authoritative source that answers the task:
 
 - `README.md`: what LANsurfer is and how to run it.
-- `docs/PRODUCT.md`: intended user-visible behavior, terminology, and release scope.
+- `docs/PRODUCT.md`: intended user-visible behavior and approved release scope.
 - `docs/ARCHITECTURE.md`: technical architecture, module ownership, and durable invariants.
-- `docs/ROADMAP.md`: remaining work, track status, dependencies, Pilot/Integration/Release gates.
+- `docs/TERMINOLOGY.md`: canonical project vocabulary and distinctions that agents/contributors must preserve.
+- GitHub Issues + the active release milestone: current work, priorities, dependencies, validation status, and release gates.
+- `docs/ROADMAP.md`: stable planning landing page only; do not put mutable checklists/status back into it.
 - `docs/BRANDING.md` and `docs/ui-kit/`: approved presentation system.
 - `Taskfile.yml`: authoritative development commands.
-- `docs/superpowers/`: supporting feature designs, implementation plans, and historical verification records. These never override PRODUCT, ARCHITECTURE, ROADMAP, or this file.
+- `docs/superpowers/`: feature-branch working specs/designs/plans when useful. They never override canonical docs and normally do not survive the final merge.
 
 Read only the sections relevant to the task. An open issue or retained implementation plan is not by itself evidence that work belongs in the current release or is still unimplemented.
 
@@ -34,7 +36,7 @@ Run the checks relevant to the files and behavior changed. Do not substitute bro
 
 ## Architecture and coding guardrails
 
-- Keep the modular monolith organized by business capability. Current business modules are `auth`, `user`, `game`, and `gamerequest`; `notification` is the approved Track E addition. The prototype `event` module is removed. Do not introduce `event`, `clan`, a generic parent/context abstraction, or other post-1.0 modules unless ROADMAP explicitly schedules them.
+- Keep the modular monolith organized by business capability. Current business modules are `auth`, `user`, `game`, `gamerequest`, and `notification`. The prototype `event` module is removed. Do not introduce `event`, `clan`, a generic parent/context abstraction, or other modules outside the current product model unless PRODUCT approves the scope and current GitHub planning schedules the work.
 - A business module owns its behavior and writes. Never reach into another module's persistence implementation or write its tables directly. Call a small explicit interface or publish an application/domain event.
 - Define narrow interfaces in the consuming package and wire concrete dependencies explicitly in the composition root. Do not use a dependency-injection framework or service locator.
 - Cross-module joins belong in dedicated read/query models. Query packages do not perform domain writes.
@@ -46,9 +48,9 @@ Run the checks relevant to the files and behavior changed. Do not substitute bro
 - Use local user IDs, explicit identity linking, revocable PostgreSQL sessions, and opaque cookies. Do not add local passwords, browser JWT sessions, or identity merging based only on email.
 - Protect important invariants in PostgreSQL with constraints, indexes, transactions, locks, and foreign keys. Joining/capacity, case-insensitive Game Nick claims, identity linking/unlinking, and provider-Game materialization are concurrency-sensitive.
 
-### Game Request activity and Track E handoff
+### Game Request activity and notification handoff
 
-`game_request_activity` currently serves both as durable request-local history and as Track A's transactional notification-intent handoff to Track E. Write the row in the same transaction as the successful Game Request change. Keep this single-table boundary unless Track E demonstrates delivery state that does not belong to `gamerequest`; a split then is an explicit architecture change, not a second parallel source of truth.
+`game_request_activity` serves both as durable request-local history and as the transactional handoff from Game Request writes to notification processing. Write the row in the same transaction as the successful Game Request change. Notification-specific work/delivery state belongs to the notification module; do not create a second parallel source of request activity truth.
 
 `sequence` identifies an activity row and orders one Game Request's history. It is not a global replay cursor because values are assigned at insert time rather than commit time. Never advance one global high-watermark from it. `origin=backfill` rows are reconstructed history and must never be delivered.
 
@@ -62,15 +64,18 @@ Run the checks relevant to the files and behavior changed. Do not substitute bro
 ## Scope and workflow
 
 - Inspect existing implementation and tests before designing a change.
-- Use ROADMAP for current status and dependencies. Work may proceed in parallel where its stated dependencies are satisfied, but do not implement post-1.0 candidates merely because an issue or historical design exists.
-- Prefer one coherent branch/PR per feature, fix, or cross-track contract. Coordinate a shared schema, route, template, or composition-root contract before parallel changes touch it.
-- PRODUCT owns durable behavior/scope; ARCHITECTURE owns durable technical decisions. If either changes, update the other canonical documents that make the same promise. ROADMAP should describe remaining work, not completed implementation history.
-- Specifications/designs are for bounded decisions that need more detail than PRODUCT/ARCHITECTURE. Implementation plans are execution aids, not permanent status documents. After merge, move durable decisions into canonical docs and delete or retain the plan only as clearly historical supporting evidence.
-- Summarize implementation decisions, verification performed/omitted, and any affected cross-track contract in the PR.
+- Use GitHub Issues and the active release milestone for current status, dependencies, validation, and release gates. Do not infer scheduled work from an old spec or historical branch artifact.
+- Prefer one coherent branch/PR per feature, fix, or cross-capability contract. Coordinate a shared schema, route, template, or composition-root contract before parallel changes touch it.
+- PRODUCT owns durable behavior/scope; ARCHITECTURE owns durable technical decisions; TERMINOLOGY owns shared vocabulary. Keep those documents aligned when a change affects more than one authority.
+- Specifications/designs are for bounded decisions that need more detail during implementation. Plans/tasks/prompts are execution aids, not permanent status documents.
+- Specs, designs, plans, and task lists may be committed on a feature branch when that improves human/agent collaboration. Before merge, harvest durable behavior into PRODUCT, durable technical decisions into ARCHITECTURE, vocabulary into TERMINOLOGY, remaining work and manual validation evidence into the relevant GitHub Issue or PR; then remove temporary working artifacts from the final tree.
+- Prefer squash merging branches that contained temporary planning artifacts so those intermediate files do not become part of the mainline commit history.
+- Historical Track A–G labels are deprecated for new code/docs/issues. Use capability terminology from TERMINOLOGY; do not rewrite old PR/commit history solely for naming consistency.
+- Summarize implementation decisions, verification performed/omitted, and any affected cross-capability contract in the PR.
 
 ## Changes requiring approval
 
-Stop and request explicit approval before changing the technology stack, module boundaries, domain relationships/data ownership/invariants in the database model, authentication/session or security model, deployment model, public domain terminology, approved 1.0 scope, or license.
+Stop and request explicit approval before changing the technology stack, module boundaries, domain relationships/data ownership/invariants in the database model, authentication/session or security model, deployment model, public domain terminology, approved product/release scope, or license.
 
 Implementing schema, indexes, constraints, and migrations that realize an already-approved persistence design does not require renewed approval when the approved domain relationships, ownership, and invariants stay unchanged. Changing those semantics does require approval.
 

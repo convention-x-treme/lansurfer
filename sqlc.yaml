@@ -54,3 +54,12 @@ sql:
         out: internal/query/gamerequest/sqlcgen
         sql_package: pgx/v5
         omit_unused_structs: true
+  - engine: postgresql
+    schema: internal/platform/postgres/migrations
+    queries: internal/notification/postgres/queries
+    gen:
+      go:
+        package: sqlcgen
+        out: internal/notification/postgres/sqlcgen
+        sql_package: pgx/v5
+        omit_unused_structs: true

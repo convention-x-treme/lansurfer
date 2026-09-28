@@ -129,6 +129,21 @@ type TrendingGame struct {
 	RequestCount  int64
 }
 
+// RequestSummary is the viewer-independent projection of a Game Request for
+// system callers, such as the notification worker, that never personalize
+// for a viewer and so never carry a viewer ID.
+type RequestSummary struct {
+	RequestID       string
+	GameID          string
+	GameName        string
+	StartsAt        time.Time
+	Status          domain.Status
+	MemberCount     int64
+	MaxPlayers      *int32
+	CreatorGameNick string
+	Description     string
+}
+
 type Store struct {
 	queries *sqlcgen.Queries
 	now     func() time.Time
@@ -136,6 +151,12 @@ type Store struct {
 
 func NewStore(pool *pgxpool.Pool) *Store {
 	return &Store{queries: sqlcgen.New(pool), now: time.Now}
+}
+
+// NewStoreWithTx binds system reads to an existing transaction. Discord
+// delivery uses it after acquiring its destination/request advisory lock.
+func NewStoreWithTx(tx pgx.Tx) *Store {
+	return &Store{queries: sqlcgen.New(tx), now: time.Now}
 }
 
 func (s *Store) ListActive(ctx context.Context, viewerID string, filter Filter) ([]Request, error) {
@@ -249,6 +270,45 @@ func (s *Store) CountOpen(ctx context.Context) (int64, error) {
 		return 0, fmt.Errorf("count open game requests: %w", err)
 	}
 	return total, nil
+}
+
+// GetGameRequestSummary resolves a Game Request for a system caller with no
+// viewer to personalize for, unlike ByID.
+func (s *Store) GetGameRequestSummary(ctx context.Context, gameRequestID string) (RequestSummary, error) {
+	databaseID, err := parseUUID(gameRequestID)
+	if err != nil {
+		return RequestSummary{}, domain.ErrNotFound
+	}
+	row, err := s.queries.GetGameRequestSummary(ctx, databaseID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return RequestSummary{}, domain.ErrNotFound
+	}
+	if err != nil {
+		return RequestSummary{}, fmt.Errorf("get game request summary: %w", err)
+	}
+	return RequestSummary{
+		RequestID: row.RequestID, GameID: row.GameID, GameName: row.GameName,
+		StartsAt: row.StartsAt.Time, Status: domain.Status(row.Status),
+		MemberCount: row.MemberCount, MaxPlayers: int4Pointer(row.MaxPlayers),
+		CreatorGameNick: row.CreatorGameNick.String, Description: row.Description,
+	}, nil
+}
+
+// ListParticipants returns current membership without viewer-specific detail reads.
+func (s *Store) ListParticipants(ctx context.Context, gameRequestID string) ([]string, error) {
+	id, err := parseUUID(gameRequestID)
+	if err != nil {
+		return nil, domain.ErrNotFound
+	}
+	rows, err := s.queries.ListGameRequestMembers(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("list game request members: %w", err)
+	}
+	users := make([]string, 0, len(rows))
+	for _, row := range rows {
+		users = append(users, row.UserID)
+	}
+	return users, nil
 }
 
 // RecentlyViewed returns the viewer's own reading history, newest first,

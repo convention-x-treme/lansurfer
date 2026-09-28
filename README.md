@@ -15,7 +15,7 @@ Hundreds of players. Dozens of games. And somewhere in the room, someone else is
 
 [The idea](#-what-is-lansurfer) · [How it works](#-how-it-works) · [Project status](#-project-status) · [Get involved](#-get-involved)
 
-> 🚧 **Pre-1.0:** the single-event Game Request core, Game Nick/authentication, and IGDB discovery tracks are implemented on `main`. Instance identity/PWA, durable notifications, production distribution/operations, remaining cross-track UI work, and pilot/release validation still remain before stable 1.0.
+> 🚧 **Pre-1.0:** the single-event Game Request core, Game Nick/authentication, and IGDB discovery capabilities are implemented on `main`. Instance identity/PWA validation, durable notification validation, production distribution/operations, remaining UI-system work, and pilot/release validation still remain before stable 1.0.
 
 ## 🎮 What is LANsurfer?
 
@@ -66,15 +66,15 @@ An otter with a headset and a surfboard feels right at home here: social, at eas
 
 The otter brings a little personality to LANsurfer's ocean-inspired identity. In the application, the wording stays familiar: games, players, and joining a game.
 
-The [visual branding guide](docs/BRANDING.md) defines the palette, typography, mascot usage, dark/light interface direction, and the limited 1.0 instance-identity boundary.
+The [visual branding guide](docs/BRANDING.md) defines the palette, typography, mascot usage, dark/light interface direction, and the limited instance-identity boundary.
 
 ## 🗺️ Project status
 
 The current development build already uses the focused 1.0 operating model: **one LANsurfer installation serves one LAN party or gaming event context**. It includes instance-wide Game Requests with discovery scopes and filtering, request-based Trending and durable activity, concurrency-safe joining, unique public Game Nicks, generic OIDC plus Discord authentication with explicit linking, an authoritative local Game catalog with optional synchronized IGDB discovery/materialization, and live SSE updates.
 
-The remaining stable-1.0 work is concentrated in instance identity/PWA, durable Web Push and Discord notifications, production distribution/operations, remaining cross-track UI integration and validation, and the formal Pilot/Integration/Release gates. Multi-Event participation, Open Play, and Clans remain post-1.0 candidates rather than required 1.0 features.
+The remaining stable-1.0 work is concentrated in instance identity/PWA, durable Web Push and Discord notifications, production distribution/operations, remaining UI-system integration and validation, and the formal Pilot/Integration/Release gates. Multi-Event participation, Open Play, and Clans remain post-1.0 candidates rather than required 1.0 features.
 
-The [roadmap](docs/ROADMAP.md) tracks the parallel development model, dependencies, integration gate, and acceptance criteria. The [product definition](docs/PRODUCT.md#5-release-scope) distinguishes the implemented prototype from the approved 1.0 scope and post-1.0 candidates. The design and database may still change before the stable release.
+The [roadmap](docs/ROADMAP.md) is a planning landing page; current work, dependencies, and release gates live in GitHub Issues and the active milestone. The [product definition](docs/PRODUCT.md#5-release-scope) owns approved release scope and future candidates. The design and database may still change before the stable release.
 
 ## 🐳 Run the current development build
 
@@ -127,6 +127,15 @@ LANSURFER_DISCORD_CLIENT_SECRET=
 In the [Discord Developer Portal](https://discord.com/developers/applications), create an application, add an OAuth2 redirect of `http://localhost:8080/auth/discord/callback` (or your deployment's base URL), and request only the `identify` scope — LANsurfer never asks for a Discord email address and never persists Discord access/refresh tokens beyond the login request that needs them.
 
 OIDC and Discord identities resolve to the same local User only through an explicit, signed-in `/account` link, or by proving an existing account through the other configured provider during onboarding. LANsurfer never merges accounts by matching email address, name, or Game Nick.
+
+Discord notification delivery (posting Game Request updates to a Discord channel) is a separate, optional integration with its own OAuth credentials:
+
+```sh
+LANSURFER_DISCORD_WEBHOOK_CLIENT_ID=
+LANSURFER_DISCORD_WEBHOOK_CLIENT_SECRET=
+```
+
+Configuring Discord login does not enable delivery, and configuring delivery does not enable login. Delivery additionally requires `LANSURFER_DATA_ENCRYPTION_KEY` to be set, since webhook credentials are encrypted at rest.
 
 ### Configure Twitch login and IGDB discovery
 
@@ -208,6 +217,8 @@ role on every request, so you do not need to log out. The same operations are
 available directly from the binary as `lansurfer admin users` and
 `lansurfer admin promote --user-id <UUID>` when
 `LANSURFER_DATABASE_URL` is configured.
+
+Once promoted, an administrator can also inspect and retry stuck notification deliveries from the binary: `lansurfer admin notifications problems` lists exhausted, permanent, and uncertain deliveries, and `lansurfer admin notifications retry --delivery-id <ID>` (or `retry-uncertain` for a delivery in the uncertain state) reopens one for a fresh attempt.
 
 The Compose credentials are development defaults; do not use them for an exposed deployment. See the [contributing guide](CONTRIBUTING.md) for local Go development, configuration, and checks.
 

@@ -16,6 +16,8 @@ import (
 	gamepostgres "github.com/convention-x-treme/lansurfer/internal/game/postgres"
 	"github.com/convention-x-treme/lansurfer/internal/gamerequest"
 	gamerequestpostgres "github.com/convention-x-treme/lansurfer/internal/gamerequest/postgres"
+	"github.com/convention-x-treme/lansurfer/internal/notification"
+	notificationpostgres "github.com/convention-x-treme/lansurfer/internal/notification/postgres"
 	"github.com/convention-x-treme/lansurfer/internal/platform/config"
 	"github.com/convention-x-treme/lansurfer/internal/platform/mediaproxy"
 	"github.com/convention-x-treme/lansurfer/internal/platform/postgres"
@@ -57,6 +59,11 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	cancelMigration()
 	if err != nil {
 		return fmt.Errorf("apply database migrations: %w", err)
+	}
+
+	notificationStore := notificationpostgres.NewStore(pool)
+	if err := notificationStore.InitializeBaseline(ctx); err != nil {
+		return fmt.Errorf("initialize notification baseline: %w", err)
 	}
 
 	userService := user.NewService(userpostgres.NewStore(pool))
@@ -129,41 +136,80 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	}
 	igdbSyncService := newIGDBSync(ctx, igdbCreds, gameStore, logger)
 	gameDiscovery := game.NewDiscoveryService(gameStore, gameStore, gameStore, igdbSyncService)
-
+	transports, err := notificationTransports(cfg, notificationStore, gameDiscovery, gameRequestQueries, userService)
+	if err != nil {
+		return err
+	}
+	notificationWorker := newNotificationWorker(notificationStore, transports, logger)
+	var discordSetup *notification.DiscordSetupService
+	var discordAuthorization *notification.DiscordWebhookOAuthClient
+	var discordConnector *notification.DiscordConnectService
+	var discordLifecycle *notification.DiscordLifecycleService
+	if cfg.DiscordDelivery != nil {
+		discordAuthorization = notification.NewDiscordWebhookOAuthClient(notification.DiscordWebhookOAuthConfig{
+			ClientID: cfg.DiscordDelivery.ClientID, ClientSecret: cfg.DiscordDelivery.ClientSecret,
+			RedirectURL: cfg.BaseURL + "/admin/discord/callback",
+		})
+		discordSetup = notification.NewDiscordSetupService(notificationStore)
+		discordConnector = notification.NewDiscordConnectService(notificationStore, discordAuthorization, cfg.DataEncryptionKey, logger)
+		discordLifecycle = notification.NewDiscordLifecycleService(notificationStore, discordAuthorization, cfg.DataEncryptionKey, logger)
+	}
+	var subscriptionService *notification.SubscriptionService
+	if cfg.WebPush != nil {
+		subscriptionService, err = newSubscriptionService(notificationStore, cfg.DataEncryptionKey)
+		if err != nil {
+			return fmt.Errorf("construct Web Push subscription service: %w", err)
+		}
+	}
+	var vapidPublicKey string
+	if cfg.WebPush != nil {
+		vapidPublicKey = cfg.WebPush.PublicKey
+	}
+	routerDependencies := web.RouterDependencies{
+		Ready:               postgres.ReadyCheck(pool),
+		Authentication:      oauthService,
+		Sessions:            sessionService,
+		PendingIdentities:   flowService,
+		AccountRegistration: accountRegistration,
+		GameNickClaims:      userService,
+		Identities:          identityStore,
+		IdentityUnlinker:    identityStore,
+		AvatarSelector:      identityStore,
+		ViewerAvatars:       identityStore,
+		Games:               gameService,
+		Discovery:           gameDiscovery,
+		DiscordStatus:       notificationStore,
+		GameResolver:        gameDiscovery,
+		GameRequests:        gameRequests,
+		RequestQueries:      gameRequestQueries,
+		NavigationQueries:   gameRequestQueries,
+		NavigationCatalog:   gameDiscovery,
+		Realtime:            realtime,
+		Covers:              covers,
+		Avatars:             avatars,
+		ProviderSync:        igdbSyncService,
+		VAPIDPublicKey:      vapidPublicKey,
+		WebPushConfigured:   cfg.WebPush != nil,
+		SecureCookies:       strings.HasPrefix(cfg.BaseURL, "https://"),
+		Logger:              logger,
+		TrustedProxies:      cfg.TrustedProxies,
+		InstanceName:        cfg.InstanceName,
+		Legal: webmiddleware.LegalIdentity{
+			EntityName: cfg.Legal.EntityName, Address: cfg.Legal.Address,
+			ContactEmail: cfg.Legal.ContactEmail, ImprintURL: cfg.Legal.ImprintURL,
+		},
+		BaseURL: cfg.BaseURL,
+	}
+	if cfg.DiscordDelivery != nil {
+		routerDependencies.DiscordSetup = discordSetup
+		routerDependencies.DiscordAuthorization = discordAuthorization
+		routerDependencies.DiscordConnector = discordConnector
+		routerDependencies.DiscordLifecycle = discordLifecycle
+	}
+	routerDependencies = withSubscriptionService(routerDependencies, subscriptionService)
 	server := &http.Server{
-		Addr: cfg.ListenAddr,
-		Handler: web.NewRouter(web.RouterDependencies{
-			Ready:               postgres.ReadyCheck(pool),
-			Authentication:      oauthService,
-			Sessions:            sessionService,
-			PendingIdentities:   flowService,
-			AccountRegistration: accountRegistration,
-			GameNickClaims:      userService,
-			Identities:          identityStore,
-			IdentityUnlinker:    identityStore,
-			Games:               gameService,
-			Discovery:           gameDiscovery,
-			GameResolver:        gameDiscovery,
-			GameRequests:        gameRequests,
-			RequestQueries:      gameRequestQueries,
-			NavigationQueries:   gameRequestQueries,
-			NavigationCatalog:   gameDiscovery,
-			Realtime:            realtime,
-			Covers:              covers,
-			Avatars:             avatars,
-			ViewerAvatars:       identityStore,
-			AvatarSelector:      identityStore,
-			ProviderSync:        igdbSyncService,
-			SecureCookies:       strings.HasPrefix(cfg.BaseURL, "https://"),
-			Logger:              logger,
-			TrustedProxies:      cfg.TrustedProxies,
-			InstanceName:        cfg.InstanceName,
-			Legal: webmiddleware.LegalIdentity{
-				EntityName: cfg.Legal.EntityName, Address: cfg.Legal.Address,
-				ContactEmail: cfg.Legal.ContactEmail, ImprintURL: cfg.Legal.ImprintURL,
-			},
-			BaseURL: cfg.BaseURL,
-		}),
+		Addr:              cfg.ListenAddr,
+		Handler:           web.NewRouter(routerDependencies),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		IdleTimeout:       60 * time.Second,
@@ -175,6 +221,7 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		logger.Info("HTTP server listening", "address", cfg.ListenAddr)
 		serverErrors <- server.ListenAndServe()
 	}()
+	go notificationWorker.Run(ctx)
 	go runDailyIGDBSync(ctx, igdbSyncService, igdbSyncInterval)
 	go runPeriodicFlowCleanup(ctx, flowStore, authFlowCleanupInterval, logger)
 	// Registered after pool.Close() above so it runs first on the way out:
@@ -184,6 +231,15 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		waitCtx, cancelWait := context.WithTimeout(context.Background(), shutdownTimeout)
 		defer cancelWait()
 		igdbSyncService.Wait(waitCtx)
+	}()
+	// Registered after the igdb wait above so it runs even earlier on the way
+	// out (defers are LIFO): the notification worker's in-flight database
+	// operations must finish (or be abandoned within the bound) before the
+	// pool they depend on is closed.
+	defer func() {
+		waitCtx, cancelWait := context.WithTimeout(context.Background(), shutdownTimeout)
+		defer cancelWait()
+		notificationWorker.Wait(waitCtx)
 	}()
 
 	select {
@@ -208,4 +264,11 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	}
 
 	return nil
+}
+func withSubscriptionService(dependencies web.RouterDependencies, service *notification.SubscriptionService) web.RouterDependencies {
+	if service != nil {
+		dependencies.Subscriptions = service
+		dependencies.PushDevices = service
+	}
+	return dependencies
 }

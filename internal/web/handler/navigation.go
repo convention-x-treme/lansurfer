@@ -37,9 +37,10 @@ type NavigationCatalog interface {
 // badge, so the same sidebar silently lost its numbers as soon as the viewer
 // navigated anywhere else.
 type Navigation struct {
-	queries NavigationQueries
-	catalog NavigationCatalog
-	avatars ViewerAvatars
+	queries                NavigationQueries
+	catalog                NavigationCatalog
+	avatars                ViewerAvatars
+	discordDeliveryEnabled bool
 }
 
 // ViewerAvatars resolves the viewer's selected avatar key ("" for Default).
@@ -47,8 +48,8 @@ type ViewerAvatars interface {
 	SelectedAvatarKey(context.Context, string) (string, error)
 }
 
-func NewNavigation(queries NavigationQueries, catalog NavigationCatalog, avatars ViewerAvatars) *Navigation {
-	return &Navigation{queries: queries, catalog: catalog, avatars: avatars}
+func NewNavigation(queries NavigationQueries, catalog NavigationCatalog, avatars ViewerAvatars, discordDeliveryEnabled bool) *Navigation {
+	return &Navigation{queries: queries, catalog: catalog, avatars: avatars, discordDeliveryEnabled: discordDeliveryEnabled}
 }
 
 // For assembles the sidebar for one request and marks section as current.
@@ -63,8 +64,9 @@ func (n *Navigation) For(r *http.Request, section string) components.NavigationS
 		return components.NavigationState{Section: section}
 	}
 	state := components.NavigationState{
-		Viewer:  &components.Viewer{ID: account.ID, GameNick: account.GameNick, Role: string(account.Role)},
-		Section: section,
+		Viewer:                 &components.Viewer{ID: account.ID, GameNick: account.GameNick, Role: string(account.Role)},
+		Section:                section,
+		DiscordDeliveryEnabled: n != nil && n.discordDeliveryEnabled,
 	}
 	if n == nil {
 		return state

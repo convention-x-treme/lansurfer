@@ -3,7 +3,10 @@ package middleware
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -88,4 +91,42 @@ func ExpiredSessionCookie(secure bool) *http.Cookie {
 		Secure:   secure,
 		SameSite: http.SameSiteLaxMode,
 	}
+}
+
+const DeviceCookieName = "lansurfer_device"
+
+const deviceCookieLifetime = 400 * 24 * time.Hour
+
+// DeviceCookie identifies one browser across authentication sessions so
+// server-side logout can remove exactly that browser's Push subscription.
+// deviceID is a random opaque token generated once when Push is first
+// enabled; only its hash (via internal/platform/crypto.Fingerprint) is ever
+// persisted with a subscription.
+func DeviceCookie(deviceID string, secure bool) *http.Cookie {
+	return &http.Cookie{
+		Name: DeviceCookieName, Value: deviceID, Path: "/", Expires: time.Now().Add(deviceCookieLifetime),
+		MaxAge: int(deviceCookieLifetime.Seconds()), HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode,
+	}
+}
+
+func ExpiredDeviceCookie(secure bool) *http.Cookie {
+	return &http.Cookie{
+		Name: DeviceCookieName, Path: "/", Expires: time.Unix(1, 0),
+		MaxAge: -1, HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode,
+	}
+}
+
+// CurrentOrNewDeviceID returns the existing device cookie's value, or
+// generates and returns a fresh 32-byte random one if none is present yet.
+// It never sets the cookie itself; the caller does that only once it has
+// successfully persisted a subscription keyed on the returned ID.
+func CurrentOrNewDeviceID(r *http.Request) (string, error) {
+	if cookie, err := r.Cookie(DeviceCookieName); err == nil && cookie.Value != "" {
+		return cookie.Value, nil
+	}
+	random := make([]byte, 32)
+	if _, err := rand.Read(random); err != nil {
+		return "", fmt.Errorf("generate device ID: %w", err)
+	}
+	return base64.RawURLEncoding.EncodeToString(random), nil
 }

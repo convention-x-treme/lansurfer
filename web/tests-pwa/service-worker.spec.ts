@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page, type Worker } from "@playwright/test";
 
 // Track D's service-worker contract is deliberately narrow: install/activate
 // only, registered once at root scope, swallowing its own failures. These
@@ -81,3 +81,204 @@ test("a bfcache restore on an authenticated page forces a fresh navigation", asy
   });
   await navigation;
 });
+
+for (const state of [
+  { name: "unsubscribe succeeds", failure: false, available: true, unsubscribed: true },
+  { name: "unsubscribe fails", failure: true, available: true, unsubscribed: true },
+  { name: "Push APIs are absent", failure: false, available: false, unsubscribed: false },
+]) {
+  test(`logout continues when ${state.name}`, async ({ page }) => {
+    let logoutPosts = 0;
+    await page.route("**/auth/logout", async (route) => {
+      logoutPosts++;
+      expect(route.request().method()).toBe("POST");
+      await route.fulfill({ status: 200, body: "logged out" });
+    });
+    await page.addInitScript((options) => {
+      const container = navigator.serviceWorker;
+      const register = container.register.bind(container);
+      Object.defineProperty(container, "register", {
+        configurable: true,
+        value: async (...args: Parameters<ServiceWorkerContainer["register"]>) => {
+          const registration = await register(...args);
+          return new Proxy(registration, {
+            get(target, property) {
+              if (property === "pushManager") {
+                if (!options.available) return undefined;
+                return {
+                  getSubscription: async () => ({
+                    unsubscribe: async () => {
+                      localStorage.setItem("logout-unsubscribed", "true");
+                      if (options.failure) throw new Error("unsubscribe failed");
+                      return true;
+                    },
+                  }),
+                };
+              }
+              if (property === "unregister") {
+                return async () => {
+                  localStorage.setItem("logout-unregistered", "true");
+                  return target.unregister();
+                };
+              }
+              const value = Reflect.get(target, property, target);
+              return typeof value === "function" ? value.bind(target) : value;
+            },
+          });
+        },
+      });
+    }, state);
+    await page.goto("/game-requests");
+    await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
+    await page.getByRole("button", { name: "Log out" }).click();
+    await expect(page.getByText("logged out")).toBeVisible();
+    expect(logoutPosts).toBe(1);
+    expect(await page.evaluate(() => localStorage.getItem("logout-unsubscribed"))).toBe(state.unsubscribed ? "true" : null);
+    expect(await page.evaluate(() => localStorage.getItem("logout-unregistered"))).toBeNull();
+    expect(await page.evaluate(async () => (await navigator.serviceWorker.getRegistration("/"))?.scope)).toBeTruthy();
+  });
+}
+
+
+const pushPayload = (origin: string) => ({
+  version: 1,
+  kind: "created",
+  game: "Demo",
+  starts_at: "2026-09-24T12:00:00Z",
+  url: `${origin}/game-requests/request-123`,
+  instance: "LANsurfer",
+  title: "New Demo Game Request",
+  body: "LANsurfer · Starts 2026-09-24T12:00:00Z",
+});
+
+async function openPushChannel(page: Page) {
+  const cdp = await page.context().newCDPSession(page);
+  const origin = new URL(page.url()).origin;
+  let registrationId = "";
+  cdp.on("ServiceWorker.workerRegistrationUpdated", ({ registrations }) => {
+    registrationId = registrations.find((registration) => registration.scopeURL === `${origin}/`)?.registrationId ?? "";
+  });
+  await cdp.send("ServiceWorker.enable");
+  await expect.poll(() => registrationId).not.toBe("");
+  return { cdp, origin, registrationId };
+}
+
+async function deliverPush(page: Page, data: string): Promise<void> {
+  const channel = await openPushChannel(page);
+  await channel.cdp.send("ServiceWorker.deliverPushMessage", {
+    origin: channel.origin,
+    registrationId: channel.registrationId,
+    data,
+  });
+  await channel.cdp.detach();
+}
+
+test("visible LANsurfer window suppresses OS push notification", async ({ page }) => {
+  await page.context().grantPermissions(["notifications"]);
+  await page.goto("/game-requests");
+  await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
+  await deliverPush(page, JSON.stringify(pushPayload(new URL(page.url()).origin)));
+  const notifications = await page.evaluate(async () => (await navigator.serviceWorker.getRegistration("/"))?.getNotifications());
+  expect(notifications).toHaveLength(0);
+});
+
+test("push without visible LANsurfer window shows one OS notification", async ({ page }) => {
+  await page.context().grantPermissions(["notifications"]);
+  await page.goto("/game-requests");
+  await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
+  const channel = await openPushChannel(page);
+  await page.goto("about:blank");
+  await channel.cdp.send("ServiceWorker.deliverPushMessage", {
+    origin: channel.origin,
+    registrationId: channel.registrationId,
+    data: JSON.stringify(pushPayload(channel.origin)),
+  });
+  await page.goto("/game-requests");
+  const notifications = await page.evaluate(async () => (await navigator.serviceWorker.getRegistration("/"))?.getNotifications().then((items) => items.map(({ title, body }) => ({ title, body }))));
+  expect(notifications).toHaveLength(1);
+  expect(notifications?.[0].title).toBe("New Demo Game Request");
+  expect(notifications?.[0].body).toBe("LANsurfer · Starts 2026-09-24T12:00:00Z");
+  await channel.cdp.detach();
+});
+
+test("malformed and unsupported pushes do not crash or notify", async ({ page }) => {
+  await page.context().grantPermissions(["notifications"]);
+  await page.goto("/game-requests");
+  await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
+  await deliverPush(page, "{");
+  await deliverPush(page, JSON.stringify({ ...pushPayload(new URL(page.url()).origin), version: 2 }));
+  const notifications = await page.evaluate(async () => (await navigator.serviceWorker.getRegistration("/"))?.getNotifications());
+  expect(notifications).toHaveLength(0);
+  expect(await page.evaluate(() => navigator.serviceWorker.controller !== null)).toBe(true);
+});
+
+async function getServiceWorker(page: Page): Promise<Worker> {
+  await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
+  const worker = page.context().serviceWorkers().find((candidate) => candidate.url().endsWith("/service-worker.js"));
+  if (!worker) throw new Error("Service worker is unavailable.");
+  return worker;
+}
+
+async function clickNotification(worker: Worker, targetURL: string, withClient: boolean) {
+  return worker.evaluate(async ({ targetURL, withClient }) => {
+    // Worker.evaluate executes this callback inside the real service worker.
+    const scope = globalThis as unknown as ServiceWorkerGlobalScope;
+    const outcome = { closed: false, focused: false, navigated: "", opened: "" };
+    const client = {
+      url: `${scope.location.origin}/game-requests/old-request`,
+      focus: async () => {
+        outcome.focused = true;
+        return client;
+      },
+      navigate: async (url: string) => {
+        outcome.navigated = url;
+        return client;
+      },
+    };
+    Object.defineProperty(scope.clients, "matchAll", {
+      configurable: true,
+      value: async () => withClient ? [client] : [],
+    });
+    Object.defineProperty(scope.clients, "openWindow", {
+      configurable: true,
+      value: async (url: string) => {
+        outcome.opened = url;
+        return null;
+      },
+    });
+    const waits: Promise<unknown>[] = [];
+    const event = new Event("notificationclick");
+    Object.defineProperties(event, {
+      notification: { value: { data: { url: targetURL }, close: () => { outcome.closed = true; } } },
+      waitUntil: { value: (promise: Promise<unknown>) => waits.push(promise) },
+    });
+    scope.dispatchEvent(event);
+    await Promise.all(waits);
+    return outcome;
+  }, { targetURL, withClient });
+}
+
+test("notification click focuses and navigates existing LANsurfer client", async ({ page }) => {
+  await page.goto("/game-requests");
+  const worker = await getServiceWorker(page);
+  const targetURL = new URL("/game-requests/request-123", page.url()).href;
+  const outcome = await clickNotification(worker, targetURL, true);
+  expect(outcome).toEqual({ closed: true, focused: true, navigated: targetURL, opened: "" });
+});
+
+test("notification click opens deep link when no LANsurfer client exists", async ({ page }) => {
+  await page.goto("/game-requests");
+  const worker = await getServiceWorker(page);
+  const targetURL = new URL("/game-requests/request-123", page.url()).href;
+  const outcome = await clickNotification(worker, targetURL, false);
+  expect(outcome).toEqual({ closed: true, focused: false, navigated: "", opened: targetURL });
+});
+
+for (const targetURL of ["https://outside.invalid/game-requests/request-123", "not a URL"]) {
+  test(`notification click rejects invalid target ${targetURL}`, async ({ page }) => {
+    await page.goto("/game-requests");
+    const worker = await getServiceWorker(page);
+    const outcome = await clickNotification(worker, targetURL, true);
+    expect(outcome).toEqual({ closed: true, focused: false, navigated: "", opened: "" });
+  });
+}

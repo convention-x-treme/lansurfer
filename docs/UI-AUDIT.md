@@ -3,7 +3,7 @@
 Audit date: 2026-09-16. Branch: `feat/adopt-design-kit`, at commit `5f18dfe`.
 Remediation: 2026-09-17, branch `feat/impeccable-recommendations`.
 
-This document records the presentation defects found in LANsurfer's dark theme and the remediation derived from them. It is a Track G working document, not a design authority: [`BRANDING.md`](BRANDING.md) and [`docs/ui-kit`](ui-kit/README.md) remain the joint design authority, and this audit only measures the implementation against them. **Every finding below was fixed and the remediation backlog is empty; finding 9 has since been partly reopened by the kit, as recorded under it.** The document is kept until a fresh audit replaces its score; it is retired once that audit is recorded.
+This document records the presentation defects found in LANsurfer's dark theme and the remediation derived from them. It is a historical presentation-audit working document, not a design authority: [`BRANDING.md`](BRANDING.md) and [`docs/ui-kit`](ui-kit/README.md) remain the joint design authority, and this audit only measures the implementation against them. **Every finding below was fixed and the remediation backlog is empty; finding 9 has since been partly reopened by the kit, as recorded under it.** The document is kept until a fresh audit replaces its score; it is retired once that audit is recorded.
 
 ## Method
 
