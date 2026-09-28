@@ -235,6 +235,7 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 				if dependencies.Subscriptions != nil {
 					notifications.Post("/subscribe", notificationSettingsHandler.Subscribe)
 					notifications.Post("/disable", notificationSettingsHandler.Disable)
+					notifications.Post("/resume", notificationSettingsHandler.Resume)
 					notifications.Post("/audience", notificationSettingsHandler.SetAudience)
 					notifications.Post("/reconcile", notificationSettingsHandler.ReconcileCurrentDevice)
 					notifications.Post("/devices/{subscriptionID}/remove", notificationSettingsHandler.RemoveDevice)

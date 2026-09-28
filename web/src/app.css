@@ -429,6 +429,118 @@
     padding: 1.125rem 1rem 1.5rem;
   }
 
+  /* Account is a settings column, not a stack of login cards: one identity
+     header, then hairline-separated sections whose intro sits beside the
+     controls on wide screens. */
+  .account-page {
+    display: grid;
+    max-width: 60rem;
+    gap: 1.5rem;
+  }
+
+  .account-identity {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding-block: 0.5rem;
+  }
+
+  .account-avatar {
+    width: 4.5rem;
+    height: 4.5rem;
+    font-size: 1.5rem;
+  }
+
+  .account-identity-nick {
+    overflow-wrap: anywhere;
+    font-size: 1.75rem;
+    font-weight: 900;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+  }
+
+  .account-section {
+    display: grid;
+    gap: 1rem;
+    border-top: 1px solid var(--border-raised);
+    padding-top: 1.5rem;
+    /* An auto column grows to its widest row; long labels must truncate. */
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* The top bar already draws a rule; a section directly under it (or under
+     a page notice) needs no second one. */
+  .account-page > .account-section:first-child,
+  .account-page > .alert + .account-section {
+    border-top: 0;
+    padding-top: 0;
+  }
+
+  .account-section-title {
+    font-size: 1.125rem;
+    font-weight: 800;
+  }
+
+  .account-section-intro > p {
+    margin-top: 0.25rem;
+    max-width: 40ch;
+    font-size: 0.875rem;
+    color: color-mix(in srgb, var(--color-base-content) 70%, transparent);
+  }
+
+  .account-choices {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.5rem;
+  }
+
+  .account-choice,
+  .account-identity-row {
+    display: flex;
+    min-height: 2.75rem;
+    align-items: center;
+    gap: 0.75rem;
+    border: 1px solid var(--border-raised);
+    border-radius: var(--radius-field);
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+  }
+
+  .account-identity-row {
+    justify-content: space-between;
+  }
+
+  .account-choice {
+    cursor: pointer;
+    transition: background-color 180ms ease-out, border-color 180ms ease-out;
+  }
+
+  .account-choice:hover:not(:has(:disabled)) {
+    background: color-mix(in srgb, var(--color-primary) 6%, transparent);
+  }
+
+  .account-choice:has(:checked) {
+    border-color: var(--color-primary);
+  }
+
+  .account-choice:has(:disabled) {
+    cursor: not-allowed;
+    color: color-mix(in srgb, var(--color-base-content) 60%, transparent);
+  }
+
+  /* DaisyUI fades a disabled radio almost to nothing, which reads as a
+     misaligned row rather than an unavailable choice. */
+  .account-choice .radio:disabled {
+    opacity: 0.45;
+  }
+
+  @media (min-width: 48rem) {
+    .account-section {
+      grid-template-columns: 16rem minmax(0, 1fr);
+      gap: 2rem;
+    }
+  }
+
   .detail-shell {
     display: grid;
     gap: 1.125rem;
@@ -1940,6 +2052,11 @@
 .alert-warning {
   --alert-tint: var(--color-warning);
   color: light-dark(var(--color-base-content), var(--color-warning-content));
+}
+
+.alert-success {
+  --alert-tint: var(--color-success);
+  color: light-dark(var(--color-base-content), var(--color-success-content));
 }
 
 .alert-success {

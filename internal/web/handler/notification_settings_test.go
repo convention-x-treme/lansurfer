@@ -97,7 +97,7 @@ func TestNotificationSettingsShowKeepsEnabledWithZeroDevices(t *testing.T) {
 	request := withCurrentUser(httptest.NewRequest(http.MethodGet, "/account/notifications", nil), user.User{ID: "user-1"})
 	response := httptest.NewRecorder()
 	handler.Show(response, request)
-	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "No devices are registered") || !strings.Contains(response.Body.String(), "Enable on this device") || !strings.Contains(response.Body.String(), "Push delivery is enabled") {
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "No devices are registered") || !strings.Contains(response.Body.String(), "Enable on this device") || !strings.Contains(response.Body.String(), `action="/account/notifications/disable"`) {
 		t.Fatalf("enabled with zero devices not shown: status %d", response.Code)
 	}
 	if strings.Contains(response.Body.String(), "enabled on at least one") {
@@ -460,6 +460,7 @@ type stubSubscriptionManager struct {
 	enableAuth     string
 
 	disableUserID string
+	resumeUserID  string
 
 	audienceUserID string
 	audienceValue  string
@@ -480,6 +481,11 @@ func (s *stubSubscriptionManager) Enable(_ context.Context, userID, deviceID, la
 
 func (s *stubSubscriptionManager) Disable(_ context.Context, userID string) error {
 	s.disableUserID = userID
+	return nil
+}
+
+func (s *stubSubscriptionManager) Resume(_ context.Context, userID string) error {
+	s.resumeUserID = userID
 	return nil
 }
 
