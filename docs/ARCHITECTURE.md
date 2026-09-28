@@ -634,7 +634,7 @@ Icons are the Phosphor webfonts (Regular default, Fill for emphasized state), co
 
 TypeScript handles only browser-specific progressive enhancement such as SSE connection handling, toast/dialog helpers, installability/service-worker registration, and Web Push permission/subscription behavior. Do not implement domain decisions in TypeScript.
 
-When Tracks D and E both need browser changes, PWA/instance identity capability owns the service-worker shell/lifecycle and notification capability owns push-specific behavior.
+When PWA/instance identity and notifications both need browser changes, the PWA/instance identity capability owns the service-worker shell/lifecycle and the notification capability owns push-specific behavior.
 
 ---
 
