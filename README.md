@@ -177,6 +177,10 @@ typography, or other fixed branding. LANsurfer also serves `/manifest.webmanifes
 whether the deployment is a secure context (required for installation and Web Push), at
 `/admin/pwa`.
 
+Brave disables its push service by default. Brave users must turn on "Use Google services for push
+messaging" in `brave://settings/privacy` and restart Brave before they can enable Web Push; the
+notification settings page tells them so when subscribing fails.
+
 ### Configure legal identity
 
 ```sh

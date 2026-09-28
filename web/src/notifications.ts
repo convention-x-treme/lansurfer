@@ -112,8 +112,14 @@ export function initNotificationSettings(): void {
       form.querySelector<HTMLInputElement>("[data-subscribe-p256dh]")!.value = encodeKey(subscription.getKey("p256dh"));
       form.querySelector<HTMLInputElement>("[data-subscribe-auth]")!.value = encodeKey(subscription.getKey("auth"));
       form.requestSubmit();
-    } catch {
-      showStatus("error", "Could not enable notifications on this device. Try again.");
+    } catch (error) {
+      // Brave ships with its push service switched off: permission is granted,
+      // but subscribe() rejects with AbortError until the user opts in.
+      if ("brave" in navigator && error instanceof DOMException && error.name === "AbortError") {
+        showStatus("error", "Brave blocks push messaging by default. Turn on “Use Google services for push messaging” in brave://settings/privacy, restart Brave, then try again.");
+      } else {
+        showStatus("error", "Could not enable notifications on this device. Try again.");
+      }
     } finally {
       if (status.dataset.pushState !== "blocked") button.disabled = false;
     }
