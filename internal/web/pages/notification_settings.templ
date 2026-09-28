@@ -16,6 +16,8 @@ type NotificationSettingsView struct {
 	Preference       notification.PushPreference
 	Devices          []notification.PushSubscriptionRecord
 	CurrentDeviceID  int64
+	// ThisBrowser names the requesting browser, e.g. "Firefox on Linux".
+	ThisBrowser      string
 	Notice           string
 	FormError        string
 }
@@ -23,9 +25,12 @@ type NotificationSettingsView struct {
 templ NotificationSettings(brand branding.Brand, navigation components.NavigationState, view NotificationSettingsView) {
 	@components.Layout(brand, "Notifications", navigation) {
 		<header class="app-topbar">
-			<h1 class="app-title">Notifications</h1>
+			<div class="min-w-0">
+				<a class="link count-open icon-label text-sm font-semibold no-underline" href="/account"><i class="ph ph-arrow-left" aria-hidden="true"></i>Account</a>
+				<h1 class="app-title mt-1">Notifications</h1>
+			</div>
 		</header>
-		<div class="content-page grid gap-6">
+		<div class="content-page account-page">
 			if view.Notice != "" {
 				<div role="status" class="alert alert-info"><span>{ view.Notice }</span></div>
 			}
@@ -39,79 +44,103 @@ templ NotificationSettings(brand branding.Brand, navigation components.Navigatio
 					<span>Web Push is not configured on this instance.</span>
 				</div>
 			} else {
-				<section class="auth-panel" data-vapid-public-key={ view.VAPIDPublicKey } data-current-device-id={ strconv.FormatInt(view.CurrentDeviceID, 10) } data-device-count={ strconv.Itoa(len(view.Devices)) } data-push-enabled={ strconv.FormatBool(view.Preference.WebPushEnabled) }>
-					<h2 class="text-xl font-bold">Push notifications</h2>
-					if view.Preference.WebPushEnabled {
-						<p class="mt-1 text-sm text-base-content/70">Push delivery is enabled for registered devices.</p>
-						<form method="post" action="/account/notifications/disable" class="mt-4">
-							@components.CSRFInput()
-							<button class="btn btn-ghost btn-sm w-fit" type="submit">Disable</button>
-						</form>
-					} else {
-						<p class="mt-1 text-sm text-base-content/70">Turn on push notifications to hear about Game Request activity on this device.</p>
-					}
-					<form method="post" action="/account/notifications/subscribe" class="mt-4 grid max-w-sm gap-3" data-subscribe-form>
+				<section class="account-section" aria-labelledby="notifications-push">
+					<div class="account-section-intro">
+						<h2 id="notifications-push" class="account-section-title">Push notifications</h2>
+						<p>Pause or resume notifications for all your devices at once.</p>
+					</div>
+					<div class="grid max-w-lg gap-3">
+						<ul class="account-choices">
+							<li class="account-identity-row">
+								<div class="min-w-0">
+									<p class="icon-label font-semibold"><i class={ "ph", templ.KV("ph-bell-ringing text-primary", view.Preference.WebPushEnabled), templ.KV("ph-bell-slash", !view.Preference.WebPushEnabled) } aria-hidden="true"></i>Send to my devices</p>
+									<p class="text-xs text-base-content/70">
+										if view.Preference.WebPushEnabled {
+											On
+										} else {
+											Off
+										}
+									</p>
+								</div>
+								if view.Preference.WebPushEnabled {
+									<form method="post" action="/account/notifications/disable">
+										@components.CSRFInput()
+										<button class="btn btn-step-back btn-sm" type="submit" aria-label="Disable sending push notifications to my devices"><i class="ph ph-bell-slash" aria-hidden="true"></i>Disable</button>
+									</form>
+								} else if len(view.Devices) > 0 {
+									<form method="post" action="/account/notifications/resume">
+										@components.CSRFInput()
+										<button class="btn btn-quiet btn-sm" type="submit" aria-label="Enable sending push notifications to my devices"><i class="ph ph-bell" aria-hidden="true"></i>Enable</button>
+									</form>
+								}
+							</li>
+						</ul>
+					</div>
+				</section>
+				<section class="account-section" aria-labelledby="notifications-audience">
+					<div class="account-section-intro">
+						<h2 id="notifications-audience" class="account-section-title">Notify me about</h2>
+						<p>New Game Requests. Joins, leaves, and cancellations on requests you are in always notify you.</p>
+					</div>
+					<form method="post" action="/account/notifications/audience" class="grid max-w-sm gap-3">
 						@components.CSRFInput()
-						<input type="hidden" name="endpoint" data-subscribe-endpoint/>
-						<input type="hidden" name="p256dh" data-subscribe-p256dh/>
-						<input type="hidden" name="auth" data-subscribe-auth/>
-						<button class="btn btn-primary btn-sm w-fit" type="button" data-subscribe-button>Enable on this device</button>
-						<p role="status" class="text-sm" data-push-status hidden></p>
+						<fieldset class="account-choices">
+							<legend class="sr-only">New Game Request audience</legend>
+							<label class="account-choice">
+								<input type="radio" name="audience" value="followed" class="radio radio-sm" checked?={ view.Preference.NewRequestAudience != notification.AudienceAll }/>
+								<span class="icon-label"><i class="ph ph-star" aria-hidden="true"></i>Game Requests for games I follow</span>
+							</label>
+							<label class="account-choice">
+								<input type="radio" name="audience" value="all" class="radio radio-sm" checked?={ view.Preference.NewRequestAudience == notification.AudienceAll }/>
+								<span class="icon-label"><i class="ph ph-globe-simple" aria-hidden="true"></i>All Game Requests</span>
+							</label>
+						</fieldset>
+						<button class="btn btn-quiet btn-sm w-fit" type="submit"><i class="ph ph-check" aria-hidden="true"></i>Save</button>
 					</form>
 				</section>
-				<section class="auth-panel">
-					<h2 class="text-xl font-bold">Notify me about</h2>
-					<form method="post" action="/account/notifications/audience" class="mt-4 grid gap-2">
-						@components.CSRFInput()
-						<label class="flex items-center gap-2">
-							<input
-								type="radio"
-								name="audience"
-								value="followed"
-								class="radio radio-sm"
-								checked?={ view.Preference.NewRequestAudience != notification.AudienceAll }
-							/>
-							<span>Game Requests for games I follow</span>
-						</label>
-						<label class="flex items-center gap-2">
-							<input
-								type="radio"
-								name="audience"
-								value="all"
-								class="radio radio-sm"
-								checked?={ view.Preference.NewRequestAudience == notification.AudienceAll }
-							/>
-							<span>All Game Requests</span>
-						</label>
-						<button class="btn btn-quiet btn-sm w-fit" type="submit">Save</button>
-					</form>
-				</section>
-				<section class="auth-panel">
-					<h2 class="text-xl font-bold">Devices</h2>
-					if len(view.Devices) == 0 {
-						<p class="mt-1 text-sm text-base-content/70">No devices are registered for push notifications.</p>
-						if view.Preference.WebPushEnabled {
-							<p class="text-sm text-base-content/70">Push delivery is enabled, but no devices are registered.</p>
+				<section class="account-section" aria-labelledby="notifications-devices" data-vapid-public-key={ view.VAPIDPublicKey } data-current-device-id={ strconv.FormatInt(view.CurrentDeviceID, 10) } data-device-count={ strconv.Itoa(len(view.Devices)) } data-push-enabled={ strconv.FormatBool(view.Preference.WebPushEnabled) }>
+					<div class="account-section-intro">
+						<h2 id="notifications-devices" class="account-section-title">Devices</h2>
+						if len(view.Devices) == 0 {
+							<p>No devices are registered for push notifications.</p>
+						} else {
+							<p>Browsers that receive your notifications.</p>
 						}
-					} else {
-						if len(view.Devices) > 1 || view.CurrentDeviceID == 0 {
-							<p class="mt-1 text-sm text-base-content/70">Other devices are registered.</p>
-						}
-						<ul class="mt-4 grid gap-3">
+					</div>
+					<div class="grid max-w-lg gap-3">
+						<ul class="account-choices">
+							// This browser comes first while unregistered. The subscribe form stays
+							// rendered once registered: its script also reconciles browser state.
+							<li class="account-identity-row" hidden?={ view.CurrentDeviceID != 0 }>
+								<div class="min-w-0">
+									<p class="flex min-w-0 items-center gap-1.5 font-semibold"><i class="ph ph-device-mobile shrink-0" aria-hidden="true"></i><span class="truncate">{ view.ThisBrowser }</span></p>
+									<p class="text-xs text-base-content/70">This device · not registered</p>
+								</div>
+								<form method="post" action="/account/notifications/subscribe" data-subscribe-form>
+									@components.CSRFInput()
+									<input type="hidden" name="endpoint" data-subscribe-endpoint/>
+									<input type="hidden" name="p256dh" data-subscribe-p256dh/>
+									<input type="hidden" name="auth" data-subscribe-auth/>
+									<button class="btn btn-primary btn-sm" type="button" data-subscribe-button aria-label="Enable on this device"><i class="ph ph-bell" aria-hidden="true"></i>Enable</button>
+								</form>
+							</li>
 							for _, device := range view.Devices {
-								<li class="flex items-center justify-between gap-3 rounded-field border border-base-300 p-3" data-current-device={ strconv.FormatBool(device.ID == view.CurrentDeviceID) }>
-									<p class="font-semibold" data-current-subscription-id={ strconv.FormatInt(device.ID, 10) }>{ deviceLabel(device) }</p>
-									if device.ID == view.CurrentDeviceID {
-										<span class="text-sm text-base-content/70">Current browser</span>
-									}
+								<li class="account-identity-row" data-current-device={ strconv.FormatBool(device.ID == view.CurrentDeviceID) }>
+									<div class="min-w-0">
+										<p class="flex min-w-0 items-center gap-1.5 font-semibold" data-current-subscription-id={ strconv.FormatInt(device.ID, 10) }><i class={ "ph shrink-0", templ.KV("ph-device-mobile text-primary", device.ID == view.CurrentDeviceID), templ.KV("ph-browser", device.ID != view.CurrentDeviceID) } aria-hidden="true"></i><span class="truncate">{ deviceName(view, device) }</span></p>
+										if device.ID == view.CurrentDeviceID {
+											<p class="text-xs text-base-content/70">This device</p>
+										}
+									</div>
 									<form method="post" action={ templ.SafeURL(deviceRemovePath(device)) } data-current-device-remove={ strconv.FormatBool(device.ID == view.CurrentDeviceID) }>
 										@components.CSRFInput()
-										<button class="btn btn-ghost btn-sm" type="submit">Remove</button>
+										<button class="btn btn-step-back btn-sm" type="submit"><i class="ph ph-trash" aria-hidden="true"></i>Remove</button>
 									</form>
 								</li>
 							}
 						</ul>
-					}
+						<p role="status" class="text-sm" data-push-status hidden></p>
+					</div>
 				</section>
 			}
 		</div>
@@ -127,4 +156,13 @@ func deviceLabel(device notification.PushSubscriptionRecord) string {
 
 func deviceRemovePath(device notification.PushSubscriptionRecord) string {
 	return "/account/notifications/devices/" + strconv.FormatInt(device.ID, 10) + "/remove"
+}
+
+// deviceName shows the live browser name for this browser's own row, so rows
+// saved under the old "This device" default still read correctly.
+func deviceName(view NotificationSettingsView, device notification.PushSubscriptionRecord) string {
+	if device.ID == view.CurrentDeviceID && view.ThisBrowser != "" {
+		return view.ThisBrowser
+	}
+	return deviceLabel(device)
 }

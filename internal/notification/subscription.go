@@ -89,11 +89,21 @@ func (s *SubscriptionService) Enable(ctx context.Context, userID, deviceID, labe
 // Disable pauses Push delivery without deleting any device subscription, so
 // re-enabling can reuse them.
 func (s *SubscriptionService) Disable(ctx context.Context, userID string) error {
+	return s.setEnabled(ctx, userID, false)
+}
+
+// Resume turns Push delivery back on for the devices already registered,
+// without registering a new one.
+func (s *SubscriptionService) Resume(ctx context.Context, userID string) error {
+	return s.setEnabled(ctx, userID, true)
+}
+
+func (s *SubscriptionService) setEnabled(ctx context.Context, userID string, enabled bool) error {
 	current, err := s.preferences.GetPreference(ctx, userID)
 	if err != nil {
 		return fmt.Errorf("get push preference: %w", err)
 	}
-	current.WebPushEnabled = false
+	current.WebPushEnabled = enabled
 	return s.preferences.SetPreference(ctx, userID, current)
 }
 

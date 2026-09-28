@@ -29,8 +29,8 @@ export function initNotificationSettings(): void {
   });
   const form = document.querySelector<HTMLFormElement>("[data-subscribe-form]");
   const button = form?.querySelector<HTMLButtonElement>("[data-subscribe-button]");
-  const status = form?.querySelector<HTMLElement>("[data-push-status]");
   const panel = form?.closest<HTMLElement>("[data-vapid-public-key]");
+  const status = panel?.querySelector<HTMLElement>("[data-push-status]");
   const publicKey = panel?.dataset.vapidPublicKey;
   if (!form || !button || !status || !publicKey) return;
   document.querySelectorAll<HTMLFormElement>('[data-current-device-remove="true"]').forEach((removeForm) => {
@@ -47,7 +47,8 @@ export function initNotificationSettings(): void {
     status.className = error ? "alert alert-error text-sm" : "text-sm";
     status.setAttribute("role", error ? "alert" : "status");
     status.dataset.pushState = state;
-    status.hidden = false;
+    // An empty message records the state without repeating the delivery badge.
+    status.hidden = message === "";
     if (state === "blocked") button.disabled = true;
     status.textContent = message;
   };
@@ -80,8 +81,8 @@ export function initNotificationSettings(): void {
         return;
       }
       if (permission === "denied") showStatus("blocked", blockedMessage);
-      else if (panel?.dataset.pushEnabled === "false") showStatus("disabled", "Push delivery is disabled for your account.");
-      else if (panel?.dataset.deviceCount === "0") showStatus("no-devices", "Push delivery is enabled, but no devices are registered.");
+      else if (panel?.dataset.pushEnabled === "false") showStatus("disabled", "");
+      else if (panel?.dataset.deviceCount === "0") showStatus("no-devices", "");
       else if (panel?.dataset.currentDeviceId !== "0") showStatus("current-device", "This browser is registered for push notifications.");
       else showStatus("other-devices", "Other devices are registered for push notifications.");
     } catch {

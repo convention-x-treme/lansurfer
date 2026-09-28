@@ -34,6 +34,7 @@ const (
 type SubscriptionManager interface {
 	Enable(ctx context.Context, userID, deviceID, label, endpoint, p256dh, auth string) error
 	Disable(ctx context.Context, userID string) error
+	Resume(ctx context.Context, userID string) error
 	SetAudience(ctx context.Context, userID, audience string) error
 	RemoveDevice(ctx context.Context, userID string, subscriptionID int64) error
 	ListDevices(ctx context.Context, userID string) ([]notification.PushSubscriptionRecord, error)
@@ -139,6 +140,20 @@ func (h *NotificationSettingsHandler) Disable(w http.ResponseWriter, r *http.Req
 	h.redirect(w, r, "/account/notifications?notice=push-disabled")
 }
 
+func (h *NotificationSettingsHandler) Resume(w http.ResponseWriter, r *http.Request) {
+	account, ok := webmiddleware.CurrentUser(r.Context())
+	if !ok {
+		http.Error(w, "authentication required", http.StatusUnauthorized)
+		return
+	}
+	if err := h.subscriptions.Resume(r.Context(), account.ID); err != nil {
+		webmiddleware.LogError(r, "resume Web Push", err)
+		http.Error(w, "resume Web Push", http.StatusInternalServerError)
+		return
+	}
+	h.redirect(w, r, "/account/notifications?notice=push-resumed")
+}
+
 func (h *NotificationSettingsHandler) SetAudience(w http.ResponseWriter, r *http.Request) {
 	account, ok := webmiddleware.CurrentUser(r.Context())
 	if !ok {
@@ -237,6 +252,7 @@ func (h *NotificationSettingsHandler) render(w http.ResponseWriter, r *http.Requ
 		Preference:       preference,
 		Devices:          devices,
 		CurrentDeviceID:  currentDeviceID,
+		ThisBrowser:      deviceLabelFromUserAgent(r.UserAgent()),
 		Notice:           notificationSettingsNotice(r),
 		FormError:        formError,
 	}))
@@ -256,7 +272,9 @@ func notificationSettingsNotice(r *http.Request) string {
 	case "push-enabled":
 		return "Push notifications enabled on this device."
 	case "push-disabled":
-		return "Push notifications disabled. Your devices remain registered."
+		return "Push notifications paused. Your devices remain registered."
+	case "push-resumed":
+		return "Push notifications resumed on your registered devices."
 	case "audience-updated":
 		return "Notification audience updated."
 	case "device-removed":

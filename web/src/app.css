@@ -464,6 +464,16 @@
     gap: 1rem;
     border-top: 1px solid var(--border-raised);
     padding-top: 1.5rem;
+    /* An auto column grows to its widest row; long labels must truncate. */
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* The top bar already draws a rule; a section directly under it (or under
+     a page notice) needs no second one. */
+  .account-page > .account-section:first-child,
+  .account-page > .alert + .account-section {
+    border-top: 0;
+    padding-top: 0;
   }
 
   .account-section-title {
@@ -480,6 +490,7 @@
 
   .account-choices {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     gap: 0.5rem;
   }
 
@@ -2041,6 +2052,11 @@
 .alert-warning {
   --alert-tint: var(--color-warning);
   color: light-dark(var(--color-base-content), var(--color-warning-content));
+}
+
+.alert-success {
+  --alert-tint: var(--color-success);
+  color: light-dark(var(--color-base-content), var(--color-success-content));
 }
 
 .alert-success {
