@@ -95,8 +95,8 @@ templ RequestFilters(filter requestquery.Filter) {
 			for _, option := range scopeOptions() {
 				<label class="filter-toggle"><input class="radio radio-sm" type="radio" name="scope" value={ string(option.scope) } checked?={ filter.Scope == option.scope }/><span>{ option.label }</span></label>
 			}
+			<label class="filter-toggle"><input class="checkbox checkbox-sm" type="checkbox" name="open_places" value="1" checked?={ filter.OpenPlacesOnly }/><span>Free places</span></label>
 		</fieldset>
-		<label class="filter-toggle"><input class="checkbox checkbox-sm" type="checkbox" name="open_places" value="1" checked?={ filter.OpenPlacesOnly }/><span>Free places</span></label>
 		<noscript><button class="btn btn-quiet btn-sm" type="submit">Filter</button></noscript>
 	</form>
 }
@@ -172,20 +172,20 @@ templ GameRequestListContent(brand branding.Brand, requests []requestquery.Reque
 		</div>
 		<div class="request-list-content">
 			if len(requests) == 0 && filter.Active() {
-				<section class="request-empty" aria-labelledby="empty-request-title">
-					<img src={ brand.Assets.Mascot } alt=""/>
+				<section class="request-empty request-empty-portrait" aria-labelledby="empty-request-title">
+					<img src={ brand.Assets.MascotSad } alt="" width="287" height="352"/>
 					<div>
 						<h2 id="empty-request-title" class="text-2xl font-bold">No Game Request matches that.</h2>
-						<p class="mt-2 max-w-xl text-base-content/70">Try a different name or alias, or clear the filters to see everything open.</p>
+						<p class="mt-2 max-w-xl text-pretty text-base-content/70">Try a different name or alias, or clear the filters to see everything open.</p>
 						<a class="btn btn-quiet btn-sm mt-5" href="/game-requests">Clear filters</a>
 					</div>
 				</section>
 			} else if len(requests) == 0 {
-				<section class="request-empty" aria-labelledby="empty-request-title">
-					<img src={ brand.Assets.Mascot } alt=""/>
+				<section class="request-empty request-empty-portrait" aria-labelledby="empty-request-title">
+					<img src={ brand.Assets.MascotSad } alt="" width="287" height="352"/>
 					<div>
 						<h2 id="empty-request-title" class="text-2xl font-bold">Quiet out there. Start something?</h2>
-						<p class="mt-2 max-w-xl text-base-content/70">No open requests right now. Post one so other players can join.</p>
+						<p class="mt-2 max-w-xl text-pretty text-base-content/70">No open requests right now. Post one so other players can join.</p>
 						<a class="btn btn-primary btn-sm mt-5" href="/game-requests/new"><i class="ph ph-plus" aria-hidden="true"></i>Create Game Request</a>
 					</div>
 				</section>
@@ -490,7 +490,7 @@ templ GameRequestDiscoverySearchForm(search string, form GameRequestForm) {
 // composer, exactly like Games' "Find Players" action.
 templ GameRequestDiscovery(page game.DiscoveryPage, search string, viewer *components.Viewer, form GameRequestForm) {
 	<div id="game-request-discovery" aria-live="polite">
-		@GameDiscoveryState(page, search, viewer, GameRequestDiscoveryCards(page.Items, form), gameRequestPickEmpty(search))
+		@GameDiscoveryState(page, search, viewer, "", GameRequestDiscoveryCards(page.Items, form), gameRequestPickEmpty(search))
 	</div>
 }
 
@@ -732,7 +732,6 @@ templ GameRequestError(brand branding.Brand, navigation components.NavigationSta
 		<section class="content-page"><div role="alert" class="alert alert-error"><div><p class="font-bold">Game Requests could not be loaded</p><p>Try the request again.</p></div><a class="btn btn-quiet btn-sm" href="/game-requests">Retry</a></div></section>
 	}
 }
-
 
 templ GameRequestActionError(message string) {
 	<div role="alert" class="alert alert-error" data-live-toast><span>{ message }</span><button type="button" class="btn btn-ghost btn-sm" data-dismiss-live-toast aria-label="Dismiss error">Dismiss</button></div>

@@ -1050,9 +1050,33 @@
      its reason for existing sit on the closed summary. */
   .catalog-composer-summary {
     display: grid;
-    gap: 0.25rem;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.25rem 1rem;
     cursor: pointer;
     list-style: none;
+  }
+
+  .catalog-composer-summary > span {
+    grid-column: 1;
+  }
+
+  /* Top-right caret marks the card as a toggle; points up when open. */
+  .catalog-composer-caret {
+    grid-column: 2;
+    grid-row: 1;
+    font-size: 1.25rem;
+    color: var(--ink-quiet);
+    transition: transform 150ms ease;
+  }
+
+  details[open] > .catalog-composer-summary .catalog-composer-caret {
+    transform: rotate(180deg);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .catalog-composer-caret {
+      transition: none;
+    }
   }
 
   .catalog-composer-summary::-webkit-details-marker {
@@ -1213,8 +1237,10 @@
     max-width: 22rem;
   }
 
-  /* The scope chips are one exclusive choice, so they are a fieldset for the
-     grouping semantics and laid out as a plain row of chips. */
+  /* One fieldset for every list filter: the exclusive scope chips and the
+     Free places checkbox that narrows any of them. Keeping them in one
+     wrapping row lets a phone fill each line instead of stranding the
+     checkbox on a line of its own. */
   .filter-scope {
     display: inline-flex;
     flex-wrap: wrap;
@@ -1226,12 +1252,13 @@
   }
 
   /* A filter toggle is a control, so it carries the same minimum target size
-     as the buttons beside it and shows focus on the whole label. */
+     as the buttons beside it (44px on coarse pointers, below) and shows focus
+     on the whole label. */
   .filter-toggle {
     display: inline-flex;
     align-items: center;
     gap: 0.4375rem;
-    min-height: 2.75rem;
+    min-height: 2rem;
     border-radius: var(--radius-field);
     padding-inline: 0.5rem;
     font-size: 0.8125rem;
@@ -1607,6 +1634,15 @@
     object-fit: contain;
   }
 
+  /* The Game Request list's empty otter is a full-body portrait, so it gets a portrait slot
+     inside the panel padding rather than the square mascot slot. The artwork
+     gestures to its own right; mirroring it points the open paw at the copy. */
+  .request-empty-portrait img {
+    width: auto;
+    height: 9rem;
+    transform: scaleX(-1);
+  }
+
   .composer-panel {
     width: min(100%, 43rem);
     margin-inline: auto;
@@ -1733,10 +1769,6 @@
     color: var(--brand-white-sand);
   }
 
-  .auth-header .btn {
-    color: inherit;
-  }
-
   /* The stage stays dark in both themes, so its focus ring stays Golden Hour. */
   .auth-header,
   .auth-stage {
@@ -1843,6 +1875,12 @@
 .btn-provider-discord {
   --btn-color: #5865f2;
   --btn-fg: #fff;
+}
+
+/* The auth header sits on the always-dark stage in both themes. Unlayered so
+   it beats DaisyUI's .btn-ghost ink, which is Deep Ocean in the light theme. */
+.auth-header .btn {
+  color: inherit;
 }
 
 .btn-provider-twitch {
@@ -2029,8 +2067,20 @@ textarea::placeholder {
     width: 4.5rem;
   }
 
+  /* The Game is what a player scans for, and at phone width a one-line title
+     cuts it off after the Game Nick. Two lines carry both names; anything
+     longer still ends in an ellipsis rather than growing the row. */
   .request-row-title {
+    align-items: flex-start;
     font-size: 1rem;
+  }
+
+  .request-row-title-text {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    white-space: normal;
   }
 
   /* The screen title drops to the top bar's size rather than setting three
@@ -2050,6 +2100,55 @@ textarea::placeholder {
   .request-empty img {
     width: 5rem;
     height: 5rem;
+  }
+
+  /* Phones: copy spans the panel; the action shares the last row with the
+     otter, whose unmirrored paw now points back at the button. */
+  .request-empty-portrait {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: 0 1rem;
+  }
+
+  .request-empty-portrait > div {
+    display: contents;
+  }
+
+  .request-empty-portrait h2,
+  .request-empty-portrait p {
+    grid-column: 1 / -1;
+  }
+
+  .request-empty-portrait a {
+    grid-row: 3;
+    grid-column: 1;
+    align-self: center;
+    justify-self: start;
+    margin-block-start: 0;
+    white-space: nowrap;
+  }
+
+  .request-empty-portrait img {
+    grid-row: 3;
+    grid-column: 2;
+    justify-self: end;
+    width: auto;
+    height: 7rem;
+    margin-block-start: 0.75rem;
+    transform: none;
+  }
+
+  /* Too narrow for the button and the otter side by side: the otter takes
+     its own row under the action instead of shrinking to a thumbnail. */
+  @media (max-width: 23.99rem) {
+    .request-empty-portrait img {
+      grid-row: 4;
+      grid-column: 1 / -1;
+    }
+
+    .request-empty-portrait a {
+      margin-block-start: 1.25rem;
+    }
   }
 
   .member-row,
@@ -2103,8 +2202,15 @@ textarea::placeholder {
   .alias-chip,
   .input,
   .select,
-  .start-choice span {
+  .start-choice span,
+  .filter-toggle {
     min-height: 2.75rem;
+  }
+
+  /* Below 16px, iOS zooms the page into a focused field and leaves it
+     zoomed after the search is typed. */
+  .request-search {
+    font-size: 1rem;
   }
 
   .btn-sm.btn-square {

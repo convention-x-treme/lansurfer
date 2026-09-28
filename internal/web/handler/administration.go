@@ -94,7 +94,7 @@ func (h *Administration) Games(w http.ResponseWriter, r *http.Request) {
 func (h *Administration) renderGames(w http.ResponseWriter, r *http.Request, status int, items []game.Game, search, formError, message string) {
 	localOnly := r.URL.Query().Get("local") == "1"
 	if r.Header.Get("HX-Request") == "true" {
-		render(w, r, status, pages.AdminCatalogResults(items, search, localOnly))
+		render(w, r, status, pages.AdminCatalogResults(h.brand, items, search, localOnly))
 		return
 	}
 	render(w, r, status, pages.AdminGames(h.brand, h.navigationFor(r, "administration"), items, search, localOnly, formError, message))

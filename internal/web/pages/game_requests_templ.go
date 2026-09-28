@@ -229,12 +229,12 @@ func RequestFilters(filter requestquery.Filter) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "</span></label>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "</span></label> ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "</fieldset><label class=\"filter-toggle\"><input class=\"checkbox checkbox-sm\" type=\"checkbox\" name=\"open_places\" value=\"1\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "<label class=\"filter-toggle\"><input class=\"checkbox checkbox-sm\" type=\"checkbox\" name=\"open_places\" value=\"1\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -244,7 +244,7 @@ func RequestFilters(filter requestquery.Filter) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "><span>Free places</span></label><noscript><button class=\"btn btn-quiet btn-sm\" type=\"submit\">Filter</button></noscript></form>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "><span>Free places</span></label></fieldset><noscript><button class=\"btn btn-quiet btn-sm\" type=\"submit\">Filter</button></noscript></form>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -654,38 +654,38 @@ func GameRequestListContent(brand branding.Brand, requests []requestquery.Reques
 			return templ_7745c5c3_Err
 		}
 		if len(requests) == 0 && filter.Active() {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 49, "<section class=\"request-empty\" aria-labelledby=\"empty-request-title\"><img src=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 49, "<section class=\"request-empty request-empty-portrait\" aria-labelledby=\"empty-request-title\"><img src=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var25 string
-			templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.ResolveAttributeValue(brand.Assets.Mascot)
+			templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.ResolveAttributeValue(brand.Assets.MascotSad)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/game_requests.templ`, Line: 176, Col: 35}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/game_requests.templ`, Line: 176, Col: 38}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var25)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, "\" alt=\"\"><div><h2 id=\"empty-request-title\" class=\"text-2xl font-bold\">No Game Request matches that.</h2><p class=\"mt-2 max-w-xl text-base-content/70\">Try a different name or alias, or clear the filters to see everything open.</p><a class=\"btn btn-quiet btn-sm mt-5\" href=\"/game-requests\">Clear filters</a></div></section>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, "\" alt=\"\" width=\"287\" height=\"352\"><div><h2 id=\"empty-request-title\" class=\"text-2xl font-bold\">No Game Request matches that.</h2><p class=\"mt-2 max-w-xl text-pretty text-base-content/70\">Try a different name or alias, or clear the filters to see everything open.</p><a class=\"btn btn-quiet btn-sm mt-5\" href=\"/game-requests\">Clear filters</a></div></section>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else if len(requests) == 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 51, "<section class=\"request-empty\" aria-labelledby=\"empty-request-title\"><img src=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 51, "<section class=\"request-empty request-empty-portrait\" aria-labelledby=\"empty-request-title\"><img src=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var26 string
-			templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.ResolveAttributeValue(brand.Assets.Mascot)
+			templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.ResolveAttributeValue(brand.Assets.MascotSad)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/game_requests.templ`, Line: 185, Col: 35}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/game_requests.templ`, Line: 185, Col: 38}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var26)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, "\" alt=\"\"><div><h2 id=\"empty-request-title\" class=\"text-2xl font-bold\">Quiet out there. Start something?</h2><p class=\"mt-2 max-w-xl text-base-content/70\">No open requests right now. Post one so other players can join.</p><a class=\"btn btn-primary btn-sm mt-5\" href=\"/game-requests/new\"><i class=\"ph ph-plus\" aria-hidden=\"true\"></i>Create Game Request</a></div></section>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, "\" alt=\"\" width=\"287\" height=\"352\"><div><h2 id=\"empty-request-title\" class=\"text-2xl font-bold\">Quiet out there. Start something?</h2><p class=\"mt-2 max-w-xl text-pretty text-base-content/70\">No open requests right now. Post one so other players can join.</p><a class=\"btn btn-primary btn-sm mt-5\" href=\"/game-requests/new\"><i class=\"ph ph-plus\" aria-hidden=\"true\"></i>Create Game Request</a></div></section>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1840,7 +1840,7 @@ func GameRequestDiscovery(page game.DiscoveryPage, search string, viewer *compon
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = GameDiscoveryState(page, search, viewer, GameRequestDiscoveryCards(page.Items, form), gameRequestPickEmpty(search)).Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = GameDiscoveryState(page, search, viewer, "", GameRequestDiscoveryCards(page.Items, form), gameRequestPickEmpty(search)).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -3225,7 +3225,7 @@ func GameRequestActionError(message string) templ.Component {
 		var templ_7745c5c3_Var146 string
 		templ_7745c5c3_Var146, templ_7745c5c3_Err = templ.JoinStringErrs(message)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/game_requests.templ`, Line: 738, Col: 76}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/game_requests.templ`, Line: 737, Col: 76}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var146))
 		if templ_7745c5c3_Err != nil {

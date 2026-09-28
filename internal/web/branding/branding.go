@@ -50,6 +50,8 @@ type Assets struct {
 	IconStylesheet string
 	Script         string
 	Mascot         string
+	// MascotSad is shown on empty and no-match states (Game Requests, Games, admin catalog).
+	MascotSad string
 	// PrimaryFontItalic carries the wordmark, which is the only italic in the
 	// system, so it is preloaded beside the upright face.
 	PrimaryFont       string
@@ -63,9 +65,8 @@ type Assets struct {
 
 // Icons contains the public paths for the bundled application-icon
 // renditions the manifest and HTML head reference. These are fixed bundled
-// assets, not instance-configurable state: see
-// docs/superpowers/pwa/2026-09-20-track-d-instance-pwa-design.md for the
-// temporary-artwork provenance and generation method.
+// assets, not instance-configurable state: docs/BRANDING.md records how they
+// are rendered from docs/logo/icon.png.
 type Icons struct {
 	Any192        string
 	Any512        string
@@ -100,7 +101,8 @@ func Default() Brand {
 			Stylesheet:        "/assets/app.css",
 			IconStylesheet:    "/assets/phosphor.css",
 			Script:            "/assets/app.js",
-			Mascot:            "/assets/images/otter.png",
+			Mascot:            "/assets/images/otter.webp",
+			MascotSad:         "/assets/images/otter-sad.webp",
 			PrimaryFont:       "/assets/fonts/schibsted-grotesk-latin-wght-normal.woff2",
 			PrimaryFontItalic: "/assets/fonts/schibsted-grotesk-latin-wght-italic.woff2",
 			DataFont:          "/assets/fonts/jetbrains-mono-latin-wght-normal.woff2",

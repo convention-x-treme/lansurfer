@@ -142,14 +142,22 @@ Phosphor Icons is the current approved icon library for LANsurfer. It is an icon
 
 ## LANsurfer logo and lockup
 
-Set the wordmark in Schibsted Grotesk italic: 900 for `LAN`, 600 for `surfer`, tracking −0.03em. This is the only italic in the system. Use it with the canonical tagline for the LANsurfer lockup. No production signet has been approved. Until one exists:
+Set the wordmark in Schibsted Grotesk italic: 900 for `LAN`, 600 for `surfer`, tracking −0.03em. This is the only italic in the system. Use it with the canonical tagline for the LANsurfer lockup. Current artwork: [logo-with-slogan.png](logo/logo-with-slogan.png). The standalone [icon.png](logo/icon.png) is the brand icon. These are product identity assets, not configurable instance branding.
 
 - use the `LANsurfer` wordmark as text;
 - do not promote a prototype or UI-kit placeholder to the production logo or favicon;
 - do not use the mascot as a substitute favicon or signet;
 - keep at least the height of the wordmark's capital `L` as clear space around a future lockup.
 
-The eventual LANsurfer signet must remain recognizable at 32 px, work with no more than two blues plus optional Golden Hour, and have a one-color version suitable for print, stamps, merchandise, and sponsor walls. Product logo assets should be stored once and referenced through the centralized brand definition.
+Keep at least the height of the wordmark's capital `L` as clear space around a lockup. The favicons and install icons in [`pwa-icons`](pwa-icons/) are renditions of [icon.png](logo/icon.png), cropped to the artwork's bounds (its transparent margin removed) before scaling; `icon.png` itself stays unmodified:
+
+- `icon-master-1024.png`: 1024 px native-resolution square crop centred on the artwork, transparent; the source for the `any` icons.
+- `icon-192.png`, `icon-512.png` (manifest `any`) and `favicon-16/32/48.png`: transparent. Favicons use the tight artwork square so the wave fills the tab; `favicon.ico` holds the 16 and 32 px frames.
+- `apple-touch-icon-180.png` and `icon-512-maskable.png`: opaque on White Sand, the artwork's authored ground. The maskable icon scales the artwork's enclosing circle, splash included, into the central 80% safe zone.
+
+Renditions are checked in and copied into the embedded assets by `npm run prepare:assets`; the build needs no image tooling.
+
+Do not redraw, crop, recolor, or substitute the supplied logo and icon without updating this guide and the bundled product assets together.
 
 ### Instance identity
 
@@ -164,7 +172,9 @@ Minimum instance identity is not Event-specific and must not grow into a second 
 
 ## Mascot
 
-The LANsurfer otter is a guide, not a decorative pattern. The current source artwork is [Otter02.png](Otter02.png).
+The LANsurfer otter is a guide, not a decorative pattern. The [initial-mascot.png](mascot/initial-mascot.png) is the original source artwork. Additional poses include [mascot-welcome-pose.png](mascot/mascot-welcome-pose.png) and [mascot-with-surfbord.png](mascot/mascot-with-surfbord.png); [mascot-sprite-sheet.png](mascot/mascot-sprite-sheet.png) contains the mascot sprite sheet.
+
+The app serves pre-sized WebP renditions from [mascot/web/](mascot/web/), not the masters. After replacing a master, regenerate its rendition as described in `scripts/prepare-assets.mjs`.
 
 Use the mascot:
 

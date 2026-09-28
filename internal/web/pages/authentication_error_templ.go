@@ -66,20 +66,20 @@ func Login(brand branding.Brand, providers []auth.ProviderAvailability) templ.Co
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<section class=\"auth-stage\"><svg class=\"auth-waves\" viewBox=\"0 0 1440 420\" preserveAspectRatio=\"none\" aria-hidden=\"true\" focusable=\"false\"><path d=\"M0,230 C230,120 400,320 610,220 C810,128 980,320 1180,210 C1320,132 1390,250 1440,210 L1440,420 L0,420 Z\" fill=\"var(--brand-deep-ocean)\" opacity=\"0.55\"></path> <path d=\"M0,300 C210,200 410,380 630,290 C830,206 990,378 1190,286 C1330,224 1400,320 1440,290 L1440,420 L0,420 Z\" fill=\"var(--brand-surf-blue)\" opacity=\"0.28\"></path> <path d=\"M0,360 C200,280 430,420 640,350 C840,286 1010,420 1210,348 C1350,300 1410,372 1440,352 L1440,420 L0,420 Z\" fill=\"var(--brand-aqua-wave)\" opacity=\"0.22\"></path></svg> <img class=\"auth-mascot\" src=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<section class=\"auth-stage\"><svg class=\"auth-waves\" viewBox=\"0 0 1440 420\" preserveAspectRatio=\"none\" aria-hidden=\"true\" focusable=\"false\"><path d=\"M0,230 C230,120 400,320 610,220 C810,128 980,320 1180,210 C1320,132 1390,250 1440,210 L1440,420 L0,420 Z\" fill=\"var(--brand-deep-ocean)\" opacity=\"0.55\"></path> <path d=\"M0,300 C210,200 410,380 630,290 C830,206 990,378 1190,286 C1330,224 1400,320 1440,290 L1440,420 L0,420 Z\" fill=\"var(--brand-surf-blue)\" opacity=\"0.28\"></path> <path d=\"M0,360 C200,280 430,420 640,350 C840,286 1010,420 1210,348 C1350,300 1410,372 1440,352 L1440,420 L0,420 Z\" fill=\"var(--brand-aqua-wave)\" opacity=\"0.22\"></path></svg> <img class=\"auth-mascot\" src=\"/assets/images/mascot-welcome-pose.webp\" alt=\"LANsurfer otter ready to help players find a game\"><div class=\"auth-panel\"><div class=\"flex items-center gap-4\"><img class=\"size-16 shrink-0\" src=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var3 string
-			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.ResolveAttributeValue(brand.Assets.Mascot)
+			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.ResolveAttributeValue(brand.Assets.Icons.Any192)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/authentication_error.templ`, Line: 36, Col: 53}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/authentication_error.templ`, Line: 39, Col: 66}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var3)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "\" alt=\"LANsurfer otter ready to help players find a game\"><div class=\"auth-panel\"><h1 class=\"text-[1.75rem] font-black leading-tight tracking-tight\">Find your crew.<br>Catch the next game.</h1><p class=\"mt-2.5 text-base-content/70\">Sign in with the account you already have. LANsurfer never stores a password.</p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "\" width=\"64\" height=\"64\" alt=\"\"><h1 class=\"text-[1.75rem] font-black leading-tight tracking-tight\">Find your crew.<br>Catch the next game.</h1></div><p class=\"mt-2.5 text-base-content/70\">Sign in with the account you already have. LANsurfer never stores a password.</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -107,7 +107,7 @@ func Login(brand branding.Brand, providers []auth.ProviderAvailability) templ.Co
 						var templ_7745c5c3_Var4 templ.SafeURL
 						templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinURLErrs(templ.URL(providerLoginHref(provider.Kind)))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/authentication_error.templ`, Line: 47, Col: 101}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/authentication_error.templ`, Line: 50, Col: 101}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 						if templ_7745c5c3_Err != nil {
@@ -142,7 +142,7 @@ func Login(brand branding.Brand, providers []auth.ProviderAvailability) templ.Co
 						var templ_7745c5c3_Var7 string
 						templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(provider.DisplayName)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/authentication_error.templ`, Line: 49, Col: 51}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/authentication_error.templ`, Line: 52, Col: 51}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 						if templ_7745c5c3_Err != nil {
@@ -160,7 +160,7 @@ func Login(brand branding.Brand, providers []auth.ProviderAvailability) templ.Co
 						var templ_7745c5c3_Var8 templ.SafeURL
 						templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinURLErrs(templ.URL(providerLoginHref(provider.Kind)))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/authentication_error.templ`, Line: 52, Col: 100}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/authentication_error.templ`, Line: 55, Col: 100}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 						if templ_7745c5c3_Err != nil {
@@ -195,7 +195,7 @@ func Login(brand branding.Brand, providers []auth.ProviderAvailability) templ.Co
 						var templ_7745c5c3_Var11 string
 						templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(provider.DisplayName)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/authentication_error.templ`, Line: 54, Col: 51}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/authentication_error.templ`, Line: 57, Col: 51}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 						if templ_7745c5c3_Err != nil {
@@ -213,7 +213,7 @@ func Login(brand branding.Brand, providers []auth.ProviderAvailability) templ.Co
 						var templ_7745c5c3_Var12 templ.SafeURL
 						templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinURLErrs(templ.URL(providerLoginHref(provider.Kind)))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/authentication_error.templ`, Line: 57, Col: 92}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/authentication_error.templ`, Line: 60, Col: 92}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 						if templ_7745c5c3_Err != nil {
@@ -248,7 +248,7 @@ func Login(brand branding.Brand, providers []auth.ProviderAvailability) templ.Co
 						var templ_7745c5c3_Var15 string
 						templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs(provider.DisplayName)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/authentication_error.templ`, Line: 59, Col: 51}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/authentication_error.templ`, Line: 62, Col: 51}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
 						if templ_7745c5c3_Err != nil {
@@ -332,7 +332,7 @@ func AuthenticationError(brand branding.Brand, message string, providers []auth.
 			var templ_7745c5c3_Var18 string
 			templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(message)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/authentication_error.templ`, Line: 83, Col: 50}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/authentication_error.templ`, Line: 86, Col: 50}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
 			if templ_7745c5c3_Err != nil {

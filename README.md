@@ -60,7 +60,7 @@ Once the group is ready, it's time to launch the game.
 
 ## 🦦 Meet the LANsurfer Otter
 
-<img src="docs/Otter02.png" alt="LANsurfer otter wearing a headset and holding a surfboard" width="280">
+<img src="docs/mascot/initial-mascot.png" alt="LANsurfer otter wearing a headset and holding a surfboard" width="280">
 
 An otter with a headset and a surfboard feels right at home here: social, at ease in the water, and ready for the next game.
 

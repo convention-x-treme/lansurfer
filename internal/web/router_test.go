@@ -399,7 +399,7 @@ func TestEmbeddedAssetsAreServed(t *testing.T) {
 		"/assets/fonts/schibsted-grotesk-latin-wght-normal.woff2",
 		"/assets/fonts/schibsted-grotesk-latin-wght-italic.woff2",
 		"/assets/fonts/jetbrains-mono-latin-wght-normal.woff2",
-		"/assets/images/otter.png",
+		"/assets/images/otter.webp",
 		"/assets/licenses/htmx-BSD-2-Clause.txt",
 		"/assets/licenses/schibsted-grotesk-OFL-1.1.txt",
 		"/assets/licenses/jetbrains-mono-OFL-1.1.txt",

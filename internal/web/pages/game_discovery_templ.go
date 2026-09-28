@@ -25,7 +25,10 @@ import (
 // surface with nothing extra to say passes nil and keeps the shared copy --
 // the composer does, because a chooser mid-flow should not grow a second
 // call to action underneath the one it already has.
-func GameDiscoveryState(page game.DiscoveryPage, search string, viewer *components.Viewer, cards, empty templ.Component) templ.Component {
+//
+// mascot is the sad-mascot image for the no-games-available state; "" omits
+// it, as the composer does for the same mid-flow reason.
+func GameDiscoveryState(page game.DiscoveryPage, search string, viewer *components.Viewer, mascot string, cards, empty templ.Component) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -54,7 +57,7 @@ func GameDiscoveryState(page game.DiscoveryPage, search string, viewer *componen
 		}
 		if search == "" || page.SearchTooShort {
 			if len(page.Items) == 0 {
-				templ_7745c5c3_Err = GameCatalogAvailability(page.ProviderStatus, viewer).Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = GameCatalogAvailability(page.ProviderStatus, viewer, mascot).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -99,7 +102,7 @@ func GameDiscoveryState(page game.DiscoveryPage, search string, viewer *componen
 					var templ_7745c5c3_Var2 string
 					templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("No games found for %q", search))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/game_discovery.templ`, Line: 42, Col: 94}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/game_discovery.templ`, Line: 45, Col: 94}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var2))
 					if templ_7745c5c3_Err != nil {

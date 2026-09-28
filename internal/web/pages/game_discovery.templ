@@ -17,13 +17,16 @@ import (
 // surface with nothing extra to say passes nil and keeps the shared copy --
 // the composer does, because a chooser mid-flow should not grow a second
 // call to action underneath the one it already has.
-templ GameDiscoveryState(page game.DiscoveryPage, search string, viewer *components.Viewer, cards, empty templ.Component) {
+//
+// mascot is the sad-mascot image for the no-games-available state; "" omits
+// it, as the composer does for the same mid-flow reason.
+templ GameDiscoveryState(page game.DiscoveryPage, search string, viewer *components.Viewer, mascot string, cards, empty templ.Component) {
 	if page.SearchTooShort {
 		<p class="text-sm text-base-content/70 mb-4">Type at least 2 characters to search.</p>
 	}
 	if search == "" || page.SearchTooShort {
 		if len(page.Items) == 0 {
-			@GameCatalogAvailability(page.ProviderStatus, viewer)
+			@GameCatalogAvailability(page.ProviderStatus, viewer, mascot)
 			if page.ProviderStatus.CatalogAvailable && empty != nil {
 				@empty
 			}
