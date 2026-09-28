@@ -180,7 +180,7 @@ The compact approved embed uses the Game Requests list title (creator Game Nick 
 
 - current capacity/free-place summary;
 - short sanitized/plain-content description;
-- a final embed field with a clickable `Im Browser öffnen ↗` link to the configured LANsurfer deep link;
+- a final embed field with a clickable `Open in browser ↗` link to the configured LANsurfer deep link;
 - minimum instance context.
 
 It never includes the full participant roster or activity history and never uses Discord login identity as LANsurfer public player identity. Every create/edit sends empty `allowed_mentions`.
