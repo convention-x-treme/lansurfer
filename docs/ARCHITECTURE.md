@@ -16,7 +16,7 @@ Primary goals:
 - progressive enhancement instead of SPA complexity
 - a small number of runtime components
 
-The implemented prototype and planned 1.0 release use the same primary runtime architecture:
+LANsurfer uses the following primary runtime architecture:
 
 ```text
 Browser
@@ -43,7 +43,7 @@ PostgreSQL
 
 No Redis, queue, separate frontend runtime, or object storage is required.
 
-This document records both the implemented prototype baseline and the approved 1.0 target. The [roadmap development model](ROADMAP.md#development-model) defines which 1.0 tracks may proceed in parallel, the Pilot Gate, and where integration dependencies apply. Target descriptions do not authorize post-1.0 work.
+This document records the current technical architecture and durable invariants. Product behavior and approved scope belong in [PRODUCT.md](PRODUCT.md); current work, dependencies, validation status, and release gates belong in GitHub Issues and milestones.
 
 ---
 
@@ -119,7 +119,7 @@ TypeScript is intentionally limited to progressive enhancement.
 
 SSE is used for realtime browser updates. Browser-to-server communication remains ordinary HTTP.
 
-For the prototype and single-instance 1.0 release, the SSE broker may run in memory. Durable external notifications use PostgreSQL persistence and do not make SSE durable.
+For the current single-instance deployment model, the SSE broker may run in memory. Durable external notifications use PostgreSQL persistence and do not make SSE durable.
 
 ```text
 Game Request transaction
@@ -142,13 +142,13 @@ notification capability consumes that handoff asynchronously and owns consumer-s
 - a first-consumer baseline that marks already-visible live history as non-deliverable instead of using a timestamp or global sequence high-watermark;
 - no delivery for `origin=backfill`.
 
-`game_request_activity.sequence` identifies an activity row and orders activity within one Game Request; it is not a global replay cursor. PostgreSQL durable leases/row locking coordinate due delivery work. The 1.0 worker polls PostgreSQL rather than adding Redis, a broker, or LISTEN/NOTIFY.
+`game_request_activity.sequence` identifies an activity row and orders activity within one Game Request; it is not a global replay cursor. PostgreSQL durable leases/row locking coordinate due delivery work. The notification worker polls PostgreSQL rather than adding Redis, a broker, or LISTEN/NOTIFY.
 
 Delivery state distinguishes retryable failure, permanent failure, exhaustion, ambiguous/uncertain provider acceptance, and intentional suppression when present-day eligibility no longer permits an already-materialized delivery. Uncertain delivery is never blindly retried because the external effect may already have occurred. Authorized manual retry opens a fresh retry round and re-checks current eligibility.
 
 LANsurfer's own retry schedule uses capped exponential backoff with jitter and a six-attempt automatic round. Its computed backoff never exceeds five minutes. An explicit provider `Retry-After` is authoritative and is honored in full even when it exceeds that cap. External transport failure never fails or reverses the originating Game Request action.
 
-The event publishing abstraction should remain replaceable so PostgreSQL `LISTEN/NOTIFY` can be considered later if multiple application instances are ever approved. Multi-instance/high-availability operation is not part of 1.0.
+The event publishing abstraction should remain replaceable so PostgreSQL `LISTEN/NOTIFY` can be considered later if multiple application instances are ever approved. Multi-instance/high-availability operation is not part of the current supported deployment model.
 
 WebSockets are not part of the initial architecture. Introducing them requires approval and a meaningful bidirectional use case.
 
@@ -193,22 +193,17 @@ It never includes the full participant roster or activity history and never uses
 
 ## 5. Modular Monolith
 
-Business modules through the prototype are:
+Business modules are:
 
 ```text
 auth
 user
 game
 gamerequest
-```
-
-The approved 1.0 target adds:
-
-```text
 notification
 ```
 
-The prototype `event` module has been removed: Game Request capability's forward migration dropped the Game Request/Event association, so no 1.0 behavior depends on Event selection, membership, lifecycle, or authorization. `clan` is post-1.0 and must not be introduced until that work is explicitly scheduled.
+The prototype `event` module has been removed: the Game Request forward migration dropped the Game Request/Event association, so current behavior does not depend on Event selection, membership, lifecycle, or authorization. Do not introduce an `event`, `clan`, or generic context module unless approved product scope and current GitHub planning require it.
 
 Supporting technical areas include:
 
@@ -281,7 +276,7 @@ Owns:
 - internal LANsurfer roles
 - unique public Game Nick
 
-Rich biographies, per-Game player handles, and richer public profiles are not stable-1.0 requirements.
+Rich biographies, per-Game player handles, and richer public profiles are outside the current product model.
 
 ### `auth`
 
@@ -307,7 +302,7 @@ The synchronized provider index is discovery infrastructure. It must not become 
 
 ### Legacy Event data
 
-Migration `00006_single_event_core` drops `game_requests.event_id` and its index; every prototype Game Request keeps its id, creator, members, status, description, and timestamps. The legacy `events` table is deliberately left in place with its rows: no application code reads it, no row references it, and destroying operator data is not something a 1.0 upgrade promised. A later release may remove the table once operators have had a chance to export it. Do not reintroduce an `event` module, Event selection, or Event membership.
+Migration `00006_single_event_core` drops `game_requests.event_id` and its index; every prototype Game Request keeps its id, creator, members, status, description, and timestamps. The legacy `events` table is deliberately left in place with its rows: no application code reads it, no row references it, and the supported forward migration intentionally preserves operator data. A later release may remove the table once operators have had a chance to export it. Do not reintroduce an `event` module, Event selection, or Event membership.
 
 ### `gamerequest`
 
@@ -356,13 +351,12 @@ A module must not directly update another module's tables merely because they ar
 
 When a module needs another module's behavior, prefer a small explicit interface. Cross-module joins are allowed for read-only query models, not business writes.
 
-The main 1.0 cross-capability contracts are:
+The key cross-capability contracts are:
 
 - **Game Request capability → notification capability:** Game Request capability owns Game Request write transactions and outbox creation; notification capability consumes durable outbox records. Final persistence belongs inside Game Request capability's transaction boundary.
 - **authentication/Game Nick capability internal:** OIDC and Discord identities resolve to the same local User. Game Nick onboarding is provider-independent and happens after authentication when required.
-- **authentication/Game Nick capability → A/E presentation:** public identity consumers use Game Nick rather than provider names/emails. This dependency is for final rendering only, not for core request writes or notification worker construction.
+- **authentication/Game Nick capability → public presentation:** public identity consumers use Game Nick rather than provider names/emails. This dependency is for rendering only, not for core request writes or notification worker construction.
 - **PWA/instance identity capability → notification capability:** PWA/instance identity capability owns service-worker registration/lifecycle. notification capability owns push permission, subscriptions, push handling, and payload behavior. Backend Web Push work does not need to wait for PWA/instance identity capability.
-- **distribution/operations capability:** release automation can proceed independently; final migration/backup/restore validation waits for persistent migrations from the feature tracks to settle.
 
 Do not solve these contracts by sharing persistence implementations or creating generic cross-capability frameworks.
 
@@ -409,7 +403,7 @@ Provider-result materialization is concurrency-sensitive as well. Concurrent fol
 
 Creating a Game Request is deliberately **not** idempotent server-side. Join, leave, close, and cancel each serialize on the request's row lock and resolve a duplicate to one winner and one deterministic domain error; creation has no comparable identity to key on. Every candidate rule — uniqueness over creator, Game, and start time being the obvious one — forbids the legitimate case of one player organizing two separate groups for the same Game at the same time, and picking one anyway would make an arbitrary product rule permanent in a migration. Duplicate submission is prevented by the submit guard in `web/src/app.ts` and, below it, by the browser's refusal to submit a form while one submission is in flight; both are covered by `web/tests/rapid-interaction.spec.ts`. This is sufficient because the web UI is the only client: LANsurfer exposes no JSON API, so there is no unguarded caller to defend against. Revisit only if a non-browser client is introduced, which is itself a scope change.
 
-1.0 does not add Event-seat, Open Play, Clan ownership, Clan membership, or other post-1.0 invariants.
+The current product model does not include Event-seat, Open Play, Clan ownership, Clan membership, or similar future-domain invariants.
 
 ---
 
@@ -440,11 +434,9 @@ start HTTP server
 
 Migration failure is fatal. DOWN migrations are never run automatically.
 
-Tracks may add independent forward migrations in parallel. Keep migrations narrowly scoped to the owning module/track and avoid modifying another track's tables except through an explicitly approved migration contract.
+Independent capabilities may add forward migrations in parallel. Keep migrations narrowly scoped to the owning module and avoid modifying another module's tables except through an explicitly approved migration contract.
 
 `main` is the only deployable database history. Feature-branch migration numbers and prototype database data have no compatibility guarantee; reconcile parallel migrations after the existing `main` sequence without changing migrations already merged into `main`. Prototype databases created from non-`main` revisions may be recreated from the final migration set. Verify that sequence against a fresh empty PostgreSQL database; supported upgrades are only between `main` revisions.
-
-distribution/operations capability's final upgrade validation from an earlier `main` revision to 1.0 runs only after the integrated migration sequence is stable. The selected pilot additionally requires at least one exercised upgrade path with existing data before the Pilot Gate is green.
 
 ---
 
@@ -460,7 +452,7 @@ LANsurfer User
       +-- Identity: Discord provider / subject
 ```
 
-Stable 1.0 supports provider-neutral generic OIDC and Discord OAuth2 authorization-code login as independent providers. The selected pilot requires Discord login, but that pilot choice does not remove OIDC from stable 1.0.
+LANsurfer supports provider-neutral generic OIDC and Discord OAuth2 authorization-code login as independent providers.
 
 The initial deployment may use Keycloak, but application/domain code must not assume Keycloak.
 
@@ -470,7 +462,7 @@ Linking and unlinking are explicit authenticated account operations, and an acco
 
 Both providers resolve to the same local User/session model. Required Game Nick selection is provider-independent. A Discord display name may seed the Game Nick form but does not become LANsurfer public identity automatically.
 
-Post-1.0 Twitch authentication is a third provider adapter in the same registry. It reuses OIDC discovery, PKCE, nonce, authorization-code exchange, ID-token validation, and the existing OAuth flow service. Its fixed `provider_kind` and `provider_key` are both `twitch`; its verified Twitch `sub` remains the external identity subject. It requests `openid` and the `preferred_username` ID-token claim, never email. The same local identity, linking, onboarding, and session paths apply unchanged.
+Twitch authentication is an optional third provider adapter in the same registry. It reuses OIDC discovery, PKCE, nonce, authorization-code exchange, ID-token validation, and the existing OAuth flow service. Its fixed `provider_kind` and `provider_key` are both `twitch`; its verified Twitch `sub` remains the external identity subject. It requests `openid` and the `preferred_username` ID-token claim, never email. The same local identity, linking, onboarding, and session paths apply unchanged.
 
 `auth` owns provider avatars. Each identity stores an optional `avatar_ref` (Discord avatar hash; Twitch or OIDC `https` `picture` URL, Twitch limited to `static-cdn.jtvnw.net`), a derived content key `avatar_key` (`hex(sha256(kind|subject|avatar_ref))[:32]`), and `avatar_selected`. A partial unique index allows at most one selected identity per user; no selected row means Default. Every login/link refreshes `avatar_ref`/`avatar_key` but never `avatar_selected`; unlinking deletes the row and therefore the selection. An invalid or missing avatar never fails authentication. Read models join the selected `avatar_key` read-only.
 
@@ -526,7 +518,7 @@ Discord authentication and Discord delivery use separate configuration pairs; an
 
 Provider credentials, the 32-byte data-encryption key, VAPID private key, and Discord-delivery OAuth secret remain operator configuration and must not be stored as ordinary product settings.
 
-Minimum instance identity, if configurable, is deployment/product state with a deliberately small surface. Do not reintroduce the removed 1.0 welcome-text/contact/logo/icon branding editor through configuration indirection.
+Minimum instance identity, if configurable, is deployment/product state with a deliberately small surface. Do not introduce an administrator-managed welcome-text/contact/logo/icon branding surface through configuration indirection.
 
 Operator legal identity (`LANSURFER_LEGAL_ENTITY_NAME`, `LANSURFER_LEGAL_ADDRESS`, `LANSURFER_LEGAL_CONTACT_EMAIL`, `LANSURFER_IMPRINT_URL`) is the one contact-bearing exception: it fills the fixed Terms/Privacy text and footer, travels to templates through request-context middleware like the instance name, and is required (entity name and contact email) whenever Discord login is configured.
 
@@ -538,19 +530,17 @@ Do not introduce a config file format unless a concrete requirement appears.
 
 LANsurfer keeps a fixed, accessible visual system and bundled application branding. Templates consume centralized branding values instead of repeating constants. Bundle approved logos/mascot/font assets with the application; do not add a runtime font or branding CDN.
 
-Stable 1.0 does not require PostgreSQL-backed administrator-managed welcome text, contact link, uploaded logo, uploaded application icon, white-labeling, or theme controls. A deployment may expose only the minimum instance identity required to distinguish the installation, plus the operator legal identity described in §15.
+LANsurfer does not provide PostgreSQL-backed administrator-managed welcome text, contact link, uploaded logo, uploaded application icon, white-labeling, or theme controls. A deployment may expose only the minimum instance identity required to distinguish the installation, plus the operator legal identity described in §15.
 
 Serve a manifest with a stable application identity/start URL and bundled/default presentation. A minimal service worker supports installation and Web Push; it does not promise offline application behavior.
 
 PWA/instance identity capability owns service-worker registration, lifecycle, and update behavior. notification capability attaches Web Push behavior to that contract rather than creating a competing service worker or registration path.
 
-Pilot validation names platform categories (Desktop, Android, iPhone), while concrete browser/version evidence belongs in the validation artifact rather than being permanently pinned in the architecture.
-
 ---
 
 ## 17. Game Catalog and IGDB Architecture
 
-PostgreSQL owns the authoritative local Game catalog. IGDB is an optional discovery/enrichment integration for general deployments and is mandatory only for the selected pilot readiness criteria.
+PostgreSQL owns the authoritative local Game catalog. IGDB is an optional discovery/enrichment integration.
 
 The architecture separates two concepts:
 
@@ -663,21 +653,9 @@ Provide structured logging, `/healthz`, `/readyz`, `lansurfer version`, healthch
 
 Request logging records an `outcome` of `completed`, `client-aborted`, or `timed-out`, derived from the request context's cancellation cause rather than from the status code, which stays `200` for a response the client never received. The cause is attached by the request-timeout middleware, so that middleware must wrap request logging. Realtime stream open and close are logged with the number of streams the instance currently holds and a close reason, because long-lived `EventSource` connections consuming the browser's per-origin connection pool were the root cause in issue #15 and were not visible in the logs at all. This is operator diagnosability through `log/slog`; LANsurfer does not add a metrics or observability stack.
 
-distribution/operations capability may build release automation and operator tooling in parallel. Stable 1.0 publishes Linux amd64/arm64 binaries and a matching multi-architecture GHCR image using native Go tooling and pinned official Docker/GitHub Actions. Release outputs include checksums, SBOMs, and provenance attestations. Stable releases receive exact, major.minor, major, and `latest` tags; prereleases receive exact tags only.
-
 The production Compose example pins the LANsurfer image, does not publish PostgreSQL to the host, and retains only application + database as required services. TLS and reverse proxy remain operator responsibilities.
 
 Migrations remain forward-only. Final supported `main`-revision upgrade, backup/restore, and key-backup validation belong to release integration after persistent migrations settle.
-
-The selected pilot additionally requires before admission:
-
-- production deployment path exercised
-- clean-host installation exercised
-- documented backup with an actually exercised restore
-- at least one exercised upgrade path using existing data
-- representative load/performance rehearsal covering browsing/search, create/join/leave, SSE updates, and notification behavior
-
-Concrete tested hardware, network, browser versions, load envelope, and observed response/recovery results belong in the validation artifact rather than permanent architecture constants.
 
 Supported production deployment must preserve required HTTP behavior through the chosen proxy/deployment path, including normal regression coverage for core interactions. Issue #15's reported hang is not an open architecture investigation requirement.
 
@@ -712,12 +690,12 @@ Where practical, CI/lint rules may enforce forbidden dependency directions. Busi
 
 A dependency rule tool such as `depguard` may be considered if it remains simple and provides real enforcement value.
 
-Parallel-track development makes boundaries especially important: contracts may be shared, implementations and persistence ownership may not.
+Parallel development makes boundaries especially important: contracts may be shared, implementations and persistence ownership may not.
 
 ---
 
 ## 23. Architectural Decision Policy
 
-Follow the [approval rules](../AGENTS.md#changes-requiring-approval). Document approved architectural changes here or in a short ADR, including the reason for the decision. Small internal implementation choices do not need an ADR.
+Follow the [approval rules](../AGENTS.md#changes-requiring-approval). Document approved durable architectural changes here, including the reason where it materially helps future maintenance. Small internal implementation choices do not need a separate decision record.
 
-The roadmap's parallel workstreams are planning boundaries, not new architectural layers. Do not create planning-label packages, track-specific frameworks, or abstractions whose only purpose is coordinating project management.
+Planning labels and workstreams are not architectural layers. Do not create packages, frameworks, or abstractions whose only purpose is coordinating project management.
