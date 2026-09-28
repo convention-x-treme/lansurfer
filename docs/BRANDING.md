@@ -244,6 +244,7 @@ Buttons carry the same six levels everywhere. The level, not the page, decides t
 
 Rules that keep the hierarchy honest:
 
+- The icon always sits left of the label, including forward and external-link actions ("View", "Open on IGDB"). An icon-only button is square (`btn-square`) with the icon centred.
 - Every button carries a Phosphor icon, with or without a visible label. A text-only button is an exception that a human reviewer approves explicitly in the pull request; the icon-only case still needs an accessible name (see [Icons](#icons)).
 - Every action with a negative effect — delete, remove, disable, deactivate, disconnect, leave, unfollow, cancel — shows Coral on hover and focus. Reversible ones use `btn-step-back`, irreversible ones `btn-danger`; never `btn-ghost` or `btn-quiet`, whose hover stays neutral.
 - Reversible actions never wear Coral at rest. Leaving a Game Request or unfollowing a game is repeatable, so the colour only appears once the pointer or keyboard is on the control. Permanent alarm colour on a repeatable action trains players to ignore it.

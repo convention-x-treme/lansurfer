@@ -607,7 +607,7 @@ func MobileNavigation(brand branding.Brand, state NavigationState) templ.Compone
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, "</span></summary><div class=\"mobile-drawer-backdrop\" data-close-navigation></div><nav class=\"mobile-drawer-panel\" aria-label=\"Mobile navigation\"><div class=\"flex items-center justify-between\"><span class=\"brand-wordmark text-xl\"><span>LAN</span><span class=\"text-primary\">surfer</span></span> <button class=\"btn btn-ghost btn-sm\" type=\"button\" data-close-navigation aria-label=\"Close navigation\"><i class=\"ph ph-x\" aria-hidden=\"true\"></i></button></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, "</span></summary><div class=\"mobile-drawer-backdrop\" data-close-navigation></div><nav class=\"mobile-drawer-panel\" aria-label=\"Mobile navigation\"><div class=\"flex items-center justify-between\"><span class=\"brand-wordmark text-xl\"><span>LAN</span><span class=\"text-primary\">surfer</span></span> <button class=\"btn btn-ghost btn-sm btn-square\" type=\"button\" data-close-navigation aria-label=\"Close navigation\"><i class=\"ph ph-x\" aria-hidden=\"true\"></i></button></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

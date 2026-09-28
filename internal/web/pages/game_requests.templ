@@ -272,7 +272,7 @@ templ GameRequestRow(request requestquery.Request, viewerID, highlightedID strin
 			if request.Status != gamerequest.StatusOpen {
 				<span class="action-static">{ requestActionLabel(request) }</span>
 			} else if request.CreatorID == viewerID {
-				<a class="btn btn-quiet btn-sm" href={ "/game-requests/" + request.ID }>View<i class="ph ph-arrow-right" aria-hidden="true"></i></a>
+				<a class="btn btn-quiet btn-sm" href={ "/game-requests/" + request.ID }><i class="ph ph-eye" aria-hidden="true"></i>View</a>
 			} else if request.ViewerJoined {
 				<form method="post" action={ "/game-requests/" + request.ID + "/leave" } hx-post={ "/game-requests/" + request.ID + "/leave" } hx-target="closest article" hx-swap="outerHTML" hx-sync="closest article:drop" hx-disabled-elt="find button">
 					@components.CSRFInput()

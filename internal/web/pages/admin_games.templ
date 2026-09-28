@@ -198,9 +198,8 @@ templ AdminGameProviderSection(item game.Game) {
 			<span class="flex-1 text-sm text-base-content/75">{ adminIdentityLabel(item) }</span>
 			if item.IGDBSlug != "" {
 				<a class="btn btn-quiet btn-sm" href={ igdbGameURL(item.IGDBSlug) } target="_blank" rel="noopener noreferrer">
-					Open on IGDB
+					<i class="ph ph-arrow-square-out" aria-hidden="true"></i>Open on IGDB
 					<span class="sr-only">(opens in a new tab)</span>
-					<i class="ph ph-arrow-square-out external-mark" aria-hidden="true"></i>
 				</a>
 			}
 			<a class="btn btn-quiet btn-sm" href={ "/admin/games/" + item.ID + "/igdb" }>

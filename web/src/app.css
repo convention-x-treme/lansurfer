@@ -1038,11 +1038,6 @@
     gap: 0.375rem;
   }
 
-  .external-mark {
-    margin-inline-start: 0.125rem;
-    font-size: 0.875em;
-  }
-
   /* The provider snapshot. It is read-only reference material an
      administrator scans, so it is set as prose plus labelled rows rather
      than as one strip of badges: the label says what kind of fact follows,

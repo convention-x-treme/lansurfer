@@ -109,9 +109,8 @@ templ AdminIGDBLinkResult(target game.Game, result game.AdminProviderGame) {
 					</form>
 					if result.Slug != "" {
 						<a class="btn btn-quiet btn-sm whitespace-nowrap" href={ igdbGameURL(result.Slug) } target="_blank" rel="noopener noreferrer">
-							Open on IGDB
+							<i class="ph ph-arrow-square-out" aria-hidden="true"></i>Open on IGDB
 							<span class="sr-only">(opens in a new tab)</span>
-							<i class="ph ph-arrow-square-out external-mark" aria-hidden="true"></i>
 						</a>
 					}
 				</div>
