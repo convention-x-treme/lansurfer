@@ -27,5 +27,5 @@ body:
     attributes:
       label: Scope check
       options:
-        - label: I checked the current product scope and roadmap.
+        - label: I checked the current product scope and existing GitHub issues/milestone.
           required: true

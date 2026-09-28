@@ -1,5 +1,5 @@
-// Package notification owns Track E1's durable notification foundation: it
-// asynchronously consumes Track A's game_request_activity handoff and
+// Package notification owns durable notification processing: it
+// asynchronously consumes the gamerequest game_request_activity handoff and
 // persists per-activity work and per-target delivery state, independent of
 // any concrete transport. It does not own or write Game Requests.
 package notification
@@ -66,7 +66,7 @@ type SendResult struct {
 }
 
 // Transport is implemented by concrete delivery mechanisms (Web Push,
-// Discord in later tracks; a fake in this track's tests). Targets resolves
+// Discord; a fake is used in this package's tests). Targets resolves
 // which external targets are currently eligible for an activity; Send
 // attempts delivery to one of them. Neither method may block past ctx.
 type Transport interface {

@@ -1,62 +1,38 @@
-# Superpowers project artifacts
+# Feature-branch working artifacts
 
-Superpowers artifacts are **supporting records**, not repository-wide sources of current truth. Current product behavior lives in `docs/PRODUCT.md`, architecture in `docs/ARCHITECTURE.md`, delivery status in `docs/ROADMAP.md`, and repository working rules in `AGENTS.md`.
+This directory may contain temporary specs and designs that help humans and coding agents collaborate on a feature branch. These files are **working material, not repository-wide sources of truth**.
 
-Durable feature artifacts live together under:
+Canonical sources are:
 
-```text
-docs/superpowers/<feature>/
-├─ YYYY-MM-DD-<topic>-design.md
-├─ YYYY-MM-DD-<topic>-plan.md
-└─ YYYY-MM-DD-<topic>-review-or-report.md
-```
+- product behavior and approved scope: `docs/PRODUCT.md`
+- technical architecture and durable invariants: `docs/ARCHITECTURE.md`
+- terminology: `docs/TERMINOLOGY.md`
+- current work/status/validation/release gates: GitHub Issues and the 1.0 milestone
+- repository workflow: `AGENTS.md`
 
-Do not add new durable artifacts to global `specs/`, `plans/`, or tracked `.superpowers/sdd/` directories.
+## Recommended lifecycle
 
-## Lifecycle
+1. Start from a GitHub Issue with the problem, desired outcome, scope, and acceptance criteria.
+2. Add a design/spec on the feature branch only when a bounded decision needs more detail than the canonical docs.
+3. Add implementation plans/tasks/prompts on the feature branch when they materially help execution or handoff between chats/agents.
+4. Keep those working files current while the branch is active.
+5. Before merge, harvest durable information:
+   - product behavior/scope → `PRODUCT.md`
+   - technical decisions/invariants → `ARCHITECTURE.md`
+   - vocabulary → `TERMINOLOGY.md`
+   - remaining work → GitHub Issues
+   - useful non-automated evidence → the relevant GitHub Issue or PR
+6. Remove temporary plans/tasks/prompts from the final tree. Remove the design/spec too once its durable decisions are represented canonically, unless it contains genuinely useful rationale that cannot be expressed there.
+7. Prefer squash merging branches that contained temporary planning artifacts.
 
-- Use a design/spec only when a bounded feature needs detail that PRODUCT/ARCHITECTURE do not.
-- Use an implementation plan only while execution benefits from one; small fixes and normal features do not require a plan by default.
-- After implementation, move durable behavior/architecture decisions into PRODUCT/ARCHITECTURE and progress into ROADMAP/issues.
-- Completed designs/plans may be retained only when their rationale or execution record remains useful. Mark them **historical** so unchecked boxes or old branch instructions cannot be mistaken for current status.
-- Prefer deleting completed execution plans when they add no durable value. Git history and merged PRs remain the implementation record.
+A feature branch is therefore allowed to carry extensive specs/tasks for ChatGPT or coding-agent collaboration. Their presence on a branch does not imply they should become permanent documentation on `main`.
 
-The repository-root `.superpowers/` directory is local temporary execution state. It is ignored by Git and is not durable documentation.
+## What may remain
 
-## Authentication
+Retain a design record only when it contains durable rationale that is still useful and is not duplicated by the canonical docs. Mark retained records clearly as historical/supporting material and remove execution instructions, stale status, and unchecked task lists.
 
-Track B is implemented. Its retained historical records are:
+## Naming
 
-1. `auth/2026-09-19-game-nick-auth-design.md` — design rationale for Game Nick and provider-neutral OIDC/Discord authentication.
-2. `auth/2026-09-19-game-nick-auth-plan.md` — historical execution checklist for PR #41.
+Historical files may still contain the former Track A–G planning labels. Do not use those labels for new artifacts; use capability names from `docs/TERMINOLOGY.md`.
 
-## IGDB
-
-Track C is implemented. These retained files are historical supporting records:
-
-1. `igdb/2026-09-17-discovery-design.md` — original IGDB discovery architecture.
-2. `igdb/2026-09-17-discovery-plan.md` — historical implementation plan for the original discovery architecture.
-3. `igdb/2026-09-18-discovery-ux-refinement-design.md` — player-facing discovery and Game Request UX refinement.
-4. `igdb/2026-09-18-discovery-ux-refinement-plan.md` — historical implementation plan for that refinement.
-5. `igdb/2026-09-19-ux-final-review-fix-report.md` — final UX review/fix report and verification evidence.
-
-## Notifications
-
-Track E1 (the durable notification foundation) is implemented, including the `suppressed` terminal delivery state added after the initial implementation to catch up with the settled design. Its retained historical record is:
-
-1. `notifications/2026-09-20-track-e-notification-foundation-design.md` — design rationale for the two-level work/delivery persistence model, baseline initialization, claiming/lease recovery, retry/backoff policy, and the `suppressed` state.
-2. `notifications/2026-09-20-track-e1-notification-foundation-plan.md` — historical execution plan for E1.
-
-Track E2 (Web Push) server delivery, encrypted subscriptions/preferences, account settings, browser enable/revocation flows, and push/click handling in Track D's existing service worker are implemented. Manual observations confirm real-browser permission/subscription registration, real Push receipt, and visible-window suppression; click/deep-link, logout/device removal, session expiry, and exact browser/device versions remain open. See [`docs/validation/track-e-web-push.md`](../validation/track-e-web-push.md). No offline/fetch caching or second service worker was added. E3 implementation and E3-24 automated verification are complete on this branch; Track E remains open for remaining E2 manual validation.
-
-The approved E3 design and historical implementation plan remain supporting history:
-
-1. [`notifications/2026-09-20-track-e-discord-delivery-design.md`](notifications/2026-09-20-track-e-discord-delivery-design.md) — approved design rationale.
-2. [`notifications/2026-09-24-track-e3-discord-delivery-plan.md`](notifications/2026-09-24-track-e3-discord-delivery-plan.md) — historical implementation record; E3-24 verification passed.
-
-## Legal pages
-
-1. `legal/2026-09-22-legal-pages-design.md` — public Terms, Privacy, and contact/reporting surface for issue #39 section 1.
-2. `legal/2026-09-22-legal-pages-plan.md` — execution checklist for that design.
-
-When adding another durable artifact, place it in the relevant feature directory and link related documents with repository-relative paths.
+The repository-root `.superpowers/` directory is ignored by Git and can also be used for purely local execution state that never needs branch collaboration.

@@ -2,7 +2,7 @@
 
 Thanks for helping make LANsurfer useful and maintainable.
 
-This guide is the starting point for a new developer. Before changing code, read [AGENTS.md](AGENTS.md). Consult the relevant [roadmap track and declared dependencies](docs/ROADMAP.md), plus the sections of [the architecture](docs/ARCHITECTURE.md) and [product definition](docs/PRODUCT.md) relevant to your task.
+This guide is the starting point for a new developer. Before changing code, read [AGENTS.md](AGENTS.md). Consult the relevant GitHub issue/milestone entry for current work and dependencies, plus the sections of [the architecture](docs/ARCHITECTURE.md), [product definition](docs/PRODUCT.md), and [terminology guide](docs/TERMINOLOGY.md) relevant to your task.
 
 ## Development prerequisites
 
@@ -144,13 +144,14 @@ The repository is a modular Go monolith. These are the most useful entry points 
 - `internal/query/`: read models for UI queries that cross module boundaries
 - `internal/platform/`: PostgreSQL, configuration, SSE, and other technical infrastructure
 - `web/`: frontend source files used to generate embedded production assets
-- `docs/PRODUCT.md`: product behavior, terminology, and approved scope
-- `docs/ROADMAP.md`: current 1.0 development tracks, readiness, and dependencies
+- `docs/PRODUCT.md`: product behavior and approved scope
+- `docs/TERMINOLOGY.md`: canonical domain/project terminology
+- `docs/ROADMAP.md`: planning landing page; current status lives in GitHub Issues and the active release milestone
 - `docs/ARCHITECTURE.md`: technical decisions and module boundaries
 - `AGENTS.md`: repository-wide development rules and approval boundaries
 - `Taskfile.yml`: authoritative development commands
 
-Do not infer that a feature is implemented merely because it is described in the product or architecture target. Check the roadmap status and the existing code before designing a change.
+Do not infer that a feature is implemented merely because it is described in product or architecture documentation. Check the current GitHub issue/milestone status and the existing code before designing a change.
 
 ## Generate code and frontend assets
 
@@ -247,11 +248,12 @@ Database migrations run automatically before HTTP startup. A migration failure p
 ## Making changes
 
 - Keep pull requests focused on one concrete problem.
-- Work only in 1.0 tracks whose declared dependencies are satisfied; do not implement blocked integration work or unscheduled post-1.0 candidates for completeness.
+- Work only on scheduled capability work whose declared dependencies are satisfied; do not implement blocked integration work or unscheduled future candidates for completeness.
 - Inspect existing code and the relevant product/architecture sections before designing new structures.
 - Add tests where regressions would matter.
 - Do not add dependencies for hypothetical future flexibility.
 - Update documentation when public behavior, configuration, or architecture changes.
-- Explain new direct dependencies, significant tradeoffs, verification limits, and affected cross-track contracts in the pull request.
+- Explain new direct dependencies, significant tradeoffs, verification limits, and affected cross-capability contracts in the pull request.
+- Feature-branch specs/plans/tasks are allowed when they help collaboration. Before merge, promote durable decisions to canonical docs, move remaining work to GitHub Issues, remove temporary working artifacts, and prefer a squash merge for branches that contained them.
 
 Use clear domain terminology such as `GameRequest` and `GameRequestMember`; surf-themed language is reserved for branding and marketing copy.
