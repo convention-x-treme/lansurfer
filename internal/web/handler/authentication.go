@@ -40,15 +40,33 @@ type Sessions interface {
 	Logout(context.Context, string) error
 }
 
+// PushDeviceRemover is the narrow interface Logout needs to best-effort
+// remove one browser's Push subscription on sign-out. It is satisfied by
+// *notification.SubscriptionService, the same concrete type
+// SubscriptionManager (notification_settings.go) wraps. deviceID is the
+// raw, opaque device cookie value: SubscriptionService is the only place
+// that hashes it, using its own derived key, so this handler never needs
+// the data-encryption key.
+type PushDeviceRemover interface {
+	RemoveDeviceByHash(ctx context.Context, userID, deviceID string) error
+}
+
 type AuthenticationHandler struct {
 	authentication Authentication
 	sessions       Sessions
 	brand          branding.Brand
 	secureCookies  bool
+	subscriptions  PushDeviceRemover
 }
 
-func NewAuthentication(authentication Authentication, sessions Sessions, brand branding.Brand, secureCookies bool) *AuthenticationHandler {
-	return &AuthenticationHandler{authentication: authentication, sessions: sessions, brand: brand, secureCookies: secureCookies}
+// NewAuthentication constructs the handler. subscriptions may be nil, which
+// makes Logout's Push-device cleanup a no-op (Web Push not configured on
+// this instance).
+func NewAuthentication(authentication Authentication, sessions Sessions, brand branding.Brand, secureCookies bool, subscriptions PushDeviceRemover) *AuthenticationHandler {
+	return &AuthenticationHandler{
+		authentication: authentication, sessions: sessions, brand: brand, secureCookies: secureCookies,
+		subscriptions: subscriptions,
+	}
 }
 
 func (h *AuthenticationHandler) Login(w http.ResponseWriter, r *http.Request) {
@@ -228,7 +246,31 @@ func (h *AuthenticationHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	http.SetCookie(w, webmiddleware.ExpiredSessionCookie(h.secureCookies))
+	h.removePushDevice(w, r)
 	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+// removePushDevice best-effort removes this browser's Push subscription so a
+// signed-out device stops receiving notifications for the account that just
+// logged out. It never fails logout: Web Push not configured
+// (h.subscriptions nil), no device cookie present, no known current user
+// (Logout runs behind webmiddleware.Authentication, so this is only unset for
+// an already-expired/invalid session), or a delete error are all silently
+// tolerated beyond a log line.
+func (h *AuthenticationHandler) removePushDevice(w http.ResponseWriter, r *http.Request) {
+	if h.subscriptions == nil {
+		return
+	}
+	deviceCookie, err := r.Cookie(webmiddleware.DeviceCookieName)
+	if err != nil || deviceCookie.Value == "" {
+		return
+	}
+	if account, ok := webmiddleware.CurrentUser(r.Context()); ok {
+		if err := h.subscriptions.RemoveDeviceByHash(r.Context(), account.ID, deviceCookie.Value); err != nil {
+			webmiddleware.LogError(r, "remove push device on logout", err)
+		}
+	}
+	http.SetCookie(w, webmiddleware.ExpiredDeviceCookie(h.secureCookies))
 }
 
 func (h *AuthenticationHandler) providers() []auth.ProviderAvailability {
@@ -243,7 +285,11 @@ func (h *AuthenticationHandler) providers() []auth.ProviderAvailability {
 // tabs/flows from one browser so a resolution flow started from the
 // onboarding page can still reach the original pending identity.
 func (h *AuthenticationHandler) ensureBrowserBinding(w http.ResponseWriter, r *http.Request) (string, error) {
-	if value, ok := h.browserBinding(r); ok {
+	return ensureBrowserBinding(w, r, h.secureCookies)
+}
+
+func ensureBrowserBinding(w http.ResponseWriter, r *http.Request, secure bool) (string, error) {
+	if value, ok := browserBindingCookie(r); ok {
 		return value, nil
 	}
 	value, err := randomBrowserBinding()
@@ -252,7 +298,7 @@ func (h *AuthenticationHandler) ensureBrowserBinding(w http.ResponseWriter, r *h
 	}
 	http.SetCookie(w, &http.Cookie{
 		Name: browserBindingCookieName, Value: value, Path: "/",
-		MaxAge: int(browserBindingLifetime.Seconds()), HttpOnly: true, Secure: h.secureCookies, SameSite: http.SameSiteLaxMode,
+		MaxAge: int(browserBindingLifetime.Seconds()), HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode,
 	})
 	return value, nil
 }

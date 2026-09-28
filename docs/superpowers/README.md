@@ -40,6 +40,20 @@ Track C is implemented. These retained files are historical supporting records:
 4. `igdb/2026-09-18-discovery-ux-refinement-plan.md` — historical implementation plan for that refinement.
 5. `igdb/2026-09-19-ux-final-review-fix-report.md` — final UX review/fix report and verification evidence.
 
+## Notifications
+
+Track E1 (the durable notification foundation) is implemented, including the `suppressed` terminal delivery state added after the initial implementation to catch up with the settled design. Its retained historical record is:
+
+1. `notifications/2026-09-20-track-e-notification-foundation-design.md` — design rationale for the two-level work/delivery persistence model, baseline initialization, claiming/lease recovery, retry/backoff policy, and the `suppressed` state.
+2. `notifications/2026-09-20-track-e1-notification-foundation-plan.md` — historical execution plan for E1.
+
+Track E2 (Web Push) server delivery, encrypted subscriptions/preferences, account settings, browser enable/revocation flows, and push/click handling in Track D's existing service worker are implemented. Manual observations confirm real-browser permission/subscription registration, real Push receipt, and visible-window suppression; click/deep-link, logout/device removal, session expiry, and exact browser/device versions remain open. See [`docs/validation/track-e-web-push.md`](../validation/track-e-web-push.md). No offline/fetch caching or second service worker was added. E3 implementation and E3-24 automated verification are complete on this branch; Track E remains open for remaining E2 manual validation.
+
+The approved E3 design and historical implementation plan remain supporting history:
+
+1. [`notifications/2026-09-20-track-e-discord-delivery-design.md`](notifications/2026-09-20-track-e-discord-delivery-design.md) — approved design rationale.
+2. [`notifications/2026-09-24-track-e3-discord-delivery-plan.md`](notifications/2026-09-24-track-e3-discord-delivery-plan.md) — historical implementation record; E3-24 verification passed.
+
 ## Legal pages
 
 1. `legal/2026-09-22-legal-pages-design.md` — public Terms, Privacy, and contact/reporting surface for issue #39 section 1.

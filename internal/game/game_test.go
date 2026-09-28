@@ -124,3 +124,6 @@ func (r *recordingSubscriptionRepository) Unfollow(_ context.Context, userID, ga
 	r.unfollowed = userID + "/" + gameID
 	return nil
 }
+func (*recordingSubscriptionRepository) ListFollowers(context.Context, string) ([]string, error) {
+	return nil, nil
+}

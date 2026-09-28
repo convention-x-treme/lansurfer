@@ -132,9 +132,21 @@ Track E delivery state / notification worker
   └── Discord webhook adapter
 ```
 
-Game Request writes and the corresponding live `game_request_activity` row must be transactionally consistent. That row is the current Track A → E notification-intent handoff as well as request-local history. A failed or rolled-back mutation must not leave successful activity or notification work behind. If Track E later requires delivery-specific state that does not belong in `gamerequest`, add that state on the consumer side or explicitly split the handoff; do not maintain two competing transactional records by default.
+Game Request writes and the corresponding live `game_request_activity` row must be transactionally consistent. That row remains the single Track A → E notification-intent handoff as well as request-local history. A failed or rolled-back mutation leaves neither the domain change nor a deliverable activity row.
 
-Persist delivery status, retry schedule, ordering/replay identifiers, and external message references. External transport failure never fails or reverses the originating Game Request action. Honor `Retry-After` for HTTP 429 responses; use capped exponential backoff with jitter for network and 5xx failures; mark permanent or exhausted failures for authorized manual retry.
+Track E consumes that handoff asynchronously and owns consumer-side durable state:
+
+- one `notification_work` record per consumed live activity;
+- zero or more `notification_delivery` records for concrete external targets;
+- durable uniqueness so repeated discovery cannot duplicate work;
+- a first-consumer baseline that marks already-visible live history as non-deliverable instead of using a timestamp or global sequence high-watermark;
+- no delivery for `origin=backfill`.
+
+`game_request_activity.sequence` identifies an activity row and orders activity within one Game Request; it is not a global replay cursor. PostgreSQL durable leases/row locking coordinate due delivery work. The 1.0 worker polls PostgreSQL rather than adding Redis, a broker, or LISTEN/NOTIFY.
+
+Delivery state distinguishes retryable failure, permanent failure, exhaustion, ambiguous/uncertain provider acceptance, and intentional suppression when present-day eligibility no longer permits an already-materialized delivery. Uncertain delivery is never blindly retried because the external effect may already have occurred. Authorized manual retry opens a fresh retry round and re-checks current eligibility.
+
+LANsurfer's own retry schedule uses capped exponential backoff with jitter and a six-attempt automatic round. Its computed backoff never exceeds five minutes. An explicit provider `Retry-After` is authoritative and is honored in full even when it exceeds that cap. External transport failure never fails or reverses the originating Game Request action.
 
 The event publishing abstraction should remain replaceable so PostgreSQL `LISTEN/NOTIFY` can be considered later if multiple application instances are ever approved. Multi-instance/high-availability operation is not part of 1.0.
 
@@ -142,30 +154,40 @@ WebSockets are not part of the initial architecture. Introducing them requires a
 
 ### Web Push
 
-Web Push uses VAPID behind a narrow adapter around the approved `github.com/marknefedov/go-webpush/v2` dependency. Store multiple labeled subscriptions and remove invalid endpoints when the push service reports permanent expiration.
+Web Push uses VAPID behind a narrow adapter around the approved `github.com/marknefedov/go-webpush/v2` dependency and extends Track D's single existing service worker with push/click behavior rather than registering another worker. E2 adds no offline shell or fetch caching. Manual observations confirm real-browser permission/subscription registration, Push receipt, and visible-window OS-notification suppression; click/deep-link, logout/device removal, session-expiry, and exact browser/device-version evidence remain open. See [Track E Web Push validation](validation/track-e-web-push.md).
 
-Push eligibility is evaluated at delivery time. The 1.0 audience modes are:
+Store multiple labeled subscriptions per user. Browser permission, active subscription/device state, LANsurfer enablement, and new-request audience preference remain separate. New Game Requests use followed/My Games by default or all new requests through explicit opt-in. Join/leave/close/cancel notify current request participants independently of that creation-audience setting. The activity actor is excluded from their own personal push.
 
-- followed/My Games only (default)
-- all new Game Requests (explicit opt-in)
+The positive recipient/device set is materialized once when work is first processed. Delayed/retried sends re-check current eligibility and may terminate an existing delivery as `suppressed`, but old work never gains newly eligible users or devices.
 
-The creator is excluded from the creation push for their own request. Push payloads remain identity-minimized: Game, planned time, deep link, and minimum instance context only. Creator identity, description, roster, and activity history are not part of Web Push payloads.
+Push payloads are versioned, structured, and privacy-minimized: activity kind, Game, planned time, same-origin deep link, minimum instance context, and optional public Game Nick for join/leave. Do not include request description, roster, provider identity data, or activity history. The service worker suppresses the OS notification while a same-origin LANsurfer window is visible so SSE remains the in-browser path.
+
+Treat PushSubscription endpoint/key material as secret-adjacent application data: encrypt endpoint, `p256dh`, and `auth` with AES-GCM using the Track E data-encryption key, never log or display decrypted material, and use a keyed endpoint fingerprint for equality/uniqueness lookup without storing the raw endpoint alongside ciphertext. A separate long-lived opaque browser-device cookie is stored only as a server-side hash and is independent of the authentication-session lifetime.
 
 ### Discord delivery
 
-Discord delivery uses the `webhook.incoming` OAuth flow rather than pasted URLs or a bot/gateway. Encrypt webhook IDs and tokens at rest with AES-GCM and an operator-provided 32-byte key.
+Discord authentication/login and Discord notification delivery are separate integrations. Delivery uses separate operator OAuth configuration and the `webhook.incoming` scope. Setup uses OAuth; it does not use a bot, Gateway, pasted webhook URL, or test-message workflow. OAuth access/refresh tokens are discarded after webhook setup. Webhook ID/token are encrypted together at rest; secret-bearing diagnostic output is prohibited.
 
-Create one Discord message per Game Request with `wait=true`, retain the returned message ID, and edit that same message as the request changes. The public message may contain:
+At most one Discord destination is current per instance. Every successful connect, reconnect, or replacement creates a new non-secret destination-generation UUID. Targets include that generation and never resolve to a later one. Disconnect suppresses only work for the disconnected generation. A `10015 Unknown Webhook` response breaks only the exact current generation, clears its encrypted credential, retains safe diagnostic metadata, terminates the current delivery, and suppresses its remaining pending work. Reconnect never replays historical work.
 
-- Game
-- planned start time
-- current request status
-- current capacity/free-place summary
-- creator's public LANsurfer Game Nick
-- short sanitized request description
-- deep link to LANsurfer
+Each destination generation and Game Request has one synchronized Discord message. Initial delivery uses webhook execute with `wait=true` and stores the returned message ID; later activity edits that message. Rendering reads current Game Request state, not historical activity payloads. Rapid intermediate activity may be superseded/coalesced. PostgreSQL serialization protects external ordering. Message sync retains the highest applied activity version.
 
-Do not mirror the full participant roster or durable activity history. Provider identity names/emails are not public identity. Send an empty `allowed_mentions` policy.
+Automatic message CREATE is non-idempotent. Before a CREATE, LANsurfer durably records a reservation. At most one automatic CREATE attempt may proceed while its outcome remains unresolved. An ambiguous outcome becomes `uncertain` and is never automatically replayed. Automatic lease expiry or restart never clears the reservation. An explicit administrator `retry-uncertain` may override the guard only after atomically revalidating the exact current destination generation and reservation owner; the administrator accepts the documented possibility of an external duplicate. This is not distributed exactly-once delivery.
+
+CREATE known pre-transmission failures, explicit 429 responses, and explicit 5xx responses are retryable; a result that may have transmitted without a definitive response is uncertain. Other definitive non-retryable provider responses are permanent. EDIT network failures, 429 responses, and 5xx responses are retryable because replaying an edit to the known message is safe. `10008 Unknown Message` clears only the matching message reference and creates exactly one replacement from current state; the destination remains connected. `10015 Unknown Webhook` follows the generation-scoped Broken transition above.
+
+The compact approved embed includes:
+
+- Game;
+- planned start time;
+- current request status;
+- current capacity/free-place summary;
+- creator's public Game Nick;
+- short sanitized/plain-content description;
+- LANsurfer deep link;
+- minimum instance context.
+
+It never includes the full participant roster or activity history and never uses Discord login identity as LANsurfer public player identity. Every create/edit sends empty `allowed_mentions`.
 
 ---
 
@@ -299,7 +321,7 @@ Owns:
 - the transactional notification-intent record Track E consumes
 - per-player reading history of Game Requests
 
-One table, `game_request_activity`, currently serves both of those responsibilities. Every successful change writes its entry inside the same transaction as the change itself, so a rolled-back mutation leaves neither the change nor a notification intent, and a committed one survives a restart before delivery. A second table would duplicate the same write for the same guarantee. This remains provisional until Track E consumes it; if delivery turns out to need state that does not belong to `gamerequest`, splitting the notification record out is the expected change rather than a reversal.
+One table, `game_request_activity`, currently serves both of those responsibilities. Every successful change writes its entry inside the same transaction as the change itself, so a rolled-back mutation leaves neither the change nor a notification intent, and a committed one survives a restart before delivery. A second table would duplicate the same write for the same guarantee. Track E1's implementation confirmed this design: the `notification` module consumes this table asynchronously and keeps its own `notification_work`/`notification_delivery` state, with no second write into `gamerequest`'s tables or transactions. Splitting the notification record out remains the expected change only if a future track demonstrates delivery-specific state that does not belong here.
 
 Two rules govern how a consumer reads it:
 
@@ -314,11 +336,17 @@ Request-local activity is not event sourcing, generic audit logging, chat, or no
 
 Owns:
 
-- Web Push subscriptions and audience preferences
-- the single instance-level Discord destination
-- delivery attempts, retries, and external message references
+- `notification_work`: one durable row per consumed live `game_request_activity` row, snapshotting the fields (`game_request_id`, `actor_id`, `kind`, `occurred_at`) delivery processing and diagnostics need, so neither has to join back into `gamerequest`'s tables afterward.
+- `notification_delivery`: zero or more rows per work item, one per external target that was eligible for that activity at materialization time. Owns delivery status (`pending`, `claimed`, `succeeded`, `permanent`, `exhausted`, `uncertain`, `suppressed`, `superseded`), attempts, and retry scheduling. `superseded` is a Discord-only terminal outcome for obsolete work, recorded with a safe activity sequence; it is not a diagnostic problem or manual-retry candidate. Existing `suppressed` diagnostics remain unchanged.
+- Web Push subscriptions and audience preferences (`notification_push_subscription`, `notification_push_preference`), and the single instance-level Discord destination. Both configured transports are registered at startup; an activity becomes work only after every configured transport resolves its targets successfully.
 
-The notification module consumes durable Game Request outbox work. It does not own or write Game Requests.
+The singleton Discord destination row has a separate UUID identity for each successful connection generation. Replacement rotates that identity atomically; broken state retains it, while disconnect removes the current row. `notification_discord_message_sync` retains one message reference and highest applied request activity sequence per destination identity and Game Request, even after replacement or disconnect. PostgreSQL conditional updates reject stale versions, and compare-and-clear recovery keeps the highest applied version. A transaction-scoped advisory lock on the destination UUID and Game Request UUID serializes the Discord sync read, current snapshot read, external create/edit, and sync update. A shared lock on the destination row prevents replacement during the external mutation. Only newer pending/claimed deliveries of the same generation and request supersede older work; the marker advances to the activity sequence of the delivery that actually mutates Discord. Webhook create is not idempotent, so LANsurfer makes at most one automatic create attempt per destination generation and Game Request: before the provider call, a `notification_discord_create_reservation` row commits on a separate pooled connection while the sync lock is held. Recording the message ID deletes it in the sync transaction; only a provider-proven rejection (never transmitted, or an explicit 4xx or 5xx answer) deletes it otherwise. A retained reservation without a message reference means Discord may hold an unrecorded message, so every later automatic attempt for that generation and request ends `uncertain` without contacting Discord; reconnecting starts a new generation. Deleted messages are recovered from the latest request state when the webhook remains valid; deleted webhooks mark the destination broken. Connect and Reconnect use a same-origin OAuth bridge so the CSRF POST complies with `form-action 'self'`.
+
+The notification module consumes durable Game Request outbox work asynchronously; it does not own or write Game Requests, and Track A never writes into `notification`'s tables. Discovery uses a `NOT EXISTS` anti-join against `game_request_activity.sequence` plus a unique constraint on `notification_work.activity_sequence`, not a high-watermark cursor, so a row committed late is never silently skipped. A one-time, idempotent baseline pass materializes all pre-existing `origin=live` activity as never-deliverable "baseline" work before the worker starts; `origin=backfill` rows are excluded from discovery entirely. Delivery claiming uses `FOR UPDATE SKIP LOCKED` with a 60-second lease so a crashed worker's claim becomes eligible again automatically, with no in-process mutex and no additional required runtime service. The worker re-checks target eligibility against the owning transport before every send, including retries. A proven loss of eligibility marks the delivery `suppressed`; a failed eligibility read instead records the ordinary retry/backoff without calling the provider.
+
+E1 exposes authorized diagnostics and manual retry as `lansurfer admin notifications problems|retry|retry-uncertain` — a CLI surface, not an HTTP page. Track G owns any future in-app presentation.
+
+E2 stores each PushSubscription endpoint, `p256dh`, and `auth` encrypted at rest with AES-256-GCM and uses a keyed endpoint fingerprint for uniqueness/ownership lookup. `/account/notifications` manages permission/subscription, audience preference, and devices; logout removes the current browser's subscription. The Web Push transport materializes eligible recipients, rechecks eligibility before sends, and uses a dedicated HTTPS-only outbound client that validates every DNS answer at dial time, dials only public IP addresses, disables proxies, and never follows redirects. E3 registers its separate Discord transport and supports connected, broken, replaced, and disconnected destinations; retries do not repeat ambiguous CREATEs. E2 real-browser permission, subscription, receipt, and visible-window suppression have been observed, but click/deep-link, logout/device removal, session expiry, and exact test versions remain partially verified; see `docs/validation/track-e-web-push.md` and `docs/ROADMAP.md`.
 
 A module must not directly update another module's tables merely because they are in the same database.
 
@@ -414,7 +442,9 @@ Migration failure is fatal. DOWN migrations are never run automatically.
 
 Tracks may add independent forward migrations in parallel. Keep migrations narrowly scoped to the owning module/track and avoid modifying another track's tables except through an explicitly approved migration contract.
 
-Track F's final prototype-to-1.0 upgrade validation runs only after the integrated migration sequence is stable. The selected pilot additionally requires at least one exercised upgrade path with existing data before the Pilot Gate is green.
+`main` is the only deployable database history. Feature-branch migration numbers and prototype database data have no compatibility guarantee; reconcile parallel migrations after the existing `main` sequence without changing migrations already merged into `main`. Prototype databases created from non-`main` revisions may be recreated from the final migration set. Verify that sequence against a fresh empty PostgreSQL database; supported upgrades are only between `main` revisions.
+
+Track F's final upgrade validation from an earlier `main` revision to 1.0 runs only after the integrated migration sequence is stable. The selected pilot additionally requires at least one exercised upgrade path with existing data before the Pilot Gate is green.
 
 ---
 
@@ -469,9 +499,12 @@ LANSURFER_OIDC_CLIENT_ID
 LANSURFER_OIDC_CLIENT_SECRET
 LANSURFER_DISCORD_CLIENT_ID
 LANSURFER_DISCORD_CLIENT_SECRET
+LANSURFER_DISCORD_WEBHOOK_CLIENT_ID
+LANSURFER_DISCORD_WEBHOOK_CLIENT_SECRET
 LANSURFER_DATA_ENCRYPTION_KEY
 LANSURFER_WEBPUSH_PUBLIC_KEY
 LANSURFER_WEBPUSH_PRIVATE_KEY
+LANSURFER_WEBPUSH_SUBJECT
 LANSURFER_TWITCH_CLIENT_ID
 LANSURFER_TWITCH_CLIENT_SECRET
 LANSURFER_TWITCH_AUTH_ENABLED
@@ -489,7 +522,9 @@ Twitch application credentials are shared only by Twitch authentication and IGDB
 
 `LANSURFER_COVER_CACHE_DIR` selects the media cache store shared by IGDB covers and provider avatars. When set, LANsurfer uses that writable directory as the persistent disk cache; when unset, it uses a fixed 64 MiB in-process LRU. The cache uses one store or the other, not a two-tier cache.
 
-Provider credentials, the 32-byte data-encryption key, and VAPID private key remain operator configuration and must not be stored as ordinary product settings.
+Discord authentication and Discord delivery use separate configuration pairs; an operator may point both at the same Discord application, but configuring one does not enable the other. Web Push is disabled when both VAPID keys are absent; partial/invalid VAPID configuration is an error, and configured Web Push also requires `LANSURFER_WEBPUSH_SUBJECT` plus a valid data-encryption key. Configured Discord delivery likewise requires a valid data-encryption key.
+
+Provider credentials, the 32-byte data-encryption key, VAPID private key, and Discord-delivery OAuth secret remain operator configuration and must not be stored as ordinary product settings.
 
 Minimum instance identity, if configurable, is deployment/product state with a deliberately small surface. Do not reintroduce the removed 1.0 welcome-text/contact/logo/icon branding editor through configuration indirection.
 
@@ -632,7 +667,7 @@ Track F may build release automation and operator tooling in parallel. Stable 1.
 
 The production Compose example pins the LANsurfer image, does not publish PostgreSQL to the host, and retains only application + database as required services. TLS and reverse proxy remain operator responsibilities.
 
-Migrations remain forward-only. Final prototype-to-1.0 upgrade, backup/restore, and key-backup validation belong to release integration after persistent migrations settle.
+Migrations remain forward-only. Final supported `main`-revision upgrade, backup/restore, and key-backup validation belong to release integration after persistent migrations settle.
 
 The selected pilot additionally requires before admission:
 

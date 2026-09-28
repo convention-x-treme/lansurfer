@@ -1,9 +1,11 @@
 import htmx from "htmx.org";
 import { registerServiceWorker } from "./pwa";
+import { initNotificationSettings } from "./notifications";
 
 window.addEventListener("load", () => {
   void registerServiceWorker();
 });
+initNotificationSettings();
 
 // A page restored from the back/forward cache keeps the DOM it was frozen
 // with. On an authenticated page that can be private content a logout since

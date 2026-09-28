@@ -52,20 +52,25 @@ type Discovery interface {
 }
 
 type RouterDependencies struct {
-	Ready               ReadyCheck
-	Authentication      handler.Authentication
-	Sessions            Sessions
-	PendingIdentities   handler.PendingIdentities
-	AccountRegistration handler.AccountRegistration
-	GameNickClaims      handler.GameNickClaims
-	Identities          handler.IdentityLookup
-	IdentityUnlinker    handler.IdentityUnlinker
-	Games               handler.GameAdministration
-	ProviderSync        handler.ProviderSyncAdministration
-	Discovery           Discovery
-	GameResolver        handler.GameResolver
-	GameRequests        handler.GameRequestCommands
-	RequestQueries      handler.GameRequestQueries
+	Ready                ReadyCheck
+	Authentication       handler.Authentication
+	Sessions             Sessions
+	PendingIdentities    handler.PendingIdentities
+	AccountRegistration  handler.AccountRegistration
+	GameNickClaims       handler.GameNickClaims
+	Identities           handler.IdentityLookup
+	IdentityUnlinker     handler.IdentityUnlinker
+	Games                handler.GameAdministration
+	ProviderSync         handler.ProviderSyncAdministration
+	Discovery            Discovery
+	GameResolver         handler.GameResolver
+	GameRequests         handler.GameRequestCommands
+	DiscordSetup         handler.DiscordDestinationSetup
+	DiscordAuthorization handler.DiscordDestinationAuthorization
+	DiscordConnector     handler.DiscordDestinationConnector
+	DiscordLifecycle     handler.DiscordDestinationLifecycle
+	DiscordStatus        handler.DiscordDestinationStatusReader
+	RequestQueries       handler.GameRequestQueries
 	// NavigationQueries and NavigationCatalog back the shared sidebar every
 	// authenticated screen renders. The same concrete read model and
 	// discovery service behind RequestQueries/Discovery satisfy them; saying
@@ -74,6 +79,22 @@ type RouterDependencies struct {
 	NavigationQueries handler.NavigationQueries
 	NavigationCatalog handler.NavigationCatalog
 	Realtime          handler.GameRequestEvents
+	Subscriptions     handler.SubscriptionManager
+	// PushDevices is the same concrete *notification.SubscriptionService as
+	// Subscriptions, exposed through the handler.PushDeviceRemover interface
+	// Logout needs. Two fields (rather than widening either handler
+	// package's narrower interface) because AuthenticationHandler and
+	// NotificationSettingsHandler each declare their own narrow consuming
+	// interface, and this composition root is where it is fine to say one
+	// concrete type backs both.
+	PushDevices handler.PushDeviceRemover
+	// VAPIDPublicKey is config.Config.WebPush.PublicKey, rendered into the
+	// notification settings page for the browser's Push subscription call.
+	VAPIDPublicKey string
+	// WebPushConfigured is config.Config.WebPush != nil: whether Web Push is
+	// configured at all on this instance, independent of Subscriptions being
+	// wired (which also requires DataEncryptionKey).
+	WebPushConfigured bool
 	// Covers serves public same-origin IGDB cover images.
 	Covers handler.MediaImages
 	// Avatars serves public same-origin selected provider avatars.
@@ -107,12 +128,17 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 	if resolvedInstanceName == "" {
 		resolvedInstanceName = brand.Name
 	}
-	authenticationHandler := handler.NewAuthentication(dependencies.Authentication, dependencies.Sessions, brand, dependencies.SecureCookies)
+	authenticationHandler := handler.NewAuthentication(
+		dependencies.Authentication, dependencies.Sessions, brand, dependencies.SecureCookies,
+		dependencies.PushDevices,
+	)
 	onboardingHandler := handler.NewOnboarding(
 		dependencies.PendingIdentities, dependencies.AccountRegistration, dependencies.GameNickClaims,
 		dependencies.Identities, dependencies.Authentication, brand, dependencies.SecureCookies,
 	)
-	navigation := handler.NewNavigation(dependencies.NavigationQueries, dependencies.NavigationCatalog, dependencies.ViewerAvatars)
+	discordDeliveryConfigured := dependencies.DiscordSetup != nil && dependencies.DiscordAuthorization != nil &&
+		dependencies.DiscordConnector != nil && dependencies.DiscordLifecycle != nil && dependencies.DiscordStatus != nil
+	navigation := handler.NewNavigation(dependencies.NavigationQueries, dependencies.NavigationCatalog, dependencies.ViewerAvatars, discordDeliveryConfigured)
 	legalHandler := handler.NewLegal(navigation, brand)
 	accountHandler := handler.NewAccount(dependencies.Identities, dependencies.IdentityUnlinker, dependencies.AvatarSelector, dependencies.GameNickClaims, dependencies.Authentication, navigation, brand)
 	administrationHandler := handler.NewAdministration(
@@ -121,7 +147,18 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 	)
 	gamesHandler := handler.NewGames(dependencies.Discovery, navigation, brand)
 	gameRequestsHandler := handler.NewGameRequests(dependencies.GameRequests, dependencies.RequestQueries, dependencies.GameResolver, dependencies.Discovery, navigation, brand)
+	var discordDeliveryHandler *handler.DiscordDelivery
+	if discordDeliveryConfigured {
+		discordDeliveryHandler = handler.NewDiscordDelivery(
+			dependencies.DiscordSetup, dependencies.DiscordAuthorization, dependencies.DiscordConnector,
+			dependencies.DiscordLifecycle, dependencies.DiscordStatus, navigation, brand, dependencies.SecureCookies,
+		)
+	}
 	realtimeHandler := handler.NewRealtime(dependencies.Realtime)
+	notificationSettingsHandler := handler.NewNotificationSettings(
+		dependencies.Subscriptions, dependencies.VAPIDPublicKey,
+		dependencies.WebPushConfigured, brand, dependencies.SecureCookies,
+	)
 	router := chi.NewRouter()
 	router.Use(middleware.RequestID)
 	// RequestTimeout wraps RequestLogging so the logger sees the context the
@@ -170,6 +207,14 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 		authenticated.Get("/auth/callback", authenticationHandler.CallbackFor("oidc"))
 		authenticated.Get("/auth/discord/callback", authenticationHandler.CallbackFor("discord"))
 		authenticated.Get("/auth/twitch/callback", authenticationHandler.CallbackFor("twitch"))
+		// Logout is registered here rather than on the top-level router, like
+		// every other /auth/* route, so webmiddleware.Authentication resolves
+		// CurrentUser before the handler runs. It needs the current account's
+		// ID to remove exactly that account's device subscription on sign-out
+		// (see AuthenticationHandler.removePushDevice); it does not require
+		// authentication (RequireAuthentication is never applied here), so an
+		// already-signed-out request still succeeds as a no-op.
+		authenticated.Post("/auth/logout", authenticationHandler.Logout)
 		authenticated.Route("/onboarding", func(onboarding chi.Router) {
 			onboarding.Get("/", onboardingHandler.ShowExisting)
 			onboarding.Post("/", onboardingHandler.SubmitExisting)
@@ -185,6 +230,16 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 			account.Post("/link/twitch", authenticationHandler.LinkFor("twitch"))
 			account.Post("/identities/{identityID}/unlink", accountHandler.Unlink)
 			account.Post("/avatar", accountHandler.SelectAvatar)
+			account.Route("/notifications", func(notifications chi.Router) {
+				notifications.Get("/", notificationSettingsHandler.Show)
+				if dependencies.Subscriptions != nil {
+					notifications.Post("/subscribe", notificationSettingsHandler.Subscribe)
+					notifications.Post("/disable", notificationSettingsHandler.Disable)
+					notifications.Post("/audience", notificationSettingsHandler.SetAudience)
+					notifications.Post("/reconcile", notificationSettingsHandler.ReconcileCurrentDevice)
+					notifications.Post("/devices/{subscriptionID}/remove", notificationSettingsHandler.RemoveDevice)
+				}
+			})
 		})
 		if dependencies.Discovery != nil {
 			authenticated.Route("/games", func(games chi.Router) {
@@ -215,31 +270,39 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 		if dependencies.Realtime != nil {
 			authenticated.With(handler.RequireAuthentication, handler.RequireGameNick).Get("/events/game-requests", realtimeHandler.GameRequests)
 		}
-		if dependencies.Games != nil {
+		if dependencies.Games != nil || discordDeliveryHandler != nil {
 			authenticated.Route("/admin", func(admin chi.Router) {
 				admin.Use(handler.RequireAdmin, handler.RequireGameNick)
-				admin.Get("/games", administrationHandler.Games)
-				admin.Post("/games", administrationHandler.CreateGame)
-				admin.Post("/games/{gameID}", administrationHandler.UpdateGame)
-				admin.Post("/games/{gameID}/active", administrationHandler.SetGameActive)
-				admin.Post("/games/{gameID}/aliases", administrationHandler.AddGameAlias)
-				admin.Post("/games/{gameID}/aliases/{aliasID}/remove", administrationHandler.RemoveGameAlias)
-				admin.Get("/games/{gameID}/igdb", administrationHandler.GameIGDB)
-				admin.Post("/games/{gameID}/igdb", administrationHandler.LinkGameIGDB)
-				admin.Post("/games/{gameID}/igdb/unlink", administrationHandler.UnlinkGameIGDB)
-				admin.Get("/games/{gameID}/merge", administrationHandler.MergeGamePage)
-				admin.Post("/games/{gameID}/merge", administrationHandler.MergeGame)
-				admin.Post("/games/{gameID}/delete", administrationHandler.DeleteGame)
-				if dependencies.ProviderSync != nil {
-					admin.Get("/igdb", administrationHandler.IGDB)
-					admin.Get("/igdb/status", administrationHandler.IGDBStatus)
-					admin.Post("/igdb/sync", administrationHandler.SyncIGDB)
+				if dependencies.Games != nil {
+					admin.Get("/games", administrationHandler.Games)
+					admin.Post("/games", administrationHandler.CreateGame)
+					admin.Post("/games/{gameID}", administrationHandler.UpdateGame)
+					admin.Post("/games/{gameID}/active", administrationHandler.SetGameActive)
+					admin.Post("/games/{gameID}/aliases", administrationHandler.AddGameAlias)
+					admin.Post("/games/{gameID}/aliases/{aliasID}/remove", administrationHandler.RemoveGameAlias)
+					admin.Get("/games/{gameID}/igdb", administrationHandler.GameIGDB)
+					admin.Post("/games/{gameID}/igdb", administrationHandler.LinkGameIGDB)
+					admin.Post("/games/{gameID}/igdb/unlink", administrationHandler.UnlinkGameIGDB)
+					admin.Get("/games/{gameID}/merge", administrationHandler.MergeGamePage)
+					admin.Post("/games/{gameID}/merge", administrationHandler.MergeGame)
+					admin.Post("/games/{gameID}/delete", administrationHandler.DeleteGame)
+					if dependencies.ProviderSync != nil {
+						admin.Get("/igdb", administrationHandler.IGDB)
+						admin.Get("/igdb/status", administrationHandler.IGDBStatus)
+						admin.Post("/igdb/sync", administrationHandler.SyncIGDB)
+					}
+					admin.Get("/pwa", administrationHandler.PWA)
 				}
-				admin.Get("/pwa", administrationHandler.PWA)
+				if discordDeliveryHandler != nil {
+					admin.Get("/discord", discordDeliveryHandler.Show)
+					admin.Post("/discord/connect", discordDeliveryHandler.Start)
+					admin.Post("/discord/reconnect", discordDeliveryHandler.Start)
+					admin.Get("/discord/callback", discordDeliveryHandler.Callback)
+					admin.Post("/discord/disconnect", discordDeliveryHandler.Disconnect)
+				}
 			})
 		}
 	})
-	router.Post("/auth/logout", authenticationHandler.Logout)
 	router.Get("/ui/patterns/empty", componentHandler(components.EmptyState(brand)))
 	router.Get("/ui/patterns/error", componentHandler(components.ErrorState()))
 	router.Get("/healthz", healthHandler)

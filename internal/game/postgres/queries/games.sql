@@ -147,6 +147,9 @@ DELETE FROM game_subscriptions
 WHERE user_id = sqlc.arg(user_id)::uuid
   AND game_id = sqlc.arg(game_id)::uuid;
 
+-- name: ListGameFollowers :many
+SELECT user_id::text FROM game_subscriptions WHERE game_id = sqlc.arg(game_id)::uuid;
+
 -- CountActiveGames states how large the authoritative local catalog is. It
 -- counts local Games only: the synchronized provider index is a search
 -- surface, not a catalog the navigation can meaningfully total.

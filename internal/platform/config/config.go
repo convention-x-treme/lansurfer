@@ -2,6 +2,8 @@
 package config
 
 import (
+	"crypto/ecdh"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/mail"
@@ -12,6 +14,8 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/convention-x-treme/lansurfer/internal/platform/crypto"
 )
 
 const (
@@ -36,6 +40,16 @@ type Discord struct {
 	ClientSecret string
 }
 
+// DiscordDelivery holds optional OAuth credentials for Discord notification
+// delivery (the `webhook.incoming` flow). This is deliberately a distinct
+// type from Discord (login/authentication): the two integrations share a
+// provider but never share credentials, and neither implicitly enables the
+// other.
+type DiscordDelivery struct {
+	ClientID     string
+	ClientSecret string
+}
+
 type Twitch struct {
 	ClientID     string
 	ClientSecret string
@@ -53,15 +67,28 @@ type Legal struct {
 	ImprintURL   string
 }
 
+type WebPush struct {
+	PublicKey  string
+	PrivateKey string
+	Subject    string
+}
+
 // Config contains the technical settings required by the application foundation.
 type Config struct {
-	DatabaseURL    string
-	ListenAddr     string
-	BaseURL        string
-	OIDC           *OIDC
-	Discord        *Discord
-	Twitch         *Twitch
-	TrustedProxies []netip.Prefix
+	DatabaseURL     string
+	ListenAddr      string
+	BaseURL         string
+	OIDC            *OIDC
+	Discord         *Discord
+	DiscordDelivery *DiscordDelivery
+	Twitch          *Twitch
+	WebPush         *WebPush
+	// DataEncryptionKey is the operator-provided AES-256 key used to encrypt
+	// externally sourced credentials at rest (Web Push subscription material,
+	// later Discord webhook tokens). Required when WebPush is configured;
+	// otherwise nil until some other module needs it.
+	DataEncryptionKey []byte
+	TrustedProxies    []netip.Prefix
 	// InstanceName is the trimmed, optional minimum instance identity from
 	// LANSURFER_INSTANCE_NAME. Empty means unset; the web layer resolves the
 	// display fallback ("LANsurfer"), the same way it already owns
@@ -105,9 +132,27 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	discordDelivery, err := loadDiscordDelivery()
+	if err != nil {
+		return Config{}, err
+	}
 	twitch, err := loadTwitch()
 	if err != nil {
 		return Config{}, err
+	}
+	webPush, err := loadWebPush()
+	if err != nil {
+		return Config{}, err
+	}
+	dataEncryptionKey, err := loadDataEncryptionKey()
+	if err != nil {
+		return Config{}, err
+	}
+	if webPush != nil && dataEncryptionKey == nil {
+		return Config{}, errors.New("LANSURFER_DATA_ENCRYPTION_KEY is required when Web Push is configured")
+	}
+	if discordDelivery != nil && dataEncryptionKey == nil {
+		return Config{}, errors.New("LANSURFER_DATA_ENCRYPTION_KEY is required when Discord delivery is configured")
 	}
 
 	trustedProxies, err := loadTrustedProxies()
@@ -129,16 +174,19 @@ func Load() (Config, error) {
 	}
 
 	return Config{
-		DatabaseURL:    databaseURL,
-		ListenAddr:     listenAddr,
-		BaseURL:        baseURL,
-		OIDC:           oidc,
-		Discord:        discord,
-		Twitch:         twitch,
-		TrustedProxies: trustedProxies,
-		InstanceName:   instanceName,
-		Legal:          legal,
-		CoverCacheDir:  strings.TrimSpace(os.Getenv("LANSURFER_COVER_CACHE_DIR")),
+		DatabaseURL:       databaseURL,
+		ListenAddr:        listenAddr,
+		BaseURL:           baseURL,
+		OIDC:              oidc,
+		Discord:           discord,
+		DiscordDelivery:   discordDelivery,
+		Twitch:            twitch,
+		WebPush:           webPush,
+		DataEncryptionKey: dataEncryptionKey,
+		TrustedProxies:    trustedProxies,
+		InstanceName:      instanceName,
+		Legal:             legal,
+		CoverCacheDir:     strings.TrimSpace(os.Getenv("LANSURFER_COVER_CACHE_DIR")),
 	}, nil
 }
 
@@ -245,6 +293,66 @@ func optionalBool(name string) (bool, error) {
 	return parsed, nil
 }
 
+func loadWebPush() (*WebPush, error) {
+	publicKey := strings.TrimSpace(os.Getenv("LANSURFER_WEBPUSH_PUBLIC_KEY"))
+	privateKey := strings.TrimSpace(os.Getenv("LANSURFER_WEBPUSH_PRIVATE_KEY"))
+	if publicKey == "" && privateKey == "" {
+		return nil, nil
+	}
+	if publicKey == "" || privateKey == "" {
+		return nil, errors.New("LANSURFER_WEBPUSH_PUBLIC_KEY and LANSURFER_WEBPUSH_PRIVATE_KEY must be configured together")
+	}
+	if err := validateVAPIDKeyPair(publicKey, privateKey); err != nil {
+		return nil, fmt.Errorf("invalid VAPID key configuration: %w", err)
+	}
+	subject := strings.TrimSpace(os.Getenv("LANSURFER_WEBPUSH_SUBJECT"))
+	if subject == "" {
+		return nil, errors.New("LANSURFER_WEBPUSH_SUBJECT is required when Web Push is configured")
+	}
+	if !strings.HasPrefix(subject, "mailto:") && !strings.HasPrefix(subject, "https://") {
+		return nil, errors.New(`LANSURFER_WEBPUSH_SUBJECT must start with "mailto:" or "https://"`)
+	}
+	return &WebPush{PublicKey: publicKey, PrivateKey: privateKey, Subject: subject}, nil
+}
+
+func validateVAPIDKeyPair(publicKey, privateKey string) error {
+	publicBytes, err := decodeVAPIDComponent(publicKey)
+	if err != nil {
+		return fmt.Errorf("public key: %w", err)
+	}
+	privateBytes, err := decodeVAPIDComponent(privateKey)
+	if err != nil {
+		return fmt.Errorf("private key: %w", err)
+	}
+	if _, err := ecdh.P256().NewPublicKey(publicBytes); err != nil {
+		return fmt.Errorf("public key is not a valid VAPID (P-256) key: %w", err)
+	}
+	if _, err := ecdh.P256().NewPrivateKey(privateBytes); err != nil {
+		return fmt.Errorf("private key is not a valid VAPID (P-256) key: %w", err)
+	}
+	return nil
+}
+
+func decodeVAPIDComponent(value string) ([]byte, error) {
+	decoded, err := base64.RawURLEncoding.DecodeString(strings.TrimRight(value, "="))
+	if err != nil {
+		return nil, fmt.Errorf("not valid base64url: %w", err)
+	}
+	return decoded, nil
+}
+
+func loadDataEncryptionKey() ([]byte, error) {
+	value := strings.TrimSpace(os.Getenv("LANSURFER_DATA_ENCRYPTION_KEY"))
+	if value == "" {
+		return nil, nil
+	}
+	key, err := crypto.ParseKey(value)
+	if err != nil {
+		return nil, fmt.Errorf("LANSURFER_DATA_ENCRYPTION_KEY: %w", err)
+	}
+	return key, nil
+}
+
 func loadOIDC() (*OIDC, error) {
 	issuer := strings.TrimSpace(os.Getenv("LANSURFER_OIDC_ISSUER"))
 	clientID := strings.TrimSpace(os.Getenv("LANSURFER_OIDC_CLIENT_ID"))
@@ -276,4 +384,16 @@ func loadDiscord() (*Discord, error) {
 		return nil, errors.New("LANSURFER_DISCORD_CLIENT_ID and LANSURFER_DISCORD_CLIENT_SECRET must be configured together")
 	}
 	return &Discord{ClientID: clientID, ClientSecret: clientSecret}, nil
+}
+
+func loadDiscordDelivery() (*DiscordDelivery, error) {
+	clientID := strings.TrimSpace(os.Getenv("LANSURFER_DISCORD_WEBHOOK_CLIENT_ID"))
+	clientSecret := strings.TrimSpace(os.Getenv("LANSURFER_DISCORD_WEBHOOK_CLIENT_SECRET"))
+	if clientID == "" && clientSecret == "" {
+		return nil, nil
+	}
+	if clientID == "" || clientSecret == "" {
+		return nil, errors.New("LANSURFER_DISCORD_WEBHOOK_CLIENT_ID and LANSURFER_DISCORD_WEBHOOK_CLIENT_SECRET must be configured together")
+	}
+	return &DiscordDelivery{ClientID: clientID, ClientSecret: clientSecret}, nil
 }
