@@ -5,6 +5,14 @@ import { initNotificationSettings } from "./notifications";
 window.addEventListener("load", () => {
   void registerServiceWorker();
 });
+// The service worker asks the page to open a notification's Game Request when
+// WindowClient.navigate() is unavailable (iOS home-screen apps).
+navigator.serviceWorker?.addEventListener?.("message", (event: MessageEvent) => {
+  const data: unknown = event.data;
+  if (typeof data !== "object" || data === null || !("type" in data) || data.type !== "open-game-request" || !("url" in data) || typeof data.url !== "string") return;
+  const url = new URL(data.url, window.location.href);
+  if (url.origin === window.location.origin && url.pathname.startsWith("/game-requests/")) window.location.assign(url.href);
+});
 initNotificationSettings();
 
 // A page restored from the back/forward cache keeps the DOM it was frozen
@@ -135,7 +143,10 @@ function liveNotice(variant: "info" | "warning" | "error", message: string): HTM
   icon.className = "ph ph-x";
   icon.setAttribute("aria-hidden", "true");
   dismiss.append(icon, "Dismiss");
-  notice.append(text, dismiss);
+  const glyph = document.createElement("i");
+  glyph.className = `ph ${variant === "info" ? "ph-bell-ringing" : "ph-warning-circle"} live-toast-icon`;
+  glyph.setAttribute("aria-hidden", "true");
+  notice.append(glyph, text, dismiss);
   document.querySelector("#live-notices")?.append(notice);
   return notice;
 }

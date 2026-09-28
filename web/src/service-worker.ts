@@ -147,7 +147,11 @@ self.addEventListener("notificationclick", (event) => {
     });
     if (client) {
       await client.focus();
-      await client.navigate(url.href);
+      // iOS WebKit rejects or returns null from navigate() on a resumed PWA
+      // window, which left the app open on whatever page it had. The page
+      // then navigates itself on this message instead.
+      const navigated = await client.navigate(url.href).catch(() => null);
+      if (!navigated) client.postMessage({ type: "open-game-request", url: url.href });
       return;
     }
     await self.clients.openWindow(url.href);

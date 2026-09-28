@@ -64,7 +64,7 @@ func TestDiscordMessageCurrentState(t *testing.T) {
 					t.Errorf("%s = %q, want %q", key, fields[key], want)
 				}
 			}
-			if len(fields) != 4 || fields["Link"] != "[Im Browser öffnen ↗](https://play.example/game-requests/request%2Fone)" {
+			if len(fields) != 4 || fields["Link"] != "[Open in browser ↗](https://play.example/game-requests/request%2Fone)" {
 				t.Fatalf("missing browser link = %v", fields)
 			}
 			last := embed["fields"].([]any)[3].(map[string]any)

@@ -85,7 +85,7 @@ func buildDiscordMessage(summary GameRequestSummary, baseURL, instanceName strin
 			{Name: "Start", Value: startsAt},
 			{Name: "Status", Value: discordPlainText(summary.Status, 1024)},
 			{Name: "Players", Value: players},
-			{Name: "Link", Value: "[Im Browser öffnen ↗](" + requestURL + ")"},
+			{Name: "Link", Value: "[Open in browser ↗](" + requestURL + ")"},
 		},
 		Footer: discordFooter{Text: discordPlainText(instanceName, 2048)},
 	}

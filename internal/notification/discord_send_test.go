@@ -346,7 +346,7 @@ func assertDiscordSendPayload(t *testing.T, body []byte, status, game, descripti
 		fields[field.Name] = field.Value
 	}
 	if fields["Status"] != status || fields["Players"] != "3 players (unlimited)" ||
-		fields["Link"] != "[Im Browser öffnen ↗](https://play.example/game-requests/"+discordSendRequestID+")" {
+		fields["Link"] != "[Open in browser ↗](https://play.example/game-requests/"+discordSendRequestID+")" {
 		t.Fatal("sent stale current state or missing browser link")
 	}
 }

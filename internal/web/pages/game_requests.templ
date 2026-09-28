@@ -206,6 +206,7 @@ templ GameRequestListContent(brand branding.Brand, requests []requestquery.Reque
 	</div>
 	if gameName, followed := followedHighlight(requests, highlightedID); followed {
 		<div hx-swap-oob="beforeend:#live-notices" role="status" class="alert alert-info" data-live-toast data-visibility-target={ highlightedID }>
+			<i class="ph ph-bell-ringing live-toast-icon" aria-hidden="true"></i>
 			<span>New Game Request for { gameName }.</span>
 			<button type="button" class="btn btn-ghost btn-sm" data-dismiss-live-toast aria-label="Dismiss notification"><i class="ph ph-x" aria-hidden="true"></i>Dismiss</button>
 		</div>
@@ -730,7 +731,7 @@ templ GameRequestError(brand branding.Brand, navigation components.NavigationSta
 }
 
 templ GameRequestActionError(message string) {
-	<div role="alert" class="alert alert-error" data-live-toast><span>{ message }</span><button type="button" class="btn btn-ghost btn-sm" data-dismiss-live-toast aria-label="Dismiss error"><i class="ph ph-x" aria-hidden="true"></i>Dismiss</button></div>
+	<div role="alert" class="alert alert-error" data-live-toast><i class="ph ph-warning-circle live-toast-icon" aria-hidden="true"></i><span>{ message }</span><button type="button" class="btn btn-ghost btn-sm" data-dismiss-live-toast aria-label="Dismiss error"><i class="ph ph-x" aria-hidden="true"></i>Dismiss</button></div>
 }
 
 func requestFull(request requestquery.Request) bool {
