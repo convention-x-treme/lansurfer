@@ -92,16 +92,14 @@ Create a local environment file from the checked-in example:
 cp .env.example .env
 ```
 
-`.env` is ignored by Git. `task run` does **not** load it automatically, so export the variables into your shell before starting the Go process. For POSIX shells such as Bash or Zsh:
+`.env` is ignored by Git and optional. Task loads it automatically for every `task` command, so `task run` needs no manual exports. Variables already set in your shell or CI environment take precedence over `.env` values:
 
 ```sh
-set -a
-. ./.env
-set +a
 task run
+LANSURFER_LISTEN_ADDR=:9090 task run # overrides .env
 ```
 
-On shells that do not support that syntax, set the variables from `.env.example` using the shell's normal environment-variable mechanism before running `task run`.
+The loading is a Task convenience only. Running `go run ./cmd/lansurfer` or the built binary directly still reads the process environment only, and production has no implicit `.env` loading. Docker Compose reads the same `.env` itself for variable substitution.
 
 `LANSURFER_DATABASE_URL` is required. `LANSURFER_LISTEN_ADDR` and `LANSURFER_BASE_URL` have localhost defaults. OIDC configuration is optional for starting the process, but authenticated workflows require a configured provider.
 
@@ -215,7 +213,7 @@ Run `task generate` before final verification when your change affects generated
 | --- | --- |
 | `task --list` | Show the authoritative command list |
 | `task dev` | Generate, build, and run LANsurfer plus PostgreSQL |
-| `task run` | Run the Go application from the current environment |
+| `task run` | Run the Go application from the current environment plus optional `.env` |
 | `task db:up` | Start only the development PostgreSQL service |
 | `task db:down` | Stop the development Compose services |
 | `task generate` | Regenerate templ, frontend assets, branding, and sqlc output |

@@ -1,5 +1,9 @@
 version: "3"
 
+# Optional local configuration (see .env.example). Missing file is not an error;
+# variables already set in the process environment take precedence.
+dotenv: [".env"]
+
 vars:
   SQLC_VERSION: v1.31.1
   TEST_DATABASE_URL: postgres://lansurfer_test:lansurfer_test@127.0.0.1:55432/lansurfer_test?sslmode=disable
@@ -17,7 +21,7 @@ tasks:
       - docker compose up --build
 
   run:
-    desc: Run LANsurfer with configuration from the environment
+    desc: Run LANsurfer with configuration from the environment and optional .env
     cmds:
       - go run ./cmd/lansurfer
 
