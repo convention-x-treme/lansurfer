@@ -18,7 +18,7 @@ templ AdminGameIGDB(brand branding.Brand, navigation components.NavigationState,
 				<h1 class="app-title">IGDB link for { item.Name }</h1>
 				<p class="text-sm text-base-content/70">The local Game ID, name, and slug stay authoritative.</p>
 			</div>
-			<a class="btn btn-quiet btn-sm" href="/admin/games">Back to catalog</a>
+			<a class="btn btn-quiet btn-sm" href="/admin/games"><i class="ph ph-arrow-left" aria-hidden="true"></i>Back to catalog</a>
 		</header>
 		<div class="content-page">
 			<div class="max-w-4xl">
@@ -59,7 +59,7 @@ templ AdminGameIGDB(brand branding.Brand, navigation components.NavigationState,
 						>
 							<label class="sr-only" for="igdb-link-search">Search IGDB</label>
 							<input id="igdb-link-search" class="input input-sm request-search" type="search" name="q" value={ search } maxlength="120" placeholder="Game name or IGDB ID" autocomplete="off" required/>
-							<noscript><button class="btn btn-primary btn-sm" type="submit">Search IGDB</button></noscript>
+							<noscript><button class="btn btn-primary btn-sm" type="submit"><i class="ph ph-magnifying-glass" aria-hidden="true"></i>Search IGDB</button></noscript>
 						</form>
 						@AdminIGDBLinkResults(item, results, search)
 					</section>
@@ -109,9 +109,8 @@ templ AdminIGDBLinkResult(target game.Game, result game.AdminProviderGame) {
 					</form>
 					if result.Slug != "" {
 						<a class="btn btn-quiet btn-sm whitespace-nowrap" href={ igdbGameURL(result.Slug) } target="_blank" rel="noopener noreferrer">
-							Open on IGDB
+							<i class="ph ph-arrow-square-out" aria-hidden="true"></i>Open on IGDB
 							<span class="sr-only">(opens in a new tab)</span>
-							<i class="ph ph-arrow-square-out external-mark" aria-hidden="true"></i>
 						</a>
 					}
 				</div>
@@ -309,20 +308,18 @@ func withPlayerCap(capability string, max *int) string {
 	return capability + " (max " + strconv.Itoa(*max) + ")"
 }
 
-templ AdminGameMerge(brand branding.Brand, navigation components.NavigationState, target, source game.Game, games []game.Game, sourceID, formError, notice string) {
+templ AdminGameMerge(brand branding.Brand, navigation components.NavigationState, target, source game.Game, games []game.Game, sourceID, formError string, notice components.Notice) {
 	@components.Layout(brand, "Merge Games", navigation) {
 		<header class="app-topbar">
 			<div class="min-w-0">
 				<h1 class="app-title">Merge duplicate Game</h1>
 				<p class="text-sm text-base-content/70">{ target.Name } is the target. It keeps its local ID, name, slug, and active state.</p>
 			</div>
-			<a class="btn btn-quiet btn-sm" href="/admin/games">Back to catalog</a>
+			<a class="btn btn-quiet btn-sm" href="/admin/games"><i class="ph ph-arrow-left" aria-hidden="true"></i>Back to catalog</a>
 		</header>
 		<div class="content-page">
 			<div class="max-w-4xl">
-				if notice != "" {
-					<div role="status" class="alert alert-info mb-4"><span>{ notice }</span></div>
-				}
+					@components.NoticeAlert(notice, "mb-4")
 				if formError != "" {
 					<div role="alert" class="alert alert-error mb-4"><span>{ formError }</span></div>
 				}
@@ -356,7 +353,7 @@ templ AdminGameMerge(brand branding.Brand, navigation components.NavigationState
 							<form method="post" action={ "/admin/games/" + target.ID + "/merge" } class="flex justify-end" data-confirm={ "Merge " + source.Name + " into " + target.Name + "? The source Game will be permanently removed." }>
 								@components.CSRFInput()
 								<input type="hidden" name="source_id" value={ source.ID }/>
-								<button class="btn btn-danger" type="submit">Merge and remove source</button>
+								<button class="btn btn-danger" type="submit"><i class="ph ph-git-merge" aria-hidden="true"></i>Merge and remove source</button>
 							</form>
 						}
 					</section>
@@ -376,7 +373,7 @@ func gameRelationshipSummary(item game.Game) string {
 	return strings.Join(parts, " · ")
 }
 
-templ AdminIGDB(brand branding.Brand, navigation components.NavigationState, status game.ProviderStatus, notice string) {
+templ AdminIGDB(brand branding.Brand, navigation components.NavigationState, status game.ProviderStatus, notice components.Notice) {
 	@components.Layout(brand, "IGDB Synchronization", navigation) {
 		<header class="app-topbar">
 			<div class="min-w-0">
@@ -386,9 +383,7 @@ templ AdminIGDB(brand branding.Brand, navigation components.NavigationState, sta
 		</header>
 		<div class="content-page">
 			<div class="max-w-4xl">
-				if notice != "" {
-					<div role="status" class="alert alert-info mb-4"><span>{ notice }</span></div>
-				}
+					@components.NoticeAlert(notice, "mb-4")
 				@AdminIGDBStatus(status)
 			</div>
 		</div>
@@ -540,7 +535,7 @@ func igdbTimestamp(value *time.Time) string {
 	}
 	return value.UTC().Format("2006-01-02T15:04Z")
 }
-templ AdminDiscordDelivery(brand branding.Brand, navigation components.NavigationState, destination notification.DiscordDestination, notice string) {
+templ AdminDiscordDelivery(brand branding.Brand, navigation components.NavigationState, destination notification.DiscordDestination, notice components.Notice) {
 	@components.Layout(brand, "Discord delivery", navigation) {
 		<header class="app-topbar">
 			<div class="min-w-0">
@@ -550,9 +545,7 @@ templ AdminDiscordDelivery(brand branding.Brand, navigation components.Navigatio
 		</header>
 		<div class="content-page">
 			<div class="max-w-4xl">
-				if notice != "" {
-					<div role="status" class="alert alert-info mb-4"><span>{ notice }</span></div>
-				}
+					@components.NoticeAlert(notice, "mb-4")
 				if destination.State == notification.DiscordDestinationConnected {
 					<section class="detail-card">
 						<div class="flex flex-wrap items-center justify-between gap-3">
@@ -572,11 +565,11 @@ templ AdminDiscordDelivery(brand branding.Brand, navigation components.Navigatio
 						<div class="mt-4 flex flex-wrap justify-end gap-2">
 							<form method="post" action="/admin/discord/reconnect">
 								@components.CSRFInput()
-								<button class="btn btn-quiet btn-sm" type="submit">Reconnect</button>
+								<button class="btn btn-quiet btn-sm" type="submit"><i class="ph ph-arrows-clockwise" aria-hidden="true"></i>Reconnect</button>
 							</form>
 							<form method="post" action="/admin/discord/disconnect" data-confirm="Disconnect this Discord destination? Existing messages stay in Discord.">
 								@components.CSRFInput()
-								<button class="btn btn-danger btn-sm" type="submit">Disconnect</button>
+								<button class="btn btn-danger btn-sm" type="submit"><i class="ph ph-plugs" aria-hidden="true"></i>Disconnect</button>
 							</form>
 						</div>
 					</section>
@@ -603,11 +596,11 @@ templ AdminDiscordDelivery(brand branding.Brand, navigation components.Navigatio
 						<div class="mt-4 flex flex-wrap justify-end gap-2">
 							<form method="post" action="/admin/discord/reconnect">
 								@components.CSRFInput()
-								<button class="btn btn-primary btn-sm" type="submit">Reconnect</button>
+								<button class="btn btn-primary btn-sm" type="submit"><i class="ph ph-arrows-clockwise" aria-hidden="true"></i>Reconnect</button>
 							</form>
 							<form method="post" action="/admin/discord/disconnect" data-confirm="Disconnect this Discord destination? Existing messages stay in Discord.">
 								@components.CSRFInput()
-								<button class="btn btn-danger btn-sm" type="submit">Disconnect</button>
+								<button class="btn btn-danger btn-sm" type="submit"><i class="ph ph-plugs" aria-hidden="true"></i>Disconnect</button>
 							</form>
 						</div>
 					</section>
@@ -617,7 +610,7 @@ templ AdminDiscordDelivery(brand branding.Brand, navigation components.Navigatio
 						<p class="mt-1 text-sm text-base-content/70">Connect a Discord destination to deliver Game Request notifications.</p>
 						<form method="post" action="/admin/discord/connect" class="mt-4 flex justify-end">
 							@components.CSRFInput()
-							<button class="btn btn-primary btn-sm" type="submit">Connect</button>
+							<button class="btn btn-primary btn-sm" type="submit"><i class="ph ph-plugs-connected" aria-hidden="true"></i>Connect</button>
 						</form>
 					</section>
 				}

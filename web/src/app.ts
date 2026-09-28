@@ -131,7 +131,10 @@ function liveNotice(variant: "info" | "warning" | "error", message: string): HTM
   dismiss.className = "btn btn-ghost btn-sm";
   dismiss.dataset.dismissLiveToast = "";
   dismiss.setAttribute("aria-label", "Dismiss notification");
-  dismiss.textContent = "Dismiss";
+  const icon = document.createElement("i");
+  icon.className = "ph ph-x";
+  icon.setAttribute("aria-hidden", "true");
+  dismiss.append(icon, "Dismiss");
   notice.append(text, dismiss);
   document.querySelector("#live-notices")?.append(notice);
   return notice;

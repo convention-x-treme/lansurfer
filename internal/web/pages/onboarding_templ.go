@@ -112,7 +112,7 @@ func Onboarding(brand branding.Brand, actionPath, gameNick, errorMessage string,
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "<button class=\"btn btn-primary\" type=\"submit\">Continue</button></form>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "<button class=\"btn btn-primary\" type=\"submit\"><i class=\"ph ph-arrow-right\" aria-hidden=\"true\"></i>Continue</button></form>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

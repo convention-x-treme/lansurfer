@@ -44,7 +44,7 @@ type GameRequestForm struct {
 	Description    string
 }
 
-templ GameRequestList(brand branding.Brand, navigation components.NavigationState, filter requestquery.Filter, requests []requestquery.Request, trending []requestquery.TrendingGame, openRequests int64, message, notice string) {
+templ GameRequestList(brand branding.Brand, navigation components.NavigationState, filter requestquery.Filter, requests []requestquery.Request, trending []requestquery.TrendingGame, openRequests int64, message string, notice components.Notice) {
 	@components.Layout(brand, "Game Requests", navigationWithCount(navigation, openRequests)) {
 		<header class="app-topbar">
 			<div class="min-w-0">
@@ -55,9 +55,7 @@ templ GameRequestList(brand branding.Brand, navigation components.NavigationStat
 		</header>
 		<div class="request-shell">
 			<div class="request-main">
-				if notice != "" {
-					<div role="status" class="alert alert-info mb-4"><span>{ notice }</span></div>
-				}
+					@components.NoticeAlert(notice, "mb-4")
 				@RequestFilters(filter)
 				@GameRequestListContent(brand, requests, filter, navigation.Viewer, "", false, nil, message)
 			</div>
@@ -97,7 +95,7 @@ templ RequestFilters(filter requestquery.Filter) {
 			}
 			<label class="filter-toggle"><input class="checkbox checkbox-sm" type="checkbox" name="open_places" value="1" checked?={ filter.OpenPlacesOnly }/><span>Free places</span></label>
 		</fieldset>
-		<noscript><button class="btn btn-quiet btn-sm" type="submit">Filter</button></noscript>
+		<noscript><button class="btn btn-quiet btn-sm" type="submit"><i class="ph ph-funnel" aria-hidden="true"></i>Filter</button></noscript>
 	</form>
 }
 
@@ -177,7 +175,7 @@ templ GameRequestListContent(brand branding.Brand, requests []requestquery.Reque
 					<div>
 						<h2 id="empty-request-title" class="text-2xl font-bold">No Game Request matches that.</h2>
 						<p class="mt-2 max-w-xl text-pretty text-base-content/70">Try a different name or alias, or clear the filters to see everything open.</p>
-						<a class="btn btn-quiet btn-sm mt-5" href="/game-requests">Clear filters</a>
+						<a class="btn btn-quiet btn-sm mt-5" href="/game-requests"><i class="ph ph-funnel-x" aria-hidden="true"></i>Clear filters</a>
 					</div>
 				</section>
 			} else if len(requests) == 0 {
@@ -209,7 +207,7 @@ templ GameRequestListContent(brand branding.Brand, requests []requestquery.Reque
 	if gameName, followed := followedHighlight(requests, highlightedID); followed {
 		<div hx-swap-oob="beforeend:#live-notices" role="status" class="alert alert-info" data-live-toast data-visibility-target={ highlightedID }>
 			<span>New Game Request for { gameName }.</span>
-			<button type="button" class="btn btn-ghost btn-sm" data-dismiss-live-toast aria-label="Dismiss notification">Dismiss</button>
+			<button type="button" class="btn btn-ghost btn-sm" data-dismiss-live-toast aria-label="Dismiss notification"><i class="ph ph-x" aria-hidden="true"></i>Dismiss</button>
 		</div>
 	}
 }
@@ -274,7 +272,7 @@ templ GameRequestRow(request requestquery.Request, viewerID, highlightedID strin
 			if request.Status != gamerequest.StatusOpen {
 				<span class="action-static">{ requestActionLabel(request) }</span>
 			} else if request.CreatorID == viewerID {
-				<a class="btn btn-quiet btn-sm" href={ "/game-requests/" + request.ID }>View<i class="ph ph-arrow-right" aria-hidden="true"></i></a>
+				<a class="btn btn-quiet btn-sm" href={ "/game-requests/" + request.ID }><i class="ph ph-eye" aria-hidden="true"></i>View</a>
 			} else if request.ViewerJoined {
 				<form method="post" action={ "/game-requests/" + request.ID + "/leave" } hx-post={ "/game-requests/" + request.ID + "/leave" } hx-target="closest article" hx-swap="outerHTML" hx-sync="closest article:drop" hx-disabled-elt="find button">
 					@components.CSRFInput()
@@ -328,7 +326,7 @@ templ NewGameRequest(brand branding.Brand, navigation components.NavigationState
 						@GameRequestDetailsFields(form, message)
 						<div class="composer-actions">
 							<button class="btn btn-primary composer-commit" type="submit"><i class="ph ph-plus" aria-hidden="true"></i>Create Game Request</button>
-							<a class="btn btn-ghost" href="/game-requests">Cancel</a>
+							<a class="btn btn-ghost" href="/game-requests"><i class="ph ph-x" aria-hidden="true"></i>Cancel</a>
 						</div>
 					</form>
 				}
@@ -480,7 +478,7 @@ templ GameRequestDiscoverySearchForm(search string, form GameRequestForm) {
 		<label class="sr-only" for="game-request-search">Search by game name or alias</label>
 		<input id="game-request-search" class="input input-sm request-search" type="search" name="q" value={ search } maxlength="120" placeholder="Search by name or alias, e.g. wc3" autocomplete="off"/>
 		@GameRequestDetailsTransportFields(form)
-		<noscript><button class="btn btn-quiet btn-sm" type="submit">Search</button></noscript>
+		<noscript><button class="btn btn-quiet btn-sm" type="submit"><i class="ph ph-magnifying-glass" aria-hidden="true"></i>Search</button></noscript>
 	</form>
 }
 
@@ -559,7 +557,7 @@ templ StartChoice(value, label, selected string) {
 	<label class="start-choice"><input class="sr-only" type="radio" name="start_preset" value={ value } checked?={ startPreset(selected) == value }/><span>{ label }</span></label>
 }
 
-templ GameRequestDetail(brand branding.Brand, navigation components.NavigationState, request requestquery.Request, viewerID, message, notice string) {
+templ GameRequestDetail(brand branding.Brand, navigation components.NavigationState, request requestquery.Request, viewerID, message string, notice components.Notice) {
 	@components.Layout(brand, request.Game.Name, navigation) {
 		<header class="app-topbar">
 			<div class="flex flex-wrap items-center gap-x-4 gap-y-1">
@@ -571,9 +569,7 @@ templ GameRequestDetail(brand branding.Brand, navigation components.NavigationSt
 			@DetailStamp(false)
 		</header>
 		<div class="content-page">
-			if notice != "" {
-				<div role="status" class="alert alert-info mb-4"><span>{ notice }</span></div>
-			}
+				@components.NoticeAlert(notice, "mb-4")
 			if message != "" {
 				<div role="alert" class="alert alert-error mb-4"><span>{ message }</span></div>
 			}
@@ -729,12 +725,12 @@ templ GameRequestDetailContent(request requestquery.Request, viewerID string, re
 templ GameRequestError(brand branding.Brand, navigation components.NavigationState) {
 	@components.Layout(brand, "Game Requests unavailable", navigation) {
 		<header class="app-topbar"><h1 class="app-title">Game Requests</h1></header>
-		<section class="content-page"><div role="alert" class="alert alert-error"><div><p class="font-bold">Game Requests could not be loaded</p><p>Try the request again.</p></div><a class="btn btn-quiet btn-sm" href="/game-requests">Retry</a></div></section>
+		<section class="content-page"><div role="alert" class="alert alert-error"><div><p class="font-bold">Game Requests could not be loaded</p><p>Try the request again.</p></div><a class="btn btn-quiet btn-sm" href="/game-requests"><i class="ph ph-arrow-clockwise" aria-hidden="true"></i>Retry</a></div></section>
 	}
 }
 
 templ GameRequestActionError(message string) {
-	<div role="alert" class="alert alert-error" data-live-toast><span>{ message }</span><button type="button" class="btn btn-ghost btn-sm" data-dismiss-live-toast aria-label="Dismiss error">Dismiss</button></div>
+	<div role="alert" class="alert alert-error" data-live-toast><span>{ message }</span><button type="button" class="btn btn-ghost btn-sm" data-dismiss-live-toast aria-label="Dismiss error"><i class="ph ph-x" aria-hidden="true"></i>Dismiss</button></div>
 }
 
 func requestFull(request requestquery.Request) bool {

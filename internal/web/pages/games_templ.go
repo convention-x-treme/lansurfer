@@ -148,7 +148,7 @@ func GameSearchForm(search string, followedOnly bool) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "><span>Followed only</span></label><noscript><button class=\"btn btn-quiet btn-sm\" type=\"submit\">Apply</button></noscript></form>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "><span>Followed only</span></label><noscript><button class=\"btn btn-quiet btn-sm\" type=\"submit\"><i class=\"ph ph-funnel\" aria-hidden=\"true\"></i>Apply</button></noscript></form>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -326,7 +326,7 @@ func GameCatalogEmpty(brand branding.Brand, search string, followedOnly bool) te
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "\" alt=\"\" width=\"287\" height=\"352\"><div><h2 id=\"empty-games-title\" class=\"text-2xl font-bold\">You follow nothing yet.</h2><p class=\"mt-2 max-w-xl text-base-content/70\">Follow a game and every new Game Request for it reaches you. That is all following a game does.</p><a class=\"btn btn-primary btn-sm mt-5\" href=\"/games\">Browse every game</a></div></section>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "\" alt=\"\" width=\"287\" height=\"352\"><div><h2 id=\"empty-games-title\" class=\"text-2xl font-bold\">You follow nothing yet.</h2><p class=\"mt-2 max-w-xl text-base-content/70\">Follow a game and every new Game Request for it reaches you. That is all following a game does.</p><a class=\"btn btn-primary btn-sm mt-5\" href=\"/games\"><i class=\"ph ph-game-controller\" aria-hidden=\"true\"></i>Browse every game</a></div></section>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -344,7 +344,7 @@ func GameCatalogEmpty(brand branding.Brand, search string, followedOnly bool) te
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "\" alt=\"\" width=\"287\" height=\"352\"><div><h2 id=\"empty-games-title\" class=\"text-2xl font-bold\">No game matches that.</h2><p class=\"mt-2 max-w-xl text-base-content/70\">Search covers a game's name and its aliases. Try a single word, or clear the filter to search the whole catalog.</p><a class=\"btn btn-quiet btn-sm mt-5\" href=\"/games\">Clear search and filters</a></div></section>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "\" alt=\"\" width=\"287\" height=\"352\"><div><h2 id=\"empty-games-title\" class=\"text-2xl font-bold\">No game matches that.</h2><p class=\"mt-2 max-w-xl text-base-content/70\">Search covers a game's name and its aliases. Try a single word, or clear the filter to search the whole catalog.</p><a class=\"btn btn-quiet btn-sm mt-5\" href=\"/games\"><i class=\"ph ph-funnel-x\" aria-hidden=\"true\"></i>Clear search and filters</a></div></section>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -405,7 +405,7 @@ func GameCatalogAvailability(status game.ProviderStatus, viewer *components.View
 					return templ_7745c5c3_Err
 				}
 				if viewer != nil && viewer.Role == "admin" {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "<a class=\"btn btn-quiet btn-sm mt-5\" href=\"/admin/igdb\">Open IGDB synchronization</a>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "<a class=\"btn btn-quiet btn-sm mt-5\" href=\"/admin/igdb\"><i class=\"ph ph-arrows-clockwise\" aria-hidden=\"true\"></i>Open IGDB synchronization</a>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -420,7 +420,7 @@ func GameCatalogAvailability(status game.ProviderStatus, viewer *components.View
 					return templ_7745c5c3_Err
 				}
 				if viewer != nil && viewer.Role == "admin" {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "<a class=\"btn btn-quiet btn-sm self-start\" href=\"/admin/igdb\">Open IGDB synchronization</a>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "<a class=\"btn btn-quiet btn-sm self-start\" href=\"/admin/igdb\"><i class=\"ph ph-arrows-clockwise\" aria-hidden=\"true\"></i>Open IGDB synchronization</a>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -638,9 +638,9 @@ func GameCard(item game.DiscoveryItem, followedOnly bool) templ.Component {
 // empty) always has a reliable Reference, since only materialized rows are
 // affected.
 //
-// Unfollow is an outline button rather than a destructive one: it costs the
-// player nothing they cannot redo in one click, so it never reads as danger.
-// The "Following" state itself is named on the cover tag, so the button says
+// Unfollow is a step-back button: quiet at rest because the player can redo
+// it in one click, Coral on hover like every other negative action. The
+// "Following" state itself is named on the cover tag, so the button says
 // only what pressing it does.
 func GameCardFollowControl(item game.DiscoveryItem, followedOnly bool) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
@@ -702,7 +702,7 @@ func GameCardFollowControl(item game.DiscoveryItem, followedOnly bool) templ.Com
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "<button class=\"btn btn-ghost btn-sm text-[var(--ink-accent)]\" type=\"submit\">Unfollow</button></form>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "<button class=\"btn btn-step-back btn-sm\" type=\"submit\"><i class=\"ph ph-heart-break\" aria-hidden=\"true\"></i>Unfollow</button></form>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -869,7 +869,7 @@ func GameCatalogError(brand branding.Brand, navigation components.NavigationStat
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 59, "<header class=\"app-topbar\"><h1 class=\"app-title\">Games</h1><a class=\"btn btn-primary btn-sm\" href=\"/games\">Retry</a></header><div class=\"content-page\"><div role=\"alert\" class=\"alert alert-error\"><div><p class=\"font-bold\">Games could not be loaded</p><p>Try the request again.</p></div></div></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 59, "<header class=\"app-topbar\"><h1 class=\"app-title\">Games</h1><a class=\"btn btn-primary btn-sm\" href=\"/games\"><i class=\"ph ph-arrow-clockwise\" aria-hidden=\"true\"></i>Retry</a></header><div class=\"content-page\"><div role=\"alert\" class=\"alert alert-error\"><div><p class=\"font-bold\">Games could not be loaded</p><p>Try the request again.</p></div></div></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

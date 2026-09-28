@@ -1,0 +1,39 @@
+package components
+
+// NoticeTone picks the feedback colour for a completed action, following
+// docs/BRANDING.md "Action feedback". Failures are not notices: they render
+// as role="alert" alert-error next to the control.
+type NoticeTone string
+
+const (
+	// NoticeInfo confirms a routine change or states neutral information.
+	NoticeInfo NoticeTone = "info"
+	// NoticeSuccess marks a reached goal: something new now exists or works.
+	NoticeSuccess NoticeTone = "success"
+	// NoticeWarning marks a partial outcome or something needing attention.
+	NoticeWarning NoticeTone = "warning"
+)
+
+// Notice is the post-action message a page shows after a redirect.
+type Notice struct {
+	Text string
+	Tone NoticeTone
+}
+
+// NoticeAlert renders nothing for an empty notice; an unset tone is info.
+templ NoticeAlert(notice Notice, class string) {
+	if notice.Text != "" {
+		<div role="status" class={ "alert", noticeToneClass(notice.Tone), templ.KV(class, class != "") }><span>{ notice.Text }</span></div>
+	}
+}
+
+func noticeToneClass(tone NoticeTone) string {
+	switch tone {
+	case NoticeSuccess:
+		return "alert-success"
+	case NoticeWarning:
+		return "alert-warning"
+	default:
+		return "alert-info"
+	}
+}

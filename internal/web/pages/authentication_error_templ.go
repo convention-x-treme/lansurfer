@@ -343,12 +343,12 @@ func AuthenticationError(brand branding.Brand, message string, providers []auth.
 				return templ_7745c5c3_Err
 			}
 			if len(providers) > 0 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "<a class=\"btn btn-primary\" href=\"/auth/login\">Start login again</a> ")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "<a class=\"btn btn-primary\" href=\"/auth/login\"><i class=\"ph ph-sign-in\" aria-hidden=\"true\"></i>Start login again</a> ")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "<a class=\"btn btn-ghost\" href=\"/\">Return to login</a></div></div></section>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "<a class=\"btn btn-ghost\" href=\"/\"><i class=\"ph ph-arrow-left\" aria-hidden=\"true\"></i>Return to login</a></div></div></section>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
