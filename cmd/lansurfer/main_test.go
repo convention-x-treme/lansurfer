@@ -1,8 +1,12 @@
 package main
 
 import (
+	"context"
+	"log/slog"
 	"strings"
 	"testing"
+
+	"github.com/convention-x-treme/lansurfer/internal/platform/config"
 )
 
 func TestPromoteUserID(t *testing.T) {
@@ -28,5 +32,25 @@ func TestNotificationDeliveryID(t *testing.T) {
 		if _, err := notificationDeliveryID(arguments); err == nil || !strings.Contains(err.Error(), "usage:") {
 			t.Errorf("notificationDeliveryID(%q) error = %v, want usage error", arguments, err)
 		}
+	}
+}
+
+func TestGenerateSecretsAcceptedByConfig(t *testing.T) {
+	var out strings.Builder
+	if err := run(context.Background(), []string{"admin", "notifications", "generate-secrets"}, slog.New(slog.DiscardHandler), &out); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
+	t.Setenv("LANSURFER_WEBPUSH_SUBJECT", "mailto:ops@example.test")
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	if len(lines) != 3 {
+		t.Fatalf("got %d lines, want 3", len(lines))
+	}
+	for _, line := range lines {
+		key, value, _ := strings.Cut(line, "=")
+		t.Setenv(key, value)
+	}
+	if _, err := config.Load(); err != nil {
+		t.Fatalf("config.Load() rejected generated secrets: %v", err)
 	}
 }
