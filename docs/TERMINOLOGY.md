@@ -24,14 +24,14 @@ Use these terms consistently. Do not invent synonyms for domain concepts unless 
 
 - **Discord authentication**: Discord used as a login identity provider.
 - **Discord notification delivery**: the separately configured instance-level incoming-webhook destination. Do not couple it to Discord authentication.
-- **Instance / installation / deployment**: one running LANsurfer installation. Stable 1.0 treats the installation itself as the LAN party or gaming-event context.
+- **Instance / installation / deployment**: one running LANsurfer installation. The current product model treats the installation itself as the LAN party or gaming-event context.
 - **Instance identity**: the small operator-configurable identity needed to distinguish an installation, such as its instance name.
 - **LANsurfer brand**: the fixed product brand, tokens, typography, themes, icons, and bundled brand assets. Instance identity must not mutate it.
-- **Event**: a legacy prototype domain concept. Stable 1.0 does not require Event selection or membership for Game Requests. Do not reintroduce an Event/context abstraction without an approved scope change.
+- **Event**: a legacy prototype domain concept. The current product model does not use Event selection or membership for Game Requests. Do not reintroduce an Event/context abstraction without an approved scope change.
 
 ## Planning vocabulary
 
-The historical **Track A–G** names were planning labels used during the 1.0 build-out. They are deprecated for new code, durable documentation, and new issue titles.
+The historical **Track A–G** names were planning labels used during the pre-1.0 build-out. They are deprecated for new code, durable documentation, and new issue titles.
 
 Use capability language instead, for example:
 
@@ -51,5 +51,5 @@ Historical PRs, commits, retained design records, and closed issues do not need 
 - Durable technical decisions and ownership: `docs/ARCHITECTURE.md`
 - Terminology: this file
 - Brand/UI rules: `docs/BRANDING.md` and `docs/ui-kit/`
-- Current work, priorities, validation status, and release gates: GitHub Issues and the 1.0 milestone
+- Current work, priorities, validation status, and release gates: GitHub Issues and the active release milestone
 - Feature-branch specs/plans/tasks: temporary working artifacts; see `docs/superpowers/README.md`
