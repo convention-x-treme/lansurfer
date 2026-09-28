@@ -135,7 +135,10 @@ function liveNotice(variant: "info" | "warning" | "error", message: string): HTM
   icon.className = "ph ph-x";
   icon.setAttribute("aria-hidden", "true");
   dismiss.append(icon, "Dismiss");
-  notice.append(text, dismiss);
+  const glyph = document.createElement("i");
+  glyph.className = `ph ${variant === "info" ? "ph-bell-ringing" : "ph-warning-circle"} live-toast-icon`;
+  glyph.setAttribute("aria-hidden", "true");
+  notice.append(glyph, text, dismiss);
   document.querySelector("#live-notices")?.append(notice);
   return notice;
 }

@@ -2079,7 +2079,40 @@
 }
 
 .alert[data-live-toast] {
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  /* A toast floats over arbitrary content, so the faint in-page tint would
+     vanish. Solid tint fill in both schemes, with the tint's own content ink. */
+  --alert-color: var(--alert-tint);
+  --alert-border-color: var(--alert-tint);
+  color: var(--alert-ink);
+  font-weight: 600;
+  animation: live-toast-in 420ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.alert[data-live-toast] > span {
+  grid-column: 2;
+}
+
+.alert[data-live-toast] > .live-toast-icon {
+  grid-column: 1;
+  font-size: 1.5rem;
+}
+
+.alert-info { --alert-ink: var(--color-info-content); }
+.alert-warning { --alert-ink: var(--color-warning-content); }
+.alert-error { --alert-ink: var(--color-error-content); }
+
+@keyframes live-toast-in {
+  from {
+    transform: translateY(1rem) scale(0.96);
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .alert[data-live-toast] {
+    animation: none;
+  }
 }
 
 .alert[data-live-toast] .btn-ghost {
