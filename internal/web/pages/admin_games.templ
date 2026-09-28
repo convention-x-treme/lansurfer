@@ -36,7 +36,7 @@ templ AdminGames(brand branding.Brand, navigation components.NavigationState, ga
 			if notice != "" {
 				<div role="status" class="alert alert-info mb-4"><span>{ notice }</span></div>
 			}
-			@AdminCatalogResults(games, search, localOnly)
+			@AdminCatalogResults(brand, games, search, localOnly)
 			@AdminGameComposer()
 		</div>
 	}
@@ -67,14 +67,17 @@ templ AdminCatalogFilters(search string, localOnly bool) {
 
 // AdminCatalogResults is the live-filter swap target, so it carries the
 // count line and every empty state as well as the list itself.
-templ AdminCatalogResults(games []game.Game, search string, localOnly bool) {
+templ AdminCatalogResults(brand branding.Brand, games []game.Game, search string, localOnly bool) {
 	<div id="admin-catalog" aria-live="polite">
 		{{ items := adminCatalogItems(games, localOnly) }}
 		<p class="section-label mb-2">{ adminCatalogCount(items) }</p>
 		if len(items) == 0 {
-			<section class="detail-card">
-				<h2 class="text-[1.0625rem] font-semibold">{ adminEmptyTitle(search, localOnly) }</h2>
-				<p class="text-sm text-base-content/70">{ adminEmptyHint(search, localOnly) }</p>
+			<section class="request-empty request-empty-portrait" aria-labelledby="admin-empty-title">
+				<img src={ brand.Assets.MascotSad } alt="" width="287" height="352"/>
+				<div>
+					<h2 id="admin-empty-title" class="text-2xl font-bold">{ adminEmptyTitle(search, localOnly) }</h2>
+					<p class="mt-2 max-w-xl text-pretty text-base-content/70">{ adminEmptyHint(search, localOnly) }</p>
+				</div>
 			</section>
 		} else {
 			<div class="catalog-list">
@@ -273,6 +276,7 @@ templ AdminGameComposer() {
 	<details id={ adminComposerID } class="detail-card mt-4">
 		<summary class="catalog-composer-summary">
 			<span class="text-[1.0625rem] font-semibold">Add a game manually</span>
+			<i class="ph ph-caret-down catalog-composer-caret" aria-hidden="true"></i>
 			<span class="text-sm text-base-content/70">For games IGDB does not list. Following or requesting an IGDB result adds it to this catalog on its own.</span>
 		</summary>
 		<form method="post" action="/admin/games" class="mt-4 grid gap-4 sm:grid-cols-2">

@@ -490,7 +490,7 @@ templ GameRequestDiscoverySearchForm(search string, form GameRequestForm) {
 // composer, exactly like Games' "Find Players" action.
 templ GameRequestDiscovery(page game.DiscoveryPage, search string, viewer *components.Viewer, form GameRequestForm) {
 	<div id="game-request-discovery" aria-live="polite">
-		@GameDiscoveryState(page, search, viewer, GameRequestDiscoveryCards(page.Items, form), gameRequestPickEmpty(search))
+		@GameDiscoveryState(page, search, viewer, "", GameRequestDiscoveryCards(page.Items, form), gameRequestPickEmpty(search))
 	</div>
 }
 

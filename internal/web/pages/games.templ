@@ -78,7 +78,7 @@ templ GameCatalogResults(brand branding.Brand, page game.DiscoveryPage, search s
 		if len(page.Items) > 0 {
 			<p class="section-label mb-2">{ catalogCountLabel(page.Items, followedOnly) }</p>
 		}
-		@GameDiscoveryState(page, search, viewer, GameCatalogCards(page.Items, followedOnly), GameCatalogEmpty(brand, search, followedOnly))
+		@GameDiscoveryState(page, search, viewer, brand.Assets.MascotSad, GameCatalogCards(page.Items, followedOnly), GameCatalogEmpty(brand, search, followedOnly))
 	</div>
 }
 
@@ -107,19 +107,22 @@ templ GameCatalogEmpty(brand branding.Brand, search string, followedOnly bool) {
 			<h2 class="text-[1.0625rem] font-semibold">Find your game</h2>
 			<p class="text-sm text-base-content/70">Search the game catalog to follow something you play or start a Game Request.</p>
 		</section>
-	} else {
+	} else if followedOnly && search == "" {
 		<section class="request-empty" aria-labelledby="empty-games-title">
 			<img src={ brand.Assets.Mascot } alt=""/>
 			<div>
-				if followedOnly && search == "" {
-					<h2 id="empty-games-title" class="text-2xl font-bold">You follow nothing yet.</h2>
-					<p class="mt-2 max-w-xl text-base-content/70">Follow a game and every new Game Request for it reaches you. That is all following a game does.</p>
-					<a class="btn btn-primary btn-sm mt-5" href="/games">Browse every game</a>
-				} else {
-					<h2 id="empty-games-title" class="text-2xl font-bold">No game matches that.</h2>
-					<p class="mt-2 max-w-xl text-base-content/70">Search covers a game's name and its aliases. Try a single word, or clear the filter to search the whole catalog.</p>
-					<a class="btn btn-quiet btn-sm mt-5" href="/games">Clear search and filters</a>
-				}
+				<h2 id="empty-games-title" class="text-2xl font-bold">You follow nothing yet.</h2>
+				<p class="mt-2 max-w-xl text-base-content/70">Follow a game and every new Game Request for it reaches you. That is all following a game does.</p>
+				<a class="btn btn-primary btn-sm mt-5" href="/games">Browse every game</a>
+			</div>
+		</section>
+	} else {
+		<section class="request-empty request-empty-portrait" aria-labelledby="empty-games-title">
+			<img src={ brand.Assets.MascotSad } alt="" width="287" height="352"/>
+			<div>
+				<h2 id="empty-games-title" class="text-2xl font-bold">No game matches that.</h2>
+				<p class="mt-2 max-w-xl text-base-content/70">Search covers a game's name and its aliases. Try a single word, or clear the filter to search the whole catalog.</p>
+				<a class="btn btn-quiet btn-sm mt-5" href="/games">Clear search and filters</a>
 			</div>
 		</section>
 	}
@@ -131,11 +134,21 @@ templ GameCatalogEmpty(brand branding.Brand, search string, followedOnly bool) {
 // baseline (CatalogAvailable) never shows a failure/readiness warning to an
 // ordinary player -- only an administrator gets a route into the relevant
 // administration surface.
-templ GameCatalogAvailability(status game.ProviderStatus, viewer *components.Viewer) {
+templ GameCatalogAvailability(status game.ProviderStatus, viewer *components.Viewer, mascot string) {
 	if !status.CatalogAvailable {
 		if status.State == game.ProviderNotSynced || status.State == game.ProviderSyncing {
 			<section class="detail-card">
 				<h2 class="text-[1.0625rem] font-semibold">Game discovery is getting ready.</h2>
+			</section>
+		} else if mascot != "" {
+			<section class="request-empty request-empty-portrait" aria-labelledby="games-unavailable-title">
+				<img src={ mascot } alt="" width="287" height="352"/>
+				<div>
+					<h2 id="games-unavailable-title" class="text-2xl font-bold">No games are available yet.</h2>
+					if viewer != nil && viewer.Role == "admin" {
+						<a class="btn btn-quiet btn-sm mt-5" href="/admin/igdb">Open IGDB synchronization</a>
+					}
+				</div>
 			</section>
 		} else {
 			<section class="detail-card">
