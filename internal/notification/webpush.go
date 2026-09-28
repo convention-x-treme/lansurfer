@@ -51,7 +51,7 @@ type GameNickReader interface {
 // WebPushTransport implements notification.Transport for personal Web Push.
 // It never persists anything itself: recipient/eligibility state lives in
 // SubscriptionRepository/PreferenceRepository/DeliveryReadRepository, all
-// owned by Track E2 Foundation.
+// owned by the notification capability.
 type WebPushTransport struct {
 	subscriptions SubscriptionRepository
 	preferences   PreferenceRepository
