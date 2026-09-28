@@ -79,6 +79,10 @@ func run(ctx context.Context, arguments []string, logger *slog.Logger, output io
 		return err
 	}
 
+	if len(arguments) == 3 && arguments[0] == "admin" && arguments[1] == "notifications" && arguments[2] == "generate-secrets" {
+		return writeNotificationSecrets(output)
+	}
+
 	if len(arguments) == 3 && arguments[0] == "admin" && arguments[1] == "notifications" && arguments[2] == "problems" {
 		cfg, err := config.Load()
 		if err != nil {
@@ -158,6 +162,7 @@ func notificationDeliveryID(arguments []string) (string, error) {
 
 func usageError() error {
 	return errors.New("usage: lansurfer [admin users | admin promote --user-id <UUID> | " +
-		"admin notifications problems | admin notifications retry --delivery-id <ID> | " +
+		"admin notifications problems | admin notifications generate-secrets | " +
+		"admin notifications retry --delivery-id <ID> | " +
 		"admin notifications retry-uncertain --delivery-id <ID>]")
 }

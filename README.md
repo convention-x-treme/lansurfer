@@ -224,6 +224,8 @@ available directly from the binary as `lansurfer admin users` and
 
 Once promoted, an administrator can also inspect and retry stuck notification deliveries from the binary: `lansurfer admin notifications problems` lists exhausted, permanent, and uncertain deliveries, and `lansurfer admin notifications retry --delivery-id <ID>` (or `retry-uncertain` for a delivery in the uncertain state) reopens one for a fresh attempt.
 
+To create the Web Push VAPID keys and the data-encryption key, run `lansurfer admin notifications generate-secrets` (from source: `go run ./cmd/lansurfer admin notifications generate-secrets`; with Compose: `docker compose exec lansurfer /lansurfer admin notifications generate-secrets`). It needs no configuration or database, prints env-ready `KEY=value` lines to stdout only, and stores nothing. Copy the lines into your `.env` and set `LANSURFER_WEBPUSH_SUBJECT` (`mailto:` or `https://`) yourself. Keep the output secret and out of version control. If you lose `LANSURFER_DATA_ENCRYPTION_KEY`, stored notification credentials become unreadable and users must register their devices again.
+
 The Compose credentials are development defaults; do not use them for an exposed deployment. See the [contributing guide](CONTRIBUTING.md) for local Go development, configuration, and checks.
 
 ## 🤝 Get involved
