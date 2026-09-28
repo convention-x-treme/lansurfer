@@ -238,24 +238,39 @@ Buttons carry the same six levels everywhere. The level, not the page, decides t
 | Commit | `btn-primary` | Surf Blue fill, Deep Ocean text (light theme: Deep Blue fill, White Sand text) | Join, Create Game Request, Follow Game |
 | Urgent commit | `btn-urgent` | Sunset fill, Deep Ocean text | Join on the last free place |
 | Supporting | `btn-quiet` | Harbour surface, Sea Foam text (light theme: Sea Foam and Tide Line surface, dark Deep Blue text) | Find Players, View, Search, Save, Copy link |
-| Step back | `btn-step-back` | Supporting at rest, Coral surface and text on hover and focus | Leave, Unfollow, Close for new players, Deactivate game |
-| Destructive | `btn-danger` | Coral-tinted surface and Coral text at rest | Cancel Game Request |
+| Step back | `btn-step-back` | Supporting at rest, Coral surface and text on hover and focus | Leave, Unfollow, Close for new players, Deactivate game, Disable, Remove device |
+| Destructive | `btn-danger` | Coral-tinted surface and Coral text at rest | Cancel Game Request, Delete permanently, Disconnect |
 | Tertiary | `btn-ghost` | Text only | Clear, Log out, Dismiss |
 
 Rules that keep the hierarchy honest:
 
+- Every button carries a Phosphor icon, with or without a visible label. A text-only button is an exception that a human reviewer approves explicitly in the pull request; the icon-only case still needs an accessible name (see [Icons](#icons)).
+- Every action with a negative effect — delete, remove, disable, deactivate, disconnect, leave, unfollow, cancel — shows Coral on hover and focus. Reversible ones use `btn-step-back`, irreversible ones `btn-danger`; never `btn-ghost` or `btn-quiet`, whose hover stays neutral.
 - Reversible actions never wear Coral at rest. Leaving a Game Request or unfollowing a game is repeatable, so the colour only appears once the pointer or keyboard is on the control. Permanent alarm colour on a repeatable action trains players to ignore it.
 - Irreversible actions wear Coral before the click and ask for confirmation.
 - Outline buttons are not a level. A supporting action gets the Harbour surface instead, so it reads as a real choice rather than a disabled control.
 - Disabled controls keep a legible label: they are dimmed, not erased.
 - Every level keeps the palette's contrast rules: button text meets 4.5:1 against its own fill in both themes.
 
+### Action feedback
+
+Every button action ends in visible feedback on the page the player lands on: an inline message, a notice after the redirect, or a live toast. An action never fails silently, and a success the page does not already show by itself gets a message too.
+
+| Outcome | Class | Role | Example |
+| --- | --- | --- | --- |
+| Reached a goal: something new now exists or now works for the player | `alert-success` | `status` | "Push notifications enabled on this device.", "Game Request created.", "Discord destination connected." |
+| Routine change saved, or neutral information | `alert-info` | `status` | "Notification audience updated.", "Device removed.", "Push notifications paused." |
+| Partly succeeded or needs attention | `alert-warning` | `status` | "Web Push is not configured on this instance." |
+| Failed | `alert-error` | `alert` | "That sign-in method could not be linked." |
+
+`alert-success` (Sea Foam) is the rarer of the two positive tones: keep it for outcomes a player would tell someone about, so it keeps its weight. Editing, pausing, or removing something is `alert-info` even though it succeeded. Failures name the problem and the recovery, and appear next to the control or at the top of the page, never only in the browser console.
+
 ### Other components
 
 - A scheduled start time may use Golden Hour.
 - Player and available-place counts use JetBrains Mono; the last available place uses Sunset, and a full request uses a muted treatment.
 - State chips (`OPEN`, `JOINED`, `HOST`, `LAST PLACE`, `FULL`) are mono, uppercase, and tinted with the colour of the state they name.
-- Errors use Coral with a clear message. Informational feedback uses Aqua Wave or Surf Blue.
+- Errors use Coral with a clear message. Informational feedback uses Aqua Wave or Surf Blue. Feedback classes follow [Action feedback](#action-feedback).
 - Badges and metadata stay visually quieter than titles and primary actions.
 
 The same component hierarchy is used for in-browser live updates and supports Web Push and Discord settings. Durable delivery does not add a persistent in-app notification inbox.

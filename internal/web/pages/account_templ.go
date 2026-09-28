@@ -145,7 +145,7 @@ func Account(brand branding.Brand, navigation components.NavigationState, curren
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "<button class=\"btn btn-primary btn-sm w-fit\" type=\"submit\">Rename</button></form></section><section class=\"account-section\" aria-labelledby=\"account-avatar\"><div class=\"account-section-intro\"><h2 id=\"account-avatar\" class=\"account-section-title\">Avatar</h2><p>Pictures come from a linked sign-in method and are served by LANsurfer.</p></div><form method=\"post\" action=\"/account/avatar\" class=\"grid max-w-sm gap-3\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "<button class=\"btn btn-primary btn-sm w-fit\" type=\"submit\"><i class=\"ph ph-pencil-simple\" aria-hidden=\"true\"></i>Rename</button></form></section><section class=\"account-section\" aria-labelledby=\"account-avatar\"><div class=\"account-section-intro\"><h2 id=\"account-avatar\" class=\"account-section-title\">Avatar</h2><p>Pictures come from a linked sign-in method and are served by LANsurfer.</p></div><form method=\"post\" action=\"/account/avatar\" class=\"grid max-w-sm gap-3\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -247,7 +247,7 @@ func Account(brand branding.Brand, navigation components.NavigationState, curren
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "> <span>Default <span class=\"text-base-content/60\">(Game Nick initial)</span></span></label></fieldset><button class=\"btn btn-primary btn-sm w-fit\" type=\"submit\">Save avatar</button></form></section><section class=\"account-section\" aria-labelledby=\"account-sign-in\"><div class=\"account-section-intro\"><h2 id=\"account-sign-in\" class=\"account-section-title\">Sign-in methods</h2><p>Provider names and emails are visible only to you.</p></div><div class=\"grid max-w-lg gap-3\"><ul class=\"account-choices\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "> <span>Default <span class=\"text-base-content/60\">(Game Nick initial)</span></span></label></fieldset><button class=\"btn btn-primary btn-sm w-fit\" type=\"submit\"><i class=\"ph ph-check\" aria-hidden=\"true\"></i>Save avatar</button></form></section><section class=\"account-section\" aria-labelledby=\"account-sign-in\"><div class=\"account-section-intro\"><h2 id=\"account-sign-in\" class=\"account-section-title\">Sign-in methods</h2><p>Provider names and emails are visible only to you.</p></div><div class=\"grid max-w-lg gap-3\"><ul class=\"account-choices\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
