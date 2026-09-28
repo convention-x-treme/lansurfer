@@ -144,6 +144,22 @@ func TestNotificationSettingsSubscribeEnablesAndRedirects(t *testing.T) {
 	}
 }
 
+func TestNotificationSettingsSubscribeDefaultsLabelFromUserAgent(t *testing.T) {
+	subscriptions := &stubSubscriptionManager{}
+	handler := NewNotificationSettings(subscriptions, "vapid-public-key", true, branding.Default(), true, nil)
+	form := strings.NewReader("endpoint=https://push.example/endpoint&p256dh=p256dh-value&auth=auth-value")
+	request := withCurrentUser(httptest.NewRequest(http.MethodPost, "/account/notifications/subscribe", form), user.User{ID: "user-1"})
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	request.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36")
+	response := httptest.NewRecorder()
+
+	handler.Subscribe(response, request)
+
+	if subscriptions.enableLabel != "Chrome on Windows" {
+		t.Fatalf("label = %q", subscriptions.enableLabel)
+	}
+}
+
 func TestNotificationSettingsSubscribeNormalizesEndpointBeforeEnable(t *testing.T) {
 	subscriptions := &stubSubscriptionManager{}
 	handler := NewNotificationSettings(subscriptions, "vapid-public-key", true, branding.Default(), true, nil)

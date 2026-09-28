@@ -94,7 +94,7 @@ func (h *NotificationSettingsHandler) Subscribe(w http.ResponseWriter, r *http.R
 	}
 	label := r.FormValue("label")
 	if label == "" {
-		label = "This device"
+		label = deviceLabelFromUserAgent(r.UserAgent())
 	} else if utf8.RuneCountInString(label) > maxLabelLength {
 		h.render(w, r, http.StatusUnprocessableEntity, "The browser subscription was incomplete.")
 		return
