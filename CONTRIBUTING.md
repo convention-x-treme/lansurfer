@@ -146,7 +146,7 @@ The repository is a modular Go monolith. These are the most useful entry points 
 - `web/`: frontend source files used to generate embedded production assets
 - `docs/PRODUCT.md`: product behavior and approved scope
 - `docs/TERMINOLOGY.md`: canonical domain/project terminology
-- `docs/ROADMAP.md`: planning landing page; current status lives in GitHub Issues and the 1.0 milestone
+- `docs/ROADMAP.md`: planning landing page; current status lives in GitHub Issues and the active release milestone
 - `docs/ARCHITECTURE.md`: technical decisions and module boundaries
 - `AGENTS.md`: repository-wide development rules and approval boundaries
 - `Taskfile.yml`: authoritative development commands
@@ -248,7 +248,7 @@ Database migrations run automatically before HTTP startup. A migration failure p
 ## Making changes
 
 - Keep pull requests focused on one concrete problem.
-- Work only on scheduled 1.0 capability work whose declared dependencies are satisfied; do not implement blocked integration work or unscheduled post-1.0 candidates for completeness.
+- Work only on scheduled capability work whose declared dependencies are satisfied; do not implement blocked integration work or unscheduled future candidates for completeness.
 - Inspect existing code and the relevant product/architecture sections before designing new structures.
 - Add tests where regressions would matter.
 - Do not add dependencies for hypothetical future flexibility.
