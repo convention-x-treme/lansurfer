@@ -21,7 +21,7 @@ Canonical sources are:
    - technical decisions/invariants → `ARCHITECTURE.md`
    - vocabulary → `TERMINOLOGY.md`
    - remaining work → GitHub Issues
-   - useful non-automated evidence → `docs/validation/`
+   - useful non-automated evidence → the relevant GitHub Issue or PR
 6. Remove temporary plans/tasks/prompts from the final tree. Remove the design/spec too once its durable decisions are represented canonically, unless it contains genuinely useful rationale that cannot be expressed there.
 7. Prefer squash merging branches that contained temporary planning artifacts.
 
@@ -30,8 +30,6 @@ A feature branch is therefore allowed to carry extensive specs/tasks for ChatGPT
 ## What may remain
 
 Retain a design record only when it contains durable rationale that is still useful and is not duplicated by the canonical docs. Mark retained records clearly as historical/supporting material and remove execution instructions, stale status, and unchecked task lists.
-
-Validation artifacts may remain when they record real manual evidence that automated tests cannot capture.
 
 ## Naming
 
