@@ -149,7 +149,13 @@ Set the wordmark in Schibsted Grotesk italic: 900 for `LAN`, 600 for `surfer`, t
 - do not use the mascot as a substitute favicon or signet;
 - keep at least the height of the wordmark's capital `L` as clear space around a future lockup.
 
-Keep at least the height of the wordmark's capital `L` as clear space around a lockup. The available [icon.png](logo/icon.png) is the supplied icon artwork; application favicons and install icons remain the separately generated assets in [`pwa-icons`](pwa-icons/).
+Keep at least the height of the wordmark's capital `L` as clear space around a lockup. The favicons and install icons in [`pwa-icons`](pwa-icons/) are renditions of [icon.png](logo/icon.png), cropped to the artwork's bounds (its transparent margin removed) before scaling; `icon.png` itself stays unmodified:
+
+- `icon-master-1024.png`: 1024 px native-resolution square crop centred on the artwork, transparent; the source for the `any` icons.
+- `icon-192.png`, `icon-512.png` (manifest `any`) and `favicon-16/32/48.png`: transparent. Favicons use the tight artwork square so the wave fills the tab; `favicon.ico` holds the 16 and 32 px frames.
+- `apple-touch-icon-180.png` and `icon-512-maskable.png`: opaque on White Sand, the artwork's authored ground. The maskable icon scales the artwork's enclosing circle, splash included, into the central 80% safe zone.
+
+Renditions are checked in and copied into the embedded assets by `npm run prepare:assets`; the build needs no image tooling.
 
 Do not redraw, crop, recolor, or substitute the supplied logo and icon without updating this guide and the bundled product assets together.
 

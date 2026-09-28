@@ -65,9 +65,8 @@ type Assets struct {
 
 // Icons contains the public paths for the bundled application-icon
 // renditions the manifest and HTML head reference. These are fixed bundled
-// assets, not instance-configurable state: see
-// docs/superpowers/pwa/2026-09-20-track-d-instance-pwa-design.md for the
-// temporary-artwork provenance and generation method.
+// assets, not instance-configurable state: docs/BRANDING.md records how they
+// are rendered from docs/logo/icon.png.
 type Icons struct {
 	Any192        string
 	Any512        string
