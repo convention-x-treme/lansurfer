@@ -478,7 +478,7 @@ func PublicHeader(brand branding.Brand, state NavigationState) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		if state.LoginAvailable {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "<a class=\"btn btn-primary btn-sm\" href=\"/auth/login\">Log in</a>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "<a class=\"btn btn-primary btn-sm\" href=\"/auth/login\"><i class=\"ph ph-sign-in\" aria-hidden=\"true\"></i>Log in</a>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

@@ -7,6 +7,7 @@ import (
 
 	"github.com/convention-x-treme/lansurfer/internal/notification"
 	"github.com/convention-x-treme/lansurfer/internal/web/branding"
+	"github.com/convention-x-treme/lansurfer/internal/web/components"
 	webmiddleware "github.com/convention-x-treme/lansurfer/internal/web/middleware"
 	"github.com/convention-x-treme/lansurfer/internal/web/pages"
 )
@@ -70,16 +71,16 @@ func (h *DiscordDelivery) Show(w http.ResponseWriter, r *http.Request) {
 	))
 }
 
-func discordDeliveryNotice(r *http.Request) string {
+func discordDeliveryNotice(r *http.Request) components.Notice {
 	switch r.URL.Query().Get("notice") {
 	case "connected":
-		return "Discord destination connected."
+		return components.Notice{Text: "Discord destination connected.", Tone: components.NoticeSuccess}
 	case "disconnected":
-		return "Discord destination disconnected."
+		return components.Notice{Text: "Discord destination disconnected.", Tone: components.NoticeInfo}
 	case "not-configured":
-		return "Discord destination is not configured."
+		return components.Notice{Text: "Discord destination is not configured.", Tone: components.NoticeWarning}
 	default:
-		return ""
+		return components.Notice{}
 	}
 }
 func (h *DiscordDelivery) Start(w http.ResponseWriter, r *http.Request) {

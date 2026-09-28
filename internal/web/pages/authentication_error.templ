@@ -86,9 +86,9 @@ templ AuthenticationError(brand branding.Brand, message string, providers []auth
 				<p class="mt-4 text-base-content/70">{ message }</p>
 				<div class="mt-7 flex flex-wrap gap-3">
 					if len(providers) > 0 {
-						<a class="btn btn-primary" href="/auth/login">Start login again</a>
+						<a class="btn btn-primary" href="/auth/login"><i class="ph ph-sign-in" aria-hidden="true"></i>Start login again</a>
 					}
-					<a class="btn btn-ghost" href="/">Return to login</a>
+					<a class="btn btn-ghost" href="/"><i class="ph ph-arrow-left" aria-hidden="true"></i>Return to login</a>
 				</div>
 			</div>
 		</section>

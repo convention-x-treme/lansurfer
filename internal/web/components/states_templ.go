@@ -44,7 +44,7 @@ func EmptyState(brand branding.Brand) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "\" alt=\"\"><div><h3 id=\"empty-state-title\" class=\"text-2xl font-bold\">Quiet out there. Start something?</h3><p class=\"mt-2 max-w-xl text-base-content/70\">No open requests right now. Post one so other players can join.</p><a class=\"btn btn-primary btn-sm mt-5\" href=\"/game-requests/new\">Create Game Request</a></div></section>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "\" alt=\"\"><div><h3 id=\"empty-state-title\" class=\"text-2xl font-bold\">Quiet out there. Start something?</h3><p class=\"mt-2 max-w-xl text-base-content/70\">No open requests right now. Post one so other players can join.</p><a class=\"btn btn-primary btn-sm mt-5\" href=\"/game-requests/new\"><i class=\"ph ph-plus\" aria-hidden=\"true\"></i>Create Game Request</a></div></section>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -73,7 +73,7 @@ func ErrorState() templ.Component {
 			templ_7745c5c3_Var3 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<div role=\"alert\" class=\"alert alert-error\"><div><h3 class=\"font-bold\">Something went wrong</h3><p class=\"text-sm\">We could not load this section. Try the request again.</p></div><button type=\"button\" class=\"btn btn-sm border-error-content/40 bg-transparent text-error-content hover:border-error-content hover:bg-error-content/15\" hx-get=\"/ui/patterns/empty\" hx-target=\"#pattern-preview\" hx-swap=\"innerHTML\">Try again</button></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<div role=\"alert\" class=\"alert alert-error\"><div><h3 class=\"font-bold\">Something went wrong</h3><p class=\"text-sm\">We could not load this section. Try the request again.</p></div><button type=\"button\" class=\"btn btn-sm border-error-content/40 bg-transparent text-error-content hover:border-error-content hover:bg-error-content/15\" hx-get=\"/ui/patterns/empty\" hx-target=\"#pattern-preview\" hx-swap=\"innerHTML\"><i class=\"ph ph-arrow-clockwise\" aria-hidden=\"true\"></i>Try again</button></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

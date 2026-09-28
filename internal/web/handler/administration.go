@@ -82,7 +82,7 @@ func (h *Administration) Games(w http.ResponseWriter, r *http.Request) {
 	items, err := h.games.List(r.Context(), search)
 	if err != nil {
 		if errors.Is(err, game.ErrInvalidSearch) {
-			h.renderGames(w, r, http.StatusUnprocessableEntity, nil, search, "Search must be 120 characters or fewer.", "")
+			h.renderGames(w, r, http.StatusUnprocessableEntity, nil, search, "Search must be 120 characters or fewer.", components.Notice{})
 			return
 		}
 		h.renderAdminError(w, r, err)
@@ -91,7 +91,7 @@ func (h *Administration) Games(w http.ResponseWriter, r *http.Request) {
 	h.renderGames(w, r, http.StatusOK, items, search, "", notice(r))
 }
 
-func (h *Administration) renderGames(w http.ResponseWriter, r *http.Request, status int, items []game.Game, search, formError, message string) {
+func (h *Administration) renderGames(w http.ResponseWriter, r *http.Request, status int, items []game.Game, search, formError string, message components.Notice) {
 	localOnly := r.URL.Query().Get("local") == "1"
 	if r.Header.Get("HX-Request") == "true" {
 		render(w, r, status, pages.AdminCatalogResults(h.brand, items, search, localOnly))
@@ -312,7 +312,7 @@ func (h *Administration) renderGamesWithError(w http.ResponseWriter, r *http.Req
 		h.renderAdminError(w, r, err)
 		return
 	}
-	h.renderGames(w, r, status, items, "", adminMessage(cause), "")
+	h.renderGames(w, r, status, items, "", adminMessage(cause), components.Notice{})
 }
 
 func (h *Administration) renderGameIGDBWithError(w http.ResponseWriter, r *http.Request, cause error, search string) {
@@ -382,7 +382,7 @@ func (h *Administration) renderGameReconciliationError(w http.ResponseWriter, r 
 		h.renderAdminError(w, r, err)
 		return
 	}
-	h.renderGames(w, r, status, items, "", adminMessage(cause), "")
+	h.renderGames(w, r, status, items, "", adminMessage(cause), components.Notice{})
 }
 
 func (h *Administration) renderAdminError(w http.ResponseWriter, r *http.Request, cause error) {
@@ -458,36 +458,40 @@ func adminErrorStatus(err error) int {
 	}
 }
 
-func notice(r *http.Request) string {
+func notice(r *http.Request) components.Notice {
+	info := func(text string) components.Notice { return components.Notice{Text: text, Tone: components.NoticeInfo} }
+	success := func(text string) components.Notice {
+		return components.Notice{Text: text, Tone: components.NoticeSuccess}
+	}
 	switch strings.TrimSpace(r.URL.Query().Get("notice")) {
 	case "game-created":
-		return "Game created."
+		return success("Game created.")
 	case "game-updated":
-		return "Game updated."
+		return info("Game updated.")
 	case "game-status-updated":
-		return "Game availability updated."
+		return info("Game availability updated.")
 	case "alias-added":
-		return "Alias added."
+		return info("Alias added.")
 	case "alias-removed":
-		return "Alias removed."
+		return info("Alias removed.")
 	case "igdb-linked":
-		return "IGDB record linked and enrichment refreshed."
+		return success("IGDB record linked and enrichment refreshed.")
 	case "igdb-unlinked":
-		return "IGDB link and enrichment removed."
+		return info("IGDB link and enrichment removed.")
 	case "igdb-link-conflict":
-		return "That IGDB record belongs to the selected source game. Review the merge below."
+		return components.Notice{Text: "That IGDB record belongs to the selected source game. Review the merge below.", Tone: components.NoticeWarning}
 	case "game-merged":
-		return "Games merged. Game Requests, followers, aliases, and provider identity were preserved."
+		return info("Games merged. Game Requests, followers, aliases, and provider identity were preserved.")
 	case "game-deleted":
-		return "Unused game permanently deleted."
+		return info("Unused game permanently deleted.")
 	case "request-created":
-		return "Game Request created."
+		return success("Game Request created.")
 	case "igdb-sync-started":
-		return "IGDB synchronization requested."
+		return info("IGDB synchronization requested.")
 	case "igdb-sync-already-running":
-		return "IGDB synchronization is already in progress."
+		return info("IGDB synchronization is already in progress.")
 	default:
-		return ""
+		return components.Notice{}
 	}
 }
 

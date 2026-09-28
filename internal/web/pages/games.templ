@@ -61,7 +61,7 @@ templ GameSearchForm(search string, followedOnly bool) {
 		<label class="sr-only" for="game-search">Search by game name or alias</label>
 		<input id="game-search" class="input input-sm request-search" type="search" name="q" value={ search } maxlength="120" placeholder="Search by name or alias, e.g. wc3" autocomplete="off"/>
 		<label class="filter-toggle"><input class="checkbox checkbox-sm" type="checkbox" name="followed" value="1" checked?={ followedOnly }/><span>Followed only</span></label>
-		<noscript><button class="btn btn-quiet btn-sm" type="submit">Apply</button></noscript>
+		<noscript><button class="btn btn-quiet btn-sm" type="submit"><i class="ph ph-funnel" aria-hidden="true"></i>Apply</button></noscript>
 	</form>
 }
 
@@ -113,7 +113,7 @@ templ GameCatalogEmpty(brand branding.Brand, search string, followedOnly bool) {
 			<div>
 				<h2 id="empty-games-title" class="text-2xl font-bold">You follow nothing yet.</h2>
 				<p class="mt-2 max-w-xl text-base-content/70">Follow a game and every new Game Request for it reaches you. That is all following a game does.</p>
-				<a class="btn btn-primary btn-sm mt-5" href="/games">Browse every game</a>
+				<a class="btn btn-primary btn-sm mt-5" href="/games"><i class="ph ph-game-controller" aria-hidden="true"></i>Browse every game</a>
 			</div>
 		</section>
 	} else {
@@ -122,7 +122,7 @@ templ GameCatalogEmpty(brand branding.Brand, search string, followedOnly bool) {
 			<div>
 				<h2 id="empty-games-title" class="text-2xl font-bold">No game matches that.</h2>
 				<p class="mt-2 max-w-xl text-base-content/70">Search covers a game's name and its aliases. Try a single word, or clear the filter to search the whole catalog.</p>
-				<a class="btn btn-quiet btn-sm mt-5" href="/games">Clear search and filters</a>
+				<a class="btn btn-quiet btn-sm mt-5" href="/games"><i class="ph ph-funnel-x" aria-hidden="true"></i>Clear search and filters</a>
 			</div>
 		</section>
 	}
@@ -146,7 +146,7 @@ templ GameCatalogAvailability(status game.ProviderStatus, viewer *components.Vie
 				<div>
 					<h2 id="games-unavailable-title" class="text-2xl font-bold">No games are available yet.</h2>
 					if viewer != nil && viewer.Role == "admin" {
-						<a class="btn btn-quiet btn-sm mt-5" href="/admin/igdb">Open IGDB synchronization</a>
+						<a class="btn btn-quiet btn-sm mt-5" href="/admin/igdb"><i class="ph ph-arrows-clockwise" aria-hidden="true"></i>Open IGDB synchronization</a>
 					}
 				</div>
 			</section>
@@ -154,7 +154,7 @@ templ GameCatalogAvailability(status game.ProviderStatus, viewer *components.Vie
 			<section class="detail-card">
 				<h2 class="text-[1.0625rem] font-semibold">No games are available yet.</h2>
 				if viewer != nil && viewer.Role == "admin" {
-					<a class="btn btn-quiet btn-sm self-start" href="/admin/igdb">Open IGDB synchronization</a>
+					<a class="btn btn-quiet btn-sm self-start" href="/admin/igdb"><i class="ph ph-arrows-clockwise" aria-hidden="true"></i>Open IGDB synchronization</a>
 				}
 			</section>
 		}
@@ -208,16 +208,16 @@ templ GameCard(item game.DiscoveryItem, followedOnly bool) {
 // empty) always has a reliable Reference, since only materialized rows are
 // affected.
 //
-// Unfollow is an outline button rather than a destructive one: it costs the
-// player nothing they cannot redo in one click, so it never reads as danger.
-// The "Following" state itself is named on the cover tag, so the button says
+// Unfollow is a step-back button: quiet at rest because the player can redo
+// it in one click, Coral on hover like every other negative action. The
+// "Following" state itself is named on the cover tag, so the button says
 // only what pressing it does.
 templ GameCardFollowControl(item game.DiscoveryItem, followedOnly bool) {
 	if item.Subscribed && item.LocalGameID != "" {
 		<form class="game-card-follow" method="post" action={ "/games/" + item.LocalGameID + "/unfollow" } hx-post={ "/games/" + item.LocalGameID + "/unfollow" } hx-target="closest article" hx-swap="outerHTML" hx-sync="this:drop" hx-disabled-elt="find button">
 			@components.CSRFInput()
 			@followedViewInput(followedOnly)
-			<button class="btn btn-ghost btn-sm text-[var(--ink-accent)]" type="submit">Unfollow</button>
+			<button class="btn btn-step-back btn-sm" type="submit"><i class="ph ph-heart-break" aria-hidden="true"></i>Unfollow</button>
 		</form>
 	} else if item.Subscribed {
 		<span class="status-chip status-chip-joined icon-label"><i class="ph-fill ph-heart" aria-hidden="true"></i>Following</span>
@@ -249,7 +249,7 @@ templ GameCatalogError(brand branding.Brand, navigation components.NavigationSta
 	@components.Layout(brand, "Games unavailable", navigation) {
 		<header class="app-topbar">
 			<h1 class="app-title">Games</h1>
-			<a class="btn btn-primary btn-sm" href="/games">Retry</a>
+			<a class="btn btn-primary btn-sm" href="/games"><i class="ph ph-arrow-clockwise" aria-hidden="true"></i>Retry</a>
 		</header>
 		<div class="content-page">
 			<div role="alert" class="alert alert-error"><div><p class="font-bold">Games could not be loaded</p><p>Try the request again.</p></div></div>

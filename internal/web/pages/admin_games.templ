@@ -22,7 +22,7 @@ import (
 // automatically, so adding a Game by hand is the exception and sits
 // collapsed under the list instead of occupying a permanent column beside
 // it.
-templ AdminGames(brand branding.Brand, navigation components.NavigationState, games []game.Game, search string, localOnly bool, formError, notice string) {
+templ AdminGames(brand branding.Brand, navigation components.NavigationState, games []game.Game, search string, localOnly bool, formError string, notice components.Notice) {
 	@components.Layout(brand, "Manage Games", navigation) {
 		<header class="app-topbar">
 			<h1 class="app-title sr-only">Manage games</h1>
@@ -33,9 +33,7 @@ templ AdminGames(brand branding.Brand, navigation components.NavigationState, ga
 			if formError != "" {
 				<div role="alert" class="alert alert-error mb-4"><span>{ formError }</span></div>
 			}
-			if notice != "" {
-				<div role="status" class="alert alert-info mb-4"><span>{ notice }</span></div>
-			}
+				@components.NoticeAlert(notice, "mb-4")
 			@AdminCatalogResults(brand, games, search, localOnly)
 			@AdminGameComposer()
 		</div>
@@ -61,7 +59,7 @@ templ AdminCatalogFilters(search string, localOnly bool) {
 		<label class="sr-only" for="admin-game-search">Search by game name or alias</label>
 		<input id="admin-game-search" class="input input-sm request-search" type="search" name="q" value={ search } maxlength="120" placeholder="Search by name or alias, e.g. wc3" autocomplete="off"/>
 		<label class="filter-toggle"><input class="checkbox checkbox-sm" type="checkbox" name="local" value="1" checked?={ localOnly }/><span>Not linked to IGDB</span></label>
-		<noscript><button class="btn btn-quiet btn-sm" type="submit">Apply</button></noscript>
+		<noscript><button class="btn btn-quiet btn-sm" type="submit"><i class="ph ph-funnel" aria-hidden="true"></i>Apply</button></noscript>
 	</form>
 }
 
@@ -184,7 +182,7 @@ templ AdminGameAliasSection(item game.Game) {
 				@components.CSRFInput()
 				<label class="sr-only" for={ "alias-" + item.ID }>New alias</label>
 				<input id={ "alias-" + item.ID } class="input input-bordered input-sm alias-input" name="alias" maxlength="120" placeholder="e.g. wc3" required/>
-				<button class="btn btn-quiet btn-sm" type="submit">Add</button>
+				<button class="btn btn-quiet btn-sm" type="submit"><i class="ph ph-plus" aria-hidden="true"></i>Add</button>
 			</form>
 		</div>
 	</section>

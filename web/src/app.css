@@ -2059,11 +2059,6 @@
   color: light-dark(var(--color-base-content), var(--color-success-content));
 }
 
-.alert-success {
-  --alert-tint: var(--color-success);
-  color: light-dark(var(--color-base-content), var(--color-success-content));
-}
-
 .alert-error {
   --alert-tint: var(--color-error);
   color: light-dark(var(--ink-danger), var(--color-error-content));

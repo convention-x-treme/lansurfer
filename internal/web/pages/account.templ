@@ -111,7 +111,7 @@ templ Account(brand branding.Brand, navigation components.NavigationState, curre
 								if identity.CanUnlink {
 									<form method="post" action={ templ.SafeURL(identity.UnlinkPath) }>
 										@components.CSRFInput()
-										<button class="btn btn-ghost btn-sm" type="submit"><i class="ph ph-link-break" aria-hidden="true"></i>Unlink</button>
+										<button class="btn btn-step-back btn-sm" type="submit"><i class="ph ph-link-break" aria-hidden="true"></i>Unlink</button>
 									</form>
 								} else {
 									<span class="shrink-0 text-xs text-base-content/60">Only sign-in method</span>

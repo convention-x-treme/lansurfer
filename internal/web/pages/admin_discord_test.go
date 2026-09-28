@@ -16,7 +16,7 @@ import (
 func renderAdminDiscord(t *testing.T, destination notification.DiscordDestination) string {
 	t.Helper()
 	var rendered bytes.Buffer
-	if err := AdminDiscordDelivery(branding.Default(), components.NavigationState{}, destination, "").Render(context.Background(), &rendered); err != nil {
+	if err := AdminDiscordDelivery(branding.Default(), components.NavigationState{}, destination, components.Notice{}).Render(context.Background(), &rendered); err != nil {
 		t.Fatalf("render admin Discord delivery: %v", err)
 	}
 	return rendered.String()

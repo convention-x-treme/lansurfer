@@ -10,6 +10,7 @@ import (
 
 	"github.com/convention-x-treme/lansurfer/internal/notification"
 	"github.com/convention-x-treme/lansurfer/internal/web/branding"
+	"github.com/convention-x-treme/lansurfer/internal/web/components"
 	webmiddleware "github.com/convention-x-treme/lansurfer/internal/web/middleware"
 	"github.com/convention-x-treme/lansurfer/internal/web/pages"
 	"github.com/go-chi/chi/v5"
@@ -267,19 +268,19 @@ func (h *NotificationSettingsHandler) redirect(w http.ResponseWriter, r *http.Re
 	http.Redirect(w, r, target, http.StatusSeeOther)
 }
 
-func notificationSettingsNotice(r *http.Request) string {
+func notificationSettingsNotice(r *http.Request) components.Notice {
 	switch r.URL.Query().Get("notice") {
 	case "push-enabled":
-		return "Push notifications enabled on this device."
+		return components.Notice{Text: "Push notifications enabled on this device.", Tone: components.NoticeSuccess}
 	case "push-disabled":
-		return "Push notifications paused. Your devices remain registered."
+		return components.Notice{Text: "Push notifications paused. Your devices remain registered.", Tone: components.NoticeInfo}
 	case "push-resumed":
-		return "Push notifications resumed on your registered devices."
+		return components.Notice{Text: "Push notifications resumed on your registered devices.", Tone: components.NoticeSuccess}
 	case "audience-updated":
-		return "Notification audience updated."
+		return components.Notice{Text: "Notification audience updated.", Tone: components.NoticeInfo}
 	case "device-removed":
-		return "Device removed."
+		return components.Notice{Text: "Device removed.", Tone: components.NoticeInfo}
 	default:
-		return ""
+		return components.Notice{}
 	}
 }

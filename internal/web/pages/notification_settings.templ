@@ -18,7 +18,7 @@ type NotificationSettingsView struct {
 	CurrentDeviceID  int64
 	// ThisBrowser names the requesting browser, e.g. "Firefox on Linux".
 	ThisBrowser      string
-	Notice           string
+	Notice           components.Notice
 	FormError        string
 }
 
@@ -31,9 +31,7 @@ templ NotificationSettings(brand branding.Brand, navigation components.Navigatio
 			</div>
 		</header>
 		<div class="content-page account-page">
-			if view.Notice != "" {
-				<div role="status" class="alert alert-info"><span>{ view.Notice }</span></div>
-			}
+				@components.NoticeAlert(view.Notice, "")
 			if view.FormError != "" {
 				<div role="alert" class="alert alert-error text-sm">
 					<span>{ view.FormError }</span>

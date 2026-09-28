@@ -476,7 +476,7 @@ func (h *GameRequests) renderChangeError(w http.ResponseWriter, r *http.Request,
 		h.renderError(w, r)
 		return
 	}
-	render(w, r, status, pages.GameRequestDetail(h.brand, h.navigationFor(r), request, viewerID, gameRequestMessage(cause), ""))
+	render(w, r, status, pages.GameRequestDetail(h.brand, h.navigationFor(r), request, viewerID, gameRequestMessage(cause), components.Notice{}))
 }
 
 func (h *GameRequests) parseCreateForm(r *http.Request) (pages.GameRequestForm, *int32, time.Time, error) {

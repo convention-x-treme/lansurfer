@@ -190,7 +190,8 @@ func TestRequestFiltersApplyWhileTyping(t *testing.T) {
 		`hx-sync="this:replace"`,
 		// A debounced keystroke must not push one history entry per pause.
 		`hx-replace-url="true"`,
-		`<noscript><button class="btn btn-quiet btn-sm" type="submit">Filter</button></noscript>`,
+		// Filters apply live; a submit button exists only for no-script browsers.
+		`<noscript><button class="btn btn-quiet btn-sm" type="submit">`,
 	} {
 		if !strings.Contains(markup, want) {
 			t.Errorf("filter form is missing %q: %s", want, markup)

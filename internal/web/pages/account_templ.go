@@ -355,7 +355,7 @@ func Account(brand branding.Brand, navigation components.NavigationState, curren
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "<button class=\"btn btn-ghost btn-sm\" type=\"submit\"><i class=\"ph ph-link-break\" aria-hidden=\"true\"></i>Unlink</button></form>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "<button class=\"btn btn-step-back btn-sm\" type=\"submit\"><i class=\"ph ph-link-break\" aria-hidden=\"true\"></i>Unlink</button></form>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
