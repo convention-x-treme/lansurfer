@@ -10,7 +10,7 @@ Use the smallest authoritative source that answers the task:
 - `docs/PRODUCT.md`: intended user-visible behavior and approved release scope.
 - `docs/ARCHITECTURE.md`: technical architecture, module ownership, and durable invariants.
 - `docs/TERMINOLOGY.md`: canonical project vocabulary and distinctions that agents/contributors must preserve.
-- GitHub Issues + the 1.0 milestone: current work, priorities, dependencies, validation status, and Pilot/Integration/Release gates.
+- GitHub Issues + the active release milestone: current work, priorities, dependencies, validation status, and release gates.
 - `docs/ROADMAP.md`: stable planning landing page only; do not put mutable checklists/status back into it.
 - `docs/BRANDING.md` and `docs/ui-kit/`: approved presentation system.
 - `Taskfile.yml`: authoritative development commands.
@@ -36,7 +36,7 @@ Run the checks relevant to the files and behavior changed. Do not substitute bro
 
 ## Architecture and coding guardrails
 
-- Keep the modular monolith organized by business capability. Current business modules are `auth`, `user`, `game`, `gamerequest`, and `notification`. The prototype `event` module is removed. Do not introduce `event`, `clan`, a generic parent/context abstraction, or other post-1.0 modules unless PRODUCT approves the scope and current GitHub planning schedules the work.
+- Keep the modular monolith organized by business capability. Current business modules are `auth`, `user`, `game`, `gamerequest`, and `notification`. The prototype `event` module is removed. Do not introduce `event`, `clan`, a generic parent/context abstraction, or other modules outside the current product model unless PRODUCT approves the scope and current GitHub planning schedules the work.
 - A business module owns its behavior and writes. Never reach into another module's persistence implementation or write its tables directly. Call a small explicit interface or publish an application/domain event.
 - Define narrow interfaces in the consuming package and wire concrete dependencies explicitly in the composition root. Do not use a dependency-injection framework or service locator.
 - Cross-module joins belong in dedicated read/query models. Query packages do not perform domain writes.
@@ -64,7 +64,7 @@ Run the checks relevant to the files and behavior changed. Do not substitute bro
 ## Scope and workflow
 
 - Inspect existing implementation and tests before designing a change.
-- Use GitHub Issues and the 1.0 milestone for current status, dependencies, validation, and release gates. Do not infer scheduled work from an old spec or historical branch artifact.
+- Use GitHub Issues and the active release milestone for current status, dependencies, validation, and release gates. Do not infer scheduled work from an old spec or historical branch artifact.
 - Prefer one coherent branch/PR per feature, fix, or cross-capability contract. Coordinate a shared schema, route, template, or composition-root contract before parallel changes touch it.
 - PRODUCT owns durable behavior/scope; ARCHITECTURE owns durable technical decisions; TERMINOLOGY owns shared vocabulary. Keep those documents aligned when a change affects more than one authority.
 - Specifications/designs are for bounded decisions that need more detail during implementation. Plans/tasks/prompts are execution aids, not permanent status documents.
@@ -75,7 +75,7 @@ Run the checks relevant to the files and behavior changed. Do not substitute bro
 
 ## Changes requiring approval
 
-Stop and request explicit approval before changing the technology stack, module boundaries, domain relationships/data ownership/invariants in the database model, authentication/session or security model, deployment model, public domain terminology, approved 1.0 scope, or license.
+Stop and request explicit approval before changing the technology stack, module boundaries, domain relationships/data ownership/invariants in the database model, authentication/session or security model, deployment model, public domain terminology, approved product/release scope, or license.
 
 Implementing schema, indexes, constraints, and migrations that realize an already-approved persistence design does not require renewed approval when the approved domain relationships, ownership, and invariants stay unchanged. Changing those semantics does require approval.
 
