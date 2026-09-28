@@ -1,10 +1,10 @@
 # LANsurfer Branding
 
-This document and the [`docs/ui-kit`](ui-kit/README.md) references together define LANsurfer's design system through 1.0. This document owns the fixed brand foundation, semantic colors, typography, theme behavior, accessibility rules, asset policy, voice, and instance-identity boundaries. The UI kit owns the target screen hierarchy, layout, component dimensions, states, and interactions for the surfaces it represents.
+This document and the [`docs/ui-kit`](ui-kit/README.md) references together define LANsurfer's current approved design system. This document owns the fixed brand foundation, semantic colors, typography, theme behavior, accessibility rules, asset policy, voice, and instance-identity boundaries. The UI kit owns the target screen hierarchy, layout, component dimensions, states, and interactions for the surfaces it represents.
 
 Both sources are required design guidance. New UI work must follow this document and adopt the UI kit rather than treating the completed prototype as the visual reference. If the two design sources appear to conflict, preserve this document's semantic tokens, accessibility rules, and equal dark/light support while following the UI kit's represented composition and interaction model; resolve a genuine conflict by updating both sources together.
 
-Neither design source may redefine product behavior, domain terminology, approved scope, technology, or module ownership. [PRODUCT.md](PRODUCT.md), [ROADMAP.md](ROADMAP.md), [ARCHITECTURE.md](ARCHITECTURE.md), and [AGENTS.md](../AGENTS.md) remain authoritative for those concerns.
+Neither design source may redefine product behavior, domain terminology, approved scope, technology, or module ownership. [PRODUCT.md](PRODUCT.md), [TERMINOLOGY.md](TERMINOLOGY.md), [ARCHITECTURE.md](ARCHITECTURE.md), and [AGENTS.md](../AGENTS.md) remain authoritative for those concerns; current planning/status lives in GitHub Issues and milestones.
 
 ## UI kit relationship
 
@@ -31,7 +31,7 @@ Always write the product name as `LANsurfer`, including the lowercase `surfer`. 
 
 ## Color system
 
-The palette is fixed through 1.0. Templates and styles must consume centralized semantic tokens instead of repeating hexadecimal values.
+The palette is part of the current approved product brand. Templates and styles must consume centralized semantic tokens instead of repeating hexadecimal values.
 
 | Token | Value | CMYK (uncoated) | Intended role |
 | --- | --- | --- | --- |
@@ -132,7 +132,7 @@ Bundle the variable webfonts with the application and serve them from embedded a
 
 ## Icons
 
-Phosphor Icons is the approved icon library for LANsurfer through 1.0. It is an icon font, not a UI component framework; the technology boundaries in [ARCHITECTURE.md](ARCHITECTURE.md) are unchanged by it.
+Phosphor Icons is the current approved icon library for LANsurfer. It is an icon font, not a UI component framework; the technology boundaries in [ARCHITECTURE.md](ARCHITECTURE.md) are unchanged by it.
 
 - **Weights.** Regular is the default weight for every icon. Fill is reserved for emphasized state, such as followed or selected. Do not mix weights decoratively within one component, and do not use other weights (Bold, Thin, Light, Duotone).
 - **Delivery.** Icons ship as a bundled webfont plus its stylesheet, copied into the embedded assets exactly like the Schibsted Grotesk and JetBrains Mono webfonts. There is no runtime icon CDN, no remote icon URL, and no per-icon JavaScript. Ship Phosphor's MIT license beside the asset, as with the fonts.
@@ -151,14 +151,14 @@ Set the wordmark in Schibsted Grotesk italic: 900 for `LAN`, 600 for `surfer`, t
 
 The eventual LANsurfer signet must remain recognizable at 32 px, work with no more than two blues plus optional Golden Hour, and have a one-color version suitable for print, stamps, merchandise, and sponsor walls. Product logo assets should be stored once and referenced through the centralized brand definition.
 
-### Instance identity in 1.0
+### Instance identity
 
-Stable 1.0 keeps fixed/default LANsurfer branding. A deployment may expose only the minimum configurable instance identity needed to distinguish the installation, as defined by [PRODUCT.md](PRODUCT.md) and [ROADMAP.md](ROADMAP.md); it does not require a branding-management surface.
+LANsurfer keeps fixed/default product branding. A deployment may expose only the minimum configurable instance identity needed to distinguish the installation, as defined by [PRODUCT.md](PRODUCT.md); LANsurfer does not provide a branding-management surface.
 
 - Keep the fixed **Powered by Convention-X-Treme** operator attribution visible. It is not an instance-identity field and is not admin-editable.
 - Continue to use this document's palette, typography, component semantics, accessibility rules, and light/dark presentations.
 - Use bundled/default product assets for logo and application-icon presentation unless a later approved scope explicitly adds configurable assets.
-- Do not add stable-1.0 controls for welcome text, contact links, uploaded logos/icons, custom colors, fonts, CSS, white-labeling, or theme editing.
+- Do not add controls for welcome text, contact links, uploaded logos/icons, custom colors, fonts, CSS, white-labeling, or theme editing without an approved product-scope change.
 
 Minimum instance identity is not Event-specific and must not grow into a second branding system.
 
@@ -248,7 +248,7 @@ Rules that keep the hierarchy honest:
 - Errors use Coral with a clear message. Informational feedback uses Aqua Wave or Surf Blue.
 - Badges and metadata stay visually quieter than titles and primary actions.
 
-The same component hierarchy is used for in-browser live updates and may support the planned 1.0 Web Push and Discord settings. Durable delivery does not add a persistent in-app notification inbox.
+The same component hierarchy is used for in-browser live updates and supports Web Push and Discord settings. Durable delivery does not add a persistent in-app notification inbox.
 
 ## Voice and terminology boundary
 
@@ -261,7 +261,7 @@ The design system does not introduce or imply:
 - Discord bot/gateway interactions
 - ticket claims or venue maps
 - a waitlist
-- internationalization as a 1.0 deliverable
+- internationalization/localization unless approved product scope changes
 
 ## Implementation boundary
 
