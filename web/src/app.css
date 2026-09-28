@@ -1050,9 +1050,33 @@
      its reason for existing sit on the closed summary. */
   .catalog-composer-summary {
     display: grid;
-    gap: 0.25rem;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.25rem 1rem;
     cursor: pointer;
     list-style: none;
+  }
+
+  .catalog-composer-summary > span {
+    grid-column: 1;
+  }
+
+  /* Top-right caret marks the card as a toggle; points up when open. */
+  .catalog-composer-caret {
+    grid-column: 2;
+    grid-row: 1;
+    font-size: 1.25rem;
+    color: var(--ink-quiet);
+    transition: transform 150ms ease;
+  }
+
+  details[open] > .catalog-composer-summary .catalog-composer-caret {
+    transform: rotate(180deg);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .catalog-composer-caret {
+      transition: none;
+    }
   }
 
   .catalog-composer-summary::-webkit-details-marker {
