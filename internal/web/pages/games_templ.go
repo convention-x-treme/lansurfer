@@ -313,20 +313,20 @@ func GameCatalogEmpty(brand branding.Brand, search string, followedOnly bool) te
 				return templ_7745c5c3_Err
 			}
 		} else if followedOnly && search == "" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "<section class=\"request-empty\" aria-labelledby=\"empty-games-title\"><img src=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "<section class=\"request-empty request-empty-portrait\" aria-labelledby=\"empty-games-title\"><img src=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var10 string
-			templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.ResolveAttributeValue(brand.Assets.Mascot)
+			templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.ResolveAttributeValue(brand.Assets.MascotSad)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/games.templ`, Line: 112, Col: 33}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/games.templ`, Line: 112, Col: 36}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var10)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "\" alt=\"\"><div><h2 id=\"empty-games-title\" class=\"text-2xl font-bold\">You follow nothing yet.</h2><p class=\"mt-2 max-w-xl text-base-content/70\">Follow a game and every new Game Request for it reaches you. That is all following a game does.</p><a class=\"btn btn-primary btn-sm mt-5\" href=\"/games\">Browse every game</a></div></section>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "\" alt=\"\" width=\"287\" height=\"352\"><div><h2 id=\"empty-games-title\" class=\"text-2xl font-bold\">You follow nothing yet.</h2><p class=\"mt-2 max-w-xl text-base-content/70\">Follow a game and every new Game Request for it reaches you. That is all following a game does.</p><a class=\"btn btn-primary btn-sm mt-5\" href=\"/games\">Browse every game</a></div></section>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

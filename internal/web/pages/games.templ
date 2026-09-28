@@ -108,8 +108,8 @@ templ GameCatalogEmpty(brand branding.Brand, search string, followedOnly bool) {
 			<p class="text-sm text-base-content/70">Search the game catalog to follow something you play or start a Game Request.</p>
 		</section>
 	} else if followedOnly && search == "" {
-		<section class="request-empty" aria-labelledby="empty-games-title">
-			<img src={ brand.Assets.Mascot } alt=""/>
+		<section class="request-empty request-empty-portrait" aria-labelledby="empty-games-title">
+			<img src={ brand.Assets.MascotSad } alt="" width="287" height="352"/>
 			<div>
 				<h2 id="empty-games-title" class="text-2xl font-bold">You follow nothing yet.</h2>
 				<p class="mt-2 max-w-xl text-base-content/70">Follow a game and every new Game Request for it reaches you. That is all following a game does.</p>
