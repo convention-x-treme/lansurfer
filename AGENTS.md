@@ -58,6 +58,7 @@ Run the checks relevant to the files and behavior changed. Do not substitute bro
 
 - Test meaningful domain behavior, PostgreSQL behavior, concurrency-sensitive invariants, and important HTTP behavior close to the owning code. Avoid excessive mocking.
 - PostgreSQL-specific behavior belongs in the integration suite.
+- Never create, overwrite, or delete the developer's local `.env` (or other gitignored local files such as `.env.*`) while testing or smoke-running. It may hold irreplaceable secrets. Test dotenv or configuration behavior in a scratch directory (`mktemp -d`) or a temporary copy of the repo instead.
 - Browser tests exist only for interaction or browser-platform behavior Go tests cannot exercise: rapid-click guards, realtime stream lifecycle, abort/failure recovery, SSE-versus-HTMX-swap behavior, service-worker lifecycle/install behavior, and browser-only Web Push permission/subscription/receipt behavior. Do not grow `web/tests` into a general end-to-end suite.
 - Regenerate committed generated output when its sources change and verify the production build when the change affects generated/runtime assets.
 
