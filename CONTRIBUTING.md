@@ -133,6 +133,14 @@ go run ./cmd/lansurfer admin promote --user-id <your-user-id>
 
 Administrator access is useful for exercising catalog and other administration workflows during development.
 
+To set up Web Push or Discord delivery locally, generate the VAPID keys and the data-encryption key. The command needs no configuration or database. Run it from the repository root and copy the printed lines into your `.env`; set `LANSURFER_WEBPUSH_SUBJECT` yourself (`mailto:` or `https://`):
+
+```sh
+go run ./cmd/lansurfer admin notifications generate-secrets
+```
+
+Use the package path `./cmd/lansurfer`, not `cmd/lansurfer/main.go`; the command spans several files. Never commit the output.
+
 ## Project orientation
 
 The repository is a modular Go monolith. These are the most useful entry points for a new contributor:
