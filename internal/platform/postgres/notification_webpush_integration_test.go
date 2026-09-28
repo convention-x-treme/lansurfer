@@ -26,7 +26,10 @@ func (r pushSummaryReader) GetGameRequestSummary(ctx context.Context, id string)
 	if err != nil {
 		return notification.GameRequestSummary{}, err
 	}
-	return notification.GameRequestSummary{GameID: summary.GameID, GameName: summary.GameName, StartsAt: summary.StartsAt}, nil
+	return notification.GameRequestSummary{
+		GameID: summary.GameID, GameName: summary.GameName, StartsAt: summary.StartsAt,
+		MemberCount: summary.MemberCount, MaxPlayers: summary.MaxPlayers, CreatorGameNick: summary.CreatorGameNick,
+	}, nil
 }
 
 type pushNickReader struct{ users *user.Service }
@@ -156,13 +159,13 @@ func TestWebPushWorkerPostgresEndToEnd(t *testing.T) {
 		if err := json.Unmarshal(call.payload, &payload); err != nil {
 			t.Fatal(err)
 		}
-		want := map[string]any{"version": float64(1), "kind": "created", "game": "Notification Game", "url": "https://lan.example/game-requests/" + created.ID, "instance": "Camp Nova", "title": "New Notification Game Game Request"}
+		want := map[string]any{"version": float64(3), "kind": "created", "game": "Notification Game", "url": "https://lan.example/game-requests/" + created.ID, "instance": "Camp Nova", "member_count": float64(1), "creator_game_nick": fixture.host.GameNick}
 		for key, value := range want {
 			if payload[key] != value {
 				t.Fatalf("payload %s = %v; want %v", key, payload[key], value)
 			}
 		}
-		allowed := map[string]bool{"version": true, "kind": true, "game": true, "starts_at": true, "url": true, "instance": true, "title": true, "body": true}
+		allowed := map[string]bool{"version": true, "kind": true, "game": true, "member_count": true, "max_players": true, "creator_game_nick": true, "starts_at": true, "url": true, "instance": true}
 		for key := range payload {
 			if !allowed[key] {
 				t.Fatalf("unexpected payload field %q", key)
@@ -200,11 +203,11 @@ func TestWebPushWorkerPostgresEndToEnd(t *testing.T) {
 	if err := json.Unmarshal(sender.calls[3].payload, &joined); err != nil {
 		t.Fatal(err)
 	}
-	if joined["kind"] != "joined" || joined["actor_game_nick"] != fixture.guest.GameNick || joined["title"] != fixture.guest.GameNick+" joined Notification Game" {
-		t.Fatalf("joined payload lacks public actor Game Nick: %v", joined["title"])
+	if joined["kind"] != "joined" || joined["actor_game_nick"] != fixture.guest.GameNick || joined["member_count"] != float64(2) {
+		t.Fatalf("joined payload lacks actor or current player count: %v", joined)
 	}
 	for field := range joined {
-		if !map[string]bool{"version": true, "kind": true, "game": true, "starts_at": true, "url": true, "instance": true, "title": true, "body": true, "actor_game_nick": true}[field] {
+		if !map[string]bool{"version": true, "kind": true, "game": true, "member_count": true, "max_players": true, "creator_game_nick": true, "starts_at": true, "url": true, "instance": true, "actor_game_nick": true}[field] {
 			t.Fatalf("unexpected joined payload field %q", field)
 		}
 	}

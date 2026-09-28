@@ -19,7 +19,7 @@ func TestNotificationSettingsShowRendersForSignedInUser(t *testing.T) {
 		devices:    []notification.PushSubscriptionRecord{{ID: 1, Label: "Laptop"}},
 		preference: notification.PushPreference{WebPushEnabled: true, NewRequestAudience: notification.AudienceAll},
 	}
-	handler := NewNotificationSettings(subscriptions, "vapid-public-key", true, branding.Default(), true)
+	handler := NewNotificationSettings(subscriptions, "vapid-public-key", true, branding.Default(), true, NewNavigation(nil, nil, nil, true))
 	request := withCurrentUser(httptest.NewRequest(http.MethodGet, "/account/notifications", nil), user.User{ID: "user-1", GameNick: "NightOtter"})
 	response := httptest.NewRecorder()
 
@@ -32,8 +32,21 @@ func TestNotificationSettingsShowRendersForSignedInUser(t *testing.T) {
 		t.Fatalf("query calls = %#v", subscriptions)
 	}
 }
+
+func TestNotificationSettingsShowUsesSharedNavigation(t *testing.T) {
+	handler := NewNotificationSettings(nil, "", false, branding.Default(), true, NewNavigation(nil, nil, nil, true))
+	request := withCurrentUser(httptest.NewRequest(http.MethodGet, "/account/notifications?notice=push-enabled", nil), user.User{ID: "user-1", GameNick: "NightOtter", Role: user.RoleAdmin})
+	response := httptest.NewRecorder()
+
+	handler.Show(response, request)
+
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `href="/admin/discord"`) {
+		t.Fatalf("notification settings sidebar does not show configured Discord delivery: status %d", response.Code)
+	}
+}
+
 func TestNotificationSettingsShowRendersWhenWebPushIsNotConfigured(t *testing.T) {
-	handler := NewNotificationSettings(nil, "", false, branding.Default(), true)
+	handler := NewNotificationSettings(nil, "", false, branding.Default(), true, nil)
 	request := withCurrentUser(httptest.NewRequest(http.MethodGet, "/account/notifications", nil), user.User{ID: "user-1", GameNick: "NightOtter"})
 	response := httptest.NewRecorder()
 
@@ -52,7 +65,7 @@ func TestNotificationSettingsShowMarksOnlyCurrentDeviceWithoutExposingSecrets(t 
 		},
 		currentDeviceID: 12,
 	}
-	handler := NewNotificationSettings(subscriptions, "vapid-public-key", true, branding.Default(), true)
+	handler := NewNotificationSettings(subscriptions, "vapid-public-key", true, branding.Default(), true, nil)
 	request := withCurrentUser(httptest.NewRequest(http.MethodGet, "/account/notifications", nil), user.User{ID: "user-1"})
 	request.AddCookie(&http.Cookie{Name: "lansurfer_device", Value: "raw-secret-token"})
 	response := httptest.NewRecorder()
@@ -80,7 +93,7 @@ func TestNotificationSettingsShowMarksOnlyCurrentDeviceWithoutExposingSecrets(t 
 }
 func TestNotificationSettingsShowKeepsEnabledWithZeroDevices(t *testing.T) {
 	subscriptions := &stubSubscriptionManager{preference: notification.PushPreference{WebPushEnabled: true}}
-	handler := NewNotificationSettings(subscriptions, "vapid-public-key", true, branding.Default(), true)
+	handler := NewNotificationSettings(subscriptions, "vapid-public-key", true, branding.Default(), true, nil)
 	request := withCurrentUser(httptest.NewRequest(http.MethodGet, "/account/notifications", nil), user.User{ID: "user-1"})
 	response := httptest.NewRecorder()
 	handler.Show(response, request)
@@ -93,7 +106,7 @@ func TestNotificationSettingsShowKeepsEnabledWithZeroDevices(t *testing.T) {
 }
 
 func TestNotificationSettingsShowRejectsAnonymousRequest(t *testing.T) {
-	handler := NewNotificationSettings(&stubSubscriptionManager{}, "vapid-public-key", true, branding.Default(), true)
+	handler := NewNotificationSettings(&stubSubscriptionManager{}, "vapid-public-key", true, branding.Default(), true, nil)
 	response := httptest.NewRecorder()
 
 	handler.Show(response, httptest.NewRequest(http.MethodGet, "/account/notifications", nil))
@@ -105,7 +118,7 @@ func TestNotificationSettingsShowRejectsAnonymousRequest(t *testing.T) {
 
 func TestNotificationSettingsSubscribeEnablesAndRedirects(t *testing.T) {
 	subscriptions := &stubSubscriptionManager{}
-	handler := NewNotificationSettings(subscriptions, "vapid-public-key", true, branding.Default(), true)
+	handler := NewNotificationSettings(subscriptions, "vapid-public-key", true, branding.Default(), true, nil)
 	form := strings.NewReader("endpoint=https://push.example/endpoint&p256dh=p256dh-value&auth=auth-value&label=Laptop")
 	request := withCurrentUser(httptest.NewRequest(http.MethodPost, "/account/notifications/subscribe", form), user.User{ID: "user-1"})
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -133,7 +146,7 @@ func TestNotificationSettingsSubscribeEnablesAndRedirects(t *testing.T) {
 
 func TestNotificationSettingsSubscribeNormalizesEndpointBeforeEnable(t *testing.T) {
 	subscriptions := &stubSubscriptionManager{}
-	handler := NewNotificationSettings(subscriptions, "vapid-public-key", true, branding.Default(), true)
+	handler := NewNotificationSettings(subscriptions, "vapid-public-key", true, branding.Default(), true, nil)
 	// The submitted scheme is uppercase; url.Parse+String lowercases it on
 	// the round trip, so asserting the exact normalized string proves
 	// Enable receives the Parse/String output, not the raw form value.
@@ -166,7 +179,7 @@ func TestNotificationSettingsSubscribeRejectsNonHTTPSEndpoint(t *testing.T) {
 	for _, endpoint := range tests {
 		t.Run(endpoint, func(t *testing.T) {
 			subscriptions := &stubSubscriptionManager{}
-			handler := NewNotificationSettings(subscriptions, "vapid-public-key", true, branding.Default(), true)
+			handler := NewNotificationSettings(subscriptions, "vapid-public-key", true, branding.Default(), true, nil)
 			form := strings.NewReader("endpoint=" + url.QueryEscape(endpoint) + "&p256dh=p256dh-value&auth=auth-value")
 			request := withCurrentUser(httptest.NewRequest(http.MethodPost, "/account/notifications/subscribe", form), user.User{ID: "user-1"})
 			request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -194,7 +207,7 @@ func TestNotificationSettingsSubscribeRejectsOversizedFields(t *testing.T) {
 	for name, body := range tests {
 		t.Run(name, func(t *testing.T) {
 			subscriptions := &stubSubscriptionManager{}
-			handler := NewNotificationSettings(subscriptions, "vapid-public-key", true, branding.Default(), true)
+			handler := NewNotificationSettings(subscriptions, "vapid-public-key", true, branding.Default(), true, nil)
 			request := withCurrentUser(httptest.NewRequest(http.MethodPost, "/account/notifications/subscribe", strings.NewReader(body)), user.User{ID: "user-1"})
 			request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 			response := httptest.NewRecorder()
@@ -213,7 +226,7 @@ func TestNotificationSettingsSubscribeRejectsOversizedFields(t *testing.T) {
 
 func TestNotificationSettingsSubscribeRejectsIncompleteForm(t *testing.T) {
 	subscriptions := &stubSubscriptionManager{}
-	handler := NewNotificationSettings(subscriptions, "vapid-public-key", true, branding.Default(), true)
+	handler := NewNotificationSettings(subscriptions, "vapid-public-key", true, branding.Default(), true, nil)
 	form := strings.NewReader("endpoint=https://push.example/endpoint")
 	request := withCurrentUser(httptest.NewRequest(http.MethodPost, "/account/notifications/subscribe", form), user.User{ID: "user-1"})
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -230,7 +243,7 @@ func TestNotificationSettingsSubscribeRejectsIncompleteForm(t *testing.T) {
 }
 
 func TestNotificationSettingsSubscribeRejectsAnonymousRequest(t *testing.T) {
-	handler := NewNotificationSettings(&stubSubscriptionManager{}, "vapid-public-key", true, branding.Default(), true)
+	handler := NewNotificationSettings(&stubSubscriptionManager{}, "vapid-public-key", true, branding.Default(), true, nil)
 	response := httptest.NewRecorder()
 
 	handler.Subscribe(response, httptest.NewRequest(http.MethodPost, "/account/notifications/subscribe", nil))
@@ -242,7 +255,7 @@ func TestNotificationSettingsSubscribeRejectsAnonymousRequest(t *testing.T) {
 
 func TestNotificationSettingsSubscribeReturnsNotFoundWhenWebPushNotConfigured(t *testing.T) {
 	subscriptions := &stubSubscriptionManager{}
-	handler := NewNotificationSettings(subscriptions, "vapid-public-key", false, branding.Default(), true)
+	handler := NewNotificationSettings(subscriptions, "vapid-public-key", false, branding.Default(), true, nil)
 	form := strings.NewReader("endpoint=https://push.example/endpoint&p256dh=p256dh-value&auth=auth-value")
 	request := withCurrentUser(httptest.NewRequest(http.MethodPost, "/account/notifications/subscribe", form), user.User{ID: "user-1"})
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -260,7 +273,7 @@ func TestNotificationSettingsSubscribeReturnsNotFoundWhenWebPushNotConfigured(t 
 
 func TestNotificationSettingsDisableCallsThroughAndRedirects(t *testing.T) {
 	subscriptions := &stubSubscriptionManager{}
-	handler := NewNotificationSettings(subscriptions, "vapid-public-key", true, branding.Default(), true)
+	handler := NewNotificationSettings(subscriptions, "vapid-public-key", true, branding.Default(), true, nil)
 	request := withCurrentUser(httptest.NewRequest(http.MethodPost, "/account/notifications/disable", nil), user.User{ID: "user-1"})
 	response := httptest.NewRecorder()
 
@@ -275,7 +288,7 @@ func TestNotificationSettingsDisableCallsThroughAndRedirects(t *testing.T) {
 }
 
 func TestNotificationSettingsDisableRejectsAnonymousRequest(t *testing.T) {
-	handler := NewNotificationSettings(&stubSubscriptionManager{}, "vapid-public-key", true, branding.Default(), true)
+	handler := NewNotificationSettings(&stubSubscriptionManager{}, "vapid-public-key", true, branding.Default(), true, nil)
 	response := httptest.NewRecorder()
 
 	handler.Disable(response, httptest.NewRequest(http.MethodPost, "/account/notifications/disable", nil))
@@ -287,7 +300,7 @@ func TestNotificationSettingsDisableRejectsAnonymousRequest(t *testing.T) {
 
 func TestNotificationSettingsSetAudienceCallsThroughAndRedirects(t *testing.T) {
 	subscriptions := &stubSubscriptionManager{}
-	handler := NewNotificationSettings(subscriptions, "vapid-public-key", true, branding.Default(), true)
+	handler := NewNotificationSettings(subscriptions, "vapid-public-key", true, branding.Default(), true, nil)
 	form := strings.NewReader("audience=all")
 	request := withCurrentUser(httptest.NewRequest(http.MethodPost, "/account/notifications/audience", form), user.User{ID: "user-1"})
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -305,7 +318,7 @@ func TestNotificationSettingsSetAudienceCallsThroughAndRedirects(t *testing.T) {
 
 func TestNotificationSettingsSetAudienceRejectsInvalidAudienceWith422(t *testing.T) {
 	subscriptions := &stubSubscriptionManager{audienceErr: notification.ErrInvalidAudience}
-	handler := NewNotificationSettings(subscriptions, "vapid-public-key", true, branding.Default(), true)
+	handler := NewNotificationSettings(subscriptions, "vapid-public-key", true, branding.Default(), true, nil)
 	form := strings.NewReader("audience=everyone")
 	request := withCurrentUser(httptest.NewRequest(http.MethodPost, "/account/notifications/audience", form), user.User{ID: "user-1"})
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -320,7 +333,7 @@ func TestNotificationSettingsSetAudienceRejectsInvalidAudienceWith422(t *testing
 
 func TestNotificationSettingsSetAudienceReturns500OnStoreErrorDistinctFromInvalidAudience(t *testing.T) {
 	subscriptions := &stubSubscriptionManager{audienceErr: errors.New("database is unreachable")}
-	handler := NewNotificationSettings(subscriptions, "vapid-public-key", true, branding.Default(), true)
+	handler := NewNotificationSettings(subscriptions, "vapid-public-key", true, branding.Default(), true, nil)
 	form := strings.NewReader("audience=all")
 	request := withCurrentUser(httptest.NewRequest(http.MethodPost, "/account/notifications/audience", form), user.User{ID: "user-1"})
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -334,7 +347,7 @@ func TestNotificationSettingsSetAudienceReturns500OnStoreErrorDistinctFromInvali
 }
 
 func TestNotificationSettingsSetAudienceRejectsAnonymousRequest(t *testing.T) {
-	handler := NewNotificationSettings(&stubSubscriptionManager{}, "vapid-public-key", true, branding.Default(), true)
+	handler := NewNotificationSettings(&stubSubscriptionManager{}, "vapid-public-key", true, branding.Default(), true, nil)
 	response := httptest.NewRecorder()
 
 	handler.SetAudience(response, httptest.NewRequest(http.MethodPost, "/account/notifications/audience", nil))
@@ -353,7 +366,7 @@ func TestNotificationSettingsReconcileRemovesOnlyCookieDeviceAndKeepsPreference(
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			subscriptions := &stubSubscriptionManager{preference: notification.PushPreference{WebPushEnabled: true, NewRequestAudience: notification.AudienceAll}}
-			handler := NewNotificationSettings(subscriptions, "", true, branding.Default(), true)
+			handler := NewNotificationSettings(subscriptions, "", true, branding.Default(), true, nil)
 			request := withCurrentUser(httptest.NewRequest(http.MethodPost, "/account/notifications/reconcile", strings.NewReader("deviceID=forged&deviceHash=forged")), user.User{ID: "user-1"})
 			if tc.cookie != "" {
 				request.AddCookie(&http.Cookie{Name: "lansurfer_device", Value: tc.cookie})
@@ -379,7 +392,7 @@ func TestNotificationSettingsReconcileRemovesOnlyCookieDeviceAndKeepsPreference(
 func TestNotificationSettingsReconcileRejectsAnonymousRequest(t *testing.T) {
 	subscriptions := &stubSubscriptionManager{}
 	response := httptest.NewRecorder()
-	NewNotificationSettings(subscriptions, "", true, branding.Default(), true).ReconcileCurrentDevice(response, httptest.NewRequest(http.MethodPost, "/account/notifications/reconcile", nil))
+	NewNotificationSettings(subscriptions, "", true, branding.Default(), true, nil).ReconcileCurrentDevice(response, httptest.NewRequest(http.MethodPost, "/account/notifications/reconcile", nil))
 	if response.Code != http.StatusUnauthorized || subscriptions.removedByHash != "" {
 		t.Fatalf("status/removed device = %d/%q", response.Code, subscriptions.removedByHash)
 	}
@@ -387,7 +400,7 @@ func TestNotificationSettingsReconcileRejectsAnonymousRequest(t *testing.T) {
 
 func TestNotificationSettingsRemoveDeviceParsesIDAndRedirects(t *testing.T) {
 	subscriptions := &stubSubscriptionManager{}
-	handler := NewNotificationSettings(subscriptions, "vapid-public-key", true, branding.Default(), true)
+	handler := NewNotificationSettings(subscriptions, "vapid-public-key", true, branding.Default(), true, nil)
 	request := withCurrentUser(withURLParam(httptest.NewRequest(http.MethodPost, "/account/notifications/devices/42/remove", nil), "subscriptionID", "42"), user.User{ID: "user-1"})
 	response := httptest.NewRecorder()
 
@@ -402,7 +415,7 @@ func TestNotificationSettingsRemoveDeviceParsesIDAndRedirects(t *testing.T) {
 }
 
 func TestNotificationSettingsRemoveDeviceRejectsAnonymousRequest(t *testing.T) {
-	handler := NewNotificationSettings(&stubSubscriptionManager{}, "vapid-public-key", true, branding.Default(), true)
+	handler := NewNotificationSettings(&stubSubscriptionManager{}, "vapid-public-key", true, branding.Default(), true, nil)
 	response := httptest.NewRecorder()
 
 	handler.RemoveDevice(response, httptest.NewRequest(http.MethodPost, "/account/notifications/devices/42/remove", nil))

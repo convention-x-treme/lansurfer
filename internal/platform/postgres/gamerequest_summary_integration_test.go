@@ -61,6 +61,9 @@ func TestGameRequestSummaryReturnsCurrentViewerIndependentSnapshot(t *testing.T)
 		if (got.MaxPlayers == nil) != (maxPlayers == nil) || (maxPlayers != nil && *got.MaxPlayers != *maxPlayers) {
 			t.Fatalf("snapshot MaxPlayers = %v, want %v", got.MaxPlayers, maxPlayers)
 		}
+		if got.CoverImageID != "" {
+			t.Fatalf("local Game cover = %q, want empty", got.CoverImageID)
+		}
 	}
 
 	three := int32(3)
@@ -88,4 +91,27 @@ func TestGameRequestSummaryReturnsCurrentViewerIndependentSnapshot(t *testing.T)
 		t.Fatalf("cancel request: %v", err)
 	}
 	assertSnapshot(cancelled, gamerequest.StatusCancelled, 1, &two)
+
+	gameStore := gamepostgres.NewStore(pool)
+	discovery := game.NewDiscoveryService(gameStore, gameStore, gameStore, storeProviderStatus{store: gameStore})
+	provider := game.ProviderGame{
+		Reference: game.ProviderReference{Provider: "igdb", ExternalID: "9500"},
+		Name:      "Provider Game", Slug: "provider-game", GameType: "Main Game", CoverImageID: "co1abc",
+	}
+	activateIGDBGeneration(t, gameStore, []game.ProviderGame{provider})
+	materialized, err := discovery.Resolve(t.Context(), provider.Reference)
+	if err != nil {
+		t.Fatalf("materialize provider Game: %v", err)
+	}
+	providerRequest, err := requests.Create(t.Context(), creator.ID, materialized.ID, nil, startsAt, "")
+	if err != nil {
+		t.Fatalf("create provider request: %v", err)
+	}
+	summary, err := readStore.GetGameRequestSummary(t.Context(), providerRequest.ID)
+	if err != nil {
+		t.Fatalf("get provider request summary: %v", err)
+	}
+	if summary.CoverImageID != "co1abc" {
+		t.Fatalf("provider Game cover = %q, want co1abc", summary.CoverImageID)
+	}
 }

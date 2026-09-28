@@ -10,7 +10,6 @@ import (
 
 	"github.com/convention-x-treme/lansurfer/internal/notification"
 	"github.com/convention-x-treme/lansurfer/internal/web/branding"
-	"github.com/convention-x-treme/lansurfer/internal/web/components"
 	webmiddleware "github.com/convention-x-treme/lansurfer/internal/web/middleware"
 	"github.com/convention-x-treme/lansurfer/internal/web/pages"
 	"github.com/go-chi/chi/v5"
@@ -48,13 +47,14 @@ type NotificationSettingsHandler struct {
 	vapidPublicKey string
 	webPushEnabled bool // whether Web Push is configured at all (VAPID present)
 	brand          branding.Brand
+	navigation     *Navigation
 	secureCookies  bool
 }
 
-func NewNotificationSettings(subscriptions SubscriptionManager, vapidPublicKey string, webPushConfigured bool, brand branding.Brand, secureCookies bool) *NotificationSettingsHandler {
+func NewNotificationSettings(subscriptions SubscriptionManager, vapidPublicKey string, webPushConfigured bool, brand branding.Brand, secureCookies bool, navigation *Navigation) *NotificationSettingsHandler {
 	return &NotificationSettingsHandler{
 		subscriptions: subscriptions, vapidPublicKey: vapidPublicKey,
-		webPushEnabled: webPushConfigured, brand: brand, secureCookies: secureCookies,
+		webPushEnabled: webPushConfigured, brand: brand, secureCookies: secureCookies, navigation: navigation,
 	}
 }
 
@@ -231,8 +231,7 @@ func (h *NotificationSettingsHandler) render(w http.ResponseWriter, r *http.Requ
 			}
 		}
 	}
-	navigation := components.NavigationState{Viewer: &components.Viewer{ID: account.ID, GameNick: account.GameNick, Role: string(account.Role)}, Section: "account"}
-	render(w, r, status, pages.NotificationSettings(h.brand, navigation, pages.NotificationSettingsView{
+	render(w, r, status, pages.NotificationSettings(h.brand, h.navigation.For(r, "account"), pages.NotificationSettingsView{
 		WebPushAvailable: h.webPushEnabled,
 		VAPIDPublicKey:   h.vapidPublicKey,
 		Preference:       preference,

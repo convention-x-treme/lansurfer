@@ -64,6 +64,10 @@ for (const state of [
     }, state);
     await page.goto("/account/notifications");
     await expect(page.locator("[data-push-status]")).toHaveAttribute("data-push-state", state.expected);
+    if (state.expected === "blocked") {
+      await expect(page.locator("[data-subscribe-button]")).toBeDisabled();
+      await expect(page.locator("[data-push-status]")).toContainText("Allow notifications in your browser settings, then reload this page.");
+    }
   });
 }
 
@@ -190,6 +194,22 @@ test("explicit enable prompts once, reuses registration, and serializes subscrip
   expect(await page.evaluate(() => localStorage.getItem("subscription-count"))).toBe("1");
   expect(await page.evaluate(() => localStorage.getItem("registration-count"))).toBe("1");
   expect(await page.evaluate(() => localStorage.getItem("subscription-options"))).toBe('{"userVisibleOnly":true,"applicationServerKey":[1,2,3]}');
+});
+
+test("denied push permission shows a visible error beside enablement", async ({ page }) => {
+  await page.route("**/account/notifications", (route) => route.fulfill({ contentType: "text/html", body: settings(false, 0, false) }));
+  await page.addInitScript(() => {
+    Object.defineProperty(window, "Notification", { configurable: true, value: { permission: "default", requestPermission: async () => "denied" } });
+    Object.defineProperty(window, "PushManager", { configurable: true, value: function PushManager() {} });
+    Object.defineProperty(navigator, "serviceWorker", { configurable: true, value: { register: async () => ({ pushManager: { getSubscription: async () => null } }) } });
+  });
+  await page.goto("/account/notifications");
+  await page.getByRole("button", { name: "Enable on this device" }).click();
+  const error = page.getByRole("alert").filter({ hasText: "Notifications are blocked in this browser." });
+  await expect(error).toBeVisible();
+  await expect(error).toHaveClass(/alert-error/);
+  await expect(page.locator("[data-subscribe-button]")).toBeDisabled();
+  await expect(error).toContainText("Allow notifications in your browser settings, then reload this page.");
 });
 
 for (const state of [

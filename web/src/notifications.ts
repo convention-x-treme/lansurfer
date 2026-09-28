@@ -41,9 +41,14 @@ export function initNotificationSettings(): void {
   });
 
 
+  const blockedMessage = "Notifications are blocked in this browser. Allow notifications in your browser settings, then reload this page.";
   const showStatus = (state: string, message: string) => {
+    const error = ["blocked", "permission-required", "unavailable", "error"].includes(state);
+    status.className = error ? "alert alert-error text-sm" : "text-sm";
+    status.setAttribute("role", error ? "alert" : "status");
     status.dataset.pushState = state;
     status.hidden = false;
+    if (state === "blocked") button.disabled = true;
     status.textContent = message;
   };
   if (!window.isSecureContext || !("Notification" in window) || !("PushManager" in window) || !("serviceWorker" in navigator)) {
@@ -74,7 +79,7 @@ export function initNotificationSettings(): void {
         window.location.reload();
         return;
       }
-      if (permission === "denied") showStatus("blocked", "Notifications are blocked in this browser.");
+      if (permission === "denied") showStatus("blocked", blockedMessage);
       else if (panel?.dataset.pushEnabled === "false") showStatus("disabled", "Push delivery is disabled for your account.");
       else if (panel?.dataset.deviceCount === "0") showStatus("no-devices", "Push delivery is enabled, but no devices are registered.");
       else if (panel?.dataset.currentDeviceId !== "0") showStatus("current-device", "This browser is registered for push notifications.");
@@ -91,7 +96,7 @@ export function initNotificationSettings(): void {
       let permission = Notification.permission;
       if (permission === "default") permission = await Notification.requestPermission();
       if (permission !== "granted") {
-        showStatus(permission === "denied" ? "blocked" : "permission-required", permission === "denied" ? "Notifications are blocked in this browser." : "Notification permission is required.");
+        showStatus(permission === "denied" ? "blocked" : "permission-required", permission === "denied" ? blockedMessage : "Notification permission is required.");
         return;
       }
       const { registration } = await registerServiceWorker();
@@ -110,7 +115,7 @@ export function initNotificationSettings(): void {
     } catch {
       showStatus("error", "Could not enable notifications on this device. Try again.");
     } finally {
-      button.disabled = false;
+      if (status.dataset.pushState !== "blocked") button.disabled = false;
     }
   });
 }

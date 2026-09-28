@@ -136,6 +136,7 @@ type RequestSummary struct {
 	RequestID       string
 	GameID          string
 	GameName        string
+	CoverImageID    string
 	StartsAt        time.Time
 	Status          domain.Status
 	MemberCount     int64
@@ -287,7 +288,7 @@ func (s *Store) GetGameRequestSummary(ctx context.Context, gameRequestID string)
 		return RequestSummary{}, fmt.Errorf("get game request summary: %w", err)
 	}
 	return RequestSummary{
-		RequestID: row.RequestID, GameID: row.GameID, GameName: row.GameName,
+		RequestID: row.RequestID, GameID: row.GameID, GameName: row.GameName, CoverImageID: textValue(row.CoverImageID),
 		StartsAt: row.StartsAt.Time, Status: domain.Status(row.Status),
 		MemberCount: row.MemberCount, MaxPlayers: int4Pointer(row.MaxPlayers),
 		CreatorGameNick: row.CreatorGameNick.String, Description: row.Description,

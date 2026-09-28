@@ -157,7 +157,7 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 	realtimeHandler := handler.NewRealtime(dependencies.Realtime)
 	notificationSettingsHandler := handler.NewNotificationSettings(
 		dependencies.Subscriptions, dependencies.VAPIDPublicKey,
-		dependencies.WebPushConfigured, brand, dependencies.SecureCookies,
+		dependencies.WebPushConfigured, brand, dependencies.SecureCookies, navigation,
 	)
 	router := chi.NewRouter()
 	router.Use(middleware.RequestID)

@@ -26,15 +26,16 @@ self.addEventListener("activate", (event) => {
 type PushKind = "created" | "joined" | "left" | "closed" | "cancelled";
 
 interface PushPayload {
-  version: 1;
+  version: 3;
   kind: PushKind;
   game: string;
+  member_count: number;
+  max_players?: number;
+  creator_game_nick?: string;
   starts_at?: string;
   url: string;
   instance: string;
   actor_game_nick?: string;
-  title: string;
-  body: string;
 }
 
 function isPushKind(value: unknown): value is PushKind {
@@ -46,7 +47,7 @@ function gameRequestURL(value: unknown): URL | null {
   try {
     const url = new URL(value);
     const requestID = url.pathname.slice("/game-requests/".length);
-    if (url.origin !== self.location.origin || !requestID || requestID.includes("/") || url.search || url.hash) return null;
+    if (url.origin !== self.location.origin || !url.pathname.startsWith("/game-requests/") || !requestID || requestID.includes("/") || url.search || url.hash) return null;
     return url;
   } catch {
     return null;
@@ -55,11 +56,14 @@ function gameRequestURL(value: unknown): URL | null {
 
 function isPushPayload(value: unknown): value is PushPayload {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
-  if (!("version" in value) || !("kind" in value) || !("game" in value) || !("instance" in value) || !("title" in value) || !("body" in value) || !("url" in value)) return false;
-  if (value.version !== 1 || !isPushKind(value.kind)) return false;
+  if (!("version" in value) || !("kind" in value) || !("game" in value) || !("member_count" in value) || !("instance" in value) || !("url" in value)) return false;
+  if (value.version !== 3 || !isPushKind(value.kind)) return false;
   if (typeof value.game !== "string" || value.game.trim() === "") return false;
   if (typeof value.instance !== "string" || value.instance.trim() === "") return false;
-  if (typeof value.title !== "string" || typeof value.body !== "string" || typeof value.url !== "string") return false;
+  if (!Number.isSafeInteger(value.member_count) || (value.member_count as number) < 0) return false;
+  if ("max_players" in value && (!Number.isSafeInteger(value.max_players) || (value.max_players as number) < 1 || (value.max_players as number) < (value.member_count as number))) return false;
+  const creator = "creator_game_nick" in value ? value.creator_game_nick : undefined;
+  if (creator !== undefined && (typeof creator !== "string" || creator.trim() === "")) return false;
 
   const hasActor = value.kind === "joined" || value.kind === "left";
   const actorGameNick = "actor_game_nick" in value ? value.actor_game_nick : undefined;
@@ -72,16 +76,7 @@ function isPushPayload(value: unknown): value is PushPayload {
     !Number.isFinite(Date.parse(startsAt))
   )) return false;
 
-  const url = gameRequestURL(value.url);
-  if (!url) return false;
-  const actor = typeof actorGameNick === "string" ? actorGameNick : "";
-  const title = value.kind === "created"
-    ? `New ${value.game} Game Request`
-    : value.kind === "joined" || value.kind === "left"
-      ? `${actor} ${value.kind} ${value.game}`
-      : `${value.game} Game Request ${value.kind}`;
-  const body = value.instance + (startsAt === undefined ? "" : ` · Starts ${startsAt}`);
-  return value.title === title && value.body === body;
+  return gameRequestURL(value.url) !== null;
 }
 
 
@@ -115,8 +110,22 @@ self.addEventListener("push", (event) => {
       }
     })) return;
 
-    await self.registration.showNotification(payload.title, {
-      body: payload.body,
+    const title = payload.creator_game_nick
+      ? `${payload.creator_game_nick} is looking for ${payload.game}`
+      : payload.game;
+    const startsAt = payload.starts_at
+      ? new Intl.DateTimeFormat(undefined, { dateStyle: "full", timeStyle: "short" }).format(new Date(payload.starts_at))
+      : "Not set";
+    const prefix = payload.kind === "joined" || payload.kind === "left"
+      ? `${payload.actor_game_nick} ${payload.kind} · `
+      : payload.kind === "closed" || payload.kind === "cancelled"
+        ? `Request ${payload.kind} · `
+        : "";
+    const players = payload.max_players === undefined
+      ? `${payload.member_count} players (unlimited)`
+      : `${payload.member_count}/${payload.max_players} players`;
+    await self.registration.showNotification(title, {
+      body: `${prefix}${startsAt} · ${players} · ${payload.instance}`,
       data: { url: payload.url },
     });
   })());
