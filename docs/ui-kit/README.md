@@ -24,9 +24,9 @@ The leading source for colour and typography is the Claude Design project [LANsu
 - Dense rows: abbreviation, place counter, relative start time, Join. Details live on their own detail page.
 - Join changes the row to "Leave"; no toast. Toasts are only for errors and things outside the current viewport.
 - Vocabulary: **places** for available spots, **max players** for the field. "Seat" is not used.
-- Status: `open` / `closed` / `cancelled`; no waitlist, no mode, no voice field. This matches `internal/gamerequest` and `internal/query/gamerequest`.
+- Status: `open` / `playing` / `closed` / `cancelled`; no waitlist, no mode, no voice field. `playing` is an active/current request state entered by the Host's explicit **Start game** action.
 - Seat and voice-channel concepts are excluded because they do not exist in the approved 1.0 model; visual references must not add them implicitly.
-- Sunset (`#FF6B35`) is the semantic color for "last place" and "now", but is not a `--color-*` in the DaisyUI theme: consume it through the central brand definition.
+- Sunset (`#FF6B35`) is the semantic color for "last place", "now", and `playing`, but is not a `--color-*` in the DaisyUI theme: consume it through the central brand definition and always pair it with a readable state label.
 - Muted inks (`#8DA9BF`, `#C7DCEA`) are blends of White Sand and Deep Ocean, not standalone palette colors.
 
 ## Deviations from the Kit Snapshot
@@ -40,6 +40,7 @@ The leading source for colour and typography is the Claude Design project [LANsu
 - The navigation frame labels the Games sub-item "Followed". The implementation renders it as **My Games**, the term PRODUCT fixes for explicitly followed Games; only the frame's indentation and row metrics are adopted.
 - The navigation frame's "Games" counter is the active local catalog, not the synchronized IGDB provider index, which is a search surface rather than a catalog this installation can total.
 - "Your next games" and "Recently viewed" are implemented as uppercase navigation headings in Deep Ocean for light mode and Sea Foam for dark mode; they remain in the UI font rather than the frame's mono eyebrow.
+- The older snapshot does not contain the `playing` lifecycle. Production UI extends the same row/detail/component vocabulary with a visible `PLAYING` state, a Host-only **Start game** action on `open`, explicit confirmation before starting, and **Close game** once `playing`. `playing` remains visible in active lists/navigation.
 
 ## Open
 
