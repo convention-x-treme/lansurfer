@@ -17,8 +17,7 @@ This file remains as a stable landing page because historical issues, pull reque
 
 The historical Track A–G planning vocabulary is deprecated for active work. Use capability names instead.
 
-- PWA & instance identity validation — issue #27
-- Notifications & delivery validation — issue #28
+- Game Request coordination and playing flow — issue #82
 - Distribution & operations — issue #29
 - Brand & UI system adoption — issue #30
 - Discord compliance & App Verification readiness — issue #39
