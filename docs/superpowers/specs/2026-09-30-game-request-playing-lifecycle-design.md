@@ -184,7 +184,9 @@ Existing rules remain:
 - current device/subscription eligibility is rechecked by the existing notification pipeline;
 - no participant roster or new private content is added to the payload.
 
-The existing Push payload shape remains unchanged except that `started` becomes an accepted activity kind. The current service worker must render a concise started-state prefix/message. Existing activity kinds keep their current behavior.
+The existing Push payload shape remains unchanged except that `started` becomes an accepted activity kind. `started` is actor-neutral in the payload: the host is excluded from recipients, and no actor Game Nick is required for rendering.
+
+The service worker must not reuse the current "creator is looking for Game" title for `started`. A started notification should use the Game as the title and a concise "Game started" activity context in the body, followed by the existing planned-time/capacity/instance context. Existing activity kinds keep their current behavior.
 
 ## Discovery and read models
 
@@ -200,6 +202,8 @@ Queries and read models that currently equate "active" with `status = open` must
 This distinction is important: visibility of a `playing` request does not imply that joining/leaving while playing is implemented yet. #101 owns that behavior.
 
 Any trending/current-request query that is defined in terms of active visible requests should treat `playing` as active unless its existing product definition explicitly refers only to groups still forming.
+
+Trending itself is intentionally based on recent `game_request_activity`. The new live `started` activity is therefore a valid recent activity signal and may increase a Game's Trending score under the existing six-hour activity definition. No separate scoring rule or weight is introduced in #100.
 
 ## Web UI
 
@@ -226,7 +230,13 @@ After a successful start:
 - non-host action availability remains governed by the current #100 rules;
 - Activity shows the started event.
 
-Lists/cards visibly distinguish `playing` from `open`.
+Lists/cards visibly distinguish `playing` from `open`. Playing is a "happening now" state and should reuse the existing Sunset semantic from `docs/BRANDING.md`; color never replaces the visible `Playing` label.
+
+Shared navigation must use the same active-state semantics:
+
+- the Game Requests count includes both `open` and `playing` requests;
+- "Your next games" continues to include joined active requests after they enter `playing`, so starting a game does not make the player's current session disappear from navigation;
+- terminal `closed` and `cancelled` requests remain excluded from active navigation surfaces unless an existing historical surface explicitly includes them.
 
 The stable labels are:
 
