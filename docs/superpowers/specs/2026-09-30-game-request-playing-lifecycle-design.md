@@ -154,7 +154,7 @@ The visible Activity section renders it as a normal chronological lifecycle entr
 20:42  Alex started the game
 ```
 
-The `started` row timestamp is the same authoritative transaction-time observation as the start mutation. The Game Request's `started_at` remains the source for current lifecycle state; the activity row is historical evidence and the existing notification handoff.
+Use one timestamp value inside the start transaction for both `game_requests.started_at` and the `started` activity's occurrence time. The Game Request's `started_at` remains the source for current lifecycle state; the activity row is historical evidence and the existing notification handoff.
 
 No second event/history table is introduced.
 
@@ -257,7 +257,7 @@ Representative races to handle deterministically:
 
 - two Start game submissions => one succeeds, the other receives invalid-current-state behavior;
 - Start versus Cancel => exactly one valid transition commits;
-- Start versus any stale Close submission => only the transition valid for the locked current state commits.
+- a Close submission observed while the request is still `open` is rejected; a Close submitted after the Start transition has committed is a valid `playing -> closed` transition.
 
 No duplicate `started` activity may be created for one request.
 
