@@ -1,7 +1,7 @@
 # Issue #100 — Playing lifecycle for Game Requests
 
 Date: 2026-09-30  
-Status: design approved in brainstorming; implementation not started  
+Status: design approved in brainstorming; stable 1.0 scope; implementation not started  
 Issue: #100 `Add playing lifecycle to Game Requests`  
 Parent: #82 `Add Game Request coordination and playing flow`
 
@@ -11,7 +11,7 @@ LANsurfer currently stops at "players joined". This change introduces an explici
 
 The host deliberately starts a Game Request. That transition is the authoritative product signal that a game session really began. A started request remains active and visible until the host closes it.
 
-This slice establishes the lifecycle foundation for #101–#104 without pulling their capacity, session-information, secret, or chat behavior into #100.
+This slice establishes the lifecycle foundation for #101–#104 without pulling their capacity, session-information, secret, or chat behavior into #100. The umbrella #82 and slices #100–#104 are all part of the stable 1.0 scope; their implementation boundaries remain separate.
 
 ## Approved lifecycle
 
@@ -345,7 +345,9 @@ Before merge:
 
 - update `docs/PRODUCT.md` with the `playing` lifecycle and actual-start semantics;
 - update `docs/ARCHITECTURE.md` for the new lifecycle/activity/notification kind and remove stale wording that says only create/join/leave/close/cancel activity exists;
-- update `docs/TERMINOLOGY.md` if it enumerates Game Request status vocabulary;
+- update `docs/TERMINOLOGY.md` with the Host/Playing/activity vocabulary;
+- update `docs/BRANDING.md` and `docs/ui-kit/README.md` with the Playing presentation semantics;
+- keep `docs/ROADMAP.md` aligned with #82 as current 1.0 capability work without duplicating mutable task status;
 - update issue #100 / PR description to record that `started` Activity + Discord + Web Push were deliberately pulled into this slice;
 - keep #101–#104 scoped to their existing follow-up responsibilities.
 
