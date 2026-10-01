@@ -69,6 +69,7 @@ const (
 	ActivityCancelled ActivityKind = "cancelled"
 )
 
+// EventPublisher is implemented by delivery infrastructure. Publishing is a
 // best-effort signal: PostgreSQL remains the source of truth for refreshed UI.
 type EventPublisher interface {
 	Publish(Event)

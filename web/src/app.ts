@@ -152,7 +152,7 @@ function liveNotice(variant: "info" | "warning" | "error", message: string): HTM
 }
 
 type GameRequestEvent = {
-  type: "GameRequestCreated" | "GameRequestJoined" | "GameRequestLeft" | "GameRequestClosed" | "GameRequestCancelled";
+  type: "GameRequestCreated" | "GameRequestJoined" | "GameRequestLeft" | "GameRequestStarted" | "GameRequestClosed" | "GameRequestCancelled";
   requestId: string;
   gameId?: string;
 };
