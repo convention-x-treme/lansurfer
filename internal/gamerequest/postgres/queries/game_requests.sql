@@ -19,7 +19,7 @@ INSERT INTO game_request_activity (game_request_id, actor_id, kind)
 VALUES (sqlc.arg(game_request_id)::uuid, sqlc.arg(actor_id)::uuid, sqlc.arg(kind));
 
 -- name: LockGameRequest :one
-SELECT creator_id::text, max_players, status
+SELECT creator_id::text, max_players, status, starts_at, description
 FROM game_requests
 WHERE id = sqlc.arg(id)::uuid
 FOR UPDATE;
@@ -67,26 +67,37 @@ WHERE id = sqlc.arg(id)::uuid
   AND creator_id = sqlc.arg(creator_id)::uuid
   AND status = 'playing';
 
--- UpdateGameRequestCapacity refuses a semantic no-op, so a caller that got zero
--- rows back knows nothing changed and must not record activity.
--- name: UpdateGameRequestCapacity :execrows
+-- UpdateGameRequestDetails refuses a semantic no-op.
+-- name: UpdateGameRequestDetails :execrows
 UPDATE game_requests
-SET max_players = sqlc.narg(max_players)::integer, updated_at = now()
+SET max_players = sqlc.narg(max_players)::integer,
+    starts_at = sqlc.arg(starts_at),
+    description = sqlc.arg(description),
+    updated_at = now()
 WHERE id = sqlc.arg(id)::uuid
   AND creator_id = sqlc.arg(creator_id)::uuid
   AND status IN ('open', 'playing')
-  AND max_players IS DISTINCT FROM sqlc.narg(max_players)::integer;
+  AND (
+      max_players IS DISTINCT FROM sqlc.narg(max_players)::integer
+      OR starts_at IS DISTINCT FROM sqlc.arg(starts_at)
+      OR description IS DISTINCT FROM sqlc.arg(description)
+  );
 
--- RecordCapacityChangedActivity is separate from RecordGameRequestActivity so
--- the before/after columns stay reachable only for capacity_changed.
--- name: RecordCapacityChangedActivity :exec
-INSERT INTO game_request_activity (game_request_id, actor_id, kind, previous_max_players, new_max_players)
+-- RecordRequestUpdatedActivity stores only dimensions that actually changed.
+-- name: RecordRequestUpdatedActivity :exec
+INSERT INTO game_request_activity (
+    game_request_id, actor_id, kind, previous_max_players, new_max_players,
+    previous_starts_at, new_starts_at, description_changed
+)
 VALUES (
     sqlc.arg(game_request_id)::uuid,
     sqlc.arg(actor_id)::uuid,
-    'capacity_changed',
+    'request_updated',
     sqlc.narg(previous_max_players)::integer,
-    sqlc.narg(new_max_players)::integer
+    sqlc.narg(new_max_players)::integer,
+    sqlc.narg(previous_starts_at)::timestamptz,
+    sqlc.narg(new_starts_at)::timestamptz,
+    sqlc.arg(description_changed)
 );
 
 -- RecordGameRequestView is idempotent per (player, request): a repeat visit

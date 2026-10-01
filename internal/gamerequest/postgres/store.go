@@ -207,10 +207,9 @@ func (s *Store) SetStatus(ctx context.Context, requestID, userID string, status 
 	})
 }
 
-// UpdateCapacity reports whether the stored maximum actually changed. It runs
-// under the same request row lock as Join and Leave, so a racing membership
-// change is counted either entirely before or entirely after this edit.
-func (s *Store) UpdateCapacity(ctx context.Context, requestID, userID string, maxPlayers *int32) (bool, error) {
+// UpdateDetails applies all editable request details under the same row lock as
+// membership changes. It reports whether a real change committed.
+func (s *Store) UpdateDetails(ctx context.Context, requestID, userID string, input gamerequest.UpdateDetailsInput) (bool, error) {
 	databaseRequestID, databaseUserID, err := parseIDs(requestID, userID)
 	if err != nil {
 		return false, gamerequest.ErrNotFound
@@ -223,35 +222,56 @@ func (s *Store) UpdateCapacity(ctx context.Context, requestID, userID string, ma
 		if !isActive(locked.Status) {
 			return gamerequest.ErrNotActive
 		}
-		requested := nullableInt4(maxPlayers)
-		if requested == locked.MaxPlayers {
+
+		requestedMax := nullableInt4(input.MaxPlayers)
+		startsAt := pgtype.Timestamptz{Time: input.StartsAt, Valid: true}
+		if locked.Status == string(gamerequest.StatusPlaying) && !input.StartsAt.Equal(locked.StartsAt.Time) {
+			return gamerequest.ErrInvalidStartsAt
+		}
+
+		capacityChanged := requestedMax != locked.MaxPlayers
+		startChanged := !input.StartsAt.Equal(locked.StartsAt.Time)
+		descriptionChanged := input.Description != locked.Description
+		if !capacityChanged && !startChanged && !descriptionChanged {
 			return nil
 		}
-		if requested.Valid {
+		if capacityChanged && requestedMax.Valid {
 			count, err := queries.CountGameRequestMembers(ctx, databaseRequestID)
 			if err != nil {
 				return fmt.Errorf("count game request members: %w", err)
 			}
-			if count > int64(requested.Int32) {
+			if count > int64(requestedMax.Int32) {
 				return gamerequest.ErrCapacityBelowMembers
 			}
 		}
-		updated, err := queries.UpdateGameRequestCapacity(ctx, sqlcgen.UpdateGameRequestCapacityParams{
-			ID: databaseRequestID, CreatorID: databaseUserID, MaxPlayers: requested,
+
+		updated, err := queries.UpdateGameRequestDetails(ctx, sqlcgen.UpdateGameRequestDetailsParams{
+			ID: databaseRequestID, CreatorID: databaseUserID,
+			MaxPlayers: requestedMax, StartsAt: startsAt, Description: input.Description,
 		})
 		if err != nil {
-			return fmt.Errorf("update game request capacity: %w", err)
+			return fmt.Errorf("update game request details: %w", err)
 		}
 		if updated != 1 {
-			// Unreachable while this transaction holds the row lock: the guards
-			// above and the update's WHERE clause read the same locked row.
-			return errors.New("update game request capacity: no row matched")
+			return errors.New("update game request details: no row matched")
 		}
-		if err := queries.RecordCapacityChangedActivity(ctx, sqlcgen.RecordCapacityChangedActivityParams{
+
+		previousMax, newMax := pgtype.Int4{}, pgtype.Int4{}
+		previousStart, newStart := pgtype.Timestamptz{}, pgtype.Timestamptz{}
+		if capacityChanged {
+			previousMax, newMax = locked.MaxPlayers, requestedMax
+		}
+		if startChanged {
+			previousStart = locked.StartsAt
+			newStart = startsAt
+		}
+		if err := queries.RecordRequestUpdatedActivity(ctx, sqlcgen.RecordRequestUpdatedActivityParams{
 			GameRequestID: databaseRequestID, ActorID: databaseUserID,
-			PreviousMaxPlayers: locked.MaxPlayers, NewMaxPlayers: requested,
+			PreviousMaxPlayers: previousMax, NewMaxPlayers: newMax,
+			PreviousStartsAt: previousStart, NewStartsAt: newStart,
+			DescriptionChanged: descriptionChanged,
 		}); err != nil {
-			return fmt.Errorf("record game request capacity activity: %w", err)
+			return fmt.Errorf("record game request details activity: %w", err)
 		}
 		changed = true
 		return nil
