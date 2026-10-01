@@ -54,6 +54,7 @@ func main() {
 		Identities:        state,
 		Discovery:         state,
 		GameRequests:      state,
+		Chat:              state,
 		RequestQueries:    state,
 		NavigationQueries: state,
 		NavigationCatalog: state,
@@ -73,6 +74,7 @@ type fixtureRequest struct {
 	request  requestquery.Request
 	members  map[string]bool
 	followed bool
+	messages []gamerequest.Message
 }
 
 type fixture struct {
@@ -337,6 +339,40 @@ func (f *fixture) ByID(_ context.Context, id, _ string) (requestquery.Request, e
 		return requestquery.Request{}, gamerequest.ErrNotFound
 	}
 	return entry.request, nil
+}
+
+// --- chat -----------------------------------------------------------------
+
+func (f *fixture) PostMessage(_ context.Context, requestID, userID, body string) (gamerequest.Message, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	entry, ok := f.requests[requestID]
+	if !ok {
+		return gamerequest.Message{}, gamerequest.ErrNotFound
+	}
+	if !entry.members[userID] {
+		return gamerequest.Message{}, gamerequest.ErrNotMember
+	}
+	message := gamerequest.Message{
+		ID: strconv.Itoa(len(entry.messages) + 1), RequestID: requestID, AuthorID: userID,
+		AuthorGameNick: "Ada Player", Body: strings.TrimSpace(body), CreatedAt: time.Now(),
+	}
+	entry.messages = append(entry.messages, message)
+	f.broker.Publish(gamerequest.Event{Type: gamerequest.EventChatMessage, RequestID: requestID})
+	return message, nil
+}
+
+func (f *fixture) Messages(_ context.Context, requestID, userID string) ([]gamerequest.Message, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	entry, ok := f.requests[requestID]
+	if !ok {
+		return nil, gamerequest.ErrNotFound
+	}
+	if !entry.members[userID] {
+		return nil, gamerequest.ErrNotMember
+	}
+	return slices.Clone(entry.messages), nil
 }
 
 // CountActive is the whole installation's active total (`open` or `playing`),
