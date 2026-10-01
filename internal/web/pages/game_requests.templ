@@ -40,7 +40,7 @@ type GameRequestForm struct {
 	StartDate      string
 	StartTime      string
 	StartsAt       string
-	TimezoneOffset string
+	Timezone       string
 	Description    string
 }
 
@@ -104,7 +104,7 @@ templ RequestFilters(filter requestquery.Filter) {
 // an out-of-band swap through the id of the element carrying the attribute, so
 // the attribute belongs on this element rather than on a wrapper around it.
 templ RequestStats(requests []requestquery.Request, oob bool) {
-	<p id="request-stats" class="text-sm text-base-content/70" { outOfBand(oob)... }><span class="data-text count-open font-bold">{ fmt.Sprint(playersInRequests(requests)) }</span>{ playersInRequestsLabel(requests) }<span class="data-text">{ updatedLabel() }</span></p>
+	<p id="request-stats" class="text-sm text-base-content/70" { outOfBand(oob)... }><span class="data-text count-open font-bold">{ fmt.Sprint(playersInRequests(requests)) }</span>{ playersInRequestsLabel(requests) }<time class="data-text" datetime={ updatedAt() } data-local-time="clock">{ updatedLabel() }</time></p>
 }
 
 // TrendingSection ranks games from Game Request activity inside the window the
@@ -256,7 +256,7 @@ templ GameRequestRow(request requestquery.Request, viewerID, highlightedID strin
 						<span class={ playerCountClass(request) } aria-label={ playerCountAccessible(request) }>{ playerCount(request) }</span>
 						<span class="data-text text-xs text-base-content/70" aria-hidden="true">players</span>
 					</span>
-					<time class={ startTimeClass(request.StartsAt) } datetime={ request.StartsAt.Format(time.RFC3339) } title={ components.AbsoluteTime(request.StartsAt) }>{ components.StartLabel(request.StartsAt) }</time>
+					<time class={ startTimeClass(request.StartsAt) } datetime={ request.StartsAt.Format(time.RFC3339) } title={ components.AbsoluteTime(request.StartsAt) } data-local-time="start">{ components.StartLabel(request.StartsAt) }</time>
 					if request.CreatorID != viewerID {
 						if request.ViewerJoined {
 							<span class="status-chip status-chip-joined">Joined</span>
@@ -431,7 +431,7 @@ templ GameRequestDetailsFields(form GameRequestForm, message ComposerMessage) {
 				</div>
 			</fieldset>
 		</div>
-		<input type="hidden" name="timezone_offset" value={ form.TimezoneOffset } data-timezone-offset/>
+		<input type="hidden" name="timezone" value={ form.Timezone } data-timezone/>
 		<label class="grid gap-2">
 			<span class="label-text font-medium">Description <span class="font-normal text-base-content/65">(optional)</span></span>
 			<textarea
@@ -546,8 +546,8 @@ templ GameRequestDetailsTransportFields(form GameRequestForm) {
 	if form.StartsAt != "" {
 		<input type="hidden" name="starts_at" value={ form.StartsAt }/>
 	}
-	if form.TimezoneOffset != "" {
-		<input type="hidden" name="timezone_offset" value={ form.TimezoneOffset }/>
+	if form.Timezone != "" {
+		<input type="hidden" name="timezone" value={ form.Timezone }/>
 	}
 	if form.Description != "" {
 		<input type="hidden" name="description" value={ form.Description }/>
@@ -564,7 +564,7 @@ templ GameRequestDetail(brand branding.Brand, navigation components.NavigationSt
 			<div class="flex flex-wrap items-center gap-x-4 gap-y-1">
 				<a class="link count-open icon-label text-sm font-semibold no-underline" href="/game-requests"><i class="ph ph-arrow-left" aria-hidden="true"></i>Game Requests</a>
 				if !request.CreatedAt.IsZero() {
-					<span class="text-xs text-base-content/70">{ "created " }<span class="data-text">{ clockLabel(request.CreatedAt) }</span></span>
+					<span class="text-xs text-base-content/70">{ "created " }<time class="data-text" datetime={ request.CreatedAt.Format(time.RFC3339) } title={ components.AbsoluteTime(request.CreatedAt) } data-local-time="clock">{ clockLabel(request.CreatedAt) }</time></span>
 				}
 			</div>
 			@DetailStamp(false)
@@ -582,7 +582,7 @@ templ GameRequestDetail(brand branding.Brand, navigation components.NavigationSt
 // DetailStamp is swapped out of band by the detail refresh so the top bar keeps
 // pace with the counters, player list, and activity below it.
 templ DetailStamp(oob bool) {
-	<p id="detail-stamp" class="text-xs text-base-content/70" { outOfBand(oob)... }>{ "updated " }<span class="data-text">{ updatedLabel() }</span></p>
+	<p id="detail-stamp" class="text-xs text-base-content/70" { outOfBand(oob)... }>{ "updated " }<time class="data-text" datetime={ updatedAt() } data-local-time="clock">{ updatedLabel() }</time></p>
 }
 
 templ GameRequestDetailContent(request requestquery.Request, viewerID string, refresh bool) {
@@ -608,7 +608,7 @@ templ GameRequestDetailContent(request requestquery.Request, viewerID string, re
 							<strong class={ detailCountClass(request) }>{ playerCount(request) }</strong>
 							<span>players</span>
 							<span aria-hidden="true">·</span>
-							<time class={ detailStartClass(request.StartsAt) } datetime={ request.StartsAt.Format(time.RFC3339) } title={ components.AbsoluteTime(request.StartsAt) }>{ startLongLabel(request.StartsAt) }</time>
+							<time class={ detailStartClass(request.StartsAt) } datetime={ request.StartsAt.Format(time.RFC3339) } title={ components.AbsoluteTime(request.StartsAt) } data-local-time="start">{ startLongLabel(request.StartsAt) }</time>
 						</p>
 					</div>
 					<div class="flex w-full flex-wrap items-center gap-2.5 sm:w-auto">
@@ -651,7 +651,7 @@ templ GameRequestDetailContent(request requestquery.Request, viewerID string, re
 								<span class="status-chip status-chip-host">Host</span>
 							}
 							if !activityTime(member, request).IsZero() {
-								<time class="member-time" datetime={ activityTime(member, request).Format(time.RFC3339) } title={ components.AbsoluteTime(activityTime(member, request)) }>{ memberTimeLabel(member, request) }</time>
+								<time class="member-time" datetime={ activityTime(member, request).Format(time.RFC3339) } title={ components.AbsoluteTime(activityTime(member, request)) } data-local-time="clock">{ memberTimeLabel(member, request) }</time>
 							}
 						</li>
 					}
@@ -720,7 +720,7 @@ templ GameRequestDetailContent(request requestquery.Request, viewerID string, re
 						for _, entry := range request.Activity {
 							<li class="activity-row">
 								if !entry.OccurredAt.IsZero() {
-									<time class="data-text w-12 flex-none text-xs text-base-content/70" datetime={ entry.OccurredAt.Format(time.RFC3339) } title={ components.AbsoluteTime(entry.OccurredAt) }>{ clockLabel(entry.OccurredAt) }</time>
+									<time class="data-text w-12 flex-none text-xs text-base-content/70" datetime={ entry.OccurredAt.Format(time.RFC3339) } title={ components.AbsoluteTime(entry.OccurredAt) } data-local-time="clock">{ clockLabel(entry.OccurredAt) }</time>
 								}
 								<span class="flex-1 text-sm text-base-content/80">{ activityLabel(entry) }</span>
 							</li>
@@ -937,7 +937,7 @@ func clockLabel(value time.Time) string {
 	if value.IsZero() {
 		return ""
 	}
-	return value.Local().Format("15:04")
+	return value.UTC().Format("15:04")
 }
 
 func outOfBand(oob bool) templ.Attributes {
@@ -958,7 +958,11 @@ func navigationWithActiveCount(navigation components.NavigationState, activeRequ
 }
 
 func updatedLabel() string {
-	return time.Now().Local().Format("15:04:05")
+	return time.Now().UTC().Format("15:04:05")
+}
+
+func updatedAt() string {
+	return time.Now().UTC().Format(time.RFC3339)
 }
 
 // trendingWindowLabel states the window the ranking covers, as the product

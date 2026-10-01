@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	_ "time/tzdata" // IANA zones for LoadLocation in minimal container images
 	"unicode/utf8"
 
 	"github.com/convention-x-treme/lansurfer/internal/game"
@@ -352,13 +353,13 @@ func populateSelectionForm(form *pages.GameRequestForm, item game.DiscoveryItem)
 // normal composer GET. Selection is parsed separately and remains opaque.
 func composerFormFromValues(values url.Values) pages.GameRequestForm {
 	form := pages.GameRequestForm{
-		MaxPlayers:     strings.TrimSpace(values.Get("max_players")),
-		StartPreset:    strings.TrimSpace(values.Get("start_preset")),
-		StartDate:      strings.TrimSpace(values.Get("start_date")),
-		StartTime:      strings.TrimSpace(values.Get("start_time")),
-		StartsAt:       strings.TrimSpace(values.Get("starts_at")),
-		TimezoneOffset: strings.TrimSpace(values.Get("timezone_offset")),
-		Description:    values.Get("description"),
+		MaxPlayers:  strings.TrimSpace(values.Get("max_players")),
+		StartPreset: strings.TrimSpace(values.Get("start_preset")),
+		StartDate:   strings.TrimSpace(values.Get("start_date")),
+		StartTime:   strings.TrimSpace(values.Get("start_time")),
+		StartsAt:    strings.TrimSpace(values.Get("starts_at")),
+		Timezone:    strings.TrimSpace(values.Get("timezone")),
+		Description: values.Get("description"),
 	}
 	if form.StartPreset == "" {
 		form.StartPreset = "now"
@@ -492,9 +493,9 @@ func (h *GameRequests) parseCreateForm(r *http.Request) (pages.GameRequestForm, 
 		GameID: r.FormValue("game_id"), MaxPlayers: strings.TrimSpace(r.FormValue("max_players")),
 		StartPreset: strings.TrimSpace(r.FormValue("start_preset")), StartDate: strings.TrimSpace(r.FormValue("start_date")),
 		StartTime: strings.TrimSpace(r.FormValue("start_time")), StartsAt: strings.TrimSpace(r.FormValue("starts_at")),
-		TimezoneOffset: strings.TrimSpace(r.FormValue("timezone_offset")),
-		Description:    r.FormValue("description"),
-		Provider:       strings.TrimSpace(r.FormValue("provider")), ExternalID: strings.TrimSpace(r.FormValue("external_id")),
+		Timezone:    strings.TrimSpace(r.FormValue("timezone")),
+		Description: r.FormValue("description"),
+		Provider:    strings.TrimSpace(r.FormValue("provider")), ExternalID: strings.TrimSpace(r.FormValue("external_id")),
 	}
 	// 0 and an empty field both mean "no limit", which the domain spells as
 	// a nil maximum. maxPlayersLimit is the composer's own input bound, not
@@ -516,7 +517,7 @@ func (h *GameRequests) parseCreateForm(r *http.Request) (pages.GameRequestForm, 
 	switch form.StartPreset {
 	case "", "now":
 		if form.StartPreset == "" && form.StartsAt != "" {
-			startsAt, startErr = parseBrowserTime(form.StartsAt, form.TimezoneOffset)
+			startsAt, startErr = parseBrowserTime(form.StartsAt, form.Timezone)
 		}
 	case "15", "30", "60":
 		minutes, _ := strconv.Atoi(form.StartPreset)
@@ -525,7 +526,7 @@ func (h *GameRequests) parseCreateForm(r *http.Request) (pages.GameRequestForm, 
 		if form.StartDate == "" || form.StartTime == "" {
 			return form, maxPlayers, time.Time{}, gamerequest.ErrInvalidStartsAt
 		}
-		startsAt, startErr = parseBrowserTime(form.StartDate+"T"+form.StartTime, form.TimezoneOffset)
+		startsAt, startErr = parseBrowserTime(form.StartDate+"T"+form.StartTime, form.Timezone)
 	default:
 		return form, maxPlayers, time.Time{}, gamerequest.ErrInvalidStartsAt
 	}
@@ -535,16 +536,18 @@ func (h *GameRequests) parseCreateForm(r *http.Request) (pages.GameRequestForm, 
 	return form, maxPlayers, startsAt, nil
 }
 
-func parseBrowserTime(value, timezoneOffset string) (time.Time, error) {
-	offsetMinutes := int64(0)
-	if timezoneOffset != "" {
-		parsed, err := strconv.ParseInt(timezoneOffset, 10, 16)
-		if err != nil || parsed < -14*60 || parsed > 14*60 {
+// parseBrowserTime reads a browser-local date/time in the viewer's IANA zone,
+// so DST applies at the selected date rather than at submission time. An
+// empty zone means UTC.
+func parseBrowserTime(value, timezone string) (time.Time, error) {
+	location := time.UTC
+	if timezone != "" {
+		loaded, err := time.LoadLocation(timezone)
+		if err != nil {
 			return time.Time{}, gamerequest.ErrInvalidStartsAt
 		}
-		offsetMinutes = parsed
+		location = loaded
 	}
-	location := time.FixedZone("browser-local", int(-offsetMinutes*60))
 	parsed, err := time.ParseInLocation(gameRequestTimeLayout, value, location)
 	if err != nil {
 		return time.Time{}, gamerequest.ErrInvalidStartsAt

@@ -65,9 +65,61 @@ function describeToggles(theme: Theme): void {
 
 describeToggles(currentTheme());
 
-document.querySelectorAll<HTMLInputElement>("[data-timezone-offset]").forEach((input) => {
-  input.value = String(new Date().getTimezoneOffset());
+// Viewer-local time. The server renders UTC fallbacks and an RFC3339
+// `datetime`; the browser owns the zone, so it rewrites clocks and hover titles
+// (and fills the composer's IANA zone, which the server needs to apply DST at
+// the chosen date). Relative labels ("in 5 min") stay server-rendered.
+const clockParts = { hour: "2-digit", minute: "2-digit", hourCycle: "h23" } as const;
+const clockFormat = new Intl.DateTimeFormat("en-US", clockParts);
+const clockSecondsFormat = new Intl.DateTimeFormat("en-US", { ...clockParts, second: "2-digit" });
+const dayFormat = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" });
+const absoluteFormat = new Intl.DateTimeFormat("en-US", {
+  year: "numeric", month: "2-digit", day: "2-digit", ...clockParts,
 });
+const zoneName = new Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+function absolute(date: Date): string {
+  const p = Object.fromEntries(absoluteFormat.formatToParts(date).map((part) => [part.type, part.value]));
+  return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}`;
+}
+
+// Only the trailing clock or date is replaced, so a server prefix such as
+// "created " survives, and relative text (never ending in either) is untouched.
+const clockSuffix = /\d{2}:\d{2}(:\d{2})?$/;
+const daySuffix = /[A-Z][a-z]{2} \d{1,2}$/;
+
+function localizeTime(element: HTMLElement): void {
+  const date = new Date(element.getAttribute("datetime") ?? "");
+  if (Number.isNaN(date.getTime())) return;
+  element.title = absolute(date);
+  const kind = element.dataset.localTime;
+  const text = element.textContent ?? "";
+  if (kind === "clock") {
+    const format = clockSuffix.exec(text)?.[1] ? clockSecondsFormat : clockFormat;
+    element.textContent = text.replace(clockSuffix, format.format(date));
+  } else if (kind === "start") {
+    element.textContent = text.replace(daySuffix, dayFormat.format(date));
+  }
+}
+
+function localize(root: ParentNode): void {
+  if (root instanceof HTMLElement && root.matches("[data-local-time]")) localizeTime(root);
+  root.querySelectorAll<HTMLElement>("[data-local-time]").forEach(localizeTime);
+  root.querySelectorAll<HTMLInputElement>("[data-timezone]").forEach((input) => {
+    input.value = zoneName;
+  });
+}
+
+localize(document);
+// HTMX swaps and SSE updates insert server-rendered nodes; only added elements
+// are visited, and text/attribute writes above are not childList element adds.
+new MutationObserver((records) => {
+  records.forEach((record) =>
+    record.addedNodes.forEach((node) => {
+      if (node instanceof HTMLElement) localize(node);
+    }),
+  );
+}).observe(document.documentElement, { childList: true, subtree: true });
 
 // IGDB is the only approved remote-content host, and its cover images can 404
 // or time out independently of LANsurfer's own availability (spec: "Covers").

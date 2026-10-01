@@ -51,7 +51,7 @@ func addComposerDetails(values url.Values, form GameRequestForm) {
 	for key, value := range map[string]string{
 		"max_players": form.MaxPlayers, "start_preset": form.StartPreset,
 		"start_date": form.StartDate, "start_time": form.StartTime,
-		"starts_at": form.StartsAt, "timezone_offset": form.TimezoneOffset,
+		"starts_at": form.StartsAt, "timezone": form.Timezone,
 		"description": form.Description,
 	} {
 		if value != "" {

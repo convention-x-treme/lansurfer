@@ -351,14 +351,14 @@ func TestNewGameRequestNoJSSelectionPreservesRequestDetails(t *testing.T) {
 	}}
 	handler := NewGameRequests(&fakeGameRequestCommands{}, fakeGameRequestQueries{}, &fakeGameResolver{}, discovery, nil, branding.Default())
 
-	request := httptest.NewRequest(http.MethodGet, "/game-requests/new?game_id=local-2&max_players=4&start_preset=custom&start_date=2027-05-01&start_time=18%3A00&timezone_offset=-120&description=LAN+night", nil)
+	request := httptest.NewRequest(http.MethodGet, "/game-requests/new?game_id=local-2&max_players=4&start_preset=custom&start_date=2027-05-01&start_time=18%3A00&timezone=Europe%2FBerlin&description=LAN+night", nil)
 	response := httptest.NewRecorder()
 	handler.New(response, request)
 
 	if response.Code != http.StatusOK || discovery.selectCalls != 1 {
 		t.Fatalf("status/selectCalls = %d/%d; body = %s", response.Code, discovery.selectCalls, response.Body.String())
 	}
-	if body := response.Body.String(); !strings.Contains(body, `value="4"`) || !strings.Contains(body, `value="2027-05-01"`) || !strings.Contains(body, `value="18:00"`) || !strings.Contains(body, `value="-120"`) || !strings.Contains(body, "LAN night") {
+	if body := response.Body.String(); !strings.Contains(body, `value="4"`) || !strings.Contains(body, `value="2027-05-01"`) || !strings.Contains(body, `value="18:00"`) || !strings.Contains(body, `value="Europe/Berlin"`) || !strings.Contains(body, "LAN night") {
 		t.Fatalf("selected no-JS composer lost request details: %s", body)
 	}
 }
@@ -499,11 +499,11 @@ func TestCreateGameRequestKeepsMaterializedGameWhenCommandFails(t *testing.T) {
 func TestParseCreateFormUsesBrowserTimezone(t *testing.T) {
 	handler := &GameRequests{now: func() time.Time { return time.Date(2027, 5, 1, 8, 0, 0, 0, time.UTC) }}
 	form := url.Values{
-		"game_id":         {"game-1"},
-		"max_players":     {"4"},
-		"starts_at":       {"2027-05-01T18:30"},
-		"timezone_offset": {"-120"},
-		"description":     {" Casual players "},
+		"game_id":     {"game-1"},
+		"max_players": {"4"},
+		"starts_at":   {"2027-05-01T18:30"},
+		"timezone":    {"Europe/Berlin"},
+		"description": {" Casual players "},
 	}
 	request := httptest.NewRequest(http.MethodPost, "/game-requests", strings.NewReader(form.Encode()))
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -512,12 +512,30 @@ func TestParseCreateFormUsesBrowserTimezone(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parseCreateForm() error = %v", err)
 	}
-	if parsedForm.TimezoneOffset != "-120" || maximum == nil || *maximum != 4 {
+	if parsedForm.Timezone != "Europe/Berlin" || maximum == nil || *maximum != 4 {
 		t.Fatalf("form/maximum = %#v, %#v", parsedForm, maximum)
 	}
 	want := time.Date(2027, 5, 1, 16, 30, 0, 0, time.UTC)
 	if !startsAt.Equal(want) {
 		t.Errorf("startsAt = %s, want %s", startsAt, want)
+	}
+}
+
+// The offset must be the one in force at the selected date, not the viewer's
+// current one: Berlin is UTC+2 in summer and UTC+1 in winter.
+func TestParseBrowserTimeAppliesDSTOfSelectedDate(t *testing.T) {
+	for _, test := range []struct{ value, zone, want string }{
+		{"2027-07-15T18:00", "Europe/Berlin", "2027-07-15T16:00:00Z"},
+		{"2027-01-15T18:00", "Europe/Berlin", "2027-01-15T17:00:00Z"},
+		{"2027-01-15T18:00", "", "2027-01-15T18:00:00Z"},
+	} {
+		got, err := parseBrowserTime(test.value, test.zone)
+		if err != nil || got.Format(time.RFC3339) != test.want {
+			t.Errorf("parseBrowserTime(%q, %q) = %s, %v; want %s", test.value, test.zone, got.Format(time.RFC3339), err, test.want)
+		}
+	}
+	if _, err := parseBrowserTime("2027-01-15T18:00", "Not/AZone"); !errors.Is(err, gamerequest.ErrInvalidStartsAt) {
+		t.Errorf("unknown zone error = %v, want ErrInvalidStartsAt", err)
 	}
 }
 

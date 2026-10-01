@@ -286,7 +286,7 @@ templ UpcomingGames(state NavigationState) {
 						<a class={ upcomingItemClass(request.StartsAt) } href={ templ.SafeURL("/game-requests/" + request.ID) }>
 							<span class="nav-upcoming-dot" aria-hidden="true"></span>
 							<span class="min-w-0 flex-1 truncate text-sm font-semibold">{ request.Game.Name }</span>
-							<time class="data-text flex-none text-xs font-bold" datetime={ request.StartsAt.Format(time.RFC3339) } title={ AbsoluteTime(request.StartsAt) }>{ StartLabel(request.StartsAt) }</time>
+							<time class="data-text flex-none text-xs font-bold" datetime={ request.StartsAt.Format(time.RFC3339) } title={ AbsoluteTime(request.StartsAt) } data-local-time="start">{ StartLabel(request.StartsAt) }</time>
 						</a>
 					</li>
 				}
@@ -313,7 +313,7 @@ templ RecentlyViewedRequests(state NavigationState) {
 									<span class="text-base-content/60">{ " · " + string(entry.Status) }</span>
 								}
 							</span>
-							<time class="data-text flex-none text-xs text-base-content/70" datetime={ entry.ViewedAt.Format(time.RFC3339) } title={ AbsoluteTime(entry.ViewedAt) }>{ ViewedAgoLabel(entry.ViewedAt) }</time>
+							<time class="data-text flex-none text-xs text-base-content/70" datetime={ entry.ViewedAt.Format(time.RFC3339) } title={ AbsoluteTime(entry.ViewedAt) } data-local-time="title">{ ViewedAgoLabel(entry.ViewedAt) }</time>
 						</a>
 					</li>
 				}
@@ -501,7 +501,7 @@ const startsNowWithin = 2 * time.Minute
 // relative time in the product carries it as a hover title, so "in 12 min"
 // is never the only thing a player can read off the screen.
 func AbsoluteTime(value time.Time) string {
-	return value.Local().Format("2006-01-02 15:04")
+	return value.UTC().Format("2006-01-02 15:04")
 }
 
 // StartLabel states when a Game Request starts, relative to now and coarse
@@ -519,7 +519,7 @@ func StartLabel(startsAt time.Time) string {
 	if remaining < 24*time.Hour {
 		return fmt.Sprintf("in %d h", max(1, int(remaining.Round(time.Hour)/time.Hour)))
 	}
-	return startsAt.Local().Format("Jan 2")
+	return startsAt.UTC().Format("Jan 2")
 }
 
 // ViewedAgoLabel states how long ago the viewer opened a Game Request, in the

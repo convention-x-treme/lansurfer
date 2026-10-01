@@ -162,7 +162,7 @@ func TestUpcomingGamesStateTheAbsoluteStartOnHover(t *testing.T) {
 		Upcoming: []requestquery.Request{{ID: "request-1", Game: game.GamePresentation{Name: "Trackmania"}, StartsAt: startsAt}},
 	})
 
-	if want := `title="` + startsAt.Local().Format("2006-01-02 15:04") + `"`; !strings.Contains(body, want) {
+	if want := `title="` + startsAt.UTC().Format("2006-01-02 15:04") + `"`; !strings.Contains(body, want) {
 		t.Errorf("want the absolute start %s in the title: %s", want, body)
 	}
 }
