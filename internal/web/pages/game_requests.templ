@@ -411,7 +411,7 @@ templ GameRequestDetailsFields(form GameRequestForm, message ComposerMessage) {
 				if message.for_("max_players") {
 					<p id="max-players-error" class="field-error">{ message.Text }</p>
 				}
-				<span id="max-players-hint" class="text-xs text-base-content/65">Up to 999 players, or 0 for an open round.</span>
+				<span id="max-players-hint" class="text-xs text-base-content/65">0 for an open round, or 2 to 999 players.</span>
 			</div>
 			<fieldset class="grid gap-3" data-start-options { describedBy("", message.for_("start"), "start-error")... }>
 				<legend class="label-text mb-2 font-medium">Start</legend>

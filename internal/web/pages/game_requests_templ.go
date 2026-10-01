@@ -1592,7 +1592,7 @@ func GameRequestDetailsFields(form GameRequestForm, message ComposerMessage) tem
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 129, "<span id=\"max-players-hint\" class=\"text-xs text-base-content/65\">Up to 999 players, or 0 for an open round.</span></div><fieldset class=\"grid gap-3\" data-start-options")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 129, "<span id=\"max-players-hint\" class=\"text-xs text-base-content/65\">0 for an open round, or 2 to 999 players.</span></div><fieldset class=\"grid gap-3\" data-start-options")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

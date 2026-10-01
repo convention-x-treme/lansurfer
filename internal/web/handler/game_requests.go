@@ -545,7 +545,7 @@ func parseCapacity(value string) (*int32, error) {
 func capacityMessage(err error, submitted string) pages.GameRequestDetailMessage {
 	switch {
 	case errors.Is(err, gamerequest.ErrInvalidMaxPlayers):
-		return pages.GameRequestDetailMessage{Text: "Maximum players must be 0 for unlimited or a whole number from 2 to 999.", Field: "max_players", Value: submitted}
+		return pages.GameRequestDetailMessage{Text: gameRequestMessage(err), Field: "max_players", Value: submitted}
 	case errors.Is(err, gamerequest.ErrCapacityBelowMembers):
 		return pages.GameRequestDetailMessage{Text: "Maximum players cannot be lower than the current player count.", Field: "max_players", Value: submitted}
 	case errors.Is(err, gamerequest.ErrNotActive):
@@ -569,8 +569,9 @@ func (h *GameRequests) parseCreateForm(r *http.Request) (pages.GameRequestForm, 
 	}
 	// 0 and an empty field both mean "no limit", which the domain spells as
 	// a nil maximum. maxPlayersLimit is the composer's own input bound, not
-	// a domain rule: the domain accepts any positive maximum, and rounds
-	// created before this bound existed keep theirs.
+	// a domain rule: the domain only requires a finite maximum to be at least
+	// 2, and rounds created before this bound existed keep theirs. A 1 passes
+	// this parse and is rejected by the domain with the same field error.
 	var maxPlayers *int32
 	if form.MaxPlayers != "" {
 		value, err := strconv.ParseInt(form.MaxPlayers, 10, 32)
@@ -687,7 +688,7 @@ func gameRequestMessage(err error) string {
 	case errors.Is(err, gamerequest.ErrGameUnavailable):
 		return "Choose an active game from the list."
 	case errors.Is(err, gamerequest.ErrInvalidMaxPlayers):
-		return "Maximum players must be a whole number from 0 to 999. 0 means no limit."
+		return "Maximum players must be 0 for unlimited or a whole number from 2 to 999."
 	case errors.Is(err, gamerequest.ErrInvalidStartsAt):
 		return "Enter a valid scheduled start time, or leave it blank to start now."
 	case errors.Is(err, gamerequest.ErrInvalidDescription):

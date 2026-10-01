@@ -640,8 +640,8 @@ func TestComposerPickSearchIsLive(t *testing.T) {
 	}
 }
 
-// Max players is a plain numeric field: 0 (or empty) is an open round, and
-// the field itself states both the bound and what 0 means, so a player
+// Max players is a plain numeric field: 0 (or empty) is an open round, a
+// finite maximum starts at 2, and the field itself states both bounds and what 0 means, so a player
 // never has to submit to find out.
 func TestGameRequestMaxPlayersIsABoundedNumericField(t *testing.T) {
 	var rendered bytes.Buffer
@@ -652,7 +652,7 @@ func TestGameRequestMaxPlayersIsABoundedNumericField(t *testing.T) {
 	for _, want := range []string{
 		`for="max-players"`,
 		`type="number" name="max_players" min="0" max="999"`,
-		"Up to 999 players, or 0 for an open round.",
+		"0 for an open round, or 2 to 999 players.",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("max players field missing %q: %s", want, body)
@@ -669,7 +669,7 @@ func TestGameRequestMaxPlayersIsABoundedNumericField(t *testing.T) {
 // to a control by eye.
 func TestComposerFieldErrorsAreAttachedToTheirField(t *testing.T) {
 	form := GameRequestForm{MaxPlayers: "1000", StartPreset: "now"}
-	message := ComposerMessage{Text: "Maximum players must be a whole number from 0 to 999. 0 means no limit.", Field: "max_players"}
+	message := ComposerMessage{Text: "Maximum players must be 0 for unlimited or a whole number from 2 to 999.", Field: "max_players"}
 
 	var rendered bytes.Buffer
 	if err := GameRequestDetailsFields(form, message).Render(context.Background(), &rendered); err != nil {

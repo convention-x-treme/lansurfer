@@ -218,6 +218,43 @@ func TestCreateGameRequestNamesTheRejectedField(t *testing.T) {
 	}
 }
 
+// A finite maximum of 1 is no longer valid input (the Host is the first member,
+// so 2 is the smallest meaningful limit). The rejection must say so beside the
+// field, and the field's hint must state the same range, so the copy never
+// implies that 1 is allowed.
+func TestCreateGameRequestRejectsFiniteOneWithTheCurrentRange(t *testing.T) {
+	commands := &fakeGameRequestCommands{}
+	handler := NewGameRequests(commands, fakeGameRequestQueries{}, &fakeGameResolver{}, &fakeGameRequestDiscovery{}, nil, branding.Default())
+
+	form := url.Values{"game_id": {"game-1"}, "max_players": {"1"}}
+	request := httptest.NewRequest(http.MethodPost, "/game-requests", strings.NewReader(form.Encode()))
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	response := httptest.NewRecorder()
+
+	handler.Create(response, request)
+
+	body := response.Body.String()
+	if response.Code != http.StatusUnprocessableEntity || commands.createCalls != 0 {
+		t.Fatalf("status = %d, create calls = %d, want 422 and none", response.Code, commands.createCalls)
+	}
+	for _, want := range []string{
+		`<p id="max-players-error" class="field-error">Maximum players must be 0 for unlimited or a whole number from 2 to 999.</p>`,
+		`aria-invalid="true"`,
+		`aria-describedby="max-players-error max-players-hint"`,
+		`value="1"`,
+		"0 for an open round, or 2 to 999 players.",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("rejected 1 does not render %q: %s", want, body)
+		}
+	}
+	for _, stale := range []string{"from 0 to 999", "0 means no limit", "Up to 999 players"} {
+		if strings.Contains(body, stale) {
+			t.Errorf("rejected 1 still renders stale copy %q", stale)
+		}
+	}
+}
+
 func TestCreateGameRequestSkipsResolutionOnValidationFailure(t *testing.T) {
 	commands := &fakeGameRequestCommands{}
 	resolver := &fakeGameResolver{game: game.Game{ID: "local-1"}}
