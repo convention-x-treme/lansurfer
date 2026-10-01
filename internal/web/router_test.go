@@ -1645,6 +1645,7 @@ type routerGameRequests struct {
 	left      string
 	closed    string
 	cancelled string
+	started   string
 	joinError error
 }
 
@@ -1670,6 +1671,10 @@ func (*routerGameRequests) RecordView(context.Context, string, string) error { r
 
 func (r *routerGameRequests) Close(_ context.Context, requestID, userID string) error {
 	r.closed = requestID + "/" + userID
+	return nil
+}
+func (r *routerGameRequests) Start(_ context.Context, requestID, userID string) error {
+	r.started = requestID + "/" + userID
 	return nil
 }
 func (r *routerGameRequests) Cancel(_ context.Context, requestID, userID string) error {
@@ -1771,6 +1776,34 @@ func (*routerAuthentication) Logout(context.Context, string) error { return nil 
 
 func (a *routerAuthentication) Authenticate(context.Context, string) (user.User, error) {
 	return a.account, nil
+}
+
+func TestStartRouteIsAuthenticatedAndCSRFProtected(t *testing.T) {
+	commands := &routerGameRequests{}
+	router := gameRequestTestRouter(commands, &routerGameRequestQueries{}, nil)
+
+	post := func(authenticated, csrf bool) *httptest.ResponseRecorder {
+		request := httptest.NewRequest(http.MethodPost, "/game-requests/request-1/start", nil)
+		if authenticated {
+			request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+		}
+		if csrf {
+			addCSRF(request)
+		}
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, request)
+		return response
+	}
+
+	if response := post(true, false); response.Code != http.StatusForbidden || commands.started != "" {
+		t.Errorf("without CSRF: status = %d, started = %q", response.Code, commands.started)
+	}
+	if post(false, true); commands.started != "" {
+		t.Errorf("anonymous start reached the command: %q", commands.started)
+	}
+	if response := post(true, true); response.Code != http.StatusSeeOther || commands.started != "request-1/user-1" {
+		t.Errorf("start: status = %d, started = %q", response.Code, commands.started)
+	}
 }
 
 // A second Join that lands after the first already succeeded must resolve into
