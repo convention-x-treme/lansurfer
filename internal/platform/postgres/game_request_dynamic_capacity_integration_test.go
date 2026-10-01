@@ -296,6 +296,38 @@ func TestDetailsNoOpWritesNothingAndUpdateActivityIsTyped(t *testing.T) {
 	}
 }
 
+func TestDetailActivityProjectsRequestUpdateMetadata(t *testing.T) {
+	fixture := newPlayingFixture(t)
+	queries := gamerequestquery.NewStore(fixture.pool)
+	request := fixture.createLimited(t, 4, "Read-model history")
+	input := gamerequest.UpdateDetailsInput{
+		MaxPlayers: new(int32(6)), StartsAt: request.StartsAt.Add(time.Hour), Description: "Updated description",
+	}
+	if err := fixture.requests.UpdateDetails(t.Context(), request.ID, fixture.host, input); err != nil {
+		t.Fatal(err)
+	}
+	detail, err := queries.ByID(t.Context(), request.ID, fixture.host)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(detail.Activity) != 2 || detail.Activity[0].Kind != gamerequest.ActivityUpdated {
+		t.Fatalf("activity = %#v, want request_updated plus created", detail.Activity)
+	}
+	entry := detail.Activity[0]
+	if !sameInt32Pointer(entry.PreviousMaxPlayers, new(int32(4))) || !sameInt32Pointer(entry.NewMaxPlayers, new(int32(6))) {
+		t.Errorf("capacity projection = %v -> %v, want 4 -> 6", entry.PreviousMaxPlayers, entry.NewMaxPlayers)
+	}
+	if entry.PreviousStartsAt == nil || !entry.PreviousStartsAt.Equal(request.StartsAt) ||
+		entry.NewStartsAt == nil || !entry.NewStartsAt.Equal(input.StartsAt) || !entry.DescriptionChanged {
+		t.Errorf("request update projection = %+v", entry)
+	}
+	created := detail.Activity[1]
+	if created.PreviousMaxPlayers != nil || created.NewMaxPlayers != nil ||
+		created.PreviousStartsAt != nil || created.NewStartsAt != nil || created.DescriptionChanged {
+		t.Errorf("created activity has update metadata: %+v", created)
+	}
+}
+
 func TestHostUpdatesCapacityWhileOpenAndPlaying(t *testing.T) {
 	fixture := newPlayingFixture(t)
 	request := fixture.createLimited(t, 4, "Capacity while open and playing")

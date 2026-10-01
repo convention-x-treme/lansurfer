@@ -1175,7 +1175,7 @@ func TestNotificationStartedActivityMaterializesWork(t *testing.T) {
 // synchronized message and nothing personal: it materializes one Discord
 // delivery and zero Web Push deliveries even though a participant has Web Push
 // enabled and would receive a joined/started notification.
-func TestNotificationCapacityChangedMaterializesDiscordOnly(t *testing.T) {
+func TestNotificationRequestUpdatedMaterializesDiscordOnly(t *testing.T) {
 	pool := newTestPool(t)
 	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
 		t.Fatalf("Migrate() error = %v", err)
@@ -1209,14 +1209,17 @@ func TestNotificationCapacityChangedMaterializesDiscordOnly(t *testing.T) {
 		t.Fatalf("InitializeBaseline() error = %v", err)
 	}
 
-	// Sanity: the same participant would get a personal Web Push for a start,
-	// so zero targets for capacity below is the transport's decision.
-	if err := fixture.requests.UpdateCapacity(t.Context(), request.ID, fixture.host.ID, new(int32(6))); err != nil {
-		t.Fatalf("UpdateCapacity() error = %v", err)
+	// A multi-field update synchronizes one current snapshot without personal Web Push.
+	newMaximum := int32(6)
+	input := gamerequest.UpdateDetailsInput{
+		MaxPlayers: &newMaximum, StartsAt: request.StartsAt.Add(time.Hour), Description: "Updated details",
+	}
+	if err := fixture.requests.UpdateDetails(t.Context(), request.ID, fixture.host.ID, input); err != nil {
+		t.Fatalf("UpdateDetails() error = %v", err)
 	}
 	activities, err := store.DiscoverActivity(t.Context(), 10)
-	if err != nil || len(activities) != 1 || activities[0].Kind != notification.ActivityCapacityChanged || activities[0].GameRequestID != request.ID {
-		t.Fatalf("DiscoverActivity() = %#v, %v, want exactly one capacity_changed activity for %s", activities, err, request.ID)
+	if err != nil || len(activities) != 1 || activities[0].Kind != notification.ActivityUpdated || activities[0].GameRequestID != request.ID {
+		t.Fatalf("DiscoverActivity() = %#v, %v, want exactly one request_updated activity for %s", activities, err, request.ID)
 	}
 	pushTargets, err := push.Targets(t.Context(), activities[0])
 	if err != nil || len(pushTargets) != 0 {
@@ -1231,18 +1234,18 @@ func TestNotificationCapacityChangedMaterializesDiscordOnly(t *testing.T) {
 	}
 
 	var works int
-	if err := pool.QueryRow(t.Context(), "SELECT count(*) FROM notification_work WHERE kind = 'capacity_changed' AND game_request_id = $1 AND NOT baseline", request.ID).Scan(&works); err != nil || works != 1 {
-		t.Fatalf("capacity_changed notification_work rows = %d, %v, want 1", works, err)
+	if err := pool.QueryRow(t.Context(), "SELECT count(*) FROM notification_work WHERE kind = 'request_updated' AND game_request_id = $1 AND NOT baseline", request.ID).Scan(&works); err != nil || works != 1 {
+		t.Fatalf("request_updated notification_work rows = %d, %v, want 1", works, err)
 	}
 	var discordRows, pushRows int
 	if err := pool.QueryRow(t.Context(), `
 		SELECT count(*) FILTER (WHERE d.transport = 'discord'), count(*) FILTER (WHERE d.transport = 'webpush')
 		FROM notification_delivery d JOIN notification_work w ON w.id = d.work_id
-		WHERE w.kind = 'capacity_changed' AND w.game_request_id = $1`, request.ID).Scan(&discordRows, &pushRows); err != nil {
+		WHERE w.kind = 'request_updated' AND w.game_request_id = $1`, request.ID).Scan(&discordRows, &pushRows); err != nil {
 		t.Fatal(err)
 	}
 	if discordRows != 1 || pushRows != 0 {
-		t.Fatalf("capacity_changed deliveries: discord = %d, webpush = %d, want 1 and 0", discordRows, pushRows)
+		t.Fatalf("request_updated deliveries: discord = %d, webpush = %d, want 1 and 0", discordRows, pushRows)
 	}
 
 	// The same participant and the same Web Push setup do get a start push.

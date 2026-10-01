@@ -221,19 +221,18 @@ func TestWebPushActorGameNickLookupOnlyForJoinedAndLeft(t *testing.T) {
 	}
 }
 
-// A Host capacity change is Discord-only: it must resolve to zero Web Push
-// targets without reading participants, followers, summaries, preferences or
-// subscriptions, so no personal notification can leak from it.
-func TestWebPushTargetsForCapacityChangedQueriesNothingAndReturnsNone(t *testing.T) {
+// A request update reaches Discord only. It returns no Web Push targets without
+// reading participants, followers, summaries, preferences or subscriptions.
+func TestWebPushTargetsForRequestUpdatedQueriesNothingAndReturnsNone(t *testing.T) {
 	failing := &failOnReadWebPushSource{t: t}
 	transport := NewWebPushTransport(failing, failing, failing, failing, failing, failing, nil, "https://lansurfer.example", "", nil, nil)
 
-	targets, err := transport.Targets(t.Context(), Activity{Sequence: 9, GameRequestID: "req-1", ActorID: "host", Kind: ActivityCapacityChanged})
+	targets, err := transport.Targets(t.Context(), Activity{Sequence: 9, GameRequestID: "req-1", ActorID: "host", Kind: ActivityUpdated})
 	if err != nil {
 		t.Fatalf("Targets() error = %v", err)
 	}
 	if len(targets) != 0 {
-		t.Fatalf("Targets() for capacity_changed = %#v, want none", targets)
+		t.Fatalf("Targets() for request_updated = %#v, want none", targets)
 	}
 }
 
@@ -245,26 +244,26 @@ type failOnReadWebPushSource struct {
 }
 
 func (f *failOnReadWebPushSource) ListSubscriptions(context.Context, string) ([]PushSubscriptionRecord, error) {
-	f.t.Error("subscriptions were read for capacity_changed")
+	f.t.Error("subscriptions were read for request_updated")
 	return nil, nil
 }
 func (f *failOnReadWebPushSource) GetPreference(context.Context, string) (PushPreference, error) {
-	f.t.Error("preferences were read for capacity_changed")
+	f.t.Error("preferences were read for request_updated")
 	return PushPreference{}, nil
 }
 func (f *failOnReadWebPushSource) ListUsersWithAudience(context.Context, string) ([]string, error) {
-	f.t.Error("audience was read for capacity_changed")
+	f.t.Error("audience was read for request_updated")
 	return nil, nil
 }
 func (f *failOnReadWebPushSource) ListFollowers(context.Context, string) ([]string, error) {
-	f.t.Error("followers were read for capacity_changed")
+	f.t.Error("followers were read for request_updated")
 	return nil, nil
 }
 func (f *failOnReadWebPushSource) ListParticipants(context.Context, string) ([]string, error) {
-	f.t.Error("participants were read for capacity_changed")
+	f.t.Error("participants were read for request_updated")
 	return nil, nil
 }
 func (f *failOnReadWebPushSource) GetGameRequestSummary(context.Context, string) (GameRequestSummary, error) {
-	f.t.Error("summary was read for capacity_changed")
+	f.t.Error("summary was read for request_updated")
 	return GameRequestSummary{}, nil
 }

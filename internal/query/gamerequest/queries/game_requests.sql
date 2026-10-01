@@ -79,7 +79,8 @@ ORDER BY m.joined_at, u.id;
 
 -- name: ListGameRequestActivity :many
 SELECT a.kind, a.occurred_at, a.actor_id::text AS actor_id, u.game_nick AS actor_game_nick,
-       a.previous_max_players, a.new_max_players
+       a.previous_max_players, a.new_max_players,
+       a.previous_starts_at, a.new_starts_at, a.description_changed
 FROM game_request_activity a
 JOIN users u ON u.id = a.actor_id
 WHERE a.game_request_id = sqlc.arg(game_request_id)::uuid

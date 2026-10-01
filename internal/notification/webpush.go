@@ -115,9 +115,8 @@ func (t *WebPushTransport) Targets(ctx context.Context, activity Activity) ([]Ta
 			return nil, fmt.Errorf("list game request participants: %w", err)
 		}
 		candidates = dedupeExcept(participants, activity.ActorID)
-	case ActivityCapacityChanged:
-		// A Host configuration change reaches Discord's synchronized message
-		// only; it is never a personal Web Push.
+	case ActivityUpdated:
+		// Request edits synchronize Discord's message only, never personal Web Push.
 		return nil, nil
 	default:
 		return nil, nil
