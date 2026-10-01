@@ -623,7 +623,7 @@ In the in-memory fixture:
 - Join/Leave accept `open|playing`;
 - Host cannot leave;
 - capacity remains enforced;
-- implement `UpdateCapacity(...)(bool,error)`-equivalent command surface expected by the handler;
+- implement the handler-facing command exactly as `UpdateCapacity(context.Context, string, string, *int32) error`; internally the fixture may compare old/new values directly before mutating;
 - reject non-Host/inactive/below-members;
 - record `ActivityCapacityChanged` with old/new pointers;
 - publish `EventCapacityChanged` only for a real change;
@@ -634,19 +634,32 @@ Keep the fixture in-memory. Do not emulate PostgreSQL locking; database concurre
 Run: `go test -race ./internal/web/browsertest -count=1` or the package-level command used by the repo.  
 Expected: PASS.
 
-- [ ] **Step 2: Add browser coverage for the complete visible flow**
+- [ ] **Step 2: Add browser coverage for Host editing and playing participation**
 
-Add one focused Playwright flow that:
-1. creates a request with finite capacity;
-2. changes capacity on the detail page;
-3. starts the request;
-4. confirms a participant can Join while Playing;
-5. reaches the finite maximum and shows Full;
-6. participant Leaves and the place becomes available;
-7. Host switches capacity to unlimited;
-8. another Join becomes available without a page reload after realtime refresh.
+Keep the fixture's single authenticated viewer model. Do not add multi-user authentication just for this issue.
 
-Also assert the Host editor is absent for a non-Host viewer.
+Adjust the fixture seeding so one non-owned seeded request is `playing` with finite capacity and one free place; use a status parameter/helper rather than a test-only product route.
+
+Add two focused Playwright flows:
+
+**Host capacity flow**
+1. create a request with finite capacity;
+2. verify the Capacity editor is visible to the Host;
+3. change the finite limit on the detail page;
+4. start the request;
+5. change the limit again while Playing;
+6. switch capacity to unlimited;
+7. verify the detail count/hint updates and the editor remains available while Playing.
+
+**Participant playing flow**
+1. open the seeded non-owned `playing` request with one free place;
+2. verify no Host Capacity editor is present;
+3. Join while Playing;
+4. verify the row/detail becomes Full at the finite maximum;
+5. Leave while Playing;
+6. verify the place becomes available again.
+
+Realtime refresh behavior can reuse the existing SSE/browser helpers; do not introduce a second browser identity model.
 
 Run: `task test:browser`  
 Expected: PASS.
