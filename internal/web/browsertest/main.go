@@ -97,18 +97,20 @@ type fixture struct {
 
 func newFixture() *fixture {
 	state := &fixture{requests: map[string]*fixtureRequest{}, broker: sse.NewBroker()}
-	state.seed("Warcraft III", 4, 3)
-	state.seed("Quake III Arena", 0, 5)
-	state.seed("Age of Empires II", 4, 4)
+	state.seed("Warcraft III", 4, 3, gamerequest.StatusOpen)
+	state.seed("Quake III Arena", 0, 5, gamerequest.StatusOpen)
+	// A request somebody else already started that still has one free place:
+	// the viewer is a participant candidate here, never its Host.
+	state.seed("Age of Empires II", 4, 3, gamerequest.StatusPlaying)
 	return state
 }
 
-func (f *fixture) seed(gameName string, maxPlayers int32, members int64) {
+func (f *fixture) seed(gameName string, maxPlayers int32, members int64, status gamerequest.Status) {
 	f.next++
 	id := fmt.Sprintf("00000000-0000-0000-0000-00000000000%d", f.next)
 	request := requestquery.Request{
 		ID: id, Game: game.GamePresentation{Name: gameName}, CreatorID: "creator-" + id, CreatorGameNick: "Host",
-		StartsAt: time.Now().Add(time.Hour), Status: gamerequest.StatusOpen,
+		StartsAt: time.Now().Add(time.Hour), Status: status,
 		MemberCount: members, CreatedAt: time.Now().Add(-time.Hour),
 		Members:  []requestquery.Member{{ID: "creator-" + id, GameNick: "Host", JoinedAt: time.Now().Add(-time.Hour)}},
 		Activity: []requestquery.Activity{{Kind: gamerequest.ActivityCreated, ActorID: "creator-" + id, ActorGameNick: "Host", OccurredAt: time.Now().Add(-time.Hour)}},
@@ -192,10 +194,10 @@ func (f *fixture) Join(_ context.Context, requestID, userID string) error {
 	if !ok {
 		return gamerequest.ErrNotFound
 	}
-	if entry.request.Status != gamerequest.StatusOpen {
-		return gamerequest.ErrNotOpen
+	if !isActiveStatus(entry.request.Status) {
+		return gamerequest.ErrNotActive
 	}
-	if entry.members[userID] {
+	if entry.members[userID] || entry.request.CreatorID == userID {
 		return gamerequest.ErrAlreadyMember
 	}
 	if entry.request.MaxPlayers != nil && entry.request.MemberCount >= int64(*entry.request.MaxPlayers) {
@@ -221,8 +223,11 @@ func (f *fixture) Leave(_ context.Context, requestID, userID string) error {
 	if !ok {
 		return gamerequest.ErrNotFound
 	}
-	if entry.request.Status != gamerequest.StatusOpen {
-		return gamerequest.ErrNotOpen
+	if !isActiveStatus(entry.request.Status) {
+		return gamerequest.ErrNotActive
+	}
+	if entry.request.CreatorID == userID {
+		return gamerequest.ErrCreatorCannotLeave
 	}
 	if !entry.members[userID] {
 		return gamerequest.ErrNotMember
@@ -245,6 +250,42 @@ func (f *fixture) Close(_ context.Context, requestID, userID string) error {
 
 func (f *fixture) Cancel(_ context.Context, requestID, userID string) error {
 	return f.transition(requestID, userID, gamerequest.StatusOpen, gamerequest.StatusCancelled, gamerequest.ActivityCancelled, gamerequest.EventCancelled)
+}
+
+// UpdateCapacity mirrors the store's rules over the in-memory request: Host
+// only, active only, never below the current member count, and a semantically
+// identical value changes nothing and publishes nothing. PostgreSQL row locking
+// is not emulated; the integration tests own that.
+func (f *fixture) UpdateCapacity(_ context.Context, requestID, userID string, maxPlayers *int32) error {
+	if err := f.beforeMutation("capacity"); err != nil {
+		return err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	entry, ok := f.requests[requestID]
+	if !ok {
+		return gamerequest.ErrNotFound
+	}
+	if entry.request.CreatorID != userID {
+		return gamerequest.ErrNotCreator
+	}
+	if !isActiveStatus(entry.request.Status) {
+		return gamerequest.ErrNotActive
+	}
+	previous := entry.request.MaxPlayers
+	if (previous == nil && maxPlayers == nil) || (previous != nil && maxPlayers != nil && *previous == *maxPlayers) {
+		return nil
+	}
+	if maxPlayers != nil && entry.request.MemberCount > int64(*maxPlayers) {
+		return gamerequest.ErrCapacityBelowMembers
+	}
+	entry.request.MaxPlayers = maxPlayers
+	entry.request.Activity = append([]requestquery.Activity{{
+		Kind: gamerequest.ActivityCapacityChanged, ActorID: userID, ActorGameNick: "Ada Player", OccurredAt: time.Now(),
+		PreviousMaxPlayers: previous, NewMaxPlayers: maxPlayers,
+	}}, entry.request.Activity...)
+	f.broker.Publish(gamerequest.Event{Type: gamerequest.EventCapacityChanged, RequestID: requestID})
+	return nil
 }
 
 // transition moves a request from one status to the next. Start and Cancel

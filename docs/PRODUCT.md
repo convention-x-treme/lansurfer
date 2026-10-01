@@ -323,16 +323,26 @@ A started request is not cancelled; it is closed when finished. Existing histori
 
 Stable 1.0 coordination continues while a request is `playing`:
 
-- players may join or leave while capacity permits;
-- the Host may change the maximum player count while `open` or `playing`, but never below current participation;
+- players may join or leave while capacity permits; the Host remains a member and cannot leave;
+- the Host may change the maximum player count while `open` or `playing`, but never below current participation (see [Capacity](#capacity));
 - generic key/value session information may be maintained by the Host;
 - session-information values may be marked secret and are then available only to the Host and currently joined participants;
 - the Host and currently joined participants may use a lightweight request-local private chat while the request is active.
 
 Session secrets never appear in public/discovery views, logs, metrics, notification payloads, or unrelated diagnostics. Request-local chat is not a general messaging subsystem: there are no direct messages, global rooms, threads, reactions, attachments, read receipts, typing indicators, or presence in the stable 1.0 scope.
 
+The primary UI should show Game, player count/capacity, start time, short description, and the Join action without forcing the player through a detail page. While a request is `playing`, the list and detail page keep the same Join, Leave, and Full states as an `open` one.
 
-The primary UI should show Game, player count/capacity, start time, short description, and the Join action without forcing the player through a detail page.
+### Capacity
+
+A Game Request's maximum players is optional. A request without one is **unlimited** while it is active.
+
+- A request is joinable by a player who is not a member while it is `open` or `playing` and, if it has a maximum, has fewer members than that maximum. Nothing else controls joinability: there is no separate "accepting players" setting. Join and Leave are rejected on `closed` and `cancelled` requests.
+- When the maximum is reached, further joins are refused. When a member leaves, the place is free again; raising or removing the maximum frees places immediately.
+- Only the Host changes the maximum, from the Game Request detail page, while the request is `open` or `playing`. The discovery list shows capacity but offers no editor.
+- The Host may set a finite maximum, raise or lower it, or remove it to return to unlimited. A finite maximum can never be lower than the current number of members.
+- Entering `0` or leaving the field blank means unlimited. A finite maximum is a whole number from `2` to `999`, because the Host is the first member. A request created before this rule that holds a maximum of `1` keeps it, but any later edit must be unlimited or `2` or more.
+- Saving the value a request already has changes nothing: it creates no activity entry, no live update, and no Discord update.
 
 ### Discovery
 
@@ -350,7 +360,7 @@ Additional filters beyond these are not automatically part of approved product s
 
 LANsurfer includes a compact request-based Trending view over a rolling **6-hour** window. The UI states the window explicitly, for example `Trending · last 6 hours`.
 
-Trending is derived from local Game Request activity. Search queries are not persisted. Neither search queries nor page views are ranking inputs: the private per-player reading history behind "Recently viewed" (see [Shared navigation](#shared-navigation)) is never aggregated across players and never influences Trending. Quiet periods may therefore produce a sparse or empty Trending view rather than silently expanding the window.
+Trending is derived from local Game Request activity. Search queries are not persisted. Neither search queries nor page views are ranking inputs: the private per-player reading history behind "Recently viewed" (see [Shared navigation](#shared-navigation)) is never aggregated across players and never influences Trending. A Host's capacity change is configuration, not popularity, and does not count toward Trending. Quiet periods may therefore produce a sparse or empty Trending view rather than silently expanding the window.
 
 ### Durable request-local activity
 
@@ -362,6 +372,7 @@ Each Game Request keeps chronological durable activity for successful:
 - start
 - close
 - cancel
+- capacity change, recording the previous and new maximum (`unlimited` when there is none)
 
 Activity is separate from current membership and separate from notification delivery history. Failed, rejected, or duplicate mutations do not create activity entries. A player leaving removes current membership but does not erase the historical activity entry. Public actor identity uses Game Nick where relevant.
 
@@ -381,7 +392,7 @@ Every signed-in screen renders the same navigation, so its numbers and lists mea
 
 ## 12. Live and Durable Notifications
 
-SSE remains the ephemeral in-browser live-update path, with polling fallback where necessary. It can surface new requests, joins, leaves, and status changes.
+SSE remains the ephemeral in-browser live-update path, with polling fallback where necessary. It can surface new requests, joins, leaves, capacity changes, and status changes.
 
 The durable notification system has Web Push and Discord transports. External delivery is asynchronous and must never fail or roll back a Game Request action. LANsurfer does not provide a persistent in-app inbox.
 
@@ -396,6 +407,7 @@ The durable notification system has Web Push and Discord transports. External de
 - For a newly created request, notify currently eligible players in the selected audience except the creator.
 - Join, leave, start, close, and cancel activity may also notify current request participants independently of the new-request audience setting. The actor never receives a personal push for their own activity.
 - Join/leave notifications may name the actor by public Game Nick. Start/close/cancel notifications remain actor-neutral.
+- A Host capacity change never creates a personal push; it reaches Discord only.
 - Recipient/device sets are not expanded later for old work. Delayed/retried delivery re-checks current eligibility and suppresses a delivery that is no longer permitted rather than sending stale personal notification work.
 - When LANsurfer is already visibly open in the browser, the service worker suppresses the duplicate OS notification and SSE remains the in-browser live-update path.
 - Push payloads contain only the minimum data needed to render the notification: activity kind, Game, optional creator Game Nick, current player count and optional capacity, planned time, deep link, minimum instance context, and optional join/leave actor Game Nick. The notification uses the Game Requests list title; its body shows viewer-local planned time and current player count/capacity without repeating the Game, with activity context on changes. Payloads omit description, roster, cover, provider identity data, and activity history.
@@ -408,7 +420,7 @@ The durable notification system has Web Push and Discord transports. External de
 - LANsurfer maintains one synchronized Discord message per Game Request in the current destination. It creates the message with `wait=true`, stores the returned message ID, and edits that same message as request state changes.
 - Discord reflects the current Game Request snapshot rather than replaying request activity. Rapid changes may collapse into one newer edit, and a new live change after reconnect may create the current request's first message in the new destination without replaying older work.
 - The message uses the Game Requests list title with creator Game Nick and Game. It includes a viewer-local `Start` field, status with a color-coded embed accent, current capacity/free-place summary, a short sanitized request description, an explicit `Open in browser ↗` link below the metadata, and minimal instance context. The optional provider Game cover appears as a Discord thumbnail linked directly from IGDB. The web UI keeps covers same-origin; a local base URL still prevents Discord users from opening the deep link.
-- The full participant roster and durable request activity remain in LANsurfer and are not mirrored into Discord.
+- The full participant roster and durable request activity remain in LANsurfer and are not mirrored into Discord. A Host capacity change updates the same synchronized message with the current capacity/free-place summary and posts no separate message.
 - Provider identity data such as Discord usernames or email addresses is never used as public identity in the message.
 - User-authored descriptions are treated as plain content and Discord mentions are disabled on every create/edit.
 - Stored webhook identifiers/tokens are encrypted and never displayed back to an operator. OAuth access/refresh tokens are not retained after successful destination setup.
