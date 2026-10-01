@@ -1025,9 +1025,8 @@ func capacityRequest(status gamerequest.Status, limit *int32) requestquery.Reque
 	}
 }
 
-// The Host edits capacity in place, in a form of its own that asks for no
-// confirmation because the change is reversible. It stays apart from the
-// destructive lifecycle actions.
+// The Host edits capacity in the Host actions card, after the lifecycle action.
+// The reversible capacity form does not ask for confirmation.
 func TestHostCapacityEditorAppearsWhileActive(t *testing.T) {
 	limit := int32(4)
 	for _, status := range []gamerequest.Status{gamerequest.StatusOpen, gamerequest.StatusPlaying} {
@@ -1035,6 +1034,14 @@ func TestHostCapacityEditorAppearsWhileActive(t *testing.T) {
 		editor := capacityEditor(t, body)
 		if editor == "" {
 			t.Fatalf("%s Host detail has no capacity editor", status)
+		}
+		hostCardStart := strings.Index(body, `<section class="detail-card detail-card-accent">`)
+		if hostCardStart < 0 {
+			t.Fatalf("%s Host actions card is missing", status)
+		}
+		hostCardEnd := strings.Index(body[hostCardStart:], "</section>")
+		if hostCardEnd < 0 || !strings.Contains(body[hostCardStart:hostCardStart+hostCardEnd], `action="/game-requests/request-1/capacity"`) {
+			t.Fatalf("%s capacity editor is outside Host actions card", status)
 		}
 		for _, want := range []string{`name="max_players"`, `min="0"`, `max="999"`, `step="1"`, `type="number"`, `value="4"`,
 			"0 means unlimited; finite limits start at 2.", ">Save</button>"} {
