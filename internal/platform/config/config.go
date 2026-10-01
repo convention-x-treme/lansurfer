@@ -12,6 +12,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf8"
 
@@ -89,6 +90,11 @@ type Config struct {
 	// otherwise nil until some other module needs it.
 	DataEncryptionKey []byte
 	TrustedProxies    []netip.Prefix
+	// ChatRateLimit and ChatRateWindow cap one player's chat messages per Game
+	// Request (LANSURFER_CHAT_RATE_LIMIT / LANSURFER_CHAT_RATE_WINDOW). Zero
+	// means unset; the gamerequest module owns the default.
+	ChatRateLimit  int
+	ChatRateWindow time.Duration
 	// InstanceName is the trimmed, optional minimum instance identity from
 	// LANSURFER_INSTANCE_NAME. Empty means unset; the web layer resolves the
 	// display fallback ("LANsurfer"), the same way it already owns
@@ -160,6 +166,11 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 
+	chatRateLimit, chatRateWindow, err := loadChatRate()
+	if err != nil {
+		return Config{}, err
+	}
+
 	instanceName, err := loadInstanceName()
 	if err != nil {
 		return Config{}, err
@@ -184,10 +195,32 @@ func Load() (Config, error) {
 		WebPush:           webPush,
 		DataEncryptionKey: dataEncryptionKey,
 		TrustedProxies:    trustedProxies,
+		ChatRateLimit:     chatRateLimit,
+		ChatRateWindow:    chatRateWindow,
 		InstanceName:      instanceName,
 		Legal:             legal,
 		CoverCacheDir:     strings.TrimSpace(os.Getenv("LANSURFER_COVER_CACHE_DIR")),
 	}, nil
+}
+
+func loadChatRate() (int, time.Duration, error) {
+	var limit int
+	var window time.Duration
+	if value := strings.TrimSpace(os.Getenv("LANSURFER_CHAT_RATE_LIMIT")); value != "" {
+		parsed, err := strconv.Atoi(value)
+		if err != nil || parsed < 1 {
+			return 0, 0, errors.New("LANSURFER_CHAT_RATE_LIMIT must be a positive whole number")
+		}
+		limit = parsed
+	}
+	if value := strings.TrimSpace(os.Getenv("LANSURFER_CHAT_RATE_WINDOW")); value != "" {
+		parsed, err := time.ParseDuration(value)
+		if err != nil || parsed < time.Second {
+			return 0, 0, errors.New("LANSURFER_CHAT_RATE_WINDOW must be a duration of at least 1s, for example 20s")
+		}
+		window = parsed
+	}
+	return limit, window, nil
 }
 
 func loadInstanceName() (string, error) {

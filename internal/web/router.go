@@ -81,6 +81,7 @@ type RouterDependencies struct {
 	// handler's own narrower interface.
 	NavigationQueries handler.NavigationQueries
 	NavigationCatalog handler.NavigationCatalog
+	Chat              handler.GameRequestChat
 	Realtime          handler.GameRequestEvents
 	// RealtimeChat gates chat signals on the realtime stream; nil drops them.
 	RealtimeChat  handler.ChatAccess
@@ -273,6 +274,11 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 				requests.Post("/{requestID}/start", gameRequestsHandler.Start)
 				requests.Post("/{requestID}/close", gameRequestsHandler.Close)
 				requests.Post("/{requestID}/cancel", gameRequestsHandler.Cancel)
+				if dependencies.Chat != nil {
+					chatHandler := handler.NewChat(dependencies.Chat)
+					requests.Get("/{requestID}/chat", chatHandler.Log)
+					requests.Post("/{requestID}/chat", chatHandler.Post)
+				}
 			})
 		}
 		if dependencies.Realtime != nil {

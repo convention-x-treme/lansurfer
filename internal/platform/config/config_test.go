@@ -3,6 +3,7 @@ package config
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 // Generated once for these tests only; not a real operator key.
@@ -599,6 +600,8 @@ func clearOptionalEnvironment(t *testing.T) {
 		"LANSURFER_DISCORD_WEBHOOK_CLIENT_ID",
 		"LANSURFER_DISCORD_WEBHOOK_CLIENT_SECRET",
 		"LANSURFER_TRUSTED_PROXIES",
+		"LANSURFER_CHAT_RATE_LIMIT",
+		"LANSURFER_CHAT_RATE_WINDOW",
 		"LANSURFER_TWITCH_CLIENT_ID",
 		"LANSURFER_TWITCH_CLIENT_SECRET",
 		"LANSURFER_TWITCH_AUTH_ENABLED",
@@ -713,5 +716,30 @@ func TestLoadRequiresLegalIdentityWithDiscord(t *testing.T) {
 				t.Fatalf("Load() error = %v, want error naming both legal variables", err)
 			}
 		})
+	}
+}
+
+func TestLoadChatRate(t *testing.T) {
+	clearOptionalEnvironment(t)
+	t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
+
+	cfg, err := Load()
+	if err != nil || cfg.ChatRateLimit != 0 || cfg.ChatRateWindow != 0 {
+		t.Fatalf("unset = %d, %v, %v; want zero values", cfg.ChatRateLimit, cfg.ChatRateWindow, err)
+	}
+
+	t.Setenv("LANSURFER_CHAT_RATE_LIMIT", " 3 ")
+	t.Setenv("LANSURFER_CHAT_RATE_WINDOW", " 30s ")
+	cfg, err = Load()
+	if err != nil || cfg.ChatRateLimit != 3 || cfg.ChatRateWindow != 30*time.Second {
+		t.Fatalf("configured = %d, %v, %v", cfg.ChatRateLimit, cfg.ChatRateWindow, err)
+	}
+
+	for name, value := range map[string]string{"LANSURFER_CHAT_RATE_LIMIT": "0", "LANSURFER_CHAT_RATE_WINDOW": "fast"} {
+		t.Setenv(name, value)
+		if _, err := Load(); err == nil {
+			t.Errorf("%s=%q accepted", name, value)
+		}
+		t.Setenv(name, map[string]string{"LANSURFER_CHAT_RATE_LIMIT": "3", "LANSURFER_CHAT_RATE_WINDOW": "30s"}[name])
 	}
 }

@@ -624,6 +624,48 @@
     background: color-mix(in srgb, var(--color-base-content) 5%, transparent);
   }
 
+  /* Request-local chat log; the Activity card stays separate. */
+  .chat-log {
+    display: flex;
+    max-height: 28rem;
+    min-height: 8rem;
+    flex: 1;
+    flex-direction: column;
+    gap: 0.75rem;
+    overflow-y: auto;
+    overflow-wrap: anywhere;
+  }
+
+
+  /* <details> lays its content out in an internal slot, so the card's flex
+     column cannot gap the children directly; the body carries it instead. */
+  details.detail-card {
+    display: block;
+  }
+
+  .detail-card-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.875rem;
+    padding-top: 0.875rem;
+  }
+
+  .detail-card-summary {
+    display: flex;
+    cursor: pointer;
+    list-style: none;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .detail-card-summary::-webkit-details-marker {
+    display: none;
+  }
+
+  details[open] > .detail-card-summary > i {
+    transform: rotate(180deg);
+  }
+
   .detail-card-accent {
     border-color: color-mix(in srgb, var(--color-warning) 40%, var(--border-raised));
   }

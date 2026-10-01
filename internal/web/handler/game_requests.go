@@ -580,8 +580,13 @@ func gameRequestErrorStatus(err error) int {
 		return http.StatusForbidden
 	case errors.Is(err, gamerequest.ErrFull), errors.Is(err, gamerequest.ErrAlreadyMember),
 		errors.Is(err, gamerequest.ErrNotMember), errors.Is(err, gamerequest.ErrCreatorCannotLeave),
-		errors.Is(err, gamerequest.ErrNotOpen), errors.Is(err, gamerequest.ErrNotPlaying):
+		errors.Is(err, gamerequest.ErrNotOpen), errors.Is(err, gamerequest.ErrNotPlaying),
+		errors.Is(err, gamerequest.ErrChatClosed):
 		return http.StatusConflict
+	case errors.Is(err, gamerequest.ErrInvalidMessage):
+		return http.StatusUnprocessableEntity
+	case errors.Is(err, gamerequest.ErrChatRateLimited):
+		return http.StatusTooManyRequests
 	case errors.Is(err, gamerequest.ErrGameUnavailable),
 		errors.Is(err, gamerequest.ErrInvalidMaxPlayers), errors.Is(err, gamerequest.ErrInvalidStartsAt),
 		errors.Is(err, gamerequest.ErrInvalidDescription), errors.Is(err, game.ErrInvalidProviderReference):
@@ -635,6 +640,12 @@ func gameRequestMessage(err error) string {
 		return "This Game Request is no longer open."
 	case errors.Is(err, gamerequest.ErrNotPlaying):
 		return "This Game Request is not currently playing."
+	case errors.Is(err, gamerequest.ErrInvalidMessage):
+		return "Messages must be 1 to 1000 characters."
+	case errors.Is(err, gamerequest.ErrChatRateLimited):
+		return "You are sending messages too fast. Wait a moment and try again."
+	case errors.Is(err, gamerequest.ErrChatClosed):
+		return "Chat is closed for this Game Request."
 	case errors.Is(err, game.ErrInvalidProviderReference):
 		return "That provider game reference is invalid."
 	case errors.Is(err, game.ErrProviderRecordNotFound):

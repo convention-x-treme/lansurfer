@@ -15,12 +15,19 @@ import (
 )
 
 type Store struct {
-	pool    *pgxpool.Pool
-	queries *sqlcgen.Queries
+	pool     *pgxpool.Pool
+	queries  *sqlcgen.Queries
+	chatRate gamerequest.ChatRate
 }
 
 func NewStore(pool *pgxpool.Pool) *Store {
-	return &Store{pool: pool, queries: sqlcgen.New(pool)}
+	return &Store{pool: pool, queries: sqlcgen.New(pool), chatRate: gamerequest.DefaultChatRate}
+}
+
+// WithChatRate overrides the default chat rate limit.
+func (s *Store) WithChatRate(rate gamerequest.ChatRate) *Store {
+	s.chatRate = rate
+	return s
 }
 
 func (s *Store) Create(ctx context.Context, request gamerequest.GameRequest) (gamerequest.GameRequest, error) {

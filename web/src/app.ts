@@ -288,6 +288,18 @@ if (realtime?.dataset.realtimeUrl) {
         // A malformed or stale signal can be ignored; the next event refreshes current state.
       }
     });
+    events.addEventListener("game-request-chat", (message) => {
+      try {
+        const { requestId } = JSON.parse(message.data) as GameRequestEvent;
+        const log = document.querySelector("#chat-log");
+        const detail = document.querySelector<HTMLElement>("[data-game-request-detail]");
+        if (log && detail?.dataset.gameRequestId === requestId) {
+          void htmx.ajax("get", `/game-requests/${encodeURIComponent(requestId)}/chat`, { target: "#chat-log", swap: "outerHTML" });
+        }
+      } catch {
+        // A malformed signal is ignored; the next message refreshes the log.
+      }
+    });
     events.addEventListener("error", () => {
       if (document.querySelector("[data-live-connection-alert]")) return;
       liveNotice("warning", "Live connection lost. Retrying…").dataset.liveConnectionAlert = "";
@@ -450,4 +462,35 @@ document.addEventListener("htmx:oobAfterSwap", () => {
     }
     window.setTimeout(() => toast.remove(), 8000);
   });
+});
+
+// A sent chat message clears the field; a newly swapped log shows its newest line.
+document.addEventListener("htmx:afterRequest", (event) => {
+  const form = event.target;
+  if (form instanceof HTMLFormElement && form.hasAttribute("data-chat-form") && (event as CustomEvent).detail.successful) form.reset();
+});
+
+document.addEventListener("htmx:afterSwap", (event) => {
+  const target = event.target;
+  if (target instanceof HTMLElement && target.id === "chat-log") target.scrollTop = target.scrollHeight;
+});
+
+// A live refresh re-renders each collapsible card in its default state, so the
+// viewer's own open/closed choice is remembered and put back after the swap.
+const collapsibleState = new Map<string, boolean>();
+
+document.addEventListener(
+  "toggle",
+  (event) => {
+    const card = event.target;
+    if (card instanceof HTMLDetailsElement && card.hasAttribute("data-collapsible")) collapsibleState.set(card.id, card.open);
+  },
+  true,
+);
+
+document.addEventListener("htmx:afterSwap", () => {
+  for (const card of document.querySelectorAll<HTMLDetailsElement>("details[data-collapsible]")) {
+    const open = collapsibleState.get(card.id);
+    if (open !== undefined) card.open = open;
+  }
 });

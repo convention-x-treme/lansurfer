@@ -14,7 +14,19 @@ var (
 	ErrInvalidMessage = errors.New("invalid chat message")
 	// ErrChatClosed reports a request that is no longer open or playing.
 	ErrChatClosed = errors.New("game request chat is closed")
+	// ErrChatRateLimited reports a poster who sent too many messages recently.
+	ErrChatRateLimited = errors.New("game request chat rate limit exceeded")
 )
+
+// ChatRate allows a poster Limit messages per Window in one request. It is
+// enforced under the request row lock, so concurrent posts cannot slip past it.
+type ChatRate struct {
+	Limit  int
+	Window time.Duration
+}
+
+// DefaultChatRate applies unless the operator configures another.
+var DefaultChatRate = ChatRate{Limit: 5, Window: 20 * time.Second}
 
 // EventChatMessage signals that a chat message was posted. It carries no
 // message content, and delivery must be limited to chat participants.

@@ -162,6 +162,15 @@ forwarded client addresses from every other peer; do not use a broad range that
 includes untrusted clients. Proxy TLS headers do not control cookie security—the
 public HTTPS `LANSURFER_BASE_URL` does.
 
+### Configure the chat rate limit (optional)
+
+```sh
+LANSURFER_CHAT_RATE_LIMIT=5
+LANSURFER_CHAT_RATE_WINDOW=20s
+```
+
+A player may send `LANSURFER_CHAT_RATE_LIMIT` messages per `LANSURFER_CHAT_RATE_WINDOW` (a Go duration of at least `1s`) in one Game Request. Both default to the values shown when unset.
+
 ### Configure minimum instance identity (optional)
 
 ```sh

@@ -128,7 +128,18 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	avatarSource := auth.NewAvatarSource(identityStore)
 	avatars := mediaproxy.NewService(mediaStore, avatarSource, avatarSource.Known, logger, "avatar")
 	realtime := sse.NewBroker()
-	gameRequests := gamerequest.NewService(gamerequestpostgres.NewStore(pool), gameService, realtime)
+	gamerequestStore := gamerequestpostgres.NewStore(pool)
+	if cfg.ChatRateLimit > 0 || cfg.ChatRateWindow > 0 {
+		rate := gamerequest.DefaultChatRate
+		if cfg.ChatRateLimit > 0 {
+			rate.Limit = cfg.ChatRateLimit
+		}
+		if cfg.ChatRateWindow > 0 {
+			rate.Window = cfg.ChatRateWindow
+		}
+		gamerequestStore.WithChatRate(rate)
+	}
+	gameRequests := gamerequest.NewService(gamerequestStore, gameService, realtime)
 	gameRequestQueries := gamerequestquery.NewStore(pool)
 	var igdbCreds igdbCredentials
 	if cfg.Twitch != nil {
@@ -186,6 +197,7 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		Landing:             gameRequestQueries,
 		NavigationQueries:   gameRequestQueries,
 		NavigationCatalog:   gameDiscovery,
+		Chat:                gameRequests,
 		Realtime:            realtime,
 		RealtimeChat:        gameRequests,
 		Covers:              covers,

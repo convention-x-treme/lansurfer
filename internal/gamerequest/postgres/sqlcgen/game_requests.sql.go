@@ -123,6 +123,27 @@ func (q *Queries) CountGameRequestMembers(ctx context.Context, gameRequestID pgt
 	return count, err
 }
 
+const countRecentGameRequestMessages = `-- name: CountRecentGameRequestMessages :one
+SELECT count(*)::bigint
+FROM game_request_messages
+WHERE game_request_id = $1::uuid
+  AND author_id = $2::uuid
+  AND created_at > clock_timestamp() - make_interval(secs => $3::float8)
+`
+
+type CountRecentGameRequestMessagesParams struct {
+	GameRequestID pgtype.UUID
+	AuthorID      pgtype.UUID
+	WindowSeconds float64
+}
+
+func (q *Queries) CountRecentGameRequestMessages(ctx context.Context, arg CountRecentGameRequestMessagesParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countRecentGameRequestMessages, arg.GameRequestID, arg.AuthorID, arg.WindowSeconds)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const createGameRequest = `-- name: CreateGameRequest :one
 INSERT INTO game_requests (game_id, creator_id, max_players, starts_at, description)
 VALUES (

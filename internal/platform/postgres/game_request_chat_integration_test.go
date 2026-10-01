@@ -88,3 +88,25 @@ func TestGameRequestChatAccess(t *testing.T) {
 		t.Fatalf("read after close = %v, want ErrChatClosed", err)
 	}
 }
+
+// A poster is limited per request; others in the same request are unaffected.
+func TestGameRequestChatRateLimit(t *testing.T) {
+	fixture := newPlayingFixture(t)
+	request := fixture.create(t, "Flood")
+	ctx := t.Context()
+
+	for i := 0; i < gamerequest.DefaultChatRate.Limit; i++ {
+		if _, err := fixture.requests.PostMessage(ctx, request.ID, fixture.host, "spam"); err != nil {
+			t.Fatalf("post %d: %v", i, err)
+		}
+	}
+	if _, err := fixture.requests.PostMessage(ctx, request.ID, fixture.host, "spam"); !errors.Is(err, gamerequest.ErrChatRateLimited) {
+		t.Fatalf("flood post error = %v, want ErrChatRateLimited", err)
+	}
+	if err := fixture.requests.Join(ctx, request.ID, fixture.guest); err != nil {
+		t.Fatalf("join: %v", err)
+	}
+	if _, err := fixture.requests.PostMessage(ctx, request.ID, fixture.guest, "hello"); err != nil {
+		t.Fatalf("other poster blocked: %v", err)
+	}
+}

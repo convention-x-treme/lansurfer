@@ -29,6 +29,15 @@ func (s *Store) PostMessage(ctx context.Context, requestID, userID, body string)
 		if err := chatAllowed(isMember, locked.Status); err != nil {
 			return err
 		}
+		recent, err := queries.CountRecentGameRequestMessages(ctx, sqlcgen.CountRecentGameRequestMessagesParams{
+			GameRequestID: databaseRequestID, AuthorID: databaseUserID, WindowSeconds: s.chatRate.Window.Seconds(),
+		})
+		if err != nil {
+			return fmt.Errorf("count recent game request messages: %w", err)
+		}
+		if recent >= int64(s.chatRate.Limit) {
+			return gamerequest.ErrChatRateLimited
+		}
 		row, err := queries.CreateGameRequestMessage(ctx, sqlcgen.CreateGameRequestMessageParams{
 			GameRequestID: databaseRequestID, AuthorID: databaseUserID, Body: body,
 		})

@@ -633,7 +633,7 @@ templ GameRequestDetailContent(request requestquery.Request, viewerID string, re
 					if request.Description == "" {
 						<p class="mt-2 text-base-content/65">No description.</p>
 					} else {
-						<p class="mt-2 max-w-[48rem] whitespace-pre-wrap leading-relaxed text-base-content/80">{ request.Description }</p>
+						<p class="mt-2 whitespace-pre-wrap leading-relaxed text-base-content/80">{ request.Description }</p>
 					}
 				</div>
 			</article>
@@ -664,11 +664,29 @@ templ GameRequestDetailContent(request requestquery.Request, viewerID string, re
 					}
 				</ul>
 			</section>
+			if chatOpen(request, viewerID) {
+				@collapsible("main-chat", "Lobby chat", "flex-1", true) {
+					<ol id="chat-log" class="chat-log" role="log" aria-live="polite" hx-get={ "/game-requests/" + request.ID + "/chat" } hx-trigger="load" hx-swap="outerHTML"></ol>
+					<div class="flex flex-wrap gap-1.5">
+						for _, quick := range quickChats {
+							<form method="post" action={ "/game-requests/" + request.ID + "/chat" } hx-post={ "/game-requests/" + request.ID + "/chat" } hx-target="#chat-log" hx-swap="outerHTML" hx-disabled-elt="find button">
+								@components.CSRFInput()
+								<input type="hidden" name="body" value={ quick }/>
+								<button class="btn btn-quiet btn-xs" type="submit">{ quick }</button>
+							</form>
+						}
+					</div>
+					<form class="flex gap-2" method="post" action={ "/game-requests/" + request.ID + "/chat" } hx-post={ "/game-requests/" + request.ID + "/chat" } hx-target="#chat-log" hx-swap="outerHTML" hx-disabled-elt="find button" data-chat-form>
+						@components.CSRFInput()
+						<input class="input input-bordered min-w-0 flex-1" type="text" name="body" maxlength="1000" required autocomplete="off" placeholder="Message the lobby" aria-label="Message the lobby"/>
+						<button class="btn btn-primary" type="submit">Send</button>
+					</form>
+				}
+			}
 		</div>
 		<aside class="detail-rail" aria-label="Game Request context">
 			if request.Status == gamerequest.StatusOpen && request.CreatorID == viewerID {
-				<section class="detail-card detail-card-accent">
-					<p class="section-label">Host actions</p>
+				@collapsible("rail-host", "Host actions", "detail-card-accent", true) {
 					<form method="post" action={ "/game-requests/" + request.ID + "/start" } data-confirm="Start this game? The Game Request becomes Playing and can no longer be cancelled. Close it when the game is finished.">
 						@components.CSRFInput()
 						<button class="btn btn-primary btn-sm w-full" type="submit"><i class="ph ph-play" aria-hidden="true"></i>Start game</button>
@@ -678,19 +696,17 @@ templ GameRequestDetailContent(request requestquery.Request, viewerID string, re
 						<button class="btn btn-danger btn-sm w-full" type="submit"><i class="ph ph-x-circle" aria-hidden="true"></i>Cancel Game Request</button>
 					</form>
 					<p class="text-xs leading-relaxed text-base-content/65">Visible to the Host only. Starting asks once; cancelling asks once and notifies every player.</p>
-				</section>
+				}
 			} else if request.Status == gamerequest.StatusPlaying && request.CreatorID == viewerID {
-				<section class="detail-card detail-card-accent">
-					<p class="section-label">Host actions</p>
+				@collapsible("rail-host", "Host actions", "detail-card-accent", true) {
 					<form method="post" action={ "/game-requests/" + request.ID + "/close" } data-confirm="Close this game? The Game Request ends and cannot be reopened.">
 						@components.CSRFInput()
 						<button class="btn btn-step-back btn-sm w-full" type="submit"><i class="ph ph-prohibit" aria-hidden="true"></i>Close game</button>
 					</form>
 					<p class="text-xs leading-relaxed text-base-content/65">Visible to the Host only. Close the game when everyone is done.</p>
-				</section>
+				}
 			}
-			<section class="detail-card">
-				<p class="section-label">Game</p>
+			@collapsible("rail-game", "Game", "", true) {
 				<div>
 					<p class="min-w-0 text-[1.0625rem] font-semibold">{ request.Game.Name }</p>
 					if releaseYear(request.Game) != "" {
@@ -710,9 +726,8 @@ templ GameRequestDetailContent(request requestquery.Request, viewerID string, re
 					</form>
 				}
 				<a class="link count-open icon-label text-sm font-semibold no-underline" href={ templ.SafeURL("/game-requests?q=" + url.QueryEscape(request.Game.Name)) }>More rounds of this game<i class="ph ph-arrow-right" aria-hidden="true"></i></a>
-			</section>
-			<section class="detail-card flex-1">
-				<p class="section-label">Activity</p>
+			}
+			@collapsible("rail-activity", "Activity", "flex-1", true) {
 				if len(request.Activity) == 0 {
 					<p class="text-sm text-base-content/70">No activity recorded yet.</p>
 				} else {
@@ -727,7 +742,7 @@ templ GameRequestDetailContent(request requestquery.Request, viewerID string, re
 						}
 					</ol>
 				}
-			</section>
+			}
 		</aside>
 	</div>
 }
@@ -1127,4 +1142,50 @@ func requestRowConnector(request requestquery.Request) string {
 		return "is playing"
 	}
 	return "is looking for"
+}
+
+// chatOpen reports whether the viewer is shown the request chat. The chat is
+// private to the Host and joined players while the request is open or playing.
+func chatOpen(request requestquery.Request, viewerID string) bool {
+	active := request.Status == gamerequest.StatusOpen || request.Status == gamerequest.StatusPlaying
+	return active && (request.ViewerJoined || request.CreatorID == viewerID)
+}
+
+var quickChats = []string{"Ready", "Need 2 min", "On my way", "Running late", "At my seat", "Server is up", "Starting soon", "GG"}
+
+// GameRequestChatLog replaces #chat-log; it carries no load trigger so the swap
+// does not refetch itself.
+templ GameRequestChatLog(requestID string, messages []gamerequest.Message, viewerID string) {
+	<ol id="chat-log" class="chat-log" role="log" aria-live="polite">
+		if len(messages) == 0 {
+			<li class="text-sm text-base-content/70">No messages yet. Say hi to the lobby.</li>
+		}
+		for _, m := range messages {
+			<li class="chat-message">
+				<div class="flex items-baseline gap-2">
+					<span class={ chatAuthorClass(m, viewerID) }>{ m.AuthorGameNick }</span>
+					<time class="data-text text-xs text-base-content/70" datetime={ m.CreatedAt.Format(time.RFC3339) } title={ components.AbsoluteTime(m.CreatedAt) } data-local-time="clock">{ clockLabel(m.CreatedAt) }</time>
+				</div>
+				<p class="text-sm text-base-content/80">{ m.Body }</p>
+			</li>
+		}
+	</ol>
+}
+
+func chatAuthorClass(m gamerequest.Message, viewerID string) string {
+	if m.AuthorID == viewerID {
+		return "text-sm font-semibold text-primary"
+	}
+	return "text-sm font-semibold"
+}
+
+// collapsible is a rail card the viewer can fold away; app.ts keeps the choice
+// across live refreshes, which otherwise re-render each card in its default.
+templ collapsible(id, title, class string, open bool) {
+	<details id={ id } class={ "detail-card " + class } data-collapsible open?={ open }>
+		<summary class="detail-card-summary section-label">{ title }<i class="ph ph-caret-down" aria-hidden="true"></i></summary>
+		<div class="detail-card-body">
+			{ children... }
+		</div>
+	</details>
 }

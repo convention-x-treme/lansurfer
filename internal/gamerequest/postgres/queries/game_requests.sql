@@ -86,6 +86,13 @@ SELECT gr.status,
 FROM game_requests gr
 WHERE gr.id = sqlc.arg(game_request_id)::uuid;
 
+-- name: CountRecentGameRequestMessages :one
+SELECT count(*)::bigint
+FROM game_request_messages
+WHERE game_request_id = sqlc.arg(game_request_id)::uuid
+  AND author_id = sqlc.arg(author_id)::uuid
+  AND created_at > clock_timestamp() - make_interval(secs => sqlc.arg(window_seconds)::float8);
+
 -- name: CreateGameRequestMessage :one
 WITH inserted AS (
     INSERT INTO game_request_messages (game_request_id, author_id, body)
