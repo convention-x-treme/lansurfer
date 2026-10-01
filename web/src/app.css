@@ -592,7 +592,8 @@
 
   /* A last free place borders the hero the way it borders the list row, so the
      detail page a player lands on carries the scarcity the row promised. */
-  .detail-hero-last {
+  .detail-hero-last,
+  .detail-hero-playing {
     border-color: color-mix(in srgb, var(--brand-sunset) 70%, var(--border-raised));
   }
 
@@ -1425,13 +1426,15 @@
 
   .status-chip-open,
   .status-chip-cancelled,
+  .status-chip-playing,
   .status-chip-joined,
   .status-chip-host,
   .status-chip-last {
     font-weight: 700;
   }
 
-  .status-chip-last {
+  .status-chip-last,
+  .status-chip-playing {
     background: color-mix(in srgb, var(--brand-sunset) 18%, transparent);
     color: var(--ink-chip-last);
   }
@@ -1488,7 +1491,8 @@
     background: color-mix(in srgb, var(--color-primary) 5%, var(--color-base-200));
   }
 
-  .request-row-last {
+  .request-row-last,
+  .request-row-playing {
     border-color: color-mix(in srgb, var(--brand-sunset) 70%, var(--border-raised));
   }
 

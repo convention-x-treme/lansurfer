@@ -63,10 +63,11 @@ type NavigationState struct {
 	Viewer *Viewer
 	LoginAvailable bool
 	Section string
-	// OpenRequests is rendered beside the Game Requests link. It counts every
-	// open Game Request on the installation, never the subset a discovery
-	// filter matched. Sections without a count on the current page omit it.
-	OpenRequests int64
+	// ActiveRequests is rendered beside the Game Requests link. It counts every
+	// active Game Request (`open` or `playing`) on the installation, never the
+	// subset a discovery filter matched. Sections without a count on the current
+	// page omit it.
+	ActiveRequests int64
 	// Games counts the active local catalog; FollowedGames counts what this
 	// viewer follows, matching what the Games screen's "Followed only" filter
 	// itself lists.
@@ -220,8 +221,8 @@ templ NavigationLinks(state NavigationState) {
 		<li>
 			<a class={ navigationLinkClass(state.Section == "game-requests") } href="/game-requests" aria-current={ navigationCurrent(state.Section == "game-requests") }>
 				<i class="ph ph-users-three" aria-hidden="true"></i><span>Game Requests</span>
-				if state.OpenRequests > 0 {
-					<span class={ navigationCountClass(state.Section == "game-requests") }>{ fmt.Sprint(state.OpenRequests) }</span>
+				if state.ActiveRequests > 0 {
+					<span class={ navigationCountClass(state.Section == "game-requests") }>{ fmt.Sprint(state.ActiveRequests) }</span>
 				}
 			</a>
 		</li>

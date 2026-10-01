@@ -102,6 +102,7 @@ The stable 1.0 release scope includes:
 - independent generic OIDC and Discord authentication with explicit account linking
 - an authoritative local Game catalog plus an optional synchronized IGDB discovery provider
 - request discovery by Game name/aliases, followed/My Games and open capacity, a compact request-based Trending view, and durable request-local activity history
+- Game Request coordination from forming through active play and completion, including dynamic participation/capacity while playing, structured session information with participant-only secret values, and lightweight request-local participant chat
 - fixed LANsurfer branding with only the minimum instance identity needed for a recognizable deployment, plus an installable PWA/service-worker shell
 - durable Web Push and one instance-level Discord delivery integration without a persistent inbox
 - production release artifacts, operational documentation, and a tested upgrade path from a populated earlier `main` revision to 1.0
@@ -296,18 +297,40 @@ A Game Request means a player is looking for people to play a particular Game on
 
 The installation itself provides the event context. A Game Request is not presented as belonging to a selectable Event, Clan, Open Play area, or generic parent context.
 
-Core properties include Game, creator, optional maximum players, start time, description, status, and timestamps. Initial statuses remain `open`, `closed`, and `cancelled`; fullness is derived from member count and maximum capacity.
+Core properties include Game, creator/Host, optional maximum players, planned start time, actual start time, description, status, and timestamps. Lifecycle statuses are `open`, `playing`, `closed`, and `cancelled`; fullness is derived from member count and maximum capacity.
 
 ### Behavior
 
 - The creator automatically becomes the first member.
 - Maximum players is optional for games without a useful hard limit.
 - Starts-at supports now, a near-future choice, or a specific timezone-aware time.
-- The creator closes or cancels their request instead of leaving as an ordinary member; ownership transfer is not included.
+- The creator is the Host. They may cancel an unstarted `open` request, explicitly start it into `playing`, and close a started `playing` request when the session finishes; ownership transfer is not included.
 - A player cannot join the same request twice.
 - Concurrent joins must never overfill a limited request.
 - One player may hold several open requests for the same Game at the same start time, because organizing two separate groups is legitimate. The application therefore does not treat a repeated creation as the same request; accidental double submission is prevented in the interface instead.
 - Any signed-in player may discover and use current Game Requests according to the normal application rules; Event membership is not an access prerequisite.
+
+### Coordination and playing
+
+The explicit Host action **Start game** is the authoritative signal that a session actually started. It transitions `open -> playing` and records a durable actual start time. The planned start time remains planning information and does not gate this action. A Host may start before the planned time or when no other player has joined.
+
+A `playing` request remains active and visible in normal discovery and shared navigation until it is closed. The lifecycle is intentionally strict:
+
+- `open -> playing -> closed`
+- `open -> cancelled`
+
+A started request is not cancelled; it is closed when finished. Existing historical `closed` requests that predate the explicit start signal do not gain an invented actual start time.
+
+Stable 1.0 coordination continues while a request is `playing`:
+
+- players may join or leave while capacity permits;
+- the Host may change the maximum player count while `open` or `playing`, but never below current participation;
+- generic key/value session information may be maintained by the Host;
+- session-information values may be marked secret and are then available only to the Host and currently joined participants;
+- the Host and currently joined participants may use a lightweight request-local private chat while the request is active.
+
+Session secrets never appear in public/discovery views, logs, metrics, notification payloads, or unrelated diagnostics. Request-local chat is not a general messaging subsystem: there are no direct messages, global rooms, threads, reactions, attachments, read receipts, typing indicators, or presence in the stable 1.0 scope.
+
 
 The primary UI should show Game, player count/capacity, start time, short description, and the Join action without forcing the player through a detail page.
 
@@ -336,6 +359,7 @@ Each Game Request keeps chronological durable activity for successful:
 - create
 - join
 - leave
+- start
 - close
 - cancel
 
@@ -347,10 +371,10 @@ This does not turn activity into generic audit logging, event sourcing, comments
 
 Every signed-in screen renders the same navigation, so its numbers and lists mean the same thing wherever the player is:
 
-- **Game Requests**, with how many Game Requests are open on the installation. This count is never narrowed by the player's current discovery filter.
+- **Game Requests**, with how many Game Requests are active (`open` or `playing`) on the installation. This count is never narrowed by the player's current discovery filter.
 - **Games**, with how many Games the local catalog holds, and **Followed** beneath it with how many Games this player follows. Both lead to the same Games screen; Followed applies its "Followed only" filter. A count of zero is omitted rather than rendered.
 - **Administration**, for administrators only.
-- **Your next games** — up to three Game Requests this player has joined, soonest first. A round whose start time has arrived is marked urgent with the same treatment the request list uses for "now".
+- **Your next games** — up to three active Game Requests this player has joined, soonest first. Requests remain here when they transition to `playing`; a round whose planned start time has arrived is marked urgent with the same treatment the request list uses for "now".
 - **Recently viewed** — up to five Game Requests this player most recently opened, newest first.
 
 "Recently viewed" is private reading history. It is per-player and never visible to anyone else, it records only that a player opened a Game Request's detail page, and it states what the player read rather than what is still open: a Game Request that closed or was cancelled after they read it stays listed and says so. Re-opening a Game Request moves it back to the top instead of adding a second entry, and a deleted Game Request leaves the list entirely. Opening a Game Request is not an activity entry, is never delivered as a notification, and never reaches the live-update stream.
@@ -370,8 +394,8 @@ The durable notification system has Web Push and Discord transports. External de
   - **followed/My Games only** — default;
   - **all new Game Requests** — explicit opt-in.
 - For a newly created request, notify currently eligible players in the selected audience except the creator.
-- Join, leave, close, and cancel activity may also notify current request participants independently of the new-request audience setting. The actor never receives a personal push for their own activity.
-- Join/leave notifications may name the actor by public Game Nick. Close/cancel notifications remain actor-neutral.
+- Join, leave, start, close, and cancel activity may also notify current request participants independently of the new-request audience setting. The actor never receives a personal push for their own activity.
+- Join/leave notifications may name the actor by public Game Nick. Start/close/cancel notifications remain actor-neutral.
 - Recipient/device sets are not expanded later for old work. Delayed/retried delivery re-checks current eligibility and suppresses a delivery that is no longer permitted rather than sending stale personal notification work.
 - When LANsurfer is already visibly open in the browser, the service worker suppresses the duplicate OS notification and SSE remains the in-browser live-update path.
 - Push payloads contain only the minimum data needed to render the notification: activity kind, Game, optional creator Game Nick, current player count and optional capacity, planned time, deep link, minimum instance context, and optional join/leave actor Game Nick. The notification uses the Game Requests list title; its body shows viewer-local planned time and current player count/capacity without repeating the Game, with activity context on changes. Payloads omit description, roster, cover, provider identity data, and activity history.
@@ -453,8 +477,9 @@ Operators can reliably install, configure, back up, restore, and upgrade LANsurf
 3. discover local/provider Games and instance-wide Game Requests without joining or selecting an Event/Clan/context
 4. create and join capacity-safe Game Requests from desktop and mobile browsers
 5. use My Games/open-capacity discovery, 6-hour request-based Trending, and durable request-local activity
-6. receive only the durable notifications they have enabled and are eligible to receive
-7. continue core workflows when optional external providers are unavailable
+6. start and continue a Game Request as an active playing session, including dynamic participation, session coordination, participant-only secret session values, and lightweight request-local chat
+7. receive only the durable notifications they have enabled and are eligible to receive
+8. continue core workflows when optional external providers are unavailable
 
 A 1.0 release must not require Event switching, Open Play, Clans, a generic Game Request context framework, rich profiles, a branding editor, localization, or curated request tags.
 

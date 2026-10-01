@@ -178,7 +178,7 @@ test("visible LANsurfer window suppresses OS push notification", async ({ page }
   await page.context().grantPermissions(["notifications"]);
   await page.goto("/game-requests");
   await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
-  await deliverPush(page, JSON.stringify(pushPayload(new URL(page.url()).origin)));
+  await deliverPush(page, JSON.stringify({ ...pushPayload(new URL(page.url()).origin), kind: "started", creator_game_nick: undefined, member_count: 3, max_players: 4 }));
   const notifications = await page.evaluate(async () => (await navigator.serviceWorker.getRegistration("/"))?.getNotifications());
   expect(notifications).toHaveLength(0);
 });
@@ -205,15 +205,21 @@ test("push without visible LANsurfer window shows localized created, joined, and
     registrationId: channel.registrationId,
     data: JSON.stringify({ ...pushPayload(channel.origin), kind: "cancelled", creator_game_nick: undefined, starts_at: undefined, max_players: undefined, member_count: 7 }),
   });
-  await expect.poll(() => worker.evaluate(async () => (await (globalThis as unknown as ServiceWorkerGlobalScope).registration.getNotifications()).length)).toBe(3);
+  await channel.cdp.send("ServiceWorker.deliverPushMessage", {
+    origin: channel.origin,
+    registrationId: channel.registrationId,
+    data: JSON.stringify({ ...pushPayload(channel.origin), kind: "started", creator_game_nick: undefined, member_count: 3, max_players: 4 }),
+  });
+  await expect.poll(() => worker.evaluate(async () => (await (globalThis as unknown as ServiceWorkerGlobalScope).registration.getNotifications()).length)).toBe(4);
   await page.goto("/game-requests");
   const notifications = await page.evaluate(async () => (await navigator.serviceWorker.getRegistration("/"))?.getNotifications().then((items) => items.map(({ title, body }) => ({ title, body }))));
-  expect(notifications).toHaveLength(3);
-  expect(notifications?.map(({ title }) => title)).toEqual(["Ada is looking for Demo", "Ada is looking for Demo", "Demo"]);
+  expect(notifications).toHaveLength(4);
+  expect(notifications?.map(({ title }) => title)).toEqual(["Ada is looking for Demo", "Ada is looking for Demo", "Demo", "Demo"]);
   const localStart = new Intl.DateTimeFormat(undefined, { dateStyle: "full", timeStyle: "short" }).format(new Date("2026-09-24T12:00:00Z"));
   expect(notifications?.map(({ body }) => body)).toContain(`${localStart} · 1/4 players · LANsurfer`);
   expect(notifications?.map(({ body }) => body)).toContain("Bo joined · Not set · 1/4 players · LANsurfer");
   expect(notifications?.map(({ body }) => body)).toContain("Request cancelled · Not set · 7 players (unlimited) · LANsurfer");
+  expect(notifications?.map(({ body }) => body)).toContain("Game started · " + localStart + " · 3/4 players · LANsurfer");
   await channel.cdp.detach();
 });
 

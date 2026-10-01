@@ -109,7 +109,7 @@ func (t *WebPushTransport) Targets(ctx context.Context, activity Activity) ([]Ta
 			trusted[userID] = true
 		}
 		candidates = dedupeExcept(append(followers, allAudience...), activity.ActorID)
-	case ActivityJoined, ActivityLeft, ActivityClosed, ActivityCancelled:
+	case ActivityJoined, ActivityLeft, ActivityStarted, ActivityClosed, ActivityCancelled:
 		participants, err := t.participants.ListParticipants(ctx, activity.GameRequestID)
 		if err != nil {
 			return nil, fmt.Errorf("list game request participants: %w", err)

@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// ActivityKind mirrors gamerequest.ActivityKind's five durable kinds. It is
+// ActivityKind mirrors gamerequest.ActivityKind's six durable kinds. It is
 // redeclared here rather than imported so this module never depends on
 // gamerequest's package, only on the read-only activity rows it discovers.
 type ActivityKind string
@@ -19,6 +19,7 @@ const (
 	ActivityCreated   ActivityKind = "created"
 	ActivityJoined    ActivityKind = "joined"
 	ActivityLeft      ActivityKind = "left"
+	ActivityStarted   ActivityKind = "started"
 	ActivityClosed    ActivityKind = "closed"
 	ActivityCancelled ActivityKind = "cancelled"
 )

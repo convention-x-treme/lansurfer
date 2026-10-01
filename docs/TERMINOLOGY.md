@@ -15,8 +15,10 @@ Use these terms consistently. Do not invent synonyms for domain concepts unless 
 - **Follow Game**: the user action represented by a `GameSubscription`.
 - **Followed only**: the filter on the Games surface that restricts Games to those the current user follows.
 - **My Games**: the Game Request discovery audience for requests whose Games the current user follows. It is not a replacement label for the Games screen's **Followed only** filter.
-- **Game Request**: an instance-wide looking-for-group request for one Game.
-- **Game Request activity**: durable request-local history for successful create/join/leave/close/cancel changes. It is also the transactional handoff consumed by notification processing; it is not a generic audit log or global activity feed.
+- **Game Request**: an instance-wide looking-for-group request for one Game. Its active lifecycle distinguishes a group still forming (`open`) from a session the Host explicitly started (`playing`).
+- **Host**: the creator/owner of a Game Request for its lifetime. Host ownership is not transferable in the stable 1.0 model.
+- **Playing**: the active Game Request state entered only by the Host's explicit **Start game** action. It is the authoritative signal that the session actually started; a playing request remains active until it is closed.
+- **Game Request activity**: durable request-local history for successful create/join/leave/start/close/cancel changes. It is also the transactional handoff consumed by notification processing; it is not a generic audit log or global activity feed.
 - **Notification work / delivery**: durable processing state for external notification transports. It is separate from Game Request activity.
 - **Recently viewed**: local/browser presentation history. It is not Game Request activity or notification state.
 

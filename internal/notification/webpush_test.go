@@ -136,6 +136,28 @@ func TestWebPushTargetsForLifecycleUsesCurrentParticipantsRegardlessOfAudience(t
 	}
 }
 
+func TestWebPushTargetsForStartedUsesCurrentParticipantsExcludingHostAndHonorsPreference(t *testing.T) {
+	participants := &fakeRequestParticipants{participants: map[string][]string{"req-1": {"participant-1", "disabled-1", "host"}}}
+	subs := &fakeWebPushSubscriptionSource{
+		subsByUser:  map[string][]PushSubscriptionRecord{"participant-1": {{ID: 30}}, "disabled-1": {{ID: 31}}, "host": {{ID: 32}}},
+		preferences: map[string]PushPreference{"participant-1": {WebPushEnabled: true}, "disabled-1": {WebPushEnabled: false}, "host": {WebPushEnabled: true}},
+	}
+	nicks := &fakeGameNickReader{nick: "unused"}
+	transport := NewWebPushTransport(subs, subs, subs, &fakeGameFollowers{}, participants, &fakeGameRequestSummaryReader{}, nicks, "https://lansurfer.example", "", nil, nil)
+
+	targets, err := transport.Targets(t.Context(), Activity{Sequence: 4, GameRequestID: "req-1", ActorID: "host", Kind: ActivityStarted})
+	if err != nil {
+		t.Fatalf("Targets() error = %v", err)
+	}
+	wantKey := encodeWebPushTarget(30, "participant-1")
+	if len(targets) != 1 || targets[0].Key != wantKey {
+		t.Fatalf("Targets() for started = %#v, want only subscription 30 (host and disabled user excluded)", targets)
+	}
+	if len(nicks.calls) != 0 {
+		t.Fatalf("Game Nick lookups = %#v, want none", nicks.calls)
+	}
+}
+
 func TestWebPushTargetKeyRoundTripsAndSeparatesOwners(t *testing.T) {
 	key := encodeWebPushTarget(42, "owner/α")
 	subscriptionID, userID, err := decodeWebPushTarget(key)
@@ -179,7 +201,7 @@ func TestWebPushTargetsExcludesDisabledUsers(t *testing.T) {
 func TestWebPushActorGameNickLookupOnlyForJoinedAndLeft(t *testing.T) {
 	reader := &fakeGameNickReader{nick: "Night Otter"}
 	transport := &WebPushTransport{gameNicks: reader}
-	for _, kind := range []ActivityKind{ActivityCreated, ActivityClosed, ActivityCancelled} {
+	for _, kind := range []ActivityKind{ActivityCreated, ActivityStarted, ActivityClosed, ActivityCancelled} {
 		nick, err := transport.actorGameNick(t.Context(), Activity{Kind: kind, ActorID: "actor-1"})
 		if err != nil || nick != "" {
 			t.Errorf("actorGameNick(%s) = (%q, %v), want empty nick and no error", kind, nick, err)

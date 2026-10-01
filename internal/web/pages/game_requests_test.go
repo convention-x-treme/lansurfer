@@ -166,11 +166,13 @@ func TestListContentCarriesActiveFilters(t *testing.T) {
 	}
 }
 
-func TestOpenRequestsLabelDistinguishesFilteredLists(t *testing.T) {
-	if got := openRequestsLabel(2, requestquery.Filter{}); got != "2 open requests" {
+// The list label counts active requests (`open` or `playing`), so a round that
+// has started still reads as part of the set the list is showing.
+func TestActiveRequestsLabelDistinguishesFilteredLists(t *testing.T) {
+	if got := activeRequestsLabel(2, requestquery.Filter{}); got != "2 active requests" {
 		t.Errorf("unfiltered label = %q", got)
 	}
-	if got := openRequestsLabel(1, requestquery.Filter{Search: "wc3"}); got != "1 matching open request" {
+	if got := activeRequestsLabel(1, requestquery.Filter{Search: "wc3"}); got != "1 matching active request" {
 		t.Errorf("filtered label = %q", got)
 	}
 }
@@ -786,5 +788,99 @@ func TestGameRequestDiscoveryUsesAdminForCatalogAvailability(t *testing.T) {
 	}
 	if body := rendered.String(); !strings.Contains(body, `href="/admin/igdb"`) {
 		t.Errorf("admin composer discovery lacks IGDB administration link: %s", body)
+	}
+}
+
+func renderLifecycleDetail(t *testing.T, status gamerequest.Status, viewerID string, activity ...requestquery.Activity) string {
+	t.Helper()
+	request := requestquery.Request{
+		ID: "request-1", Game: game.GamePresentation{Name: "Warcraft III"}, CreatorID: "host-1",
+		Status: status, MemberCount: 1, Activity: activity,
+		Members: []requestquery.Member{{ID: "host-1", GameNick: "Otter"}},
+	}
+	var rendered bytes.Buffer
+	if err := GameRequestDetailContent(request, viewerID, false).Render(context.Background(), &rendered); err != nil {
+		t.Fatalf("render detail: %v", err)
+	}
+	return rendered.String()
+}
+
+func TestDetailHostActionsFollowTheLifecycle(t *testing.T) {
+	open := renderLifecycleDetail(t, gamerequest.StatusOpen, "host-1")
+	for _, want := range []string{"Start game", "Cancel Game Request", `action="/game-requests/request-1/start"`, "data-confirm="} {
+		if !strings.Contains(open, want) {
+			t.Errorf("open Host detail lacks %q", want)
+		}
+	}
+	if strings.Contains(open, "/close") {
+		t.Error("open Host detail offers Close")
+	}
+	start := open[strings.Index(open, `action="/game-requests/request-1/start"`):]
+	start = start[:strings.Index(start, "</form>")]
+	for _, want := range []string{"Playing", "no longer be cancelled", "Close it when"} {
+		if !strings.Contains(start, want) {
+			t.Errorf("Start confirmation lacks %q: %s", want, start)
+		}
+	}
+
+	playing := renderLifecycleDetail(t, gamerequest.StatusPlaying, "host-1")
+	if !strings.Contains(playing, "Close game") || !strings.Contains(playing, `action="/game-requests/request-1/close"`) {
+		t.Error("playing Host detail lacks Close game")
+	}
+	for _, unwanted := range []string{"Start game", "/start", "Cancel Game Request", "/cancel"} {
+		if strings.Contains(playing, unwanted) {
+			t.Errorf("playing Host detail contains %q", unwanted)
+		}
+	}
+	if !strings.Contains(playing, "status-chip-playing") || !strings.Contains(playing, "detail-hero-playing") {
+		t.Error("playing detail lacks Playing chip/hero accent")
+	}
+}
+
+func TestDetailPlayingHidesJoinAndLeaveForOtherViewers(t *testing.T) {
+	body := renderLifecycleDetail(t, gamerequest.StatusPlaying, "user-2")
+	for _, unwanted := range []string{">Join<", "Join</button>", "Leave</button>", "/join", "/leave"} {
+		if strings.Contains(body, unwanted) {
+			t.Errorf("playing detail contains %q", unwanted)
+		}
+	}
+	if !strings.Contains(body, "Playing") {
+		t.Error("playing detail does not state Playing")
+	}
+}
+
+func TestPlayingRowStaysActiveAndSaysPlaying(t *testing.T) {
+	maxPlayers := int32(2)
+	request := requestquery.Request{
+		ID: "request-1", Game: game.GamePresentation{Name: "Warcraft III"}, CreatorID: "host-1",
+		CreatorGameNick: "Otter", Status: gamerequest.StatusPlaying, MaxPlayers: &maxPlayers, MemberCount: 2,
+	}
+	var rendered bytes.Buffer
+	if err := GameRequestRow(request, "user-2", "").Render(context.Background(), &rendered); err != nil {
+		t.Fatalf("render row: %v", err)
+	}
+	body := rendered.String()
+	if !strings.Contains(body, "is playing") || strings.Contains(body, "is looking for") {
+		t.Errorf("row connector wrong: %s", body)
+	}
+	if !strings.Contains(body, `<span class="action-static">Playing</span>`) {
+		t.Errorf("row action wrong: %s", body)
+	}
+	if strings.Contains(body, "request-row-closed") || !strings.Contains(body, "request-row-playing") {
+		t.Errorf("row class wrong: %s", body)
+	}
+	if strings.Contains(body, "Join") || strings.Contains(body, "Leave") {
+		t.Errorf("playing row offers membership action: %s", body)
+	}
+}
+
+func TestActivityLabelsForStartedAndClosed(t *testing.T) {
+	for kind, want := range map[gamerequest.ActivityKind]string{
+		gamerequest.ActivityStarted: "Otter started the game",
+		gamerequest.ActivityClosed:  "Otter closed the request",
+	} {
+		if got := activityLabel(requestquery.Activity{Kind: kind, ActorGameNick: "Otter"}); got != want {
+			t.Errorf("activityLabel(%s) = %q, want %q", kind, got, want)
+		}
 	}
 }

@@ -192,6 +192,9 @@ func (f *fixture) Join(_ context.Context, requestID, userID string) error {
 	if !ok {
 		return gamerequest.ErrNotFound
 	}
+	if entry.request.Status != gamerequest.StatusOpen {
+		return gamerequest.ErrNotOpen
+	}
 	if entry.members[userID] {
 		return gamerequest.ErrAlreadyMember
 	}
@@ -218,6 +221,9 @@ func (f *fixture) Leave(_ context.Context, requestID, userID string) error {
 	if !ok {
 		return gamerequest.ErrNotFound
 	}
+	if entry.request.Status != gamerequest.StatusOpen {
+		return gamerequest.ErrNotOpen
+	}
 	if !entry.members[userID] {
 		return gamerequest.ErrNotMember
 	}
@@ -229,15 +235,21 @@ func (f *fixture) Leave(_ context.Context, requestID, userID string) error {
 	return nil
 }
 
-func (f *fixture) Close(ctx context.Context, requestID, userID string) error {
-	return f.setStatus(ctx, requestID, userID, gamerequest.StatusClosed)
+func (f *fixture) Start(_ context.Context, requestID, userID string) error {
+	return f.transition(requestID, userID, gamerequest.StatusOpen, gamerequest.StatusPlaying, gamerequest.ActivityStarted, gamerequest.EventStarted)
 }
 
-func (f *fixture) Cancel(ctx context.Context, requestID, userID string) error {
-	return f.setStatus(ctx, requestID, userID, gamerequest.StatusCancelled)
+func (f *fixture) Close(_ context.Context, requestID, userID string) error {
+	return f.transition(requestID, userID, gamerequest.StatusPlaying, gamerequest.StatusClosed, gamerequest.ActivityClosed, gamerequest.EventClosed)
 }
 
-func (f *fixture) setStatus(_ context.Context, requestID, _ string, status gamerequest.Status) error {
+func (f *fixture) Cancel(_ context.Context, requestID, userID string) error {
+	return f.transition(requestID, userID, gamerequest.StatusOpen, gamerequest.StatusCancelled, gamerequest.ActivityCancelled, gamerequest.EventCancelled)
+}
+
+// transition moves a request from one status to the next. Start and Cancel
+// need `open`; Close needs `playing`.
+func (f *fixture) transition(requestID, userID string, from, to gamerequest.Status, kind gamerequest.ActivityKind, event gamerequest.EventType) error {
 	if err := f.beforeMutation("status"); err != nil {
 		return err
 	}
@@ -247,11 +259,15 @@ func (f *fixture) setStatus(_ context.Context, requestID, _ string, status gamer
 	if !ok {
 		return gamerequest.ErrNotFound
 	}
-	if entry.request.Status != gamerequest.StatusOpen {
+	if entry.request.Status != from {
+		if from == gamerequest.StatusPlaying {
+			return gamerequest.ErrNotPlaying
+		}
 		return gamerequest.ErrNotOpen
 	}
-	entry.request.Status = status
-	f.broker.Publish(gamerequest.Event{Type: gamerequest.EventClosed, RequestID: requestID})
+	entry.request.Status = to
+	entry.request.Activity = append([]requestquery.Activity{{Kind: kind, ActorID: userID, ActorGameNick: "Ada Player", OccurredAt: time.Now()}}, entry.request.Activity...)
+	f.broker.Publish(gamerequest.Event{Type: event, RequestID: requestID})
 	return nil
 }
 
@@ -283,7 +299,8 @@ func (f *fixture) ListActive(_ context.Context, _ string, filter requestquery.Fi
 	result := make([]requestquery.Request, 0, len(f.order))
 	for _, id := range f.order {
 		entry := f.requests[id]
-		if entry.request.Status != gamerequest.StatusOpen {
+		// Active means `open` or `playing`, exactly as the read model lists it.
+		if !isActiveStatus(entry.request.Status) {
 			continue
 		}
 		if filter.Search != "" && !strings.Contains(strings.ToLower(entry.request.Game.Name), strings.ToLower(filter.Search)) {
@@ -321,18 +338,24 @@ func (f *fixture) ByID(_ context.Context, id, _ string) (requestquery.Request, e
 	return entry.request, nil
 }
 
-// CountOpen is the whole installation's open total, never the filtered subset,
-// which is what the navigation badge states.
-func (f *fixture) CountOpen(context.Context) (int64, error) {
+// CountActive is the whole installation's active total (`open` or `playing`),
+// never the filtered subset, which is what the navigation badge states.
+func (f *fixture) CountActive(context.Context) (int64, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	var total int64
 	for _, entry := range f.requests {
-		if entry.request.Status == gamerequest.StatusOpen {
+		if isActiveStatus(entry.request.Status) {
 			total++
 		}
 	}
 	return total, nil
+}
+
+// isActiveStatus mirrors the discovery read model's definition of an active
+// Game Request. Join eligibility is deliberately not derived from it.
+func isActiveStatus(status gamerequest.Status) bool {
+	return status == gamerequest.StatusOpen || status == gamerequest.StatusPlaying
 }
 
 // RecordView and RecentlyViewed keep the sidebar's reading history in memory.

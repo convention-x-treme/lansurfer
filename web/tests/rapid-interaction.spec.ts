@@ -109,3 +109,35 @@ test("alternating Join and Leave leaves the row consistent", async ({ page }) =>
     }, { timeout: 10_000 })
     .toBe(true);
 });
+
+// Starting a game is the Host's irreversible commit, so it asks first. This
+// exercises the browser's native confirmation, which only a real browser can
+// prove; the lifecycle rules themselves are covered in Go and PostgreSQL tests.
+test("Start game asks for confirmation before the request becomes Playing", async ({ page }) => {
+  await page.goto("/game-requests/new?game_id=game-1");
+  await page.getByRole("button", { name: "Create Game Request" }).click();
+  await page.waitForURL(/\/game-requests\/[0-9a-f-]+/);
+
+  const messages: string[] = [];
+  let accept = false;
+  page.on("dialog", async (dialog) => {
+    messages.push(dialog.message());
+    if (accept) await dialog.accept();
+    else await dialog.dismiss();
+  });
+
+  const start = page.getByRole("button", { name: "Start game" });
+  await start.click();
+  await expect(start).toBeVisible();
+  await expect(page.getByText("Open", { exact: true })).toBeVisible();
+  expect(messages).toHaveLength(1);
+  expect(messages[0]).toContain("no longer be cancelled");
+
+  accept = true;
+  await start.click();
+  await expect(page.getByText("Playing", { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Close game" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Start game" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Cancel Game Request" })).toHaveCount(0);
+  expect(messages).toHaveLength(2);
+});

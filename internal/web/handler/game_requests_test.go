@@ -15,6 +15,8 @@ import (
 	requestquery "github.com/convention-x-treme/lansurfer/internal/query/gamerequest"
 	"github.com/convention-x-treme/lansurfer/internal/user"
 	"github.com/convention-x-treme/lansurfer/internal/web/branding"
+	webmiddleware "github.com/convention-x-treme/lansurfer/internal/web/middleware"
+	"github.com/go-chi/chi/v5"
 )
 
 type fakeGameRequestCommands struct {
@@ -26,6 +28,8 @@ type fakeGameRequestCommands struct {
 
 	viewed        []string
 	recordViewErr error
+
+	started string
 }
 
 func (f *fakeGameRequestCommands) Create(_ context.Context, _, gameID string, maxPlayers *int32, _ time.Time, _ string) (gamerequest.GameRequest, error) {
@@ -41,6 +45,10 @@ func (f *fakeGameRequestCommands) Join(context.Context, string, string) error   
 func (f *fakeGameRequestCommands) Leave(context.Context, string, string) error  { return nil }
 func (f *fakeGameRequestCommands) Close(context.Context, string, string) error  { return nil }
 func (f *fakeGameRequestCommands) Cancel(context.Context, string, string) error { return nil }
+func (f *fakeGameRequestCommands) Start(_ context.Context, requestID, userID string) error {
+	f.started = requestID + "/" + userID
+	return nil
+}
 func (f *fakeGameRequestCommands) RecordView(_ context.Context, requestID, userID string) error {
 	f.viewed = append(f.viewed, requestID+"/"+userID)
 	return f.recordViewErr
@@ -59,7 +67,7 @@ func (f fakeGameRequestQueries) ByID(context.Context, string, string) (requestqu
 func (fakeGameRequestQueries) Trending(context.Context) ([]requestquery.TrendingGame, error) {
 	return nil, nil
 }
-func (fakeGameRequestQueries) CountOpen(context.Context) (int64, error) { return 0, nil }
+func (fakeGameRequestQueries) CountActive(context.Context) (int64, error) { return 0, nil }
 func (fakeGameRequestQueries) RecentlyViewed(context.Context, string) ([]requestquery.RecentRequest, error) {
 	return nil, nil
 }
@@ -604,5 +612,40 @@ func TestRefreshViewDoesNotRecordAVisit(t *testing.T) {
 
 	if len(commands.viewed) != 0 {
 		t.Fatalf("recorded views = %#v, want none", commands.viewed)
+	}
+}
+
+func TestStartCallsCommandAndRedirectsToDetail(t *testing.T) {
+	commands := &fakeGameRequestCommands{}
+	handler := NewGameRequests(commands, fakeGameRequestQueries{}, nil, &fakeGameRequestDiscovery{}, nil, branding.Default())
+	router := chi.NewRouter()
+	router.Post("/{requestID}/start", handler.Start)
+
+	request := httptest.NewRequest(http.MethodPost, "/request-1/start", nil)
+	request = request.WithContext(webmiddleware.ContextWithUser(request.Context(), user.User{ID: "host-1"}))
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if commands.started != "request-1/host-1" {
+		t.Errorf("Start called with %q", commands.started)
+	}
+	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/game-requests/request-1" {
+		t.Errorf("response = %d %q", response.Code, response.Header().Get("Location"))
+	}
+}
+
+func TestNotPlayingIsAConflictWithItsOwnMessage(t *testing.T) {
+	if got := gameRequestErrorStatus(gamerequest.ErrNotPlaying); got != http.StatusConflict {
+		t.Errorf("status = %d, want %d", got, http.StatusConflict)
+	}
+	for err, want := range map[error]string{
+		gamerequest.ErrNotPlaying:         "This Game Request is not currently playing.",
+		gamerequest.ErrNotCreator:         "Only the Host can start, close, or cancel this Game Request.",
+		gamerequest.ErrNotOpen:            "This Game Request is no longer open.",
+		gamerequest.ErrCreatorCannotLeave: "The Host cannot leave their own Game Request.",
+	} {
+		if got := gameRequestMessage(err); got != want {
+			t.Errorf("message for %v = %q, want %q", err, got, want)
+		}
 	}
 }

@@ -224,7 +224,7 @@ The palette is large because print, merchandise, and key visuals need it. On scr
 | Tide Line | Borders, rules, and member avatars (light) |
 | White Sand | Body text on dark, raised surfaces (light) |
 | Golden Hour | Time and stewardship: start times, trending, ORGA, host actions |
-| Sunset | Scarcity and urgency: the last free place, "now" |
+| Sunset | Scarcity and active-now state: the last free place, "now", playing |
 | Coral | Leaving, cancelling, deleting, errors |
 
 A colour that would appear outside its job is the wrong colour. Decoration is not a job.
@@ -248,7 +248,7 @@ Rules that keep the hierarchy honest:
 - Every button carries a Phosphor icon, with or without a visible label. A text-only button is an exception that a human reviewer approves explicitly in the pull request; the icon-only case still needs an accessible name (see [Icons](#icons)).
 - Every action with a negative effect — delete, remove, disable, deactivate, disconnect, leave, unfollow, cancel — shows Coral on hover and focus. Reversible ones use `btn-step-back`, irreversible ones `btn-danger`; never `btn-ghost` or `btn-quiet`, whose hover stays neutral.
 - Reversible actions never wear Coral at rest. Leaving a Game Request or unfollowing a game is repeatable, so the colour only appears once the pointer or keyboard is on the control. Permanent alarm colour on a repeatable action trains players to ignore it.
-- Irreversible actions wear Coral before the click and ask for confirmation.
+- Irreversible destructive actions wear Coral before the click and ask for confirmation. A non-destructive irreversible lifecycle commit may use its normal commit/host styling but still requires explicit confirmation when the product flow calls for it (for example **Start game**).
 - Outline buttons are not a level. A supporting action gets the Harbour surface instead, so it reads as a real choice rather than a disabled control.
 - Disabled controls keep a legible label: they are dimmed, not erased.
 - Every level keeps the palette's contrast rules: button text meets 4.5:1 against its own fill in both themes.
@@ -270,7 +270,7 @@ Every button action ends in visible feedback on the page the player lands on: an
 
 - A scheduled start time may use Golden Hour.
 - Player and available-place counts use JetBrains Mono; the last available place uses Sunset, and a full request uses a muted treatment.
-- State chips (`OPEN`, `JOINED`, `HOST`, `LAST PLACE`, `FULL`) are mono, uppercase, and tinted with the colour of the state they name.
+- State chips (`OPEN`, `PLAYING`, `JOINED`, `HOST`, `LAST PLACE`, `FULL`) are mono, uppercase, and tinted with the colour of the state they name. `PLAYING` uses Sunset and always remains readable as text rather than relying on colour alone.
 - Errors use Coral with a clear message. Informational feedback uses Aqua Wave or Surf Blue. Feedback classes follow [Action feedback](#action-feedback).
 - Badges and metadata stay visually quieter than titles and primary actions.
 

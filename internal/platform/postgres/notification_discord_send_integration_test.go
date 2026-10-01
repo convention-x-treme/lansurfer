@@ -219,13 +219,13 @@ func TestDiscordSendCreatesLatestSnapshotThenEditsSameMessage(t *testing.T) {
 	if err != nil || joinedSync.MessageID != "message-42" || joinedSync.AppliedVersion <= syncState.AppliedVersion {
 		t.Fatalf("joined sync = %+v, previous = %+v, %v", joinedSync, syncState, err)
 	}
-	if err := fixture.requests.Close(t.Context(), request.ID, fixture.host.ID); err != nil {
+	if err := fixture.requests.Cancel(t.Context(), request.ID, fixture.host.ID); err != nil {
 		t.Fatal(err)
 	}
 	newTestWorker(store, []notification.Transport{transport}).Tick(t.Context())
 	edited := discordSendNextCall(t, calls)
 	discordSendAssertCall(t, edited, http.MethodPatch, "private-token", "message-42", request.ID)
-	if edited.field("Status") != "closed" || edited.field("Players") != "2 players (unlimited)" {
+	if edited.field("Status") != "cancelled" || edited.field("Players") != "2 players (unlimited)" {
 		t.Fatalf("edit did not render current state: %+v", edited.payload)
 	}
 	current, err := store.GetDiscordMessageSync(t.Context(), destination.ID, request.ID)
@@ -261,7 +261,7 @@ func TestDiscordSendSupersedesWaitingAndAlreadyAppliedDeliveriesWithoutHTTP(t *t
 	if err := fixture.requests.Leave(t.Context(), request.ID, fixture.guest.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := fixture.requests.Close(t.Context(), request.ID, fixture.host.ID); err != nil {
+	if err := fixture.requests.Cancel(t.Context(), request.ID, fixture.host.ID); err != nil {
 		t.Fatal(err)
 	}
 	discordSendMaterialize(t, store, transport)
@@ -271,18 +271,18 @@ func TestDiscordSendSupersedesWaitingAndAlreadyAppliedDeliveriesWithoutHTTP(t *t
 		byKind[delivery.Activity.Kind] = delivery
 	}
 	if len(claimed) != 3 || len(byKind) != 3 {
-		t.Fatalf("expected joined, left, closed claims; got %+v", claimed)
+		t.Fatalf("expected joined, left, cancelled claims; got %+v", claimed)
 	}
 	transport.SendClaimed(t.Context(), byKind[notification.ActivityJoined])
 	if got := discordSendDeliveryStatus(t, pool, byKind[notification.ActivityJoined].DeliveryID); got != "superseded" || len(calls) != 0 {
 		t.Fatalf("obsolete waiting join: status %q, HTTP calls %d", got, len(calls))
 	}
-	if result := transport.SendClaimed(t.Context(), byKind[notification.ActivityClosed]); result.Outcome != notification.OutcomeSucceeded {
+	if result := transport.SendClaimed(t.Context(), byKind[notification.ActivityCancelled]); result.Outcome != notification.OutcomeSucceeded {
 		t.Fatalf("latest edit outcome = %v", result.Outcome)
 	}
 	last := discordSendNextCall(t, calls)
 	discordSendAssertCall(t, last, http.MethodPatch, "private-token", "message-42", request.ID)
-	if last.field("Status") != "closed" {
+	if last.field("Status") != "cancelled" {
 		t.Fatalf("latest edit status = %q", last.field("Status"))
 	}
 	transport.SendClaimed(t.Context(), byKind[notification.ActivityLeft])
@@ -290,7 +290,7 @@ func TestDiscordSendSupersedesWaitingAndAlreadyAppliedDeliveriesWithoutHTTP(t *t
 		t.Fatalf("already applied left: status %q, HTTP calls %d", got, len(calls))
 	}
 	syncState, err := store.GetDiscordMessageSync(t.Context(), destination.ID, request.ID)
-	if err != nil || syncState.MessageID != "message-42" || syncState.AppliedVersion != byKind[notification.ActivityClosed].Activity.Sequence {
+	if err != nil || syncState.MessageID != "message-42" || syncState.AppliedVersion != byKind[notification.ActivityCancelled].Activity.Sequence {
 		t.Fatalf("latest sync = %+v, %v", syncState, err)
 	}
 }
@@ -495,7 +495,7 @@ func TestDiscordSendReplacementNeverRoutesOldWorkToNewGeneration(t *testing.T) {
 	if result.Err != nil && (strings.Contains(result.Err.Error(), "old-token") || strings.Contains(result.Err.Error(), "new-token")) {
 		t.Fatal("old-generation failure disclosed credential")
 	}
-	if err := fixture.requests.Close(t.Context(), request.ID, fixture.host.ID); err != nil {
+	if err := fixture.requests.Cancel(t.Context(), request.ID, fixture.host.ID); err != nil {
 		t.Fatal(err)
 	}
 	discordSendMaterialize(t, store, transport)

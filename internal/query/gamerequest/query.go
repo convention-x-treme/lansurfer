@@ -262,13 +262,13 @@ func (s *Store) Trending(ctx context.Context) ([]TrendingGame, error) {
 	return result, nil
 }
 
-// CountOpen reports how many Game Requests are open on this installation,
-// independent of any discovery filter, so the navigation badge keeps one
-// meaning whether or not the list beside it is narrowed.
-func (s *Store) CountOpen(ctx context.Context) (int64, error) {
-	total, err := s.queries.CountOpenGameRequests(ctx)
+// CountActive reports how many Game Requests are active (`open` or `playing`)
+// on this installation, independent of any discovery filter, so the navigation
+// badge keeps one meaning whether or not the list beside it is narrowed.
+func (s *Store) CountActive(ctx context.Context) (int64, error) {
+	total, err := s.queries.CountActiveGameRequests(ctx)
 	if err != nil {
-		return 0, fmt.Errorf("count open game requests: %w", err)
+		return 0, fmt.Errorf("count active game requests: %w", err)
 	}
 	return total, nil
 }

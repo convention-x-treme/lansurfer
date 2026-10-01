@@ -15,7 +15,7 @@ import (
 
 func TestRealtimeStreamsGameRequestEvents(t *testing.T) {
 	events := make(chan gamerequest.Event, 1)
-	events <- gamerequest.Event{Type: gamerequest.EventCreated, RequestID: "request-1", GameID: "game-1"}
+	events <- gamerequest.Event{Type: gamerequest.EventStarted, RequestID: "request-1", GameID: "game-1"}
 	close(events)
 	source := &stubGameRequestEvents{events: events}
 	request := httptest.NewRequest("GET", "/events/game-requests", nil)
@@ -26,7 +26,7 @@ func TestRealtimeStreamsGameRequestEvents(t *testing.T) {
 	if got := response.Header().Get("Content-Type"); got != "text/event-stream" {
 		t.Fatalf("Content-Type = %q", got)
 	}
-	for _, want := range []string{": connected", "event: game-request", `"type":"GameRequestCreated"`, `"requestId":"request-1"`} {
+	for _, want := range []string{": connected", "event: game-request", `"type":"GameRequestStarted"`, `"requestId":"request-1"`} {
 		if !strings.Contains(response.Body.String(), want) {
 			t.Errorf("stream does not contain %q: %q", want, response.Body.String())
 		}

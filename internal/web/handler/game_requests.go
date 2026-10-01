@@ -31,6 +31,7 @@ type GameRequestCommands interface {
 	Create(context.Context, string, string, *int32, time.Time, string) (gamerequest.GameRequest, error)
 	Join(context.Context, string, string) error
 	Leave(context.Context, string, string) error
+	Start(context.Context, string, string) error
 	Close(context.Context, string, string) error
 	Cancel(context.Context, string, string) error
 	RecordView(context.Context, string, string) error
@@ -40,7 +41,7 @@ type GameRequestQueries interface {
 	ListActive(context.Context, string, requestquery.Filter) ([]requestquery.Request, error)
 	ByID(context.Context, string, string) (requestquery.Request, error)
 	Trending(context.Context) ([]requestquery.TrendingGame, error)
-	CountOpen(context.Context) (int64, error)
+	CountActive(context.Context) (int64, error)
 }
 
 // GameResolver turns an opaque IGDB provider reference into the one
@@ -138,13 +139,13 @@ func (h *GameRequests) renderList(w http.ResponseWriter, r *http.Request, status
 		h.renderError(w, r)
 		return
 	}
-	openRequests, err := h.queries.CountOpen(r.Context())
+	activeRequests, err := h.queries.CountActive(r.Context())
 	if err != nil {
-		webmiddleware.LogError(r, "count open Game Requests", err)
+		webmiddleware.LogError(r, "count active Game Requests", err)
 		h.renderError(w, r)
 		return
 	}
-	render(w, r, status, pages.GameRequestList(h.brand, navigation, filter, requests, trending, openRequests, message, notice(r)))
+	render(w, r, status, pages.GameRequestList(h.brand, navigation, filter, requests, trending, activeRequests, message, notice(r)))
 }
 
 func (h *GameRequests) RefreshList(w http.ResponseWriter, r *http.Request) {
@@ -414,22 +415,26 @@ func (h *GameRequests) RefreshView(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *GameRequests) Join(w http.ResponseWriter, r *http.Request) {
-	h.changeMembership(w, r, h.commands.Join)
+	h.changeRequest(w, r, h.commands.Join)
 }
 
 func (h *GameRequests) Leave(w http.ResponseWriter, r *http.Request) {
-	h.changeMembership(w, r, h.commands.Leave)
+	h.changeRequest(w, r, h.commands.Leave)
+}
+
+func (h *GameRequests) Start(w http.ResponseWriter, r *http.Request) {
+	h.changeRequest(w, r, h.commands.Start)
 }
 
 func (h *GameRequests) Close(w http.ResponseWriter, r *http.Request) {
-	h.changeMembership(w, r, h.commands.Close)
+	h.changeRequest(w, r, h.commands.Close)
 }
 
 func (h *GameRequests) Cancel(w http.ResponseWriter, r *http.Request) {
-	h.changeMembership(w, r, h.commands.Cancel)
+	h.changeRequest(w, r, h.commands.Cancel)
 }
 
-func (h *GameRequests) changeMembership(w http.ResponseWriter, r *http.Request, change func(context.Context, string, string) error) {
+func (h *GameRequests) changeRequest(w http.ResponseWriter, r *http.Request, change func(context.Context, string, string) error) {
 	account, _ := webmiddleware.CurrentUser(r.Context())
 	requestID := chi.URLParam(r, "requestID")
 	if err := change(r.Context(), requestID, account.ID); err != nil {
@@ -572,7 +577,7 @@ func gameRequestErrorStatus(err error) int {
 		return http.StatusForbidden
 	case errors.Is(err, gamerequest.ErrFull), errors.Is(err, gamerequest.ErrAlreadyMember),
 		errors.Is(err, gamerequest.ErrNotMember), errors.Is(err, gamerequest.ErrCreatorCannotLeave),
-		errors.Is(err, gamerequest.ErrNotOpen):
+		errors.Is(err, gamerequest.ErrNotOpen), errors.Is(err, gamerequest.ErrNotPlaying):
 		return http.StatusConflict
 	case errors.Is(err, gamerequest.ErrGameUnavailable),
 		errors.Is(err, gamerequest.ErrInvalidMaxPlayers), errors.Is(err, gamerequest.ErrInvalidStartsAt),
@@ -620,11 +625,13 @@ func gameRequestMessage(err error) string {
 	case errors.Is(err, gamerequest.ErrNotMember):
 		return "You are not currently a member of this Game Request."
 	case errors.Is(err, gamerequest.ErrCreatorCannotLeave):
-		return "The creator cannot leave. Close or cancel the Game Request instead."
+		return "The Host cannot leave their own Game Request."
 	case errors.Is(err, gamerequest.ErrNotCreator):
-		return "Only the creator can close or cancel this Game Request."
+		return "Only the Host can start, close, or cancel this Game Request."
 	case errors.Is(err, gamerequest.ErrNotOpen):
 		return "This Game Request is no longer open."
+	case errors.Is(err, gamerequest.ErrNotPlaying):
+		return "This Game Request is not currently playing."
 	case errors.Is(err, game.ErrInvalidProviderReference):
 		return "That provider game reference is invalid."
 	case errors.Is(err, game.ErrProviderRecordNotFound):

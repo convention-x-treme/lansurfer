@@ -41,6 +41,48 @@ func (q *Queries) AddGameRequestMember(ctx context.Context, arg AddGameRequestMe
 	return err
 }
 
+const cancelGameRequest = `-- name: CancelGameRequest :execrows
+UPDATE game_requests
+SET status = 'cancelled', updated_at = now()
+WHERE id = $1::uuid
+  AND creator_id = $2::uuid
+  AND status = 'open'
+`
+
+type CancelGameRequestParams struct {
+	ID        pgtype.UUID
+	CreatorID pgtype.UUID
+}
+
+func (q *Queries) CancelGameRequest(ctx context.Context, arg CancelGameRequestParams) (int64, error) {
+	result, err := q.db.Exec(ctx, cancelGameRequest, arg.ID, arg.CreatorID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const closeGameRequest = `-- name: CloseGameRequest :execrows
+UPDATE game_requests
+SET status = 'closed', updated_at = now()
+WHERE id = $1::uuid
+  AND creator_id = $2::uuid
+  AND status = 'playing'
+`
+
+type CloseGameRequestParams struct {
+	ID        pgtype.UUID
+	CreatorID pgtype.UUID
+}
+
+func (q *Queries) CloseGameRequest(ctx context.Context, arg CloseGameRequestParams) (int64, error) {
+	result, err := q.db.Exec(ctx, closeGameRequest, arg.ID, arg.CreatorID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const countGameRequestMembers = `-- name: CountGameRequestMembers :one
 SELECT count(*) FROM game_request_members WHERE game_request_id = $1::uuid
 `
@@ -202,22 +244,24 @@ func (q *Queries) RemoveGameRequestMember(ctx context.Context, arg RemoveGameReq
 	return result.RowsAffected(), nil
 }
 
-const updateGameRequestStatus = `-- name: UpdateGameRequestStatus :execrows
+const startGameRequest = `-- name: StartGameRequest :execrows
 UPDATE game_requests
-SET status = $1, updated_at = now()
-WHERE id = $2::uuid
-  AND creator_id = $3::uuid
+SET status = 'playing', started_at = now(), updated_at = now()
+WHERE id = $1::uuid
+  AND creator_id = $2::uuid
   AND status = 'open'
 `
 
-type UpdateGameRequestStatusParams struct {
-	Status    string
+type StartGameRequestParams struct {
 	ID        pgtype.UUID
 	CreatorID pgtype.UUID
 }
 
-func (q *Queries) UpdateGameRequestStatus(ctx context.Context, arg UpdateGameRequestStatusParams) (int64, error) {
-	result, err := q.db.Exec(ctx, updateGameRequestStatus, arg.Status, arg.ID, arg.CreatorID)
+// The lifecycle is three named transitions, not one generic status write: each
+// one carries the source state it is legal from, so a racing transaction cannot
+// silently rewrite a request out of a state it no longer holds.
+func (q *Queries) StartGameRequest(ctx context.Context, arg StartGameRequestParams) (int64, error) {
+	result, err := q.db.Exec(ctx, startGameRequest, arg.ID, arg.CreatorID)
 	if err != nil {
 		return 0, err
 	}
