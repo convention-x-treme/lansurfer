@@ -272,6 +272,8 @@ Owns:
 - internal LANsurfer roles
 - unique public Game Nick
 
+Account deletion is `user.Service.DeleteAccount`, which verifies the retyped Game Nick and deletes the `users` row in one statement guarded against removing the last administrator (administrator rows are locked in id order so concurrent deletions serialize). Every foreign key into `users` is `ON DELETE CASCADE`, so the database removes sessions, identities, follows, memberships, created Game Requests (and through them activity, notification work, and deliveries) atomically; no module writes another module's tables. A new table that references `users` must cascade as well; an integration test fails on any other `ON DELETE` action.
+
 Rich biographies, per-Game player handles, and richer public profiles are outside the current product model.
 
 ### `auth`

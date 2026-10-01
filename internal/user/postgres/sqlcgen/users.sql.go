@@ -56,6 +56,25 @@ func (q *Queries) DeleteUser(ctx context.Context, id pgtype.UUID) (int64, error)
 	return result.RowsAffected(), nil
 }
 
+const deleteUserUnlessLastAdmin = `-- name: DeleteUserUnlessLastAdmin :execrows
+WITH admins AS (
+    SELECT id FROM users WHERE role = 'admin' ORDER BY id FOR UPDATE
+)
+DELETE FROM users
+WHERE id = $1::uuid
+  AND (role <> 'admin' OR (SELECT count(*) FROM admins) > 1)
+`
+
+// The CTE locks every administrator row in id order, so two administrators
+// deleting each other concurrently serialize and the second sees count = 1.
+func (q *Queries) DeleteUserUnlessLastAdmin(ctx context.Context, id pgtype.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteUserUnlessLastAdmin, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getUser = `-- name: GetUser :one
 SELECT id::text, game_nick, role, created_at, updated_at
 FROM users

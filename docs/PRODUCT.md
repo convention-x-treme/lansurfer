@@ -181,6 +181,14 @@ Discord authentication and Discord notification delivery are separate integratio
 
 Twitch is an optional third authentication provider. Twitch login reuses the same local identity, explicit linking, onboarding, and session model as OIDC and Discord. It requests only a stable Twitch subject and display username, never Twitch email; a Twitch account may be explicitly linked to the same local User as the other providers. Twitch login and IGDB discovery share optional Twitch application credentials but remain independently enabled features.
 
+### Account deletion
+
+- A signed-in player can permanently delete their own account from the **Danger zone** on the account page. No re-authentication is required; the player must retype their current Game Nick exactly before the final action is available.
+- Deletion removes the local account and everything attributable to it: linked identities, sessions, notification devices, followed games, memberships, Game Requests the player created (for every player), and the activity the player caused. No "Deleted user" placeholder is kept.
+- The Game Nick is released immediately.
+- The only administrator cannot delete their account; another administrator must exist first.
+- Discord messages already posted for deleted Game Requests are not edited or removed.
+
 ## 7. Roles and Management Boundaries
 
 Global application roles remain intentionally small:
