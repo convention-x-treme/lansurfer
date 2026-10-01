@@ -11,6 +11,7 @@ import (
 	"github.com/convention-x-treme/lansurfer/internal/game"
 	gamepostgres "github.com/convention-x-treme/lansurfer/internal/game/postgres"
 	"github.com/convention-x-treme/lansurfer/internal/gamerequest"
+	gamerequestquery "github.com/convention-x-treme/lansurfer/internal/query/gamerequest"
 	"github.com/convention-x-treme/lansurfer/internal/user"
 	userpostgres "github.com/convention-x-treme/lansurfer/internal/user/postgres"
 )
@@ -541,4 +542,88 @@ func (f playingFixture) insertLegacyCapacityOne(t *testing.T, description string
 		t.Fatalf("insert legacy capacity-one request: %v", err)
 	}
 	return requestID
+}
+
+// The detail read model carries the typed before/after values so the Activity
+// section can state the concrete change; NULL stays "unlimited".
+func TestDetailActivityProjectsCapacityChanges(t *testing.T) {
+	fixture := newPlayingFixture(t)
+	queries := gamerequestquery.NewStore(fixture.pool)
+	request := fixture.createLimited(t, 4, "Projected history")
+
+	for _, next := range []*int32{new(int32(6)), nil, new(int32(8))} {
+		if err := fixture.requests.UpdateCapacity(t.Context(), request.ID, fixture.host, next); err != nil {
+			t.Fatalf("update capacity: %v", err)
+		}
+	}
+
+	detail, err := queries.ByID(t.Context(), request.ID, fixture.host)
+	if err != nil {
+		t.Fatalf("read detail: %v", err)
+	}
+	// Newest first: unlimited -> 8, 6 -> unlimited, 4 -> 6, then created.
+	want := []capacityChange{
+		{previous: nil, next: new(int32(8))},
+		{previous: new(int32(6)), next: nil},
+		{previous: new(int32(4)), next: new(int32(6))},
+	}
+	if len(detail.Activity) != len(want)+1 {
+		t.Fatalf("activity = %+v, want %d capacity entries plus created", detail.Activity, len(want))
+	}
+	for index, change := range want {
+		entry := detail.Activity[index]
+		if entry.Kind != gamerequest.ActivityCapacityChanged {
+			t.Fatalf("activity[%d] kind = %q, want capacity_changed", index, entry.Kind)
+		}
+		if !sameInt32Pointer(entry.PreviousMaxPlayers, change.previous) || !sameInt32Pointer(entry.NewMaxPlayers, change.next) {
+			t.Errorf("activity[%d] = %s -> %s, want %s", index,
+				formatCapacity(entry.PreviousMaxPlayers), formatCapacity(entry.NewMaxPlayers), change)
+		}
+	}
+	created := detail.Activity[len(want)]
+	if created.Kind != gamerequest.ActivityCreated || created.PreviousMaxPlayers != nil || created.NewMaxPlayers != nil {
+		t.Errorf("created entry = %+v, want no capacity metadata", created)
+	}
+}
+
+// Free places follows the live capacity of a playing request, and a Host
+// configuration change is not popularity: Trending does not count it.
+func TestCapacityChangesFollowFreePlacesAndStayOutOfTrending(t *testing.T) {
+	fixture := newPlayingFixture(t)
+	queries := gamerequestquery.NewStore(fixture.pool)
+	request := fixture.createLimited(t, 2, "Capacity and discovery")
+	if err := fixture.requests.Join(t.Context(), request.ID, fixture.guest); err != nil {
+		t.Fatalf("join: %v", err)
+	}
+	if err := fixture.requests.Start(t.Context(), request.ID, fixture.host); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	freePlaces := gamerequestquery.Filter{OpenPlacesOnly: true}
+
+	if findActive(activeRequests(t, queries, fixture.outsider, freePlaces), request.ID) != nil {
+		t.Fatal("Free places kept a full playing request")
+	}
+	before := trendingEntry(t, queries, "Playing Game")
+
+	if err := fixture.requests.UpdateCapacity(t.Context(), request.ID, fixture.host, new(int32(3))); err != nil {
+		t.Fatalf("raise capacity: %v", err)
+	}
+	if findActive(activeRequests(t, queries, fixture.outsider, freePlaces), request.ID) == nil {
+		t.Fatal("Free places dropped a playing request after capacity was raised")
+	}
+	if err := fixture.requests.UpdateCapacity(t.Context(), request.ID, fixture.host, nil); err != nil {
+		t.Fatalf("remove capacity: %v", err)
+	}
+	if err := fixture.requests.UpdateCapacity(t.Context(), request.ID, fixture.host, new(int32(2))); err != nil {
+		t.Fatalf("lower capacity back to the member count: %v", err)
+	}
+	if findActive(activeRequests(t, queries, fixture.outsider, freePlaces), request.ID) != nil {
+		t.Fatal("Free places kept a playing request after capacity was lowered to full")
+	}
+
+	after := trendingEntry(t, queries, "Playing Game")
+	if after.ActivityCount != before.ActivityCount || after.RequestCount != before.RequestCount {
+		t.Fatalf("trending after 3 capacity changes = %d/%d, want unchanged %d/%d",
+			after.ActivityCount, after.RequestCount, before.ActivityCount, before.RequestCount)
+	}
 }

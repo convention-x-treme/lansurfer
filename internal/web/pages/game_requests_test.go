@@ -837,40 +837,123 @@ func TestDetailHostActionsFollowTheLifecycle(t *testing.T) {
 	}
 }
 
-func TestDetailPlayingHidesJoinAndLeaveForOtherViewers(t *testing.T) {
-	body := renderLifecycleDetail(t, gamerequest.StatusPlaying, "user-2")
-	for _, unwanted := range []string{">Join<", "Join</button>", "Leave</button>", "/join", "/leave"} {
-		if strings.Contains(body, unwanted) {
-			t.Errorf("playing detail contains %q", unwanted)
-		}
+func renderRow(t *testing.T, request requestquery.Request, viewerID string) string {
+	t.Helper()
+	var rendered bytes.Buffer
+	if err := GameRequestRow(request, viewerID, "").Render(context.Background(), &rendered); err != nil {
+		t.Fatalf("render row: %v", err)
 	}
-	if !strings.Contains(body, "Playing") {
-		t.Error("playing detail does not state Playing")
+	return rendered.String()
+}
+
+func renderDetail(t *testing.T, request requestquery.Request, viewerID string) string {
+	t.Helper()
+	var rendered bytes.Buffer
+	if err := GameRequestDetailContent(request, viewerID, false).Render(context.Background(), &rendered); err != nil {
+		t.Fatalf("render detail: %v", err)
+	}
+	return rendered.String()
+}
+
+// Open and playing are both active: the viewer's membership action depends on
+// membership and capacity, never on which of the two the request is in.
+func TestActiveRequestsOfferJoinLeaveAndFullByMembershipAndCapacity(t *testing.T) {
+	limit := int32(3)
+	cases := []struct {
+		name    string
+		request requestquery.Request
+		viewer  string
+		want    []string
+		unwant  []string
+	}{
+		{"joined viewer leaves", requestquery.Request{ViewerJoined: true, MemberCount: 2, MaxPlayers: &limit}, "user-2",
+			[]string{"/game-requests/request-1/leave", "Leave"}, []string{"/join", "Join</button>"}},
+		{"viewer with room joins", requestquery.Request{MemberCount: 1, MaxPlayers: &limit}, "user-2",
+			[]string{"/game-requests/request-1/join", "Join</button>"}, []string{"/leave", "Leave</button>"}},
+		{"viewer on a full request gets no action", requestquery.Request{MemberCount: 3, MaxPlayers: &limit}, "user-2",
+			nil, []string{"/join", "/leave", "Join</button>", "Leave</button>"}},
+		{"unlimited request is joinable", requestquery.Request{MemberCount: 12}, "user-2",
+			[]string{"/game-requests/request-1/join"}, []string{"/leave"}},
+		{"last finite place is called out", requestquery.Request{MemberCount: 2, MaxPlayers: &limit}, "user-2",
+			[]string{"Last place", "/game-requests/request-1/join"}, []string{"/leave"}},
+		{"Host never gets Join or Leave", requestquery.Request{ViewerJoined: true, MemberCount: 1, MaxPlayers: &limit}, "host-1",
+			nil, []string{"/join", "/leave", "Join</button>", "Leave</button>"}},
+	}
+	for _, status := range []gamerequest.Status{gamerequest.StatusOpen, gamerequest.StatusPlaying} {
+		for _, tc := range cases {
+			request := tc.request
+			request.ID, request.CreatorID, request.Status = "request-1", "host-1", status
+			request.Game = game.GamePresentation{Name: "Warcraft III"}
+			for surface, body := range map[string]string{
+				"row":    renderRow(t, request, tc.viewer),
+				"detail": renderDetail(t, request, tc.viewer),
+			} {
+				for _, want := range tc.want {
+					if !strings.Contains(body, want) {
+						t.Errorf("%s %s %s lacks %q", status, surface, tc.name, want)
+					}
+				}
+				for _, unwanted := range tc.unwant {
+					if strings.Contains(body, unwanted) {
+						t.Errorf("%s %s %s contains %q", status, surface, tc.name, unwanted)
+					}
+				}
+			}
+		}
 	}
 }
 
-func TestPlayingRowStaysActiveAndSaysPlaying(t *testing.T) {
-	maxPlayers := int32(2)
-	request := requestquery.Request{
+func TestInactiveRequestsStayStatic(t *testing.T) {
+	for status, label := range map[gamerequest.Status]string{gamerequest.StatusClosed: "Closed", gamerequest.StatusCancelled: "Cancelled"} {
+		limit := int32(4)
+		request := requestquery.Request{
+			ID: "request-1", Game: game.GamePresentation{Name: "Warcraft III"}, CreatorID: "host-1",
+			Status: status, MemberCount: 3, MaxPlayers: &limit,
+		}
+		row := renderRow(t, request, "user-2")
+		if !strings.Contains(row, `<span class="action-static">`+label+`</span>`) {
+			t.Errorf("%s row action is not static %q: %s", status, label, row)
+		}
+		for surface, body := range map[string]string{"row": row, "detail": renderDetail(t, request, "user-2")} {
+			for _, unwanted := range []string{"/join", "/leave", "Last place"} {
+				if strings.Contains(body, unwanted) {
+					t.Errorf("%s %s contains %q", status, surface, unwanted)
+				}
+			}
+		}
+	}
+}
+
+func TestPlayingRowKeepsPlayingIdentity(t *testing.T) {
+	limit := int32(4)
+	body := renderRow(t, requestquery.Request{
 		ID: "request-1", Game: game.GamePresentation{Name: "Warcraft III"}, CreatorID: "host-1",
-		CreatorGameNick: "Otter", Status: gamerequest.StatusPlaying, MaxPlayers: &maxPlayers, MemberCount: 2,
-	}
-	var rendered bytes.Buffer
-	if err := GameRequestRow(request, "user-2", "").Render(context.Background(), &rendered); err != nil {
-		t.Fatalf("render row: %v", err)
-	}
-	body := rendered.String()
+		CreatorGameNick: "Otter", Status: gamerequest.StatusPlaying, MaxPlayers: &limit, MemberCount: 2,
+	}, "user-2")
 	if !strings.Contains(body, "is playing") || strings.Contains(body, "is looking for") {
 		t.Errorf("row connector wrong: %s", body)
-	}
-	if !strings.Contains(body, `<span class="action-static">Playing</span>`) {
-		t.Errorf("row action wrong: %s", body)
 	}
 	if strings.Contains(body, "request-row-closed") || !strings.Contains(body, "request-row-playing") {
 		t.Errorf("row class wrong: %s", body)
 	}
-	if strings.Contains(body, "Join") || strings.Contains(body, "Leave") {
-		t.Errorf("playing row offers membership action: %s", body)
+	if strings.Contains(body, "count-muted") {
+		t.Errorf("a playing request with free places has a muted counter: %s", body)
+	}
+}
+
+func TestPlayingDetailKeepsPlayingIdentityAndLastPlace(t *testing.T) {
+	limit := int32(3)
+	body := renderDetail(t, requestquery.Request{
+		ID: "request-1", Game: game.GamePresentation{Name: "Warcraft III"}, CreatorID: "host-1",
+		Status: gamerequest.StatusPlaying, MaxPlayers: &limit, MemberCount: 2,
+	}, "user-2")
+	for _, want := range []string{"status-chip-playing", "detail-hero-playing", "Last place open", `<span class="status-chip status-chip-last">Last place</span>`, "count-last"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("playing detail lacks %q: %s", want, body)
+		}
+	}
+	if strings.Contains(body, "count-muted") {
+		t.Errorf("a playing request with a free place has a muted counter: %s", body)
 	}
 }
 
@@ -881,6 +964,36 @@ func TestActivityLabelsForStartedAndClosed(t *testing.T) {
 	} {
 		if got := activityLabel(requestquery.Activity{Kind: kind, ActorGameNick: "Otter"}); got != want {
 			t.Errorf("activityLabel(%s) = %q, want %q", kind, got, want)
+		}
+	}
+}
+
+func TestActivityLabelStatesCapacityBeforeAndAfter(t *testing.T) {
+	four, six, eight := int32(4), int32(6), int32(8)
+	for name, tc := range map[string]struct {
+		previous, next *int32
+		want           string
+	}{
+		"finite to finite":    {&four, &six, "Alex changed capacity from 4 to 6"},
+		"finite to unlimited": {&six, nil, "Alex changed capacity from 6 to unlimited"},
+		"unlimited to finite": {nil, &eight, "Alex changed capacity from unlimited to 8"},
+	} {
+		entry := requestquery.Activity{Kind: gamerequest.ActivityCapacityChanged, ActorGameNick: "Alex", PreviousMaxPlayers: tc.previous, NewMaxPlayers: tc.next}
+		if got := activityLabel(entry); got != tc.want {
+			t.Errorf("%s: activityLabel = %q, want %q", name, got, tc.want)
+		}
+	}
+}
+
+func TestFullActiveRowSaysFullInsteadOfJoin(t *testing.T) {
+	limit := int32(3)
+	for _, status := range []gamerequest.Status{gamerequest.StatusOpen, gamerequest.StatusPlaying} {
+		body := renderRow(t, requestquery.Request{
+			ID: "request-1", Game: game.GamePresentation{Name: "Warcraft III"}, CreatorID: "host-1",
+			Status: status, MaxPlayers: &limit, MemberCount: 3,
+		}, "user-2")
+		if !strings.Contains(body, `<span class="action-static">Full</span>`) {
+			t.Errorf("%s full row lacks the Full action: %s", status, body)
 		}
 	}
 }

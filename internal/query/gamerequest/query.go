@@ -62,12 +62,15 @@ type Member struct {
 	JoinedAt  time.Time
 }
 
-// Activity is one durable request-local entry, newest first.
+// Activity is one durable request-local entry, newest first. The capacity
+// fields are set only for capacity_changed; nil there means "unlimited".
 type Activity struct {
-	Kind          domain.ActivityKind
-	ActorID       string
-	ActorGameNick string
-	OccurredAt    time.Time
+	Kind               domain.ActivityKind
+	ActorID            string
+	ActorGameNick      string
+	OccurredAt         time.Time
+	PreviousMaxPlayers *int32
+	NewMaxPlayers      *int32
 }
 
 // Scope is the audience a player is looking at. The four values are mutually
@@ -238,6 +241,7 @@ func (s *Store) ByID(ctx context.Context, id, viewerID string) (Request, error) 
 		request.Activity = append(request.Activity, Activity{
 			Kind: domain.ActivityKind(entry.Kind), ActorID: entry.ActorID,
 			ActorGameNick: entry.ActorGameNick.String, OccurredAt: entry.OccurredAt.Time,
+			PreviousMaxPlayers: int4Pointer(entry.PreviousMaxPlayers), NewMaxPlayers: int4Pointer(entry.NewMaxPlayers),
 		})
 	}
 	return request, nil

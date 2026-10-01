@@ -1077,7 +1077,7 @@ func GameRequestRow(request requestquery.Request, viewerID, highlightedID string
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		if request.Status != gamerequest.StatusOpen {
+		if !requestActive(request) {
 			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 88, "<span class=\"action-static\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
@@ -2717,7 +2717,7 @@ func GameRequestDetailContent(request requestquery.Request, viewerID string, ref
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		if request.Status == gamerequest.StatusOpen && request.CreatorID != viewerID && request.ViewerJoined {
+		if requestActive(request) && request.CreatorID != viewerID && request.ViewerJoined {
 			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 213, "<form method=\"post\" action=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
@@ -2743,7 +2743,7 @@ func GameRequestDetailContent(request requestquery.Request, viewerID string, ref
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-		} else if request.Status == gamerequest.StatusOpen && request.CreatorID != viewerID && !requestFull(request) {
+		} else if requestActive(request) && request.CreatorID != viewerID && !requestFull(request) {
 			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 216, "<form method=\"post\" action=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
@@ -3304,8 +3304,24 @@ func requestFull(request requestquery.Request) bool {
 	return request.MaxPlayers != nil && request.MemberCount >= int64(*request.MaxPlayers)
 }
 
+// requestActive is the one definition of "still taking part": open or playing.
+// Join, Leave, the place counters and the last-place call-out all follow it,
+// so a started round behaves like an open one until the Host closes it.
+func requestActive(request requestquery.Request) bool {
+	return request.Status == gamerequest.StatusOpen || request.Status == gamerequest.StatusPlaying
+}
+
+// capacityLabel renders a stored maximum for the Activity section; nil is the
+// unlimited state.
+func capacityLabel(value *int32) string {
+	if value == nil {
+		return "unlimited"
+	}
+	return strconv.Itoa(int(*value))
+}
+
 func lastPlace(request requestquery.Request) bool {
-	return request.MaxPlayers != nil && request.Status == gamerequest.StatusOpen && request.MemberCount+1 == int64(*request.MaxPlayers)
+	return request.MaxPlayers != nil && requestActive(request) && request.MemberCount+1 == int64(*request.MaxPlayers)
 }
 
 func playerCount(request requestquery.Request) string {
@@ -3325,7 +3341,7 @@ func playerCountAccessible(request requestquery.Request) string {
 func playerCountClass(request requestquery.Request) string {
 	// A cancelled or closed request has no open places, so its counter must not
 	// keep the colour that means "places left".
-	if requestFull(request) || request.Status != gamerequest.StatusOpen {
+	if requestFull(request) || !requestActive(request) {
 		return "place-counter count-muted"
 	}
 	if lastPlace(request) {
@@ -3406,7 +3422,7 @@ func detailStatusChipClass(request requestquery.Request) string {
 // detailCountClass keeps the hero counter at the kit's larger size while it
 // carries the same urgency colours as the list.
 func detailCountClass(request requestquery.Request) string {
-	if requestFull(request) || request.Status != gamerequest.StatusOpen {
+	if requestFull(request) || !requestActive(request) {
 		return "place-counter place-counter-lg count-muted"
 	}
 	if lastPlace(request) {
@@ -3437,6 +3453,8 @@ func activityLabel(entry requestquery.Activity) string {
 		return entry.ActorGameNick + " started the game"
 	case gamerequest.ActivityCancelled:
 		return entry.ActorGameNick + " cancelled the request"
+	case gamerequest.ActivityCapacityChanged:
+		return entry.ActorGameNick + " changed capacity from " + capacityLabel(entry.PreviousMaxPlayers) + " to " + capacityLabel(entry.NewMaxPlayers)
 	default:
 		return entry.ActorGameNick
 	}
@@ -3669,14 +3687,10 @@ func memberTimeLabel(member requestquery.Member, request requestquery.Request) s
 }
 
 func requestActionLabel(request requestquery.Request) string {
-	switch request.Status {
-	case gamerequest.StatusPlaying:
-		return "Playing"
-	case gamerequest.StatusCancelled:
+	if request.Status == gamerequest.StatusCancelled {
 		return "Cancelled"
-	default:
-		return "Closed"
 	}
+	return "Closed"
 }
 
 func requestRowConnector(request requestquery.Request) string {
