@@ -450,15 +450,31 @@ Use user-facing copy:
 Run: `go test -race ./internal/web/handler -run 'Capacity' -count=1`  
 Expected: PASS.
 
-- [ ] **Step 3: Add a capacity-specific detail message model**
+- [ ] **Step 3: Add the exact detail validation model**
 
-Do not overload the Create composer's `ComposerMessage`.
+Do not reuse the Create composer's `ComposerMessage`.
 
-Add a small detail message type or explicit arguments so the detail Capacity editor can mark `max_players` invalid while existing page-level lifecycle errors remain unchanged.
+In `internal/web/pages/game_requests.templ`, add:
 
-The rendered input must preserve the submitted value after an error rather than silently replacing it with the database value.
+```go
+type GameRequestDetailMessage struct {
+    Text  string
+    Field string
+    Value string
+}
+```
 
-Run: `go test -race ./internal/web/pages ./internal/web/handler -run 'Capacity' -count=1`  
+Use `Field == "max_players"` for Capacity-editor errors. `Value` holds the raw submitted capacity so invalid input such as `1` or `abc` is preserved on re-render.
+
+Change the template signatures to:
+- `GameRequestDetail(..., message GameRequestDetailMessage, notice components.Notice)`
+- `GameRequestDetailContent(request requestquery.Request, viewerID string, refresh bool, message GameRequestDetailMessage)`
+
+Update all existing callers/tests to pass `GameRequestDetailMessage{}` when there is no error. Existing lifecycle errors use `GameRequestDetailMessage{Text: gameRequestMessage(cause)}` with an empty Field so they stay page-level. Capacity validation/business errors use `Field: "max_players"` and the submitted raw value.
+
+The Capacity input uses `message.Value` only when `message.Field == "max_players"`; otherwise it derives its value from `request.MaxPlayers`.
+
+Run: `go test -race ./internal/web/pages ./internal/web/handler -run 'Capacity|GameRequestDetail' -count=1`  
 Expected: PASS.
 
 - [ ] **Step 4: Add the Host capacity editor to the detail page**
@@ -675,7 +691,7 @@ Expected: no whitespace errors.
 
 ```bash
 git add internal/web/browsertest/main.go   web/tests/rapid-interaction.spec.ts   docs/PRODUCT.md docs/ARCHITECTURE.md docs/TERMINOLOGY.md docs/ui-kit/README.md
-git commit -m "docs: align dynamic capacity behavior"
+git commit -m "feat: complete dynamic capacity flow"
 ```
 
 ---
