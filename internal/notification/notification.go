@@ -10,18 +10,21 @@ import (
 	"time"
 )
 
-// ActivityKind mirrors gamerequest.ActivityKind's six durable kinds. It is
+// ActivityKind mirrors gamerequest.ActivityKind's durable kinds. It is
 // redeclared here rather than imported so this module never depends on
 // gamerequest's package, only on the read-only activity rows it discovers.
+// A capacity_changed activity carries no before/after values here: delivery
+// reads the current Game Request summary instead.
 type ActivityKind string
 
 const (
-	ActivityCreated   ActivityKind = "created"
-	ActivityJoined    ActivityKind = "joined"
-	ActivityLeft      ActivityKind = "left"
-	ActivityStarted   ActivityKind = "started"
-	ActivityClosed    ActivityKind = "closed"
-	ActivityCancelled ActivityKind = "cancelled"
+	ActivityCreated         ActivityKind = "created"
+	ActivityJoined          ActivityKind = "joined"
+	ActivityLeft            ActivityKind = "left"
+	ActivityStarted         ActivityKind = "started"
+	ActivityClosed          ActivityKind = "closed"
+	ActivityCancelled       ActivityKind = "cancelled"
+	ActivityCapacityChanged ActivityKind = "capacity_changed"
 )
 
 // Activity is a read-only snapshot of one live game_request_activity row.

@@ -517,3 +517,61 @@ func TestDiscordSendReplacementNeverRoutesOldWorkToNewGeneration(t *testing.T) {
 		t.Fatalf("new sync = %+v, %v", current, err)
 	}
 }
+
+// A Host capacity change edits the one synchronized Discord message with the
+// current player summary. It never creates a second message, and the edit
+// carries no capacity-specific content.
+func TestDiscordSendEditsSameMessageWithNewCapacity(t *testing.T) {
+	_, store, fixture, key := discordSendSetup(t)
+	destination := discordSendConnect(t, store, key, "private-token")
+	calls := make(chan discordSendHTTPCall, 4)
+	client := discordSendTestClient(t, func(w http.ResponseWriter, request *http.Request) {
+		discordSendReply(w, request, calls, "message-42")
+	})
+	transport := notification.NewDiscordSendTransport(store, key, "https://lan.example", "Friday Club", client)
+	maximum := int32(4)
+	request, err := fixture.requests.Create(t.Context(), fixture.host.ID, fixture.gameID, &maximum, time.Now().Add(time.Hour), "Current description")
+	if err != nil {
+		t.Fatal(err)
+	}
+	discordSendMaterialize(t, store, transport)
+	newTestWorker(store, []notification.Transport{transport}).Tick(t.Context())
+	created := discordSendNextCall(t, calls)
+	discordSendAssertCall(t, created, http.MethodPost, "private-token", "", request.ID)
+	if created.field("Players") != "1/4 players (3 free)" {
+		t.Fatalf("created players = %q", created.field("Players"))
+	}
+	createdSync, err := store.GetDiscordMessageSync(t.Context(), destination.ID, request.ID)
+	if err != nil || createdSync.MessageID != "message-42" {
+		t.Fatalf("created sync = %+v, %v", createdSync, err)
+	}
+
+	for _, step := range []struct {
+		next *int32
+		want string
+	}{
+		{new(int32(2)), "1/2 players (1 free)"},
+		{nil, "1 players (unlimited)"},
+		{new(int32(6)), "1/6 players (5 free)"},
+	} {
+		if err := fixture.requests.UpdateCapacity(t.Context(), request.ID, fixture.host.ID, step.next); err != nil {
+			t.Fatal(err)
+		}
+		newTestWorker(store, []notification.Transport{transport}).Tick(t.Context())
+		edited := discordSendNextCall(t, calls)
+		discordSendAssertCall(t, edited, http.MethodPatch, "private-token", "message-42", request.ID)
+		if edited.field("Players") != step.want || edited.field("Status") != "open" {
+			t.Fatalf("capacity edit rendered players = %q status = %q, want %q", edited.field("Players"), edited.field("Status"), step.want)
+		}
+	}
+
+	sync, err := store.GetDiscordMessageSync(t.Context(), destination.ID, request.ID)
+	if err != nil || sync.MessageID != "message-42" || sync.AppliedVersion <= createdSync.AppliedVersion {
+		t.Fatalf("sync after capacity edits = %+v, previous = %+v, %v", sync, createdSync, err)
+	}
+	select {
+	case extra := <-calls:
+		t.Fatalf("unexpected extra Discord call: %s", extra.method)
+	default:
+	}
+}
