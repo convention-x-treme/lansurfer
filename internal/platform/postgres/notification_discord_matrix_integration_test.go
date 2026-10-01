@@ -186,25 +186,25 @@ func TestDiscordDisconnectReconnectSkipsOldWorkThenCreatesOnNewActivity(t *testi
 	if err := pool.QueryRow(t.Context(), `SELECT d.status FROM notification_delivery d JOIN notification_work w ON w.id=d.work_id WHERE w.game_request_id=$1 AND d.target_key=$2 AND w.kind='joined'`, request.ID, "d1:"+old.ID).Scan(&oldStatus); err != nil || oldStatus != "suppressed" {
 		t.Fatalf("old work = %s, %v", oldStatus, err)
 	}
-	if err := fixture.requests.Close(t.Context(), request.ID, fixture.host.ID); err != nil {
+	if err := fixture.requests.Cancel(t.Context(), request.ID, fixture.host.ID); err != nil {
 		t.Fatal(err)
 	}
-	var closeSequence int64
-	if err := pool.QueryRow(t.Context(), `SELECT sequence FROM game_request_activity WHERE game_request_id=$1 AND kind='closed' AND origin='live'`, request.ID).Scan(&closeSequence); err != nil {
+	var finalSequence int64
+	if err := pool.QueryRow(t.Context(), `SELECT sequence FROM game_request_activity WHERE game_request_id=$1 AND kind='cancelled' AND origin='live'`, request.ID).Scan(&finalSequence); err != nil {
 		t.Fatal(err)
 	}
 	worker.Tick(t.Context())
 	worker.Tick(t.Context())
 	call := discordSendNextCall(t, calls)
 	discordSendAssertCall(t, call, http.MethodPost, "new-token", "", request.ID)
-	if call.field("Status") != "closed" || call.field("Players") != "2 players (unlimited)" {
+	if call.field("Status") != "cancelled" || call.field("Players") != "2 players (unlimited)" {
 		t.Fatalf("reconnected create did not use current request snapshot: status=%q players=%q", call.field("Status"), call.field("Players"))
 	}
 	if len(calls) != 0 {
 		t.Fatal("more than one new-generation create")
 	}
 	sync, err := store.GetDiscordMessageSync(t.Context(), fresh.ID, request.ID)
-	if err != nil || sync.DestinationID != fresh.ID || sync.GameRequestID != request.ID || sync.MessageID != "new-message" || sync.AppliedVersion != closeSequence {
-		t.Fatalf("reconnected sync = %+v, close activity sequence = %d, error = %v", sync, closeSequence, err)
+	if err != nil || sync.DestinationID != fresh.ID || sync.GameRequestID != request.ID || sync.MessageID != "new-message" || sync.AppliedVersion != finalSequence {
+		t.Fatalf("reconnected sync = %+v, final activity sequence = %d, error = %v", sync, finalSequence, err)
 	}
 }

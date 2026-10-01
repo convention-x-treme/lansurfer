@@ -158,19 +158,52 @@ func (s *Store) SetStatus(ctx context.Context, requestID, userID string, status 
 		if locked.CreatorID != userID {
 			return gamerequest.ErrNotCreator
 		}
-		if locked.Status != string(gamerequest.StatusOpen) {
-			return gamerequest.ErrNotOpen
+
+		// The locked row is the only authority on where the request stands, so
+		// every target status names the state it may come from. Each transition
+		// then repeats that source state in its WHERE clause, which is what makes
+		// a racing Start and Cancel resolve to one winner instead of two writes.
+		var (
+			updated  int64
+			activity gamerequest.ActivityKind
+		)
+		switch status {
+		case gamerequest.StatusPlaying:
+			if locked.Status != string(gamerequest.StatusOpen) {
+				return gamerequest.ErrNotOpen
+			}
+			updated, err = queries.StartGameRequest(ctx, sqlcgen.StartGameRequestParams{
+				ID: databaseRequestID, CreatorID: databaseUserID,
+			})
+			activity = gamerequest.ActivityStarted
+		case gamerequest.StatusCancelled:
+			if locked.Status != string(gamerequest.StatusOpen) {
+				return gamerequest.ErrNotOpen
+			}
+			updated, err = queries.CancelGameRequest(ctx, sqlcgen.CancelGameRequestParams{
+				ID: databaseRequestID, CreatorID: databaseUserID,
+			})
+			activity = gamerequest.ActivityCancelled
+		case gamerequest.StatusClosed:
+			if locked.Status != string(gamerequest.StatusPlaying) {
+				return gamerequest.ErrNotPlaying
+			}
+			updated, err = queries.CloseGameRequest(ctx, sqlcgen.CloseGameRequestParams{
+				ID: databaseRequestID, CreatorID: databaseUserID,
+			})
+			activity = gamerequest.ActivityClosed
+		default:
+			return fmt.Errorf("unsupported game request target status %q", status)
 		}
-		updated, err := queries.UpdateGameRequestStatus(ctx, sqlcgen.UpdateGameRequestStatusParams{
-			ID: databaseRequestID, CreatorID: databaseUserID, Status: string(status),
-		})
 		if err != nil {
-			return fmt.Errorf("update game request status: %w", err)
+			return fmt.Errorf("move game request to %s: %w", status, err)
 		}
 		if updated != 1 {
-			return gamerequest.ErrNotOpen
+			// Unreachable while this transaction holds the row lock: the guard
+			// above and the update's WHERE clause read the same locked row.
+			return fmt.Errorf("move game request to %s: no row matched", status)
 		}
-		return recordActivity(ctx, queries, databaseRequestID, databaseUserID, statusActivity(status))
+		return recordActivity(ctx, queries, databaseRequestID, databaseUserID, activity)
 	})
 }
 
@@ -183,13 +216,6 @@ func recordActivity(ctx context.Context, queries *sqlcgen.Queries, requestID, ac
 		return fmt.Errorf("record game request activity: %w", err)
 	}
 	return nil
-}
-
-func statusActivity(status gamerequest.Status) gamerequest.ActivityKind {
-	if status == gamerequest.StatusCancelled {
-		return gamerequest.ActivityCancelled
-	}
-	return gamerequest.ActivityClosed
 }
 
 func (s *Store) withLockedRequest(ctx context.Context, requestID pgtype.UUID, change func(*sqlcgen.Queries, sqlcgen.LockGameRequestRow) error) error {

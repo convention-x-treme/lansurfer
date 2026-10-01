@@ -78,7 +78,7 @@ func TestDiscordSend10008RecoversWithOneReplacementMessage(t *testing.T) {
 	}
 
 	// Later activity edits the replacement message, never creates another.
-	if err := fixture.requests.Close(t.Context(), request.ID, fixture.host.ID); err != nil {
+	if err := fixture.requests.Cancel(t.Context(), request.ID, fixture.host.ID); err != nil {
 		t.Fatal(err)
 	}
 	discordSendMaterialize(t, store, transport)

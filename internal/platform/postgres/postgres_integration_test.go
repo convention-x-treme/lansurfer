@@ -3425,6 +3425,14 @@ func TestGameRequestWorkflowAndConcurrentCapacity(t *testing.T) {
 	if err := requests.Close(t.Context(), created.ID, firstJoiner.ID); !errors.Is(err, gamerequest.ErrNotCreator) {
 		t.Fatalf("non-creator close error = %v", err)
 	}
+	// Closing straight from `open` is no longer a legal transition: the round
+	// has to have started before it can be closed.
+	if err := requests.Close(t.Context(), created.ID, creator.ID); !errors.Is(err, gamerequest.ErrNotPlaying) {
+		t.Fatalf("close an open request error = %v, want ErrNotPlaying", err)
+	}
+	if err := requests.Start(t.Context(), created.ID, creator.ID); err != nil {
+		t.Fatalf("creator start: %v", err)
+	}
 	if err := requests.Close(t.Context(), created.ID, creator.ID); err != nil {
 		t.Fatalf("creator close: %v", err)
 	}
@@ -3466,8 +3474,8 @@ func TestMigrateAndReadyCheck(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get migration version: %v", err)
 	}
-	if version != 22 {
-		t.Errorf("migration version = %d, want 22", version)
+	if version != 23 {
+		t.Errorf("migration version = %d, want 23", version)
 	}
 	if err := migrateFS(t.Context(), pool, migrationFS, logger); err != nil {
 		t.Fatalf("second migrateFS() error = %v", err)
@@ -3738,17 +3746,17 @@ func TestGameRequestDuplicateAndOverlappingMutations(t *testing.T) {
 		t.Fatal("join reported success but the membership is missing")
 	}
 
-	// Close → Cancel by the creator, as repeated lifecycle clicks produce.
+	// Start → Cancel by the creator, as repeated lifecycle clicks produce.
 	lifecycle, err := requests.Create(t.Context(), creator.ID, selectedGame.ID, nil, startsAt, "Lifecycle race")
 	if err != nil {
 		t.Fatalf("create lifecycle game request: %v", err)
 	}
 	lifecycleResults := runConcurrently(
-		func() error { return requests.Close(t.Context(), lifecycle.ID, creator.ID) },
+		func() error { return requests.Start(t.Context(), lifecycle.ID, creator.ID) },
 		func() error { return requests.Cancel(t.Context(), lifecycle.ID, creator.ID) },
 	)
-	assertOneWinner(t, "close against cancel", lifecycleResults, gamerequest.ErrNotOpen)
-	wantStatus := gamerequest.StatusClosed
+	assertOneWinner(t, "start against cancel", lifecycleResults, gamerequest.ErrNotOpen)
+	wantStatus := gamerequest.StatusPlaying
 	if lifecycleResults[1] == nil {
 		wantStatus = gamerequest.StatusCancelled
 	}
@@ -3759,14 +3767,14 @@ func TestGameRequestDuplicateAndOverlappingMutations(t *testing.T) {
 	if lifecycleDetail.Status != wantStatus {
 		t.Fatalf("lifecycle status = %q, want %q", lifecycleDetail.Status, wantStatus)
 	}
-	if err := requests.Close(t.Context(), lifecycle.ID, creator.ID); !errors.Is(err, gamerequest.ErrNotOpen) {
-		t.Fatalf("repeated close error = %v, want ErrNotOpen", err)
+	if err := requests.Start(t.Context(), lifecycle.ID, creator.ID); !errors.Is(err, gamerequest.ErrNotOpen) {
+		t.Fatalf("repeated start error = %v, want ErrNotOpen", err)
 	}
 
 	// A member of a request that is no longer open cannot be added by a late
-	// click that was already in flight when the creator closed it.
+	// click that was already in flight when the creator settled its lifecycle.
 	if err := requests.Join(t.Context(), lifecycle.ID, joiner.ID); !errors.Is(err, gamerequest.ErrNotOpen) {
-		t.Fatalf("join after close error = %v, want ErrNotOpen", err)
+		t.Fatalf("join after the lifecycle race error = %v, want ErrNotOpen", err)
 	}
 }
 
@@ -4227,6 +4235,9 @@ func TestGameRequestActivityDiscoveryAndTrending(t *testing.T) {
 	if err := requests.Leave(t.Context(), tracked.ID, guest.ID); err != nil {
 		t.Fatalf("leave tracked request: %v", err)
 	}
+	if err := requests.Start(t.Context(), tracked.ID, host.ID); err != nil {
+		t.Fatalf("start tracked request: %v", err)
+	}
 	if err := requests.Close(t.Context(), tracked.ID, host.ID); err != nil {
 		t.Fatalf("close tracked request: %v", err)
 	}
@@ -4236,7 +4247,7 @@ func TestGameRequestActivityDiscoveryAndTrending(t *testing.T) {
 		t.Fatalf("read tracked request: %v", err)
 	}
 	wantKinds := []gamerequest.ActivityKind{
-		gamerequest.ActivityClosed, gamerequest.ActivityLeft,
+		gamerequest.ActivityClosed, gamerequest.ActivityStarted, gamerequest.ActivityLeft,
 		gamerequest.ActivityJoined, gamerequest.ActivityCreated,
 	}
 	if got := activityKinds(detail.Activity); !slices.Equal(got, wantKinds) {
@@ -4256,8 +4267,8 @@ func TestGameRequestActivityDiscoveryAndTrending(t *testing.T) {
 	if detail.MemberCount != 1 {
 		t.Fatalf("member count after leave = %d, want 1", detail.MemberCount)
 	}
-	if detail.Activity[1].ActorGameNick != "Activity Guest" || detail.Activity[1].ActorID != guest.ID {
-		t.Fatalf("leave entry = %#v", detail.Activity[1])
+	if detail.Activity[2].ActorGameNick != "Activity Guest" || detail.Activity[2].ActorID != guest.ID {
+		t.Fatalf("leave entry = %#v", detail.Activity[2])
 	}
 
 	// A rolled-back write leaves neither the request nor an activity entry.
@@ -4411,14 +4422,17 @@ func TestCommittedActivitySurvivesRestartBeforeDelivery(t *testing.T) {
 	if err := requests.Join(t.Context(), created.ID, guest.ID); err != nil {
 		t.Fatalf("join game request: %v", err)
 	}
+	if err := requests.Start(t.Context(), created.ID, host.ID); err != nil {
+		t.Fatalf("start game request: %v", err)
+	}
 	if err := requests.Close(t.Context(), created.ID, host.ID); err != nil {
 		t.Fatalf("close game request: %v", err)
 	}
 
 	schemaName := currentSchema(t, pool)
 	before := readActivityCursor(t, pool, created.ID)
-	if len(before) != 3 {
-		t.Fatalf("activity before restart = %#v, want 3 entries", before)
+	if len(before) != 4 {
+		t.Fatalf("activity before restart = %#v, want 4 entries", before)
 	}
 
 	// The process ends here, with the intent recorded and nothing delivered.
@@ -4440,7 +4454,7 @@ func TestCommittedActivitySurvivesRestartBeforeDelivery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read game request after restart: %v", err)
 	}
-	wantKinds := []gamerequest.ActivityKind{gamerequest.ActivityClosed, gamerequest.ActivityJoined, gamerequest.ActivityCreated}
+	wantKinds := []gamerequest.ActivityKind{gamerequest.ActivityClosed, gamerequest.ActivityStarted, gamerequest.ActivityJoined, gamerequest.ActivityCreated}
 	if got := activityKinds(detail.Activity); !slices.Equal(got, wantKinds) {
 		t.Fatalf("activity kinds after restart = %v, want %v", got, wantKinds)
 	}
@@ -4665,6 +4679,9 @@ func TestNavigationReadingHistoryAndCountsPersistence(t *testing.T) {
 	}
 
 	// A closed request stays in history: it is still what the player read.
+	if err := requests.Start(t.Context(), first.ID, reader.ID); err != nil {
+		t.Fatalf("start request: %v", err)
+	}
 	if err := requests.Close(t.Context(), first.ID, reader.ID); err != nil {
 		t.Fatalf("close request: %v", err)
 	}

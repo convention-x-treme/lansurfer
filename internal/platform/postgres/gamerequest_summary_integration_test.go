@@ -81,6 +81,9 @@ func TestGameRequestSummaryReturnsCurrentViewerIndependentSnapshot(t *testing.T)
 	assertSnapshot(unlimited, gamerequest.StatusOpen, 1, nil)
 
 	closed := create("Closed request description", &two)
+	if err := requests.Start(t.Context(), closed.ID, creator.ID); err != nil {
+		t.Fatalf("start request: %v", err)
+	}
 	if err := requests.Close(t.Context(), closed.ID, creator.ID); err != nil {
 		t.Fatalf("close request: %v", err)
 	}

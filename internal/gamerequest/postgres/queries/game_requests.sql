@@ -43,12 +43,29 @@ DELETE FROM game_request_members
 WHERE game_request_id = sqlc.arg(game_request_id)::uuid
   AND user_id = sqlc.arg(user_id)::uuid;
 
--- name: UpdateGameRequestStatus :execrows
+-- The lifecycle is three named transitions, not one generic status write: each
+-- one carries the source state it is legal from, so a racing transaction cannot
+-- silently rewrite a request out of a state it no longer holds.
+-- name: StartGameRequest :execrows
 UPDATE game_requests
-SET status = sqlc.arg(status), updated_at = now()
+SET status = 'playing', started_at = now(), updated_at = now()
 WHERE id = sqlc.arg(id)::uuid
   AND creator_id = sqlc.arg(creator_id)::uuid
   AND status = 'open';
+
+-- name: CancelGameRequest :execrows
+UPDATE game_requests
+SET status = 'cancelled', updated_at = now()
+WHERE id = sqlc.arg(id)::uuid
+  AND creator_id = sqlc.arg(creator_id)::uuid
+  AND status = 'open';
+
+-- name: CloseGameRequest :execrows
+UPDATE game_requests
+SET status = 'closed', updated_at = now()
+WHERE id = sqlc.arg(id)::uuid
+  AND creator_id = sqlc.arg(creator_id)::uuid
+  AND status = 'playing';
 
 -- RecordGameRequestView is idempotent per (player, request): a repeat visit
 -- refreshes the timestamp instead of growing history, so "Recently viewed"
