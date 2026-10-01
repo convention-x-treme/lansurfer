@@ -24,3 +24,20 @@ test("account deletion stays disabled until the Game Nick matches exactly", asyn
   await input.fill(nick);
   await expect(button).toBeEnabled();
 });
+
+test("account deletion asks once more and cancelling submits nothing", async ({ page }) => {
+  await page.goto("/account");
+
+  const form = page.locator("form[data-delete-account]");
+  await form.locator("input[name='confirm_game_nick']").fill((await form.getAttribute("data-delete-account"))!);
+
+  let message = "";
+  page.once("dialog", async (dialog) => {
+    message = dialog.message();
+    await dialog.dismiss();
+  });
+  await form.getByRole("button", { name: "Delete account" }).click();
+  expect(message).toContain("cannot be undone");
+
+  await expect(page).toHaveURL(/\/account$/);
+});

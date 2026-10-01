@@ -136,7 +136,7 @@ templ Account(brand branding.Brand, navigation components.NavigationState, curre
 					<h2 id="account-danger" class="account-section-title">Danger zone</h2>
 					<p>Deleting your account is permanent and cannot be undone.</p>
 				</div>
-				<form method="post" action="/account/delete" class="grid max-w-lg gap-3" data-delete-account={ currentGameNick }>
+				<form method="post" action="/account/delete" class="grid max-w-lg gap-3" data-delete-account={ currentGameNick } data-confirm="Permanently delete your account? This cannot be undone.">
 					@components.CSRFInput()
 					<p class="text-sm text-base-content/80">
 						Your sign-in methods, followed games, sessions, and notification devices are deleted. Game Requests you created are deleted for every player, and you leave the ones you joined. Your Game Nick becomes available to other players immediately.
