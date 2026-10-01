@@ -622,6 +622,8 @@ Icons are the Phosphor webfonts (Regular default, Fill for emphasized state), co
 
 TypeScript handles only browser-specific progressive enhancement such as SSE connection handling, toast/dialog helpers, installability/service-worker registration, and Web Push permission/subscription behavior. Do not implement domain decisions in TypeScript.
 
+Time handling: persist and exchange Game Request times as absolute instants (`timestamptz`, RFC3339). The server never formats viewer-facing clocks with `time.Local()`; it renders a UTC fallback plus the RFC3339 `datetime` on a `<time>` element marked `data-local-time`, and `app.ts` rewrites clocks and hover titles into the browser's zone, including after HTMX/SSE swaps. A custom start is entered as a local date/time plus the browser's IANA zone (`timezone`) and parsed server-side with `time.LoadLocation`, so DST applies at the selected date rather than at submission time. Relative labels ("in 30 min", "now") are server-rendered from the same instant. Web Push formats planned time in the client and Discord uses a Unix timestamp; both stay viewer-local.
+
 When PWA/instance identity and notifications both need browser changes, the PWA/instance identity capability owns the service-worker shell/lifecycle and the notification capability owns push-specific behavior.
 
 ---
