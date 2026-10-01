@@ -1268,7 +1268,7 @@ func TestRealtimeRefreshHighlightsFollowedGame(t *testing.T) {
 	// The refresh also carries the top bar counters out of band, so the stats
 	// above the list cannot drift away from the rows below it.
 	for _, want := range []string{`id="game-request-list"`, "request-row-incoming", "New Game Request for Warcraft III",
-		`hx-swap-oob="beforeend:#live-notices"`, `hx-swap-oob="true"`, `id="request-stats"`, "player in open requests"} {
+		`hx-swap-oob="beforeend:#live-notices"`, `hx-swap-oob="true"`, `id="request-stats"`, "player in active requests"} {
 		if !strings.Contains(response.Body.String(), want) {
 			t.Errorf("body does not contain %q: %q", want, response.Body.String())
 		}
@@ -1302,7 +1302,7 @@ func TestGameRequestDiscoveryFiltersAndTrending(t *testing.T) {
 	body := pageResponse.Body.String()
 	// The window has to be stated next to the ranking, and the ranking itself
 	// comes from recorded request activity.
-	for _, fragment := range []string{`id="trending-rail"`, "Trending", "last 6 hours", "All", "My Games", "Joined", "Created by me", "Free places", "1 matching open request"} {
+	for _, fragment := range []string{`id="trending-rail"`, "Trending", "last 6 hours", "All", "My Games", "Joined", "Created by me", "Free places", "1 matching active request"} {
 		if !strings.Contains(body, fragment) {
 			t.Errorf("page does not contain %q", fragment)
 		}
@@ -1327,17 +1327,17 @@ func TestGameRequestDiscoveryFiltersAndTrending(t *testing.T) {
 }
 
 // The navigation badge sits in the shell beside every section, so it states how
-// many Game Requests are open on the installation. Deriving it from the
-// filtered list made the same instance look busy or quiet depending on what the
-// viewer had typed, and made an htmx filter and a reload of the same URL
-// disagree.
+// many Game Requests are active (`open` or `playing`) on the installation.
+// Deriving it from the filtered list made the same instance look busy or quiet
+// depending on what the viewer had typed, and made an htmx filter and a reload
+// of the same URL disagree.
 func TestNavigationBadgeIgnoresDiscoveryFilters(t *testing.T) {
 	queries := &routerGameRequestQueries{
 		items: []requestquery.Request{{
 			ID: "request-1", Game: game.GamePresentation{Name: "Warcraft III"}, CreatorID: "creator-1",
 			CreatorGameNick: "Grace", StartsAt: time.Now(), Status: gamerequest.StatusOpen, MemberCount: 1,
 		}},
-		openTotal: 10,
+		activeTotal: 10,
 	}
 	router := gameRequestTestRouter(&routerGameRequests{}, queries, &routerDiscovery{})
 
@@ -1351,9 +1351,9 @@ func TestNavigationBadgeIgnoresDiscoveryFilters(t *testing.T) {
 	}
 	body := response.Body.String()
 	if !strings.Contains(body, `class="data-text count-hot ml-auto text-xs">10<`) {
-		t.Errorf("badge does not show the installation's open total: %s", body)
+		t.Errorf("badge does not show the installation's active total: %s", body)
 	}
-	if !strings.Contains(body, "1 matching open request") {
+	if !strings.Contains(body, "1 matching active request") {
 		t.Errorf("filtered list count is missing: %s", body)
 	}
 }
@@ -1678,11 +1678,11 @@ func (r *routerGameRequests) Cancel(_ context.Context, requestID, userID string)
 }
 
 type routerGameRequestQueries struct {
-	items     []requestquery.Request
-	trending  []requestquery.TrendingGame
-	filter    requestquery.Filter
-	openTotal int64
-	listErr   error
+	items       []requestquery.Request
+	trending    []requestquery.TrendingGame
+	filter      requestquery.Filter
+	activeTotal int64
+	listErr     error
 }
 
 type routerRealtime struct{ events <-chan gamerequest.Event }
@@ -1711,9 +1711,9 @@ func (r *routerGameRequestQueries) ByID(_ context.Context, id, _ string) (reques
 func (r *routerGameRequestQueries) Trending(context.Context) ([]requestquery.TrendingGame, error) {
 	return r.trending, nil
 }
-func (r *routerGameRequestQueries) CountOpen(context.Context) (int64, error) {
-	if r.openTotal != 0 {
-		return r.openTotal, nil
+func (r *routerGameRequestQueries) CountActive(context.Context) (int64, error) {
+	if r.activeTotal != 0 {
+		return r.activeTotal, nil
 	}
 	return int64(len(r.items)), nil
 }

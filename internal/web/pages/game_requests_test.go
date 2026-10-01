@@ -166,11 +166,13 @@ func TestListContentCarriesActiveFilters(t *testing.T) {
 	}
 }
 
-func TestOpenRequestsLabelDistinguishesFilteredLists(t *testing.T) {
-	if got := openRequestsLabel(2, requestquery.Filter{}); got != "2 open requests" {
+// The list label counts active requests (`open` or `playing`), so a round that
+// has started still reads as part of the set the list is showing.
+func TestActiveRequestsLabelDistinguishesFilteredLists(t *testing.T) {
+	if got := activeRequestsLabel(2, requestquery.Filter{}); got != "2 active requests" {
 		t.Errorf("unfiltered label = %q", got)
 	}
-	if got := openRequestsLabel(1, requestquery.Filter{Search: "wc3"}); got != "1 matching open request" {
+	if got := activeRequestsLabel(1, requestquery.Filter{Search: "wc3"}); got != "1 matching active request" {
 		t.Errorf("filtered label = %q", got)
 	}
 }

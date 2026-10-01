@@ -40,7 +40,7 @@ type GameRequestQueries interface {
 	ListActive(context.Context, string, requestquery.Filter) ([]requestquery.Request, error)
 	ByID(context.Context, string, string) (requestquery.Request, error)
 	Trending(context.Context) ([]requestquery.TrendingGame, error)
-	CountOpen(context.Context) (int64, error)
+	CountActive(context.Context) (int64, error)
 }
 
 // GameResolver turns an opaque IGDB provider reference into the one
@@ -138,13 +138,13 @@ func (h *GameRequests) renderList(w http.ResponseWriter, r *http.Request, status
 		h.renderError(w, r)
 		return
 	}
-	openRequests, err := h.queries.CountOpen(r.Context())
+	activeRequests, err := h.queries.CountActive(r.Context())
 	if err != nil {
-		webmiddleware.LogError(r, "count open Game Requests", err)
+		webmiddleware.LogError(r, "count active Game Requests", err)
 		h.renderError(w, r)
 		return
 	}
-	render(w, r, status, pages.GameRequestList(h.brand, navigation, filter, requests, trending, openRequests, message, notice(r)))
+	render(w, r, status, pages.GameRequestList(h.brand, navigation, filter, requests, trending, activeRequests, message, notice(r)))
 }
 
 func (h *GameRequests) RefreshList(w http.ResponseWriter, r *http.Request) {

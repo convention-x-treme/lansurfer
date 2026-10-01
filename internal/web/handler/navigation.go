@@ -15,11 +15,11 @@ import (
 const upcomingJoinedLimit = 3
 
 // NavigationQueries is the sidebar's own read-only view of the Game Request
-// read model: the installation-wide open count beside "Game Requests", the
-// viewer's joined requests for "Your next games", and their reading history
-// for "Recently viewed".
+// read model: the installation-wide active count (`open` or `playing`) beside
+// "Game Requests", the viewer's joined requests for "Your next games", and
+// their reading history for "Recently viewed".
 type NavigationQueries interface {
-	CountOpen(context.Context) (int64, error)
+	CountActive(context.Context) (int64, error)
 	ListActive(context.Context, string, requestquery.Filter) ([]requestquery.Request, error)
 	RecentlyViewed(context.Context, string) ([]requestquery.RecentRequest, error)
 }
@@ -33,7 +33,7 @@ type NavigationCatalog interface {
 
 // Navigation builds the shared sidebar state every authenticated screen
 // renders. It exists so the counts and lists mean the same thing on every
-// screen: before it, only the Game Request list populated the open-request
+// screen: before it, only the Game Request list populated the active-request
 // badge, so the same sidebar silently lost its numbers as soon as the viewer
 // navigated anywhere else.
 type Navigation struct {
@@ -83,10 +83,10 @@ func (n *Navigation) For(r *http.Request, section string) components.NavigationS
 	// them -- a focused test, or a future screen with a narrower shell --
 	// renders the sidebar it can rather than panicking on the one it cannot.
 	if n.queries != nil {
-		if open, err := n.queries.CountOpen(ctx); err != nil {
-			webmiddleware.LogError(r, "count open Game Requests for navigation", err)
+		if active, err := n.queries.CountActive(ctx); err != nil {
+			webmiddleware.LogError(r, "count active Game Requests for navigation", err)
 		} else {
-			state.OpenRequests = open
+			state.ActiveRequests = active
 		}
 		state.Upcoming = n.upcoming(r, account.ID)
 		if recent, err := n.queries.RecentlyViewed(ctx, account.ID); err != nil {
@@ -110,8 +110,9 @@ func (n *Navigation) For(r *http.Request, section string) components.NavigationS
 	return state
 }
 
-// upcoming lists the open Game Requests the viewer has joined, soonest first.
-// The read model already orders by start time, so this only bounds the list.
+// upcoming lists the active (`open` or `playing`) Game Requests the viewer has
+// joined, soonest first. The read model already orders by start time, so this
+// only bounds the list.
 func (n *Navigation) upcoming(r *http.Request, viewerID string) []requestquery.Request {
 	joined, err := n.queries.ListActive(r.Context(), viewerID, requestquery.Filter{Scope: requestquery.ScopeJoined})
 	if err != nil {

@@ -11,6 +11,7 @@ import (
 	gamepostgres "github.com/convention-x-treme/lansurfer/internal/game/postgres"
 	"github.com/convention-x-treme/lansurfer/internal/gamerequest"
 	gamerequestpostgres "github.com/convention-x-treme/lansurfer/internal/gamerequest/postgres"
+	gamerequestquery "github.com/convention-x-treme/lansurfer/internal/query/gamerequest"
 	"github.com/convention-x-treme/lansurfer/internal/user"
 	userpostgres "github.com/convention-x-treme/lansurfer/internal/user/postgres"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -235,6 +236,148 @@ func TestMigration23KeepsLegacyClosedRequestWithoutStartedAt(t *testing.T) {
 	if got := fixture.countActivity(t, created.ID, "started"); got != 0 {
 		t.Fatalf("legacy request gained %d started activity rows, want none", got)
 	}
+}
+
+// A `playing` request is still an active round. The read models that mean "the
+// Game Requests happening now" — discovery in every scope, the installation-wide
+// navigation count, and the Free places capacity arithmetic — keep it, while a
+// terminal `closed` one leaves them. Trending gains exactly the one `started`
+// activity Start wrote, because a session really beginning is recent activity
+// under the existing six-hour definition and needs no separate scoring rule.
+func TestPlayingRequestRemainsActiveInTheReadModels(t *testing.T) {
+	fixture := newPlayingFixture(t)
+	queries := gamerequestquery.NewStore(fixture.pool)
+
+	playing := fixture.create(t, "Playing while others look")
+	if err := fixture.requests.Join(t.Context(), playing.ID, fixture.guest); err != nil {
+		t.Fatalf("join as guest: %v", err)
+	}
+	// Baseline before Start: this request's own `created` and `joined` rows are
+	// already scored, and they belong to one Game Request.
+	before := trendingEntry(t, queries, "Playing Game")
+	if before.ActivityCount != 2 || before.RequestCount != 1 {
+		t.Fatalf("trending before start = %d entries across %d requests, want 2 across 1",
+			before.ActivityCount, before.RequestCount)
+	}
+
+	if err := fixture.requests.Start(t.Context(), playing.ID, fixture.host); err != nil {
+		t.Fatalf("host start: %v", err)
+	}
+
+	started := trendingEntry(t, queries, "Playing Game")
+	if started.ActivityCount != before.ActivityCount+1 {
+		t.Fatalf("trending activity after start = %d, want %d plus the started entry",
+			started.ActivityCount, before.ActivityCount)
+	}
+	if started.RequestCount != before.RequestCount {
+		t.Fatalf("trending request count after start = %d, want it unchanged at %d",
+			started.RequestCount, before.RequestCount)
+	}
+
+	// Two more playing requests, one with a place free and one exactly full, so
+	// the capacity filter is exercised on the status the discovery list just
+	// started to include.
+	spare := fixture.createLimited(t, 3, "Playing with room")
+	if err := fixture.requests.Join(t.Context(), spare.ID, fixture.guest); err != nil {
+		t.Fatalf("join spare request as guest: %v", err)
+	}
+	full := fixture.createLimited(t, 2, "Playing and full")
+	if err := fixture.requests.Join(t.Context(), full.ID, fixture.guest); err != nil {
+		t.Fatalf("join full request as guest: %v", err)
+	}
+	for _, request := range []gamerequest.GameRequest{spare, full} {
+		if err := fixture.requests.Start(t.Context(), request.ID, fixture.host); err != nil {
+			t.Fatalf("start %q: %v", request.ID, err)
+		}
+	}
+
+	all := activeRequests(t, queries, fixture.outsider, gamerequestquery.Filter{})
+	for _, request := range []gamerequest.GameRequest{playing, spare, full} {
+		found := findActive(all, request.ID)
+		if found == nil {
+			t.Fatalf("playing request %s missing from All discovery: %#v", request.ID, all)
+		}
+		if found.Status != gamerequest.StatusPlaying {
+			t.Fatalf("discovery status for %s = %q, want %q", request.ID, found.Status, gamerequest.StatusPlaying)
+		}
+	}
+	if joined := activeRequests(t, queries, fixture.guest, gamerequestquery.Filter{Scope: gamerequestquery.ScopeJoined}); len(joined) != 3 {
+		t.Fatalf("Joined scope for a participant of all three = %#v, want 3 playing requests", joined)
+	}
+
+	withPlaces := activeRequests(t, queries, fixture.guest, gamerequestquery.Filter{OpenPlacesOnly: true})
+	if findActive(withPlaces, spare.ID) == nil {
+		t.Fatalf("Free places dropped a playing request with a place left: %#v", withPlaces)
+	}
+	if findActive(withPlaces, full.ID) != nil {
+		t.Fatalf("Free places kept a playing request that is full: %#v", withPlaces)
+	}
+
+	total, err := queries.CountActive(t.Context())
+	if err != nil {
+		t.Fatalf("CountActive: %v", err)
+	}
+	if total != 3 {
+		t.Fatalf("CountActive = %d, want all three playing requests", total)
+	}
+
+	// Ending the session is what takes a request out of the active set.
+	if err := fixture.requests.Close(t.Context(), playing.ID, fixture.host); err != nil {
+		t.Fatalf("close after start: %v", err)
+	}
+	if found := findActive(activeRequests(t, queries, fixture.outsider, gamerequestquery.Filter{}), playing.ID); found != nil {
+		t.Fatalf("closed request still in the active discovery list: %#v", found)
+	}
+	if total, err := queries.CountActive(t.Context()); err != nil || total != 2 {
+		t.Fatalf("CountActive after close = %d, %v, want 2", total, err)
+	}
+}
+
+func activeRequests(t *testing.T, queries *gamerequestquery.Store, viewerID string, filter gamerequestquery.Filter) []gamerequestquery.Request {
+	t.Helper()
+
+	requests, err := queries.ListActive(t.Context(), viewerID, filter)
+	if err != nil {
+		t.Fatalf("ListActive(%+v) as %s: %v", filter, viewerID, err)
+	}
+	return requests
+}
+
+func findActive(requests []gamerequestquery.Request, requestID string) *gamerequestquery.Request {
+	for index, request := range requests {
+		if request.ID == requestID {
+			return &requests[index]
+		}
+	}
+	return nil
+}
+
+func trendingEntry(t *testing.T, queries *gamerequestquery.Store, gameName string) gamerequestquery.TrendingGame {
+	t.Helper()
+
+	entries, err := queries.Trending(t.Context())
+	if err != nil {
+		t.Fatalf("Trending: %v", err)
+	}
+	for _, entry := range entries {
+		if entry.GameName == gameName {
+			return entry
+		}
+	}
+	t.Fatalf("trending has no entry for %q: %#v", gameName, entries)
+	return gamerequestquery.TrendingGame{}
+}
+
+// createLimited exists because fixture.create leaves capacity unlimited, and the
+// Free places arithmetic on a `playing` request needs a limit to compare against.
+func (f playingFixture) createLimited(t *testing.T, maxPlayers int32, description string) gamerequest.GameRequest {
+	t.Helper()
+
+	request, err := f.requests.Create(t.Context(), f.host, f.gameID, &maxPlayers, f.startsAt, description)
+	if err != nil {
+		t.Fatalf("create limited game request %q: %v", description, err)
+	}
+	return request
 }
 
 type playingFixture struct {

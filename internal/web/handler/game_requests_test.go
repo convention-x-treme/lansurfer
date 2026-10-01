@@ -59,7 +59,7 @@ func (f fakeGameRequestQueries) ByID(context.Context, string, string) (requestqu
 func (fakeGameRequestQueries) Trending(context.Context) ([]requestquery.TrendingGame, error) {
 	return nil, nil
 }
-func (fakeGameRequestQueries) CountOpen(context.Context) (int64, error) { return 0, nil }
+func (fakeGameRequestQueries) CountActive(context.Context) (int64, error) { return 0, nil }
 func (fakeGameRequestQueries) RecentlyViewed(context.Context, string) ([]requestquery.RecentRequest, error) {
 	return nil, nil
 }

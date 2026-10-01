@@ -11,15 +11,15 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const countOpenGameRequests = `-- name: CountOpenGameRequests :one
-SELECT count(*) FROM game_requests WHERE status = 'open'
+const countActiveGameRequests = `-- name: CountActiveGameRequests :one
+SELECT count(*) FROM game_requests WHERE status IN ('open', 'playing')
 `
 
-// CountOpenGameRequests backs the navigation badge, which states how many Game
-// Requests are open on this installation and is therefore deliberately not
-// affected by the viewer's discovery filters.
-func (q *Queries) CountOpenGameRequests(ctx context.Context) (int64, error) {
-	row := q.db.QueryRow(ctx, countOpenGameRequests)
+// CountActiveGameRequests backs the navigation badge, which states how many Game
+// Requests are active (`open` or `playing`) on this installation and is therefore
+// deliberately not affected by the viewer's discovery filters.
+func (q *Queries) CountActiveGameRequests(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, countActiveGameRequests)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -179,7 +179,7 @@ JOIN game_request_members m ON m.game_request_id = gr.id
 LEFT JOIN game_subscriptions gs ON gs.game_id = gr.game_id
   AND gs.user_id = $1::uuid
 LEFT JOIN game_igdb_enrichment enrichment ON enrichment.game_id = g.id
-WHERE gr.status = 'open'
+WHERE gr.status IN ('open', 'playing')
   AND (
       $2::text = ''
       OR strpos(lower(g.name), lower($2::text)) > 0
@@ -419,7 +419,7 @@ JOIN game_requests gr ON gr.id = a.game_request_id
 JOIN games g ON g.id = gr.game_id
 LEFT JOIN game_igdb_enrichment enrichment ON enrichment.game_id = g.id
 WHERE a.occurred_at >= $1
-  AND a.kind IN ('created', 'joined')
+  AND a.kind IN ('created', 'joined', 'started')
 GROUP BY g.id, g.name, enrichment.game_id
 ORDER BY count(*) DESC, count(DISTINCT a.game_request_id) DESC, lower(g.name), g.id
 LIMIT $2

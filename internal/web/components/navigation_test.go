@@ -74,14 +74,15 @@ func TestViewedAgoLabel(t *testing.T) {
 
 // The sidebar is the same on every screen, so its counts have to render
 // wherever the viewer is, not only on the screen that happens to own the
-// number. Only the current section's count is the warm one.
+// number. The badge counts active requests (`open` or `playing`), and only the
+// current section's count is the warm one.
 func TestNavigationRendersEveryCountAndMarksOnlyTheCurrentSection(t *testing.T) {
 	state := NavigationState{
-		Viewer:        &Viewer{ID: "user-1", GameNick: "Ada", Role: "player"},
-		Section:       "games",
-		OpenRequests:  14,
-		Games:         62,
-		FollowedGames: 7,
+		Viewer:         &Viewer{ID: "user-1", GameNick: "Ada", Role: "player"},
+		Section:        "games",
+		ActiveRequests: 14,
+		Games:          62,
+		FollowedGames:  7,
 	}
 	body := renderNavigation(t, state)
 

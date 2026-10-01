@@ -52,7 +52,7 @@ type GameRequestForm struct {
 	Description    string
 }
 
-func GameRequestList(brand branding.Brand, navigation components.NavigationState, filter requestquery.Filter, requests []requestquery.Request, trending []requestquery.TrendingGame, openRequests int64, message string, notice components.Notice) templ.Component {
+func GameRequestList(brand branding.Brand, navigation components.NavigationState, filter requestquery.Filter, requests []requestquery.Request, trending []requestquery.TrendingGame, activeRequests int64, message string, notice components.Notice) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -123,7 +123,7 @@ func GameRequestList(brand branding.Brand, navigation components.NavigationState
 			}
 			return nil
 		})
-		templ_7745c5c3_Err = components.Layout(brand, "Game Requests", navigationWithCount(navigation, openRequests)).Render(templ.WithChildren(ctx, templ_7745c5c3_Var2), templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = components.Layout(brand, "Game Requests", navigationWithActiveCount(navigation, activeRequests)).Render(templ.WithChildren(ctx, templ_7745c5c3_Var2), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -652,7 +652,7 @@ func GameRequestListContent(brand branding.Brand, requests []requestquery.Reques
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "\" alt=\"\" width=\"287\" height=\"352\"><div><h2 id=\"empty-request-title\" class=\"text-2xl font-bold\">No Game Request matches that.</h2><p class=\"mt-2 max-w-xl text-pretty text-base-content/70\">Try a different name or alias, or clear the filters to see everything open.</p><a class=\"btn btn-quiet btn-sm mt-5\" href=\"/game-requests\"><i class=\"ph ph-funnel-x\" aria-hidden=\"true\"></i>Clear filters</a></div></section>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "\" alt=\"\" width=\"287\" height=\"352\"><div><h2 id=\"empty-request-title\" class=\"text-2xl font-bold\">No Game Request matches that.</h2><p class=\"mt-2 max-w-xl text-pretty text-base-content/70\">Try a different name or alias, or clear the filters to see everything active.</p><a class=\"btn btn-quiet btn-sm mt-5\" href=\"/game-requests\"><i class=\"ph ph-funnel-x\" aria-hidden=\"true\"></i>Clear filters</a></div></section>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -670,7 +670,7 @@ func GameRequestListContent(brand branding.Brand, requests []requestquery.Reques
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, "\" alt=\"\" width=\"287\" height=\"352\"><div><h2 id=\"empty-request-title\" class=\"text-2xl font-bold\">Quiet out there. Start something?</h2><p class=\"mt-2 max-w-xl text-pretty text-base-content/70\">No open requests right now. Post one so other players can join.</p><a class=\"btn btn-primary btn-sm mt-5\" href=\"/game-requests/new\"><i class=\"ph ph-plus\" aria-hidden=\"true\"></i>Create Game Request</a></div></section>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, "\" alt=\"\" width=\"287\" height=\"352\"><div><h2 id=\"empty-request-title\" class=\"text-2xl font-bold\">Quiet out there. Start something?</h2><p class=\"mt-2 max-w-xl text-pretty text-base-content/70\">No active requests right now. Post one so other players can join.</p><a class=\"btn btn-primary btn-sm mt-5\" href=\"/game-requests/new\"><i class=\"ph ph-plus\" aria-hidden=\"true\"></i>Create Game Request</a></div></section>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -680,9 +680,9 @@ func GameRequestListContent(brand branding.Brand, requests []requestquery.Reques
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var26 string
-			templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs(openRequestsLabel(len(requests), filter))
+			templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs(activeRequestsLabel(len(requests), filter))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/game_requests.templ`, Line: 193, Col: 48}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/game_requests.templ`, Line: 193, Col: 50}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
 			if templ_7745c5c3_Err != nil {
@@ -3404,12 +3404,13 @@ func outOfBand(oob bool) templ.Attributes {
 	return nil
 }
 
-// navigationWithCount carries how many Game Requests are open on the whole
-// installation, not how many the current filter matched. The badge sits in the
-// shell beside every section, so a number that changed meaning with the
-// viewer's filter would read as the instance suddenly going quiet.
-func navigationWithCount(navigation components.NavigationState, openRequests int64) components.NavigationState {
-	navigation.OpenRequests = openRequests
+// navigationWithActiveCount carries how many Game Requests are active (`open`
+// or `playing`) on the whole installation, not how many the current filter
+// matched. The badge sits in the shell beside every section, so a number that
+// changed meaning with the viewer's filter would read as the instance suddenly
+// going quiet.
+func navigationWithActiveCount(navigation components.NavigationState, activeRequests int64) components.NavigationState {
+	navigation.ActiveRequests = activeRequests
 	return navigation
 }
 
@@ -3441,19 +3442,21 @@ func trendingAccessibleLabel(entry requestquery.TrendingGame) string {
 	return fmt.Sprintf("%s, %d activity %s across %d Game Requests", entry.GameName, entry.ActivityCount, entries, entry.RequestCount)
 }
 
-// openRequestsLabel says whether the list is showing everything or a filtered
-// selection, so a short list never reads as "nothing is happening".
-func openRequestsLabel(count int, filter requestquery.Filter) string {
+// activeRequestsLabel says whether the list is showing everything or a filtered
+// selection, so a short list never reads as "nothing is happening". It counts
+// the active set: `open` and `playing` alike, because a round that has started
+// is still one the player can look at.
+func activeRequestsLabel(count int, filter requestquery.Filter) string {
 	if filter.Active() {
 		if count == 1 {
-			return "1 matching open request"
+			return "1 matching active request"
 		}
-		return fmt.Sprintf("%d matching open requests", count)
+		return fmt.Sprintf("%d matching active requests", count)
 	}
 	if count == 1 {
-		return "1 open request"
+		return "1 active request"
 	}
-	return fmt.Sprintf("%d open requests", count)
+	return fmt.Sprintf("%d active requests", count)
 }
 
 // The scope chips are one exclusive choice rather than four toggles: a player
@@ -3495,9 +3498,9 @@ func filterQuery(filter requestquery.Filter) string {
 // count itself is rendered separately so it keeps the data typeface.
 func playersInRequestsLabel(requests []requestquery.Request) string {
 	if playersInRequests(requests) == 1 {
-		return " player in open requests · updated "
+		return " player in active requests · updated "
 	}
-	return " players in open requests · updated "
+	return " players in active requests · updated "
 }
 
 func playersInRequests(requests []requestquery.Request) int64 {

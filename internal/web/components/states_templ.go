@@ -44,7 +44,7 @@ func EmptyState(brand branding.Brand) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "\" alt=\"\"><div><h3 id=\"empty-state-title\" class=\"text-2xl font-bold\">Quiet out there. Start something?</h3><p class=\"mt-2 max-w-xl text-base-content/70\">No open requests right now. Post one so other players can join.</p><a class=\"btn btn-primary btn-sm mt-5\" href=\"/game-requests/new\"><i class=\"ph ph-plus\" aria-hidden=\"true\"></i>Create Game Request</a></div></section>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "\" alt=\"\"><div><h3 id=\"empty-state-title\" class=\"text-2xl font-bold\">Quiet out there. Start something?</h3><p class=\"mt-2 max-w-xl text-base-content/70\">No active requests right now. Post one so other players can join.</p><a class=\"btn btn-primary btn-sm mt-5\" href=\"/game-requests/new\"><i class=\"ph ph-plus\" aria-hidden=\"true\"></i>Create Game Request</a></div></section>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
