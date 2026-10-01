@@ -127,6 +127,13 @@ func (r *recordingRepository) SetStatus(_ context.Context, _, _ string, status S
 	return r.statusErr
 }
 func (*recordingRepository) RecordView(context.Context, string, string) error { return nil }
+func (*recordingRepository) PostMessage(context.Context, string, string, string) (Message, error) {
+	return Message{}, nil
+}
+func (*recordingRepository) Messages(context.Context, string, string) ([]Message, error) {
+	return nil, nil
+}
+func (*recordingRepository) ChatAccess(context.Context, string, string) error { return nil }
 
 type staticGames bool
 

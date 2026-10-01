@@ -327,6 +327,8 @@ Reading history lives in its own table, `game_request_views`, and is deliberatel
 
 Request-local activity is not event sourcing, generic audit logging, chat, or notification delivery history.
 
+Request-local chat lives in `game_request_messages`, owned by `gamerequest` and deliberately separate from activity: messages are not lifecycle history and never create notification work. Access is current membership (the Host is always a member) while the request is `open` or `playing`. Posting authorizes under the request row lock, so a message cannot land after the poster left or the request closed. The realtime stream carries a content-free `GameRequestChatMessage` signal as SSE event `game-request-chat`; the stream handler delivers it only to viewers for whom `CanChat` currently holds, checked per signal, so leaving cuts delivery immediately. Message content is only ever read through the authorized `Messages` call.
+
 ### `notification` (notification capability)
 
 Owns:

@@ -187,6 +187,7 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		NavigationQueries:   gameRequestQueries,
 		NavigationCatalog:   gameDiscovery,
 		Realtime:            realtime,
+		RealtimeChat:        gameRequests,
 		Covers:              covers,
 		Avatars:             avatars,
 		ProviderSync:        igdbSyncService,

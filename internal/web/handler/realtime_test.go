@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/convention-x-treme/lansurfer/internal/gamerequest"
+	"github.com/convention-x-treme/lansurfer/internal/user"
 	webmiddleware "github.com/convention-x-treme/lansurfer/internal/web/middleware"
 )
 
@@ -21,7 +22,7 @@ func TestRealtimeStreamsGameRequestEvents(t *testing.T) {
 	request := httptest.NewRequest("GET", "/events/game-requests", nil)
 	response := httptest.NewRecorder()
 
-	NewRealtime(source).GameRequests(response, request)
+	NewRealtime(source, nil).GameRequests(response, request)
 
 	if got := response.Header().Get("Content-Type"); got != "text/event-stream" {
 		t.Fatalf("Content-Type = %q", got)
@@ -43,7 +44,7 @@ func TestRealtimeUnsubscribesWhenClientDisconnects(t *testing.T) {
 	cancel()
 	request := httptest.NewRequest("GET", "/events/game-requests", nil).WithContext(ctx)
 
-	NewRealtime(source).GameRequests(httptest.NewRecorder(), request)
+	NewRealtime(source, nil).GameRequests(httptest.NewRecorder(), request)
 
 	if !source.unsubscribed {
 		t.Error("disconnected stream did not unsubscribe")
@@ -81,7 +82,7 @@ func TestRealtimeLogsStreamLifecycle(t *testing.T) {
 			var output bytes.Buffer
 			logger := slog.New(slog.NewJSONHandler(&output, nil))
 			source := &stubGameRequestEvents{events: testCase.events}
-			realtime := NewRealtime(source)
+			realtime := NewRealtime(source, nil)
 			handler := webmiddleware.RequestLogging(logger, nil)(http.HandlerFunc(realtime.GameRequests))
 
 			handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/events/game-requests", nil).WithContext(testCase.ctx()))
@@ -112,4 +113,34 @@ func (s *stubGameRequestEvents) Subscribers() int {
 		return 0
 	}
 	return 1
+}
+
+type stubChatAccess struct{ allowed map[string]bool }
+
+func (s stubChatAccess) CanChat(_ context.Context, _, userID string) (bool, error) {
+	return s.allowed[userID], nil
+}
+
+// Chat signals are delivered only to current participants; other events still
+// reach everyone.
+func TestRealtimeChatSignalsOnlyReachParticipants(t *testing.T) {
+	stream := func(userID string) string {
+		events := make(chan gamerequest.Event, 2)
+		events <- gamerequest.Event{Type: gamerequest.EventChatMessage, RequestID: "request-1"}
+		events <- gamerequest.Event{Type: gamerequest.EventStarted, RequestID: "request-1"}
+		close(events)
+		request := httptest.NewRequest("GET", "/events/game-requests", nil)
+		request = request.WithContext(webmiddleware.ContextWithUser(request.Context(), user.User{ID: userID}))
+		response := httptest.NewRecorder()
+		NewRealtime(&stubGameRequestEvents{events: events}, stubChatAccess{allowed: map[string]bool{"member": true}}).GameRequests(response, request)
+		return response.Body.String()
+	}
+
+	if body := stream("member"); !strings.Contains(body, "event: game-request-chat") {
+		t.Errorf("member did not receive chat signal: %q", body)
+	}
+	body := stream("outsider")
+	if strings.Contains(body, "game-request-chat") || !strings.Contains(body, "GameRequestStarted") {
+		t.Errorf("outsider stream = %q, want lifecycle event only", body)
+	}
 }

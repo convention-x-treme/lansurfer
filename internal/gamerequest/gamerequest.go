@@ -93,6 +93,11 @@ type Repository interface {
 	Leave(context.Context, string, string) error
 	SetStatus(context.Context, string, string, Status) error
 	RecordView(context.Context, string, string) error
+	PostMessage(ctx context.Context, requestID, userID, body string) (Message, error)
+	Messages(ctx context.Context, requestID, userID string) ([]Message, error)
+	// ChatAccess returns nil when userID may read the request's chat, else
+	// ErrNotFound, ErrNotMember, or ErrChatClosed.
+	ChatAccess(ctx context.Context, requestID, userID string) error
 }
 
 // GameLookup is implemented by the game module and keeps catalog rules with its owner.
