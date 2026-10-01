@@ -36,6 +36,24 @@ func TestRealtimeStreamsGameRequestEvents(t *testing.T) {
 	}
 }
 
+// A Host capacity change is one more gamerequest.Event, so it reaches open
+// pages through the existing stream with no protocol change.
+func TestRealtimeStreamsCapacityChanges(t *testing.T) {
+	events := make(chan gamerequest.Event, 1)
+	events <- gamerequest.Event{Type: gamerequest.EventCapacityChanged, RequestID: "request-7"}
+	close(events)
+	source := &stubGameRequestEvents{events: events}
+	response := httptest.NewRecorder()
+
+	NewRealtime(source).GameRequests(response, httptest.NewRequest("GET", "/events/game-requests", nil))
+
+	for _, want := range []string{"event: game-request", `"type":"GameRequestCapacityChanged"`, `"requestId":"request-7"`} {
+		if !strings.Contains(response.Body.String(), want) {
+			t.Errorf("stream does not contain %q: %q", want, response.Body.String())
+		}
+	}
+}
+
 func TestRealtimeUnsubscribesWhenClientDisconnects(t *testing.T) {
 	events := make(chan gamerequest.Event)
 	source := &stubGameRequestEvents{events: events}

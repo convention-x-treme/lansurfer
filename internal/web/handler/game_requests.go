@@ -35,6 +35,7 @@ type GameRequestCommands interface {
 	Start(context.Context, string, string) error
 	Close(context.Context, string, string) error
 	Cancel(context.Context, string, string) error
+	UpdateCapacity(context.Context, string, string, *int32) error
 	RecordView(context.Context, string, string) error
 }
 
@@ -397,7 +398,7 @@ func (h *GameRequests) View(w http.ResponseWriter, r *http.Request) {
 	if err := h.commands.RecordView(r.Context(), request.ID, account.ID); err != nil {
 		webmiddleware.LogError(r, "record Game Request view", err)
 	}
-	render(w, r, http.StatusOK, pages.GameRequestDetail(h.brand, h.navigationFor(r), request, account.ID, "", notice(r)))
+	render(w, r, http.StatusOK, pages.GameRequestDetail(h.brand, h.navigationFor(r), request, account.ID, pages.GameRequestDetailMessage{}, notice(r)))
 }
 
 func (h *GameRequests) RefreshView(w http.ResponseWriter, r *http.Request) {
@@ -412,7 +413,7 @@ func (h *GameRequests) RefreshView(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "refresh game request", http.StatusInternalServerError)
 		return
 	}
-	render(w, r, http.StatusOK, pages.GameRequestDetailContent(request, account.ID, true))
+	render(w, r, http.StatusOK, pages.GameRequestDetailContent(request, account.ID, true, pages.GameRequestDetailMessage{}))
 }
 
 func (h *GameRequests) Join(w http.ResponseWriter, r *http.Request) {
@@ -482,7 +483,76 @@ func (h *GameRequests) renderChangeError(w http.ResponseWriter, r *http.Request,
 		h.renderError(w, r)
 		return
 	}
-	render(w, r, status, pages.GameRequestDetail(h.brand, h.navigationFor(r), request, viewerID, gameRequestMessage(cause), components.Notice{}))
+	render(w, r, status, pages.GameRequestDetail(h.brand, h.navigationFor(r), request, viewerID, pages.GameRequestDetailMessage{Text: gameRequestMessage(cause)}, components.Notice{}))
+}
+
+// UpdateCapacity changes the maximum player count from the detail page's Host
+// editor. It is detail-only: there is no list-origin variant. The submitted
+// text is kept on failure so the Host corrects it instead of retyping it.
+func (h *GameRequests) UpdateCapacity(w http.ResponseWriter, r *http.Request) {
+	account, _ := webmiddleware.CurrentUser(r.Context())
+	requestID := chi.URLParam(r, "requestID")
+	submitted := strings.TrimSpace(r.FormValue("max_players"))
+	maxPlayers, err := parseCapacity(submitted)
+	if err == nil {
+		err = h.commands.UpdateCapacity(r.Context(), requestID, account.ID, maxPlayers)
+	}
+	if err == nil {
+		h.redirect(w, r, "/game-requests/"+requestID)
+		return
+	}
+	status := gameRequestErrorStatus(err)
+	if status == http.StatusInternalServerError {
+		webmiddleware.LogError(r, "change Game Request capacity", err)
+		h.renderError(w, r)
+		return
+	}
+	request, queryErr := h.queries.ByID(r.Context(), requestID, account.ID)
+	if errors.Is(queryErr, gamerequest.ErrNotFound) {
+		http.Error(w, "game request not found", http.StatusNotFound)
+		return
+	}
+	if queryErr != nil {
+		webmiddleware.LogError(r, "reload Game Request after capacity error", queryErr)
+		h.renderError(w, r)
+		return
+	}
+	render(w, r, status, pages.GameRequestDetail(h.brand, h.navigationFor(r), request, account.ID, capacityMessage(err, submitted), components.Notice{}))
+}
+
+// parseCapacity reads the Host capacity field. Blank and 0 both mean
+// unlimited (nil), matching the composer; a finite value is the domain's 2
+// at least, up to the same 999 input bound the composer applies.
+func parseCapacity(value string) (*int32, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil, nil
+	}
+	parsed, err := strconv.ParseInt(value, 10, 32)
+	if err != nil || parsed < 0 || parsed == 1 || parsed > maxPlayersLimit {
+		return nil, gamerequest.ErrInvalidMaxPlayers
+	}
+	if parsed == 0 {
+		return nil, nil
+	}
+	maximum := int32(parsed)
+	return &maximum, nil
+}
+
+// capacityMessage words a failed capacity change. Rejections about the typed
+// value belong beside the field; a refusal the editor cannot show (a non-Host
+// or an inactive request has no editor) stays a page-level alert.
+func capacityMessage(err error, submitted string) pages.GameRequestDetailMessage {
+	switch {
+	case errors.Is(err, gamerequest.ErrInvalidMaxPlayers):
+		return pages.GameRequestDetailMessage{Text: "Maximum players must be 0 for unlimited or a whole number from 2 to 999.", Field: "max_players", Value: submitted}
+	case errors.Is(err, gamerequest.ErrCapacityBelowMembers):
+		return pages.GameRequestDetailMessage{Text: "Maximum players cannot be lower than the current player count.", Field: "max_players", Value: submitted}
+	case errors.Is(err, gamerequest.ErrNotActive):
+		return pages.GameRequestDetailMessage{Text: "Capacity can only be changed while the Game Request is active."}
+	default:
+		return pages.GameRequestDetailMessage{Text: gameRequestMessage(err)}
+	}
 }
 
 func (h *GameRequests) parseCreateForm(r *http.Request) (pages.GameRequestForm, *int32, time.Time, error) {
@@ -580,7 +650,8 @@ func gameRequestErrorStatus(err error) int {
 		return http.StatusForbidden
 	case errors.Is(err, gamerequest.ErrFull), errors.Is(err, gamerequest.ErrAlreadyMember),
 		errors.Is(err, gamerequest.ErrNotMember), errors.Is(err, gamerequest.ErrCreatorCannotLeave),
-		errors.Is(err, gamerequest.ErrNotOpen), errors.Is(err, gamerequest.ErrNotPlaying):
+		errors.Is(err, gamerequest.ErrNotOpen), errors.Is(err, gamerequest.ErrNotPlaying),
+		errors.Is(err, gamerequest.ErrNotActive), errors.Is(err, gamerequest.ErrCapacityBelowMembers):
 		return http.StatusConflict
 	case errors.Is(err, gamerequest.ErrGameUnavailable),
 		errors.Is(err, gamerequest.ErrInvalidMaxPlayers), errors.Is(err, gamerequest.ErrInvalidStartsAt),

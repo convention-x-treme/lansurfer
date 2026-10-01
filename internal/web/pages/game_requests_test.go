@@ -95,7 +95,7 @@ func TestGameRequestDetailRefreshCarriesStampAndNewestActivityFirst(t *testing.T
 	}
 
 	var refreshed bytes.Buffer
-	if err := GameRequestDetailContent(request, "user-9", true).Render(context.Background(), &refreshed); err != nil {
+	if err := GameRequestDetailContent(request, "user-9", true, GameRequestDetailMessage{}).Render(context.Background(), &refreshed); err != nil {
 		t.Fatalf("render refreshed detail: %v", err)
 	}
 	body := refreshed.String()
@@ -113,7 +113,7 @@ func TestGameRequestDetailRefreshCarriesStampAndNewestActivityFirst(t *testing.T
 	}
 
 	var initial bytes.Buffer
-	if err := GameRequestDetailContent(request, "user-9", false).Render(context.Background(), &initial); err != nil {
+	if err := GameRequestDetailContent(request, "user-9", false, GameRequestDetailMessage{}).Render(context.Background(), &initial); err != nil {
 		t.Fatalf("render initial detail: %v", err)
 	}
 	if strings.Contains(initial.String(), `hx-swap-oob`) {
@@ -137,7 +137,7 @@ func TestDetailActivityKeepsHistoryAfterLeave(t *testing.T) {
 	}
 
 	var rendered bytes.Buffer
-	if err := GameRequestDetailContent(request, "host-1", false).Render(context.Background(), &rendered); err != nil {
+	if err := GameRequestDetailContent(request, "host-1", false, GameRequestDetailMessage{}).Render(context.Background(), &rendered); err != nil {
 		t.Fatalf("render detail: %v", err)
 	}
 	body := rendered.String()
@@ -367,7 +367,7 @@ func TestGameRequestDetailContentRendersCoverOnceAndDescribesTheGame(t *testing.
 		CreatorID: "host-1", Status: gamerequest.StatusOpen, MemberCount: 1,
 	}
 	var rendered bytes.Buffer
-	if err := GameRequestDetailContent(request, "host-1", false).Render(context.Background(), &rendered); err != nil {
+	if err := GameRequestDetailContent(request, "host-1", false, GameRequestDetailMessage{}).Render(context.Background(), &rendered); err != nil {
 		t.Fatalf("render detail: %v", err)
 	}
 	body := rendered.String()
@@ -395,7 +395,7 @@ func TestGameRequestDetailOffersFollowOnlyWhileNotFollowing(t *testing.T) {
 		CreatorID: "host-1", Status: gamerequest.StatusOpen, MemberCount: 1,
 	}
 	var rendered bytes.Buffer
-	if err := GameRequestDetailContent(request, "viewer-1", false).Render(context.Background(), &rendered); err != nil {
+	if err := GameRequestDetailContent(request, "viewer-1", false, GameRequestDetailMessage{}).Render(context.Background(), &rendered); err != nil {
 		t.Fatalf("render detail: %v", err)
 	}
 	body := rendered.String()
@@ -405,7 +405,7 @@ func TestGameRequestDetailOffersFollowOnlyWhileNotFollowing(t *testing.T) {
 
 	request.ViewerSubscribed = true
 	rendered.Reset()
-	if err := GameRequestDetailContent(request, "viewer-1", false).Render(context.Background(), &rendered); err != nil {
+	if err := GameRequestDetailContent(request, "viewer-1", false, GameRequestDetailMessage{}).Render(context.Background(), &rendered); err != nil {
 		t.Fatalf("render detail: %v", err)
 	}
 	body = rendered.String()
@@ -423,7 +423,7 @@ func TestGameRequestDetailContentMarksLastPlace(t *testing.T) {
 		CreatorID: "host-1", Status: gamerequest.StatusOpen, MemberCount: 3, MaxPlayers: &limit,
 	}
 	var rendered bytes.Buffer
-	if err := GameRequestDetailContent(request, "host-1", false).Render(context.Background(), &rendered); err != nil {
+	if err := GameRequestDetailContent(request, "host-1", false, GameRequestDetailMessage{}).Render(context.Background(), &rendered); err != nil {
 		t.Fatalf("render detail: %v", err)
 	}
 	body := rendered.String()
@@ -435,7 +435,7 @@ func TestGameRequestDetailContentMarksLastPlace(t *testing.T) {
 
 	request.MemberCount = 1
 	rendered.Reset()
-	if err := GameRequestDetailContent(request, "host-1", false).Render(context.Background(), &rendered); err != nil {
+	if err := GameRequestDetailContent(request, "host-1", false, GameRequestDetailMessage{}).Render(context.Background(), &rendered); err != nil {
 		t.Fatalf("render detail: %v", err)
 	}
 	if body := rendered.String(); strings.Contains(body, "detail-hero-last") || strings.Contains(body, "Last place") {
@@ -799,7 +799,7 @@ func renderLifecycleDetail(t *testing.T, status gamerequest.Status, viewerID str
 		Members: []requestquery.Member{{ID: "host-1", GameNick: "Otter"}},
 	}
 	var rendered bytes.Buffer
-	if err := GameRequestDetailContent(request, viewerID, false).Render(context.Background(), &rendered); err != nil {
+	if err := GameRequestDetailContent(request, viewerID, false, GameRequestDetailMessage{}).Render(context.Background(), &rendered); err != nil {
 		t.Fatalf("render detail: %v", err)
 	}
 	return rendered.String()
@@ -849,7 +849,7 @@ func renderRow(t *testing.T, request requestquery.Request, viewerID string) stri
 func renderDetail(t *testing.T, request requestquery.Request, viewerID string) string {
 	t.Helper()
 	var rendered bytes.Buffer
-	if err := GameRequestDetailContent(request, viewerID, false).Render(context.Background(), &rendered); err != nil {
+	if err := GameRequestDetailContent(request, viewerID, false, GameRequestDetailMessage{}).Render(context.Background(), &rendered); err != nil {
 		t.Fatalf("render detail: %v", err)
 	}
 	return rendered.String()
@@ -995,5 +995,118 @@ func TestFullActiveRowSaysFullInsteadOfJoin(t *testing.T) {
 		if !strings.Contains(body, `<span class="action-static">Full</span>`) {
 			t.Errorf("%s full row lacks the Full action: %s", status, body)
 		}
+	}
+}
+
+func capacityEditor(t *testing.T, body string) string {
+	t.Helper()
+	start := strings.Index(body, `action="/game-requests/request-1/capacity"`)
+	if start < 0 {
+		return ""
+	}
+	form := body[start:]
+	return form[:strings.Index(form, "</form>")]
+}
+
+func renderCapacityDetail(t *testing.T, request requestquery.Request, viewerID string, message GameRequestDetailMessage) string {
+	t.Helper()
+	var rendered bytes.Buffer
+	if err := GameRequestDetailContent(request, viewerID, false, message).Render(context.Background(), &rendered); err != nil {
+		t.Fatalf("render detail: %v", err)
+	}
+	return rendered.String()
+}
+
+func capacityRequest(status gamerequest.Status, limit *int32) requestquery.Request {
+	return requestquery.Request{
+		ID: "request-1", Game: game.GamePresentation{Name: "Warcraft III"}, CreatorID: "host-1",
+		Status: status, MemberCount: 2, MaxPlayers: limit,
+		Members: []requestquery.Member{{ID: "host-1", GameNick: "Otter"}, {ID: "user-2", GameNick: "Alex"}},
+	}
+}
+
+// The Host edits capacity in place, in a form of its own that asks for no
+// confirmation because the change is reversible. It stays apart from the
+// destructive lifecycle actions.
+func TestHostCapacityEditorAppearsWhileActive(t *testing.T) {
+	limit := int32(4)
+	for _, status := range []gamerequest.Status{gamerequest.StatusOpen, gamerequest.StatusPlaying} {
+		body := renderCapacityDetail(t, capacityRequest(status, &limit), "host-1", GameRequestDetailMessage{})
+		editor := capacityEditor(t, body)
+		if editor == "" {
+			t.Fatalf("%s Host detail has no capacity editor", status)
+		}
+		for _, want := range []string{`name="max_players"`, `min="0"`, `max="999"`, `step="1"`, `type="number"`, `value="4"`,
+			"0 means unlimited; finite limits start at 2.", ">Save</button>"} {
+			if !strings.Contains(editor, want) {
+				t.Errorf("%s capacity editor lacks %q: %s", status, want, editor)
+			}
+		}
+		if strings.Contains(body[strings.LastIndex(body[:strings.Index(body, editor)], "<form"):strings.Index(body, editor)+len(editor)], "data-confirm") {
+			t.Errorf("%s capacity editor asks for confirmation", status)
+		}
+	}
+
+	unlimited := renderCapacityDetail(t, capacityRequest(gamerequest.StatusOpen, nil), "host-1", GameRequestDetailMessage{})
+	if editor := capacityEditor(t, unlimited); !strings.Contains(editor, `value="0"`) {
+		t.Errorf("unlimited request does not show 0 in the editor: %s", editor)
+	}
+}
+
+func TestCapacityEditorIsHostAndActiveOnly(t *testing.T) {
+	limit := int32(4)
+	for name, tc := range map[string]struct {
+		status gamerequest.Status
+		viewer string
+		joined bool
+	}{
+		"participant":    {gamerequest.StatusOpen, "user-2", true},
+		"outsider":       {gamerequest.StatusPlaying, "user-3", false},
+		"host on closed": {gamerequest.StatusClosed, "host-1", true},
+		"host cancelled": {gamerequest.StatusCancelled, "host-1", true},
+	} {
+		request := capacityRequest(tc.status, &limit)
+		request.ViewerJoined = tc.joined
+		body := renderCapacityDetail(t, request, tc.viewer, GameRequestDetailMessage{})
+		if strings.Contains(body, "/capacity") || strings.Contains(body, `name="max_players"`) {
+			t.Errorf("%s sees the capacity editor", name)
+		}
+	}
+}
+
+// A rejected capacity stays beside its field, with the submitted text kept so
+// the Host corrects it instead of retyping.
+func TestCapacityEditorShowsFieldLocalErrorAndKeepsSubmittedValue(t *testing.T) {
+	limit := int32(4)
+	message := GameRequestDetailMessage{Text: "Maximum players cannot be lower than the current player count.", Field: "max_players", Value: "1"}
+	body := renderCapacityDetail(t, capacityRequest(gamerequest.StatusPlaying, &limit), "host-1", message)
+	editor := capacityEditor(t, body)
+
+	for _, want := range []string{`id="capacity-error"`, message.Text, `aria-invalid="true"`, `value="1"`, `aria-describedby="capacity-error capacity-hint"`} {
+		if !strings.Contains(editor, want) {
+			t.Errorf("capacity editor lacks %q: %s", want, editor)
+		}
+	}
+	if strings.Contains(editor, `value="4"`) {
+		t.Errorf("editor shows the stored value instead of the submitted one: %s", editor)
+	}
+	if strings.Contains(body, `role="alert"`) {
+		t.Errorf("a field error also rendered as a page alert: %s", body)
+	}
+}
+
+func TestPageLevelDetailMessageIsNotAFieldError(t *testing.T) {
+	limit := int32(4)
+	var rendered bytes.Buffer
+	message := GameRequestDetailMessage{Text: "This Game Request is no longer open."}
+	if err := GameRequestDetail(branding.Default(), components.NavigationState{}, capacityRequest(gamerequest.StatusOpen, &limit), "host-1", message, components.Notice{}).Render(context.Background(), &rendered); err != nil {
+		t.Fatalf("render detail page: %v", err)
+	}
+	body := rendered.String()
+	if !strings.Contains(body, `role="alert"`) || !strings.Contains(body, message.Text) {
+		t.Errorf("page-level message is not an alert: %s", body)
+	}
+	if editor := capacityEditor(t, body); strings.Contains(editor, "capacity-error") || !strings.Contains(editor, `value="4"`) {
+		t.Errorf("a page-level message leaked into the capacity editor: %s", editor)
 	}
 }

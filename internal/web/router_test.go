@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -1646,6 +1647,7 @@ type routerGameRequests struct {
 	closed    string
 	cancelled string
 	started   string
+	capacity  string
 	joinError error
 }
 
@@ -1668,6 +1670,13 @@ func (r *routerGameRequests) Leave(_ context.Context, requestID, userID string) 
 	return nil
 }
 func (*routerGameRequests) RecordView(context.Context, string, string) error { return nil }
+func (r *routerGameRequests) UpdateCapacity(_ context.Context, requestID, userID string, maximum *int32) error {
+	r.capacity = requestID + "/" + userID + "/unlimited"
+	if maximum != nil {
+		r.capacity = requestID + "/" + userID + "/" + strconv.Itoa(int(*maximum))
+	}
+	return nil
+}
 
 func (r *routerGameRequests) Close(_ context.Context, requestID, userID string) error {
 	r.closed = requestID + "/" + userID
@@ -1803,6 +1812,35 @@ func TestStartRouteIsAuthenticatedAndCSRFProtected(t *testing.T) {
 	}
 	if response := post(true, true); response.Code != http.StatusSeeOther || commands.started != "request-1/user-1" {
 		t.Errorf("start: status = %d, started = %q", response.Code, commands.started)
+	}
+}
+
+func TestCapacityRouteIsAuthenticatedAndCSRFProtected(t *testing.T) {
+	commands := &routerGameRequests{}
+	router := gameRequestTestRouter(commands, &routerGameRequestQueries{}, nil)
+
+	post := func(authenticated, csrf bool) *httptest.ResponseRecorder {
+		request := httptest.NewRequest(http.MethodPost, "/game-requests/request-1/capacity", strings.NewReader("max_players=6"))
+		request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		if authenticated {
+			request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+		}
+		if csrf {
+			addCSRF(request)
+		}
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, request)
+		return response
+	}
+
+	if response := post(true, false); response.Code != http.StatusForbidden || commands.capacity != "" {
+		t.Errorf("without CSRF: status = %d, capacity = %q", response.Code, commands.capacity)
+	}
+	if post(false, true); commands.capacity != "" {
+		t.Errorf("anonymous capacity change reached the command: %q", commands.capacity)
+	}
+	if response := post(true, true); response.Code != http.StatusSeeOther || commands.capacity != "request-1/user-1/6" {
+		t.Errorf("capacity change: status = %d, capacity = %q", response.Code, commands.capacity)
 	}
 }
 

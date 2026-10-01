@@ -30,6 +30,11 @@ type fakeGameRequestCommands struct {
 	recordViewErr error
 
 	started string
+
+	capacityCalls int
+	capacityArgs  string
+	capacityValue *int32
+	capacityErr   error
 }
 
 func (f *fakeGameRequestCommands) Create(_ context.Context, _, gameID string, maxPlayers *int32, _ time.Time, _ string) (gamerequest.GameRequest, error) {
@@ -48,6 +53,12 @@ func (f *fakeGameRequestCommands) Cancel(context.Context, string, string) error 
 func (f *fakeGameRequestCommands) Start(_ context.Context, requestID, userID string) error {
 	f.started = requestID + "/" + userID
 	return nil
+}
+func (f *fakeGameRequestCommands) UpdateCapacity(_ context.Context, requestID, userID string, maxPlayers *int32) error {
+	f.capacityCalls++
+	f.capacityArgs = requestID + "/" + userID
+	f.capacityValue = maxPlayers
+	return f.capacityErr
 }
 func (f *fakeGameRequestCommands) RecordView(_ context.Context, requestID, userID string) error {
 	f.viewed = append(f.viewed, requestID+"/"+userID)
@@ -576,6 +587,9 @@ func TestGameRequestErrorStatus(t *testing.T) {
 		{gamerequest.ErrNotFound, http.StatusNotFound},
 		{gamerequest.ErrNotCreator, http.StatusForbidden},
 		{gamerequest.ErrFull, http.StatusConflict},
+		{gamerequest.ErrCapacityBelowMembers, http.StatusConflict},
+		{gamerequest.ErrNotActive, http.StatusConflict},
+		{gamerequest.ErrInvalidMaxPlayers, http.StatusUnprocessableEntity},
 		{gamerequest.ErrInvalidDescription, http.StatusUnprocessableEntity},
 		{game.ErrInvalidProviderReference, http.StatusUnprocessableEntity},
 		{game.ErrProviderRecordNotFound, http.StatusNotFound},
@@ -665,5 +679,147 @@ func TestNotPlayingIsAConflictWithItsOwnMessage(t *testing.T) {
 		if got := gameRequestMessage(err); got != want {
 			t.Errorf("message for %v = %q, want %q", err, got, want)
 		}
+	}
+}
+
+// The capacity form reuses the composer's meaning for the field -- blank and 0
+// are "unlimited" -- but adds the domain's finite minimum of 2, so it is parsed
+// on its own instead of through parseCreateForm.
+func TestParseCapacity(t *testing.T) {
+	for value, want := range map[string]*int32{"": nil, "0": nil, "  ": nil, "2": new(int32(2)), "999": new(int32(999))} {
+		got, err := parseCapacity(value)
+		if err != nil {
+			t.Errorf("parseCapacity(%q) error = %v", value, err)
+			continue
+		}
+		if (got == nil) != (want == nil) || (got != nil && *got != *want) {
+			t.Errorf("parseCapacity(%q) = %v, want %v", value, got, want)
+		}
+	}
+	for _, value := range []string{"1", "-1", "abc", "2.5", "1000", "99999999999"} {
+		if got, err := parseCapacity(value); !errors.Is(err, gamerequest.ErrInvalidMaxPlayers) || got != nil {
+			t.Errorf("parseCapacity(%q) = %v, %v, want ErrInvalidMaxPlayers", value, got, err)
+		}
+	}
+}
+
+func postCapacity(t *testing.T, commands *fakeGameRequestCommands, queries fakeGameRequestQueries, viewerID string, form url.Values) *httptest.ResponseRecorder {
+	t.Helper()
+	handler := NewGameRequests(commands, queries, nil, &fakeGameRequestDiscovery{}, nil, branding.Default())
+	router := chi.NewRouter()
+	router.Post("/{requestID}/capacity", handler.UpdateCapacity)
+
+	request := httptest.NewRequest(http.MethodPost, "/request-1/capacity", strings.NewReader(form.Encode()))
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	request = request.WithContext(webmiddleware.ContextWithUser(request.Context(), user.User{ID: viewerID, GameNick: "Ada"}))
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	return response
+}
+
+func TestUpdateCapacityCallsCommandAndRedirectsToDetail(t *testing.T) {
+	for value, want := range map[string]*int32{"6": new(int32(6)), "0": nil, "": nil} {
+		commands := &fakeGameRequestCommands{}
+		response := postCapacity(t, commands, fakeGameRequestQueries{}, "host-1", url.Values{"max_players": {value}})
+
+		if commands.capacityCalls != 1 || commands.capacityArgs != "request-1/host-1" {
+			t.Fatalf("max_players=%q: command calls = %d with %q", value, commands.capacityCalls, commands.capacityArgs)
+		}
+		if (commands.capacityValue == nil) != (want == nil) || (want != nil && *commands.capacityValue != *want) {
+			t.Errorf("max_players=%q reached the command as %v, want %v", value, commands.capacityValue, want)
+		}
+		if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/game-requests/request-1" {
+			t.Errorf("max_players=%q response = %d %q", value, response.Code, response.Header().Get("Location"))
+		}
+	}
+}
+
+func TestUpdateCapacityRejectsInvalidInputBeforeTheCommand(t *testing.T) {
+	queries := fakeGameRequestQueries{request: requestquery.Request{
+		ID: "request-1", Game: game.GamePresentation{Name: "Warcraft III"}, CreatorID: "host-1", Status: gamerequest.StatusOpen,
+	}}
+	for _, value := range []string{"1", "abc", "1000", "-3"} {
+		commands := &fakeGameRequestCommands{}
+		response := postCapacity(t, commands, queries, "host-1", url.Values{"max_players": {value}})
+		if response.Code != http.StatusUnprocessableEntity {
+			t.Errorf("max_players=%q status = %d, want 422", value, response.Code)
+		}
+		if commands.capacityCalls != 0 {
+			t.Errorf("max_players=%q reached the command", value)
+		}
+	}
+}
+
+func TestUpdateCapacityMapsBusinessFailures(t *testing.T) {
+	queries := fakeGameRequestQueries{request: requestquery.Request{
+		ID: "request-1", Game: game.GamePresentation{Name: "Warcraft III"}, CreatorID: "host-1", Status: gamerequest.StatusOpen,
+	}}
+	for cause, want := range map[error]int{
+		gamerequest.ErrCapacityBelowMembers: http.StatusConflict,
+		gamerequest.ErrNotActive:            http.StatusConflict,
+		gamerequest.ErrNotCreator:           http.StatusForbidden,
+		gamerequest.ErrNotFound:             http.StatusNotFound,
+		errors.New("database unavailable"):  http.StatusInternalServerError,
+	} {
+		commands := &fakeGameRequestCommands{capacityErr: cause}
+		if response := postCapacity(t, commands, queries, "host-1", url.Values{"max_players": {"3"}}); response.Code != want {
+			t.Errorf("%v: status = %d, want %d", cause, response.Code, want)
+		}
+	}
+}
+
+// A rejected capacity comes back on the detail page beside the Host's editor,
+// with what was typed, and the detail keeps the request's own status code.
+func TestUpdateCapacityRendersFieldLocalErrorWithSubmittedValue(t *testing.T) {
+	limit := int32(4)
+	queries := fakeGameRequestQueries{request: requestquery.Request{
+		ID: "request-1", Game: game.GamePresentation{Name: "Warcraft III"}, CreatorID: "host-1",
+		Status: gamerequest.StatusPlaying, MemberCount: 3, MaxPlayers: &limit,
+	}}
+	for name, tc := range map[string]struct {
+		value string
+		cause error
+		code  int
+		text  string
+	}{
+		"invalid value":    {"1", nil, http.StatusUnprocessableEntity, "Maximum players must be 0 for unlimited or a whole number from 2 to 999."},
+		"below membership": {"2", gamerequest.ErrCapacityBelowMembers, http.StatusConflict, "Maximum players cannot be lower than the current player count."},
+	} {
+		commands := &fakeGameRequestCommands{capacityErr: tc.cause}
+		response := postCapacity(t, commands, queries, "host-1", url.Values{"max_players": {tc.value}})
+		body := response.Body.String()
+
+		if response.Code != tc.code {
+			t.Errorf("%s: status = %d, want %d", name, response.Code, tc.code)
+		}
+		for _, want := range []string{`id="capacity-error"`, tc.text, `value="` + tc.value + `"`, `aria-invalid="true"`} {
+			if !strings.Contains(body, want) {
+				t.Errorf("%s: body lacks %q", name, want)
+			}
+		}
+	}
+}
+
+func TestUpdateCapacityKeepsRefusalsTheEditorCannotShowAsPageAlerts(t *testing.T) {
+	limit := int32(4)
+	closed := fakeGameRequestQueries{request: requestquery.Request{
+		ID: "request-1", Game: game.GamePresentation{Name: "Warcraft III"}, CreatorID: "host-1",
+		Status: gamerequest.StatusClosed, MemberCount: 2, MaxPlayers: &limit,
+	}}
+	response := postCapacity(t, &fakeGameRequestCommands{capacityErr: gamerequest.ErrNotActive}, closed, "host-1", url.Values{"max_players": {"6"}})
+	body := response.Body.String()
+	if response.Code != http.StatusConflict || !strings.Contains(body, `role="alert"`) ||
+		!strings.Contains(body, "Capacity can only be changed while the Game Request is active.") {
+		t.Errorf("inactive refusal: status = %d, body = %s", response.Code, body)
+	}
+
+	open := fakeGameRequestQueries{request: requestquery.Request{
+		ID: "request-1", Game: game.GamePresentation{Name: "Warcraft III"}, CreatorID: "host-1",
+		Status: gamerequest.StatusOpen, MemberCount: 2, MaxPlayers: &limit,
+	}}
+	response = postCapacity(t, &fakeGameRequestCommands{capacityErr: gamerequest.ErrNotCreator}, open, "user-2", url.Values{"max_players": {"6"}})
+	body = response.Body.String()
+	if response.Code != http.StatusForbidden || !strings.Contains(body, `role="alert"`) || strings.Contains(body, "capacity-error") {
+		t.Errorf("non-Host refusal: status = %d, body = %s", response.Code, body)
 	}
 }

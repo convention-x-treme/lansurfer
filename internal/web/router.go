@@ -267,6 +267,7 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 				requests.Post("/{requestID}/start", gameRequestsHandler.Start)
 				requests.Post("/{requestID}/close", gameRequestsHandler.Close)
 				requests.Post("/{requestID}/cancel", gameRequestsHandler.Cancel)
+				requests.Post("/{requestID}/capacity", gameRequestsHandler.UpdateCapacity)
 			})
 		}
 		if dependencies.Realtime != nil {
