@@ -42,13 +42,13 @@ const (
 type EventType string
 
 const (
-	EventCreated         EventType = "GameRequestCreated"
-	EventJoined          EventType = "GameRequestJoined"
-	EventLeft            EventType = "GameRequestLeft"
-	EventStarted         EventType = "GameRequestStarted"
-	EventClosed          EventType = "GameRequestClosed"
-	EventCancelled       EventType = "GameRequestCancelled"
-	EventCapacityChanged EventType = "GameRequestCapacityChanged"
+	EventCreated   EventType = "GameRequestCreated"
+	EventJoined    EventType = "GameRequestJoined"
+	EventLeft      EventType = "GameRequestLeft"
+	EventStarted   EventType = "GameRequestStarted"
+	EventClosed    EventType = "GameRequestClosed"
+	EventCancelled EventType = "GameRequestCancelled"
+	EventUpdated   EventType = "GameRequestUpdated"
 )
 
 type Event struct {
@@ -64,13 +64,13 @@ type Event struct {
 type ActivityKind string
 
 const (
-	ActivityCreated         ActivityKind = "created"
-	ActivityJoined          ActivityKind = "joined"
-	ActivityLeft            ActivityKind = "left"
-	ActivityStarted         ActivityKind = "started"
-	ActivityClosed          ActivityKind = "closed"
-	ActivityCancelled       ActivityKind = "cancelled"
-	ActivityCapacityChanged ActivityKind = "capacity_changed"
+	ActivityCreated   ActivityKind = "created"
+	ActivityJoined    ActivityKind = "joined"
+	ActivityLeft      ActivityKind = "left"
+	ActivityStarted   ActivityKind = "started"
+	ActivityClosed    ActivityKind = "closed"
+	ActivityCancelled ActivityKind = "cancelled"
+	ActivityUpdated   ActivityKind = "request_updated"
 )
 
 // EventPublisher is implemented by delivery infrastructure. Publishing is a
@@ -97,9 +97,14 @@ type Repository interface {
 	Leave(context.Context, string, string) error
 	SetStatus(context.Context, string, string, Status) error
 	RecordView(context.Context, string, string) error
-	UpdateCapacity(context.Context, string, string, *int32) (bool, error)
+	UpdateDetails(context.Context, string, string, UpdateDetailsInput) (bool, error)
 }
 
+type UpdateDetailsInput struct {
+	MaxPlayers  *int32
+	StartsAt    time.Time
+	Description string
+}
 // GameLookup is implemented by the game module and keeps catalog rules with its owner.
 type GameLookup interface {
 	ActiveExists(context.Context, string) (bool, error)
@@ -173,15 +178,17 @@ func (s *Service) Leave(ctx context.Context, requestID, userID string) error {
 	return err
 }
 
-// UpdateCapacity changes the optional maximum player count (nil = unlimited).
-// A semantically identical value is a no-op and publishes no event.
-func (s *Service) UpdateCapacity(ctx context.Context, requestID, userID string, maxPlayers *int32) error {
-	if maxPlayers != nil && *maxPlayers < 2 {
-		return ErrInvalidMaxPlayers
+// UpdateDetails changes the mutable coordination details of a Game Request.
+// A semantic no-op publishes no event.
+func (s *Service) UpdateDetails(ctx context.Context, requestID, userID string, input UpdateDetailsInput) error {
+	description, err := ValidateCreateInput(input.MaxPlayers, input.StartsAt, input.Description)
+	if err != nil {
+		return err
 	}
-	changed, err := s.repository.UpdateCapacity(ctx, requestID, userID, maxPlayers)
+	input.Description = description
+	changed, err := s.repository.UpdateDetails(ctx, requestID, userID, input)
 	if err == nil && changed {
-		s.publish(Event{Type: EventCapacityChanged, RequestID: requestID})
+		s.publish(Event{Type: EventUpdated, RequestID: requestID})
 	}
 	return err
 }

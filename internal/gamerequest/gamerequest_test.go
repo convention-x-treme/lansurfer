@@ -126,69 +126,112 @@ func TestPublishesSuccessfulLifecycleChangesOnly(t *testing.T) {
 	}
 }
 
-func TestUpdateCapacityPublishesOnlyRealChanges(t *testing.T) {
-	repository := &recordingRepository{capacityChanged: true}
-	publisher := &recordingPublisher{}
-	service := NewService(repository, staticGames(true), publisher)
+func TestUpdateDetailsPublishesEachRealChangeOnce(t *testing.T) {
+	startsAt := time.Date(2026, time.October, 2, 18, 30, 0, 0, time.UTC)
+	tests := []struct {
+		name  string
+		input UpdateDetailsInput
+	}{
+		{name: "capacity only", input: UpdateDetailsInput{MaxPlayers: new(int32(6)), StartsAt: startsAt, Description: "same"}},
+		{name: "start only", input: UpdateDetailsInput{StartsAt: startsAt.Add(time.Hour), Description: "same"}},
+		{name: "description only", input: UpdateDetailsInput{StartsAt: startsAt, Description: "changed"}},
+		{name: "multiple fields", input: UpdateDetailsInput{MaxPlayers: new(int32(6)), StartsAt: startsAt.Add(time.Hour), Description: "changed"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repository := &recordingRepository{detailsChanged: true}
+			publisher := &recordingPublisher{}
+			service := NewService(repository, staticGames(true), publisher)
 
-	if err := service.UpdateCapacity(t.Context(), "request-1", "host-1", new(int32(2))); err != nil {
-		t.Fatal(err)
-	}
-	if repository.capacity == nil || *repository.capacity != 2 {
-		t.Fatalf("repository capacity = %v, want 2", repository.capacity)
-	}
-	if want := []Event{{Type: EventCapacityChanged, RequestID: "request-1"}}; len(publisher.events) != 1 || publisher.events[0] != want[0] {
-		t.Fatalf("events = %#v, want %#v", publisher.events, want)
-	}
-
-	repository.capacityChanged = false
-	if err := service.UpdateCapacity(t.Context(), "request-1", "host-1", nil); err != nil {
-		t.Fatalf("no-op error = %v", err)
-	}
-	if repository.capacity != nil {
-		t.Errorf("unlimited must reach repository as nil, got %v", *repository.capacity)
-	}
-	if len(publisher.events) != 1 {
-		t.Errorf("no-op published an event: %#v", publisher.events)
-	}
-
-	repository.capacityErr = ErrCapacityBelowMembers
-	if err := service.UpdateCapacity(t.Context(), "request-1", "host-1", new(int32(3))); !errors.Is(err, ErrCapacityBelowMembers) {
-		t.Fatalf("error = %v, want %v", err, ErrCapacityBelowMembers)
-	}
-	if len(publisher.events) != 1 {
-		t.Errorf("failed change published an event: %#v", publisher.events)
+			if err := service.UpdateDetails(t.Context(), "request-1", "host-1", tt.input); err != nil {
+				t.Fatal(err)
+			}
+			if repository.detailsCalls != 1 || repository.detailsInput != tt.input {
+				t.Fatalf("repository input = %#v, calls = %d; want %#v, 1", repository.detailsInput, repository.detailsCalls, tt.input)
+			}
+			if want := []Event{{Type: EventUpdated, RequestID: "request-1"}}; len(publisher.events) != 1 || publisher.events[0] != want[0] {
+				t.Fatalf("events = %#v, want %#v", publisher.events, want)
+			}
+		})
 	}
 }
 
-func TestUpdateCapacityRejectsFiniteBelowTwoBeforeRepository(t *testing.T) {
-	repository := &recordingRepository{capacityChanged: true}
-	service := NewService(repository, staticGames(true), &recordingPublisher{})
+func TestUpdateDetailsPublishesOnlySuccessfulChanges(t *testing.T) {
+	repository := &recordingRepository{}
+	publisher := &recordingPublisher{}
+	service := NewService(repository, staticGames(true), publisher)
+	input := UpdateDetailsInput{StartsAt: time.Date(2026, time.October, 2, 18, 30, 0, 0, time.UTC), Description: "text"}
+
+	if err := service.UpdateDetails(t.Context(), "request-1", "host-1", input); err != nil {
+		t.Fatalf("no-op error = %v", err)
+	}
+	if len(publisher.events) != 0 {
+		t.Fatalf("no-op published events: %#v", publisher.events)
+	}
+
+	repository.detailsErr = ErrCapacityBelowMembers
+	if err := service.UpdateDetails(t.Context(), "request-1", "host-1", input); !errors.Is(err, ErrCapacityBelowMembers) {
+		t.Fatalf("error = %v, want %v", err, ErrCapacityBelowMembers)
+	}
+	if len(publisher.events) != 0 {
+		t.Fatalf("failed update published events: %#v", publisher.events)
+	}
+}
+
+func TestUpdateDetailsValidatesAndTrimsInput(t *testing.T) {
+	validStart := time.Date(2026, time.October, 2, 18, 30, 0, 0, time.UTC)
 	for _, value := range []int32{-1, 0, 1} {
-		if err := service.UpdateCapacity(t.Context(), "request-1", "host-1", &value); !errors.Is(err, ErrInvalidMaxPlayers) {
-			t.Errorf("UpdateCapacity(%d) error = %v, want %v", value, err, ErrInvalidMaxPlayers)
+		repository := &recordingRepository{}
+		service := NewService(repository, staticGames(true), &recordingPublisher{})
+		input := UpdateDetailsInput{MaxPlayers: &value, StartsAt: validStart}
+		if err := service.UpdateDetails(t.Context(), "request-1", "host-1", input); !errors.Is(err, ErrInvalidMaxPlayers) {
+			t.Errorf("UpdateDetails(max=%d) error = %v, want %v", value, err, ErrInvalidMaxPlayers)
+		}
+		if repository.detailsCalls != 0 {
+			t.Errorf("repository called for invalid max %d", value)
 		}
 	}
-	if repository.capacityCalls != 0 {
-		t.Errorf("repository called %d times for invalid input", repository.capacityCalls)
+
+	for _, input := range []UpdateDetailsInput{
+		{StartsAt: time.Time{}},
+		{StartsAt: validStart, Description: strings.Repeat("x", 1001)},
+	} {
+		repository := &recordingRepository{}
+		service := NewService(repository, staticGames(true), &recordingPublisher{})
+		if err := service.UpdateDetails(t.Context(), "request-1", "host-1", input); err == nil {
+			t.Errorf("UpdateDetails(%#v) succeeded, want validation error", input)
+		}
+		if repository.detailsCalls != 0 {
+			t.Errorf("repository called for invalid input %#v", input)
+		}
+	}
+
+	repository := &recordingRepository{}
+	service := NewService(repository, staticGames(true), &recordingPublisher{})
+	input := UpdateDetailsInput{StartsAt: validStart, Description: "  trimmed  "}
+	if err := service.UpdateDetails(t.Context(), "request-1", "host-1", input); err != nil {
+		t.Fatal(err)
+	}
+	if repository.detailsInput.Description != "trimmed" {
+		t.Errorf("description = %q, want trimmed", repository.detailsInput.Description)
 	}
 }
 
 type recordingRepository struct {
-	created         GameRequest
-	joinErr         error
-	status          Status
-	statusErr       error
-	capacity        *int32
-	capacityChanged bool
-	capacityErr     error
-	capacityCalls   int
+	created        GameRequest
+	joinErr        error
+	status         Status
+	statusErr      error
+	detailsInput   UpdateDetailsInput
+	detailsChanged bool
+	detailsErr     error
+	detailsCalls   int
 }
 
-func (r *recordingRepository) UpdateCapacity(_ context.Context, _, _ string, maxPlayers *int32) (bool, error) {
-	r.capacityCalls++
-	r.capacity = maxPlayers
-	return r.capacityChanged, r.capacityErr
+func (r *recordingRepository) UpdateDetails(_ context.Context, _, _ string, input UpdateDetailsInput) (bool, error) {
+	r.detailsCalls++
+	r.detailsInput = input
+	return r.detailsChanged, r.detailsErr
 }
 
 func (r *recordingRepository) Create(_ context.Context, request GameRequest) (GameRequest, error) {
@@ -211,3 +254,4 @@ func (g staticGames) ActiveExists(context.Context, string) (bool, error) { retur
 type recordingPublisher struct{ events []Event }
 
 func (p *recordingPublisher) Publish(event Event) { p.events = append(p.events, event) }
+
