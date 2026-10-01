@@ -253,12 +253,10 @@ func (f *fixture) Cancel(_ context.Context, requestID, userID string) error {
 	return f.transition(requestID, userID, gamerequest.StatusOpen, gamerequest.StatusCancelled, gamerequest.ActivityCancelled, gamerequest.EventCancelled)
 }
 
-// UpdateCapacity mirrors the store's rules over the in-memory request: Host
-// only, active only, never below the current member count, and a semantically
-// identical value changes nothing and publishes nothing. PostgreSQL row locking
-// is not emulated; the integration tests own that.
-func (f *fixture) UpdateCapacity(_ context.Context, requestID, userID string, maxPlayers *int32) error {
-	if err := f.beforeMutation("capacity"); err != nil {
+// UpdateDetails mirrors the store's Host and active-request rules. PostgreSQL
+// row locking is not emulated; the integration tests own that.
+func (f *fixture) UpdateDetails(_ context.Context, requestID, userID string, input gamerequest.UpdateDetailsInput) error {
+	if err := f.beforeMutation("details"); err != nil {
 		return err
 	}
 	f.mu.Lock()
@@ -273,20 +271,43 @@ func (f *fixture) UpdateCapacity(_ context.Context, requestID, userID string, ma
 	if !isActiveStatus(entry.request.Status) {
 		return gamerequest.ErrNotActive
 	}
-	previous := entry.request.MaxPlayers
-	if (previous == nil && maxPlayers == nil) || (previous != nil && maxPlayers != nil && *previous == *maxPlayers) {
-		return nil
+	previousMaxPlayers := entry.request.MaxPlayers
+	previousStartsAt := entry.request.StartsAt
+	capacityChanged := !sameCapacity(previousMaxPlayers, input.MaxPlayers)
+	startsChanged := !previousStartsAt.Equal(input.StartsAt)
+	descriptionChanged := entry.request.Description != input.Description
+	if entry.request.Status == gamerequest.StatusPlaying && startsChanged {
+		return gamerequest.ErrInvalidStartsAt
 	}
-	if maxPlayers != nil && entry.request.MemberCount > int64(*maxPlayers) {
+	if capacityChanged && input.MaxPlayers != nil && entry.request.MemberCount > int64(*input.MaxPlayers) {
 		return gamerequest.ErrCapacityBelowMembers
 	}
-	entry.request.MaxPlayers = maxPlayers
-	entry.request.Activity = append([]requestquery.Activity{{
-		Kind: gamerequest.ActivityCapacityChanged, ActorID: userID, ActorGameNick: "Ada Player", OccurredAt: time.Now(),
-		PreviousMaxPlayers: previous, NewMaxPlayers: maxPlayers,
-	}}, entry.request.Activity...)
-	f.broker.Publish(gamerequest.Event{Type: gamerequest.EventCapacityChanged, RequestID: requestID})
+	if !capacityChanged && !startsChanged && !descriptionChanged {
+		return nil
+	}
+	entry.request.MaxPlayers = input.MaxPlayers
+	entry.request.StartsAt = input.StartsAt
+	entry.request.Description = input.Description
+	activity := requestquery.Activity{
+		Kind: gamerequest.ActivityUpdated, ActorID: userID, ActorGameNick: "Ada Player", OccurredAt: time.Now(),
+		DescriptionChanged: descriptionChanged,
+	}
+	if capacityChanged {
+		activity.PreviousMaxPlayers = previousMaxPlayers
+		activity.NewMaxPlayers = input.MaxPlayers
+	}
+	if startsChanged {
+		activity.PreviousStartsAt = &previousStartsAt
+		newStartsAt := input.StartsAt
+		activity.NewStartsAt = &newStartsAt
+	}
+	entry.request.Activity = append([]requestquery.Activity{activity}, entry.request.Activity...)
+	f.broker.Publish(gamerequest.Event{Type: gamerequest.EventUpdated, RequestID: requestID})
 	return nil
+}
+
+func sameCapacity(previous, next *int32) bool {
+	return previous == nil && next == nil || previous != nil && next != nil && *previous == *next
 }
 
 // transition moves a request from one status to the next. Start and Cancel

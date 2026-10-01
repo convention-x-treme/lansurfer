@@ -35,7 +35,7 @@ type GameRequestCommands interface {
 	Start(context.Context, string, string) error
 	Close(context.Context, string, string) error
 	Cancel(context.Context, string, string) error
-	UpdateCapacity(context.Context, string, string, *int32) error
+	UpdateDetails(context.Context, string, string, gamerequest.UpdateDetailsInput) error
 	RecordView(context.Context, string, string) error
 }
 
@@ -391,14 +391,18 @@ func (h *GameRequests) View(w http.ResponseWriter, r *http.Request) {
 		h.renderError(w, r)
 		return
 	}
-	// Recorded before the navigation is built, so the request the viewer is
-	// reading is already the newest entry in their own "Recently viewed" list
-	// rather than appearing one navigation later. A failure here costs the
-	// viewer a history entry, never the page they asked for.
 	if err := h.commands.RecordView(r.Context(), request.ID, account.ID); err != nil {
 		webmiddleware.LogError(r, "record Game Request view", err)
 	}
-	render(w, r, http.StatusOK, pages.GameRequestDetail(h.brand, h.navigationFor(r), request, account.ID, pages.GameRequestDetailMessage{}, notice(r)))
+	message := pages.GameRequestDetailMessage{}
+	if r.URL.Query().Get("edit") == "1" && request.CreatorID == account.ID &&
+		(request.Status == gamerequest.StatusOpen || request.Status == gamerequest.StatusPlaying) {
+		message = pages.GameRequestDetailMessage{
+			Editing: true, InitializeStart: request.Status == gamerequest.StatusOpen,
+			Form: requestDetailsForm(request),
+		}
+	}
+	render(w, r, http.StatusOK, pages.GameRequestDetail(h.brand, h.navigationFor(r), request, account.ID, message, notice(r)))
 }
 
 func (h *GameRequests) RefreshView(w http.ResponseWriter, r *http.Request) {
@@ -486,16 +490,46 @@ func (h *GameRequests) renderChangeError(w http.ResponseWriter, r *http.Request,
 	render(w, r, status, pages.GameRequestDetail(h.brand, h.navigationFor(r), request, viewerID, pages.GameRequestDetailMessage{Text: gameRequestMessage(cause)}, components.Notice{}))
 }
 
-// UpdateCapacity changes the maximum player count from the detail page's Host
-// editor. It is detail-only: there is no list-origin variant. The submitted
-// text is kept on failure so the Host corrects it instead of retyping it.
-func (h *GameRequests) UpdateCapacity(w http.ResponseWriter, r *http.Request) {
+// UpdateDetails changes the Host-editable request fields in one command. The
+// current start remains authoritative for playing requests, even if a client
+// submits forged date/time fields.
+func (h *GameRequests) UpdateDetails(w http.ResponseWriter, r *http.Request) {
 	account, _ := webmiddleware.CurrentUser(r.Context())
 	requestID := chi.URLParam(r, "requestID")
-	submitted := strings.TrimSpace(r.FormValue("max_players"))
-	maxPlayers, err := parseCapacity(submitted)
+	if err := r.ParseForm(); err != nil {
+		webmiddleware.LogError(r, "parse Game Request details", err)
+		h.renderError(w, r)
+		return
+	}
+	form := requestDetailsFormFromValues(r)
+	request, err := h.queries.ByID(r.Context(), requestID, account.ID)
+	if errors.Is(err, gamerequest.ErrNotFound) {
+		http.Error(w, "game request not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		webmiddleware.LogError(r, "load Game Request before details update", err)
+		h.renderError(w, r)
+		return
+	}
+
+	maxPlayers, err := parseCapacity(form.MaxPlayers)
+	startsAt := request.StartsAt
+	if err == nil && request.Status == gamerequest.StatusOpen {
+		if form.StartDate == "" || form.StartTime == "" {
+			err = gamerequest.ErrInvalidStartsAt
+		} else {
+			startsAt, err = parseBrowserTime(form.StartDate+"T"+form.StartTime, form.Timezone)
+		}
+	}
+	description := form.Description
 	if err == nil {
-		err = h.commands.UpdateCapacity(r.Context(), requestID, account.ID, maxPlayers)
+		description, err = gamerequest.ValidateCreateInput(maxPlayers, startsAt, form.Description)
+	}
+	if err == nil {
+		err = h.commands.UpdateDetails(r.Context(), requestID, account.ID, gamerequest.UpdateDetailsInput{
+			MaxPlayers: maxPlayers, StartsAt: startsAt, Description: description,
+		})
 	}
 	if err == nil {
 		h.redirect(w, r, "/game-requests/"+requestID)
@@ -503,7 +537,7 @@ func (h *GameRequests) UpdateCapacity(w http.ResponseWriter, r *http.Request) {
 	}
 	status := gameRequestErrorStatus(err)
 	if status == http.StatusInternalServerError {
-		webmiddleware.LogError(r, "change Game Request capacity", err)
+		webmiddleware.LogError(r, "change Game Request details", err)
 		h.renderError(w, r)
 		return
 	}
@@ -513,16 +547,17 @@ func (h *GameRequests) UpdateCapacity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if queryErr != nil {
-		webmiddleware.LogError(r, "reload Game Request after capacity error", queryErr)
+		webmiddleware.LogError(r, "reload Game Request after details error", queryErr)
 		h.renderError(w, r)
 		return
 	}
-	render(w, r, status, pages.GameRequestDetail(h.brand, h.navigationFor(r), request, account.ID, capacityMessage(err, submitted), components.Notice{}))
+	message := updateDetailsMessage(err, form)
+	message.Editing = request.CreatorID == account.ID &&
+		(request.Status == gamerequest.StatusOpen || request.Status == gamerequest.StatusPlaying)
+	message.Form = form
+	message.InitializeStart = false
+	render(w, r, status, pages.GameRequestDetail(h.brand, h.navigationFor(r), request, account.ID, message, components.Notice{}))
 }
-
-// parseCapacity reads the Host capacity field. Blank and 0 both mean
-// unlimited (nil), matching the composer; a finite value is the domain's 2
-// at least, up to the same 999 input bound the composer applies.
 func parseCapacity(value string) (*int32, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
@@ -539,17 +574,41 @@ func parseCapacity(value string) (*int32, error) {
 	return &maximum, nil
 }
 
-// capacityMessage words a failed capacity change. Rejections about the typed
-// value belong beside the field; a refusal the editor cannot show (a non-Host
-// or an inactive request has no editor) stays a page-level alert.
-func capacityMessage(err error, submitted string) pages.GameRequestDetailMessage {
+
+func requestDetailsForm(request requestquery.Request) pages.GameRequestForm {
+	maxPlayers := "0"
+	if request.MaxPlayers != nil {
+		maxPlayers = strconv.Itoa(int(*request.MaxPlayers))
+	}
+	startsAt := request.StartsAt.UTC()
+	return pages.GameRequestForm{
+		MaxPlayers: maxPlayers, StartDate: startsAt.Format("2006-01-02"),
+		StartTime: startsAt.Format("15:04"), Timezone: "UTC", Description: request.Description,
+	}
+}
+
+func requestDetailsFormFromValues(r *http.Request) pages.GameRequestForm {
+	return pages.GameRequestForm{
+		MaxPlayers: r.FormValue("max_players"), StartDate: r.FormValue("start_date"),
+		StartTime: r.FormValue("start_time"), Timezone: r.FormValue("timezone"),
+		Description: r.FormValue("description"),
+	}
+}
+
+func updateDetailsMessage(err error, form pages.GameRequestForm) pages.GameRequestDetailMessage {
 	switch {
 	case errors.Is(err, gamerequest.ErrInvalidMaxPlayers):
-		return pages.GameRequestDetailMessage{Text: gameRequestMessage(err), Field: "max_players", Value: submitted}
+		return pages.GameRequestDetailMessage{Text: gameRequestMessage(err), Field: "max_players", Value: form.MaxPlayers}
 	case errors.Is(err, gamerequest.ErrCapacityBelowMembers):
-		return pages.GameRequestDetailMessage{Text: "Maximum players cannot be lower than the current player count.", Field: "max_players", Value: submitted}
+		return pages.GameRequestDetailMessage{Text: "Maximum players cannot be lower than the current player count.", Field: "max_players", Value: form.MaxPlayers}
+	case errors.Is(err, gamerequest.ErrInvalidStartsAt):
+		return pages.GameRequestDetailMessage{Text: "Enter a valid planned start date and time.", Field: "start"}
+	case errors.Is(err, gamerequest.ErrInvalidDescription):
+		return pages.GameRequestDetailMessage{Text: gameRequestMessage(err), Field: "description"}
 	case errors.Is(err, gamerequest.ErrNotActive):
-		return pages.GameRequestDetailMessage{Text: "Capacity can only be changed while the Game Request is active."}
+		return pages.GameRequestDetailMessage{Text: "This Game Request is no longer active."}
+	case errors.Is(err, gamerequest.ErrNotCreator):
+		return pages.GameRequestDetailMessage{Text: "Only the Host can edit this Game Request."}
 	default:
 		return pages.GameRequestDetailMessage{Text: gameRequestMessage(err)}
 	}

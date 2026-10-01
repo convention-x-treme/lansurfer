@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/convention-x-treme/lansurfer/internal/game"
 	"github.com/convention-x-treme/lansurfer/internal/gamerequest"
@@ -558,14 +559,15 @@ templ StartChoice(value, label, selected string) {
 	<label class="start-choice"><input class="sr-only" type="radio" name="start_preset" value={ value } checked?={ startPreset(selected) == value }/><span>{ label }</span></label>
 }
 
-// GameRequestDetailMessage is one server-side complaint about a detail-page
-// action. A non-empty Field ("max_players") ties it to the Host capacity
-// editor, with Value holding the raw submitted text so a rejected entry is
-// shown back as typed. An empty Field is a page-level alert.
+// GameRequestDetailMessage carries editor mode and values plus one
+// field-local or page-level complaint. Value retains raw submitted capacity.
 type GameRequestDetailMessage struct {
-	Text  string
-	Field string
-	Value string
+	Text           string
+	Field          string
+	Value          string
+	Editing        bool
+	InitializeStart bool
+	Form           GameRequestForm
 }
 
 func (m GameRequestDetailMessage) forField(field string) bool {
@@ -685,46 +687,28 @@ templ GameRequestDetailContent(request requestquery.Request, viewerID string, re
 			if requestActive(request) && request.CreatorID == viewerID {
 				<section class="detail-card detail-card-accent">
 					<p class="section-label">Host actions</p>
-					if request.Status == gamerequest.StatusOpen {
-						<form method="post" action={ "/game-requests/" + request.ID + "/start" } data-confirm="Start this game? The Game Request becomes Playing and can no longer be cancelled. Close it when the game is finished.">
-							@components.CSRFInput()
-							<button class="btn btn-primary btn-sm w-full" type="submit"><i class="ph ph-play" aria-hidden="true"></i>Start game</button>
-						</form>
-						<form method="post" action={ "/game-requests/" + request.ID + "/cancel" } data-confirm="Cancel this Game Request? This cannot be reopened.">
-							@components.CSRFInput()
-							<button class="btn btn-danger btn-sm w-full" type="submit"><i class="ph ph-x-circle" aria-hidden="true"></i>Cancel Game Request</button>
-						</form>
-						<p class="text-xs leading-relaxed text-base-content/65">Visible to the Host only. Starting asks once; cancelling asks once and notifies every player.</p>
-					} else if request.Status == gamerequest.StatusPlaying {
-						<form method="post" action={ "/game-requests/" + request.ID + "/close" } data-confirm="Close this game? The Game Request ends and cannot be reopened.">
-							@components.CSRFInput()
-							<button class="btn btn-step-back btn-sm w-full" type="submit"><i class="ph ph-prohibit" aria-hidden="true"></i>Close game</button>
-						</form>
-						<p class="text-xs leading-relaxed text-base-content/65">Visible to the Host only. Close the game when everyone is done.</p>
-					}
-					<p class="section-label">Capacity</p>
-					<form method="post" action={ "/game-requests/" + request.ID + "/capacity" } class="grid gap-2">
-						@components.CSRFInput()
-						<label class="grid gap-2">
-							<span class="label-text font-medium">Maximum players</span>
-							<input
-								class="input input-bordered data-text w-32"
-								type="number"
-								name="max_players"
-								min="0"
-								max="999"
-								step="1"
-								inputmode="numeric"
-								value={ capacityInputValue(request, message) }
-								{ fieldState("capacity-hint", message.forField("max_players"), "capacity-error")... }
-							/>
-						</label>
-						if message.forField("max_players") {
-							<p id="capacity-error" class="field-error">{ message.Text }</p>
+					if message.Editing {
+						@GameRequestDetailsEditor(request, message)
+					} else {
+						if request.Status == gamerequest.StatusOpen {
+							<form method="post" action={ "/game-requests/" + request.ID + "/start" } data-confirm="Start this game? The Game Request becomes Playing and can no longer be cancelled. Close it when the game is finished.">
+								@components.CSRFInput()
+								<button class="btn btn-primary btn-sm w-full" type="submit"><i class="ph ph-play" aria-hidden="true"></i>Start game</button>
+							</form>
+							<form method="post" action={ "/game-requests/" + request.ID + "/cancel" } data-confirm="Cancel this Game Request? This cannot be reopened.">
+								@components.CSRFInput()
+								<button class="btn btn-danger btn-sm w-full" type="submit"><i class="ph ph-x-circle" aria-hidden="true"></i>Cancel Game Request</button>
+							</form>
+							<p class="text-xs leading-relaxed text-base-content/65">Visible to the Host only. Starting asks once; cancelling asks once and notifies every player.</p>
+						} else if request.Status == gamerequest.StatusPlaying {
+							<form method="post" action={ "/game-requests/" + request.ID + "/close" } data-confirm="Close this game? The Game Request ends and cannot be reopened.">
+								@components.CSRFInput()
+								<button class="btn btn-step-back btn-sm w-full" type="submit"><i class="ph ph-prohibit" aria-hidden="true"></i>Close game</button>
+							</form>
+							<p class="text-xs leading-relaxed text-base-content/65">Visible to the Host only. Close the game when everyone is done.</p>
 						}
-						<span id="capacity-hint" class="text-xs text-base-content/65">0 means unlimited; finite limits start at 2.</span>
-						<button class="btn btn-primary btn-sm w-full" type="submit"><i class="ph ph-floppy-disk" aria-hidden="true"></i>Save</button>
-					</form>
+						<a class="btn btn-quiet btn-sm w-full" href={ "/game-requests/" + request.ID + "?edit=1" }><i class="ph ph-pencil-simple" aria-hidden="true"></i>Edit</a>
+					}
 				</section>
 			}
 			<section class="detail-card">
@@ -761,6 +745,13 @@ templ GameRequestDetailContent(request requestquery.Request, viewerID string, re
 									<time class="data-text w-12 flex-none text-xs text-base-content/70" datetime={ entry.OccurredAt.Format(time.RFC3339) } title={ components.AbsoluteTime(entry.OccurredAt) } data-local-time="clock">{ clockLabel(entry.OccurredAt) }</time>
 								}
 								<span class="flex-1 text-sm text-base-content/80">{ activityLabel(entry) }</span>
+								if activityHasStartChange(entry) {
+									<span class="text-xs"> (from</span>
+									<time class="data-text text-xs" datetime={ entry.PreviousStartsAt.Format(time.RFC3339) } title={ components.AbsoluteTime(*entry.PreviousStartsAt) } data-local-time="absolute">{ entry.PreviousStartsAt.UTC().Format("2006-01-02 15:04") }</time>
+									<span class="text-xs">to</span>
+									<time class="data-text text-xs" datetime={ entry.NewStartsAt.Format(time.RFC3339) } title={ components.AbsoluteTime(*entry.NewStartsAt) } data-local-time="absolute">{ entry.NewStartsAt.UTC().Format("2006-01-02 15:04") }</time>
+									<span class="text-xs">)</span>
+								}
 							</li>
 						}
 					</ol>
@@ -768,6 +759,65 @@ templ GameRequestDetailContent(request requestquery.Request, viewerID string, re
 			</section>
 		</aside>
 	</div>
+}
+templ GameRequestDetailsEditor(request requestquery.Request, message GameRequestDetailMessage) {
+	<form method="post" action={ "/game-requests/" + request.ID + "/details" } class="grid gap-4" data-local-start?={ message.InitializeStart } data-start-instant={ request.StartsAt.Format(time.RFC3339) }>
+		@components.CSRFInput()
+		<label class="grid gap-2">
+			<span class="label-text font-medium">Maximum players</span>
+			<input
+				class="input input-bordered data-text w-32"
+				type="number"
+				name="max_players"
+				min="0"
+				max="999"
+				step="1"
+				inputmode="numeric"
+				value={ capacityInputValue(request, message) }
+				{ fieldState("capacity-hint", message.forField("max_players"), "capacity-error")... }
+			/>
+		</label>
+		if message.forField("max_players") {
+			<p id="capacity-error" class="field-error">{ message.Text }</p>
+		}
+		<span id="capacity-hint" class="text-xs text-base-content/65">0 means unlimited; finite limits start at 2.</span>
+		if request.Status == gamerequest.StatusOpen {
+			<fieldset class="grid gap-2" { describedBy("", message.forField("start"), "start-error")... }>
+				<legend class="label-text font-medium">Planned start</legend>
+				if message.forField("start") {
+					<p id="start-error" class="field-error">{ message.Text }</p>
+				}
+				<div class="grid grid-cols-2 gap-3">
+					<label class="grid gap-2">
+						<span class="label-text text-sm">Date</span>
+						<input class="input input-bordered data-text" type="date" name="start_date" value={ message.Form.StartDate } required/>
+					</label>
+					<label class="grid gap-2">
+						<span class="label-text text-sm">Time</span>
+						<input class="input input-bordered data-text" type="time" name="start_time" value={ message.Form.StartTime } required/>
+					</label>
+				</div>
+				<input type="hidden" name="timezone" value={ message.Form.Timezone } data-timezone/>
+			</fieldset>
+		} else {
+			<div class="grid gap-2">
+				<p class="label-text font-medium">Planned start</p>
+				<time class="data-text" datetime={ request.StartsAt.Format(time.RFC3339) } title={ components.AbsoluteTime(request.StartsAt) } data-local-time="absolute">{ request.StartsAt.UTC().Format("2006-01-02 15:04") }</time>
+			</div>
+		}
+		<label class="grid gap-2">
+			<span class="label-text font-medium">Description</span>
+			<textarea class="textarea textarea-bordered min-h-28" name="description" maxlength="1000" data-description-input { fieldState("", message.forField("description"), "description-error")... }>{ message.Form.Description }</textarea>
+			if message.forField("description") {
+				<p id="description-error" class="field-error">{ message.Text }</p>
+			}
+			<span class="text-xs text-base-content/65"><span data-description-count>{ utf8.RuneCountInString(message.Form.Description) }</span>/1000 characters</span>
+		</label>
+		<div class="grid grid-cols-2 gap-2">
+			<button class="btn btn-primary btn-sm" type="submit"><i class="ph ph-floppy-disk" aria-hidden="true"></i>Save</button>
+			<a class="btn btn-quiet btn-sm" href={ "/game-requests/" + request.ID }>Cancel</a>
+		</div>
+	</form>
 }
 
 templ GameRequestError(brand branding.Brand, navigation components.NavigationState) {
@@ -807,6 +857,9 @@ func capacityLabel(value *int32) string {
 func capacityInputValue(request requestquery.Request, message GameRequestDetailMessage) string {
 	if message.forField("max_players") {
 		return message.Value
+	}
+	if message.Editing && message.Form.MaxPlayers != "" {
+		return message.Form.MaxPlayers
 	}
 	if request.MaxPlayers == nil {
 		return "0"
@@ -932,7 +985,11 @@ func memberAvatarClass(member requestquery.Member, request requestquery.Request)
 	return "avatar-placeholder avatar-placeholder-member"
 }
 
-// activityLabel names a durable activity entry with the actor's public name.
+func activityHasStartChange(entry requestquery.Activity) bool {
+	return entry.Kind == gamerequest.ActivityUpdated && entry.PreviousStartsAt != nil && entry.NewStartsAt != nil
+}
+
+// activityLabel names durable activity with actor and changed dimensions.
 func activityLabel(entry requestquery.Activity) string {
 	switch entry.Kind {
 	case gamerequest.ActivityCreated:
@@ -947,12 +1004,44 @@ func activityLabel(entry requestquery.Activity) string {
 		return entry.ActorGameNick + " started the game"
 	case gamerequest.ActivityCancelled:
 		return entry.ActorGameNick + " cancelled the request"
-	case gamerequest.ActivityCapacityChanged:
-		return entry.ActorGameNick + " changed capacity from " + capacityLabel(entry.PreviousMaxPlayers) + " to " + capacityLabel(entry.NewMaxPlayers)
+	case gamerequest.ActivityUpdated:
+		capacityChanged := entry.PreviousMaxPlayers != nil || entry.NewMaxPlayers != nil
+		startChanged := entry.PreviousStartsAt != nil || entry.NewStartsAt != nil
+		descriptionChanged := entry.DescriptionChanged
+		if capacityChanged && !startChanged && !descriptionChanged {
+			return entry.ActorGameNick + " changed capacity from " + capacityLabel(entry.PreviousMaxPlayers) + " to " + capacityLabel(entry.NewMaxPlayers)
+		}
+		if startChanged && !capacityChanged && !descriptionChanged {
+			return entry.ActorGameNick + " changed the planned start"
+		}
+		if descriptionChanged && !capacityChanged && !startChanged {
+			return entry.ActorGameNick + " updated the description"
+		}
+		dimensions := make([]string, 0, 3)
+		if capacityChanged {
+			dimensions = append(dimensions, "capacity")
+		}
+		if startChanged {
+			dimensions = append(dimensions, "planned start")
+		}
+		if descriptionChanged {
+			dimensions = append(dimensions, "description")
+		}
+		switch len(dimensions) {
+		case 0:
+			return entry.ActorGameNick + " updated the request"
+		case 1:
+			return entry.ActorGameNick + " updated " + dimensions[0]
+		case 2:
+			return entry.ActorGameNick + " updated " + dimensions[0] + " and " + dimensions[1]
+		default:
+			return entry.ActorGameNick + " updated " + dimensions[0] + ", " + dimensions[1] + ", and " + dimensions[2]
+		}
 	default:
 		return entry.ActorGameNick
 	}
 }
+
 
 // startTimeClass warms a start time as it approaches and makes it loud once
 // there is no time left, on the shared thresholds. Anything further out stays

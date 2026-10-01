@@ -957,31 +957,122 @@ func TestPlayingDetailKeepsPlayingIdentityAndLastPlace(t *testing.T) {
 	}
 }
 
-func TestActivityLabelsForStartedAndClosed(t *testing.T) {
-	for kind, want := range map[gamerequest.ActivityKind]string{
-		gamerequest.ActivityStarted: "Otter started the game",
-		gamerequest.ActivityClosed:  "Otter closed the request",
+func TestUpdatedActivityLabelsChangedDimensions(t *testing.T) {
+	four, six := int32(4), int32(6)
+	before, after := time.Date(2027, 5, 1, 17, 0, 0, 0, time.UTC), time.Date(2027, 5, 1, 18, 0, 0, 0, time.UTC)
+	for name, tc := range map[string]struct {
+		entry requestquery.Activity
+		want  string
+	}{
+		"capacity": {
+			entry: requestquery.Activity{Kind: gamerequest.ActivityUpdated, ActorGameNick: "Alex", PreviousMaxPlayers: &four, NewMaxPlayers: &six},
+			want:  "Alex changed capacity from 4 to 6",
+		},
+		"description": {
+			entry: requestquery.Activity{Kind: gamerequest.ActivityUpdated, ActorGameNick: "Alex", DescriptionChanged: true},
+			want:  "Alex updated the description",
+		},
+		"multiple dimensions": {
+			entry: requestquery.Activity{Kind: gamerequest.ActivityUpdated, ActorGameNick: "Alex", PreviousMaxPlayers: &four, NewMaxPlayers: &six, PreviousStartsAt: &before, NewStartsAt: &after, DescriptionChanged: true},
+			want:  "Alex updated capacity, planned start, and description",
+		},
 	} {
-		if got := activityLabel(requestquery.Activity{Kind: kind, ActorGameNick: "Otter"}); got != want {
-			t.Errorf("activityLabel(%s) = %q, want %q", kind, got, want)
+		if got := activityLabel(tc.entry); got != tc.want {
+			t.Errorf("%s: activityLabel = %q, want %q", name, got, tc.want)
 		}
 	}
 }
 
-func TestActivityLabelStatesCapacityBeforeAndAfter(t *testing.T) {
-	four, six, eight := int32(4), int32(6), int32(8)
-	for name, tc := range map[string]struct {
-		previous, next *int32
-		want           string
-	}{
-		"finite to finite":    {&four, &six, "Alex changed capacity from 4 to 6"},
-		"finite to unlimited": {&six, nil, "Alex changed capacity from 6 to unlimited"},
-		"unlimited to finite": {nil, &eight, "Alex changed capacity from unlimited to 8"},
+func TestUpdatedActivityRendersPlannedStartTimesAsLocalizableInstants(t *testing.T) {
+	before, after := time.Date(2027, 5, 1, 17, 0, 0, 0, time.UTC), time.Date(2027, 5, 1, 18, 0, 0, 0, time.UTC)
+	request := capacityRequest(gamerequest.StatusOpen, nil)
+	request.Activity = []requestquery.Activity{{
+		Kind: gamerequest.ActivityUpdated, ActorGameNick: "Alex",
+		PreviousStartsAt: &before, NewStartsAt: &after,
+	}}
+	body := renderCapacityDetail(t, request, "user-2", GameRequestDetailMessage{})
+	for _, want := range []string{
+		"Alex changed the planned start",
+		`(from</span>`,
+		`datetime="2027-05-01T17:00:00Z"`,
+		`datetime="2027-05-01T18:00:00Z"`,
+		`data-local-time="absolute"`,
 	} {
-		entry := requestquery.Activity{Kind: gamerequest.ActivityCapacityChanged, ActorGameNick: "Alex", PreviousMaxPlayers: tc.previous, NewMaxPlayers: tc.next}
-		if got := activityLabel(entry); got != tc.want {
-			t.Errorf("%s: activityLabel = %q, want %q", name, got, tc.want)
+		if !strings.Contains(body, want) {
+			t.Errorf("updated activity lacks %q: %s", want, body)
 		}
+	}
+}
+
+func TestHostEditActionAndEditorFollowOwnershipAndStatus(t *testing.T) {
+	limit := int32(4)
+	for name, tc := range map[string]struct {
+		status gamerequest.Status
+		viewer string
+		show   bool
+	}{
+		"open Host":     {gamerequest.StatusOpen, "host-1", true},
+		"playing Host":  {gamerequest.StatusPlaying, "host-1", true},
+		"participant":   {gamerequest.StatusOpen, "user-2", false},
+		"closed Host":   {gamerequest.StatusClosed, "host-1", false},
+		"cancelled Host": {gamerequest.StatusCancelled, "host-1", false},
+	} {
+		body := renderCapacityDetail(t, capacityRequest(tc.status, &limit), tc.viewer, GameRequestDetailMessage{})
+		if got := strings.Contains(body, `href="/game-requests/request-1?edit=1"`); got != tc.show {
+			t.Errorf("%s edit action = %v, want %v", name, got, tc.show)
+		}
+		if strings.Contains(body, `action="/game-requests/request-1/details"`) {
+			t.Errorf("%s sees an editor without choosing Edit", name)
+		}
+	}
+}
+
+func TestRequestEditorKeepsCapacityUXAndReadOnlyGame(t *testing.T) {
+	limit := int32(4)
+	request := capacityRequest(gamerequest.StatusOpen, &limit)
+	message := GameRequestDetailMessage{
+		Editing: true, InitializeStart: true,
+		Form: GameRequestForm{MaxPlayers: "1", StartDate: "2027-05-01", StartTime: "18:30", Timezone: "UTC", Description: "keep raw"},
+		Text: "Maximum players must be 0 for unlimited or a whole number from 2 to 999.", Field: "max_players", Value: "1",
+	}
+	body := renderCapacityDetail(t, request, "host-1", message)
+	editorStart := strings.Index(body, `action="/game-requests/request-1/details"`)
+	if editorStart < 0 {
+		t.Fatalf("Host editor missing: %s", body)
+	}
+	editor := body[editorStart:]
+	editor = editor[:strings.Index(editor, "</form>")]
+	for _, want := range []string{
+		`name="max_players"`, `min="0"`, `max="999"`, `step="1"`, `type="number"`,
+		`value="1"`, "0 means unlimited; finite limits start at 2.", `id="capacity-error"`,
+		`name="start_date"`, `name="start_time"`, `name="timezone"`, `data-local-start`,
+		`name="description"`, "keep raw", ">Save</button>", ">Cancel</a>",
+	} {
+		if !strings.Contains(editor, want) {
+			t.Errorf("editor lacks %q: %s", want, editor)
+		}
+	}
+	for _, forbidden := range []string{`name="game_id"`, `name="provider"`, `name="external_id"`, `data-confirm`} {
+		if strings.Contains(editor, forbidden) {
+			t.Errorf("editor contains %q: %s", forbidden, editor)
+		}
+	}
+}
+
+func TestPlayingEditorCannotEditPlannedStart(t *testing.T) {
+	limit := int32(4)
+	request := capacityRequest(gamerequest.StatusPlaying, &limit)
+	request.StartsAt = time.Date(2027, 5, 1, 18, 30, 0, 0, time.UTC)
+	body := renderCapacityDetail(t, request, "host-1", GameRequestDetailMessage{Editing: true})
+	start := strings.Index(body, `action="/game-requests/request-1/details"`)
+	if start < 0 {
+		t.Fatalf("Host editor missing: %s", body)
+	}
+	editor := body[start:]
+	editor = editor[:strings.Index(editor, "</form>")]
+	if strings.Contains(editor, `name="start_date"`) || strings.Contains(editor, `name="start_time"`) ||
+		!strings.Contains(editor, "Planned start") || !strings.Contains(editor, `datetime="2027-05-01T18:30:00Z"`) {
+		t.Errorf("playing start is not read-only: %s", editor)
 	}
 }
 
@@ -998,15 +1089,6 @@ func TestFullActiveRowSaysFullInsteadOfJoin(t *testing.T) {
 	}
 }
 
-func capacityEditor(t *testing.T, body string) string {
-	t.Helper()
-	start := strings.Index(body, `action="/game-requests/request-1/capacity"`)
-	if start < 0 {
-		return ""
-	}
-	form := body[start:]
-	return form[:strings.Index(form, "</form>")]
-}
 
 func renderCapacityDetail(t *testing.T, request requestquery.Request, viewerID string, message GameRequestDetailMessage) string {
 	t.Helper()
@@ -1025,95 +1107,5 @@ func capacityRequest(status gamerequest.Status, limit *int32) requestquery.Reque
 	}
 }
 
-// The Host edits capacity in the Host actions card, after the lifecycle action.
-// The reversible capacity form does not ask for confirmation.
-func TestHostCapacityEditorAppearsWhileActive(t *testing.T) {
-	limit := int32(4)
-	for _, status := range []gamerequest.Status{gamerequest.StatusOpen, gamerequest.StatusPlaying} {
-		body := renderCapacityDetail(t, capacityRequest(status, &limit), "host-1", GameRequestDetailMessage{})
-		editor := capacityEditor(t, body)
-		if editor == "" {
-			t.Fatalf("%s Host detail has no capacity editor", status)
-		}
-		hostCardStart := strings.Index(body, `<section class="detail-card detail-card-accent">`)
-		if hostCardStart < 0 {
-			t.Fatalf("%s Host actions card is missing", status)
-		}
-		hostCardEnd := strings.Index(body[hostCardStart:], "</section>")
-		if hostCardEnd < 0 || !strings.Contains(body[hostCardStart:hostCardStart+hostCardEnd], `action="/game-requests/request-1/capacity"`) {
-			t.Fatalf("%s capacity editor is outside Host actions card", status)
-		}
-		for _, want := range []string{`name="max_players"`, `min="0"`, `max="999"`, `step="1"`, `type="number"`, `value="4"`,
-			"0 means unlimited; finite limits start at 2.", ">Save</button>"} {
-			if !strings.Contains(editor, want) {
-				t.Errorf("%s capacity editor lacks %q: %s", status, want, editor)
-			}
-		}
-		if strings.Contains(body[strings.LastIndex(body[:strings.Index(body, editor)], "<form"):strings.Index(body, editor)+len(editor)], "data-confirm") {
-			t.Errorf("%s capacity editor asks for confirmation", status)
-		}
-	}
 
-	unlimited := renderCapacityDetail(t, capacityRequest(gamerequest.StatusOpen, nil), "host-1", GameRequestDetailMessage{})
-	if editor := capacityEditor(t, unlimited); !strings.Contains(editor, `value="0"`) {
-		t.Errorf("unlimited request does not show 0 in the editor: %s", editor)
-	}
-}
 
-func TestCapacityEditorIsHostAndActiveOnly(t *testing.T) {
-	limit := int32(4)
-	for name, tc := range map[string]struct {
-		status gamerequest.Status
-		viewer string
-		joined bool
-	}{
-		"participant":    {gamerequest.StatusOpen, "user-2", true},
-		"outsider":       {gamerequest.StatusPlaying, "user-3", false},
-		"host on closed": {gamerequest.StatusClosed, "host-1", true},
-		"host cancelled": {gamerequest.StatusCancelled, "host-1", true},
-	} {
-		request := capacityRequest(tc.status, &limit)
-		request.ViewerJoined = tc.joined
-		body := renderCapacityDetail(t, request, tc.viewer, GameRequestDetailMessage{})
-		if strings.Contains(body, "/capacity") || strings.Contains(body, `name="max_players"`) {
-			t.Errorf("%s sees the capacity editor", name)
-		}
-	}
-}
-
-// A rejected capacity stays beside its field, with the submitted text kept so
-// the Host corrects it instead of retyping.
-func TestCapacityEditorShowsFieldLocalErrorAndKeepsSubmittedValue(t *testing.T) {
-	limit := int32(4)
-	message := GameRequestDetailMessage{Text: "Maximum players cannot be lower than the current player count.", Field: "max_players", Value: "1"}
-	body := renderCapacityDetail(t, capacityRequest(gamerequest.StatusPlaying, &limit), "host-1", message)
-	editor := capacityEditor(t, body)
-
-	for _, want := range []string{`id="capacity-error"`, message.Text, `aria-invalid="true"`, `value="1"`, `aria-describedby="capacity-error capacity-hint"`} {
-		if !strings.Contains(editor, want) {
-			t.Errorf("capacity editor lacks %q: %s", want, editor)
-		}
-	}
-	if strings.Contains(editor, `value="4"`) {
-		t.Errorf("editor shows the stored value instead of the submitted one: %s", editor)
-	}
-	if strings.Contains(body, `role="alert"`) {
-		t.Errorf("a field error also rendered as a page alert: %s", body)
-	}
-}
-
-func TestPageLevelDetailMessageIsNotAFieldError(t *testing.T) {
-	limit := int32(4)
-	var rendered bytes.Buffer
-	message := GameRequestDetailMessage{Text: "This Game Request is no longer open."}
-	if err := GameRequestDetail(branding.Default(), components.NavigationState{}, capacityRequest(gamerequest.StatusOpen, &limit), "host-1", message, components.Notice{}).Render(context.Background(), &rendered); err != nil {
-		t.Fatalf("render detail page: %v", err)
-	}
-	body := rendered.String()
-	if !strings.Contains(body, `role="alert"`) || !strings.Contains(body, message.Text) {
-		t.Errorf("page-level message is not an alert: %s", body)
-	}
-	if editor := capacityEditor(t, body); strings.Contains(editor, "capacity-error") || !strings.Contains(editor, `value="4"`) {
-		t.Errorf("a page-level message leaked into the capacity editor: %s", editor)
-	}
-}

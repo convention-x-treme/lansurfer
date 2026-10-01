@@ -31,10 +31,10 @@ type fakeGameRequestCommands struct {
 
 	started string
 
-	capacityCalls int
-	capacityArgs  string
-	capacityValue *int32
-	capacityErr   error
+	detailsCalls int
+	detailsArgs  string
+	detailsInput gamerequest.UpdateDetailsInput
+	detailsErr   error
 }
 
 func (f *fakeGameRequestCommands) Create(_ context.Context, _, gameID string, maxPlayers *int32, _ time.Time, _ string) (gamerequest.GameRequest, error) {
@@ -54,11 +54,11 @@ func (f *fakeGameRequestCommands) Start(_ context.Context, requestID, userID str
 	f.started = requestID + "/" + userID
 	return nil
 }
-func (f *fakeGameRequestCommands) UpdateCapacity(_ context.Context, requestID, userID string, maxPlayers *int32) error {
-	f.capacityCalls++
-	f.capacityArgs = requestID + "/" + userID
-	f.capacityValue = maxPlayers
-	return f.capacityErr
+func (f *fakeGameRequestCommands) UpdateDetails(_ context.Context, requestID, userID string, input gamerequest.UpdateDetailsInput) error {
+	f.detailsCalls++
+	f.detailsArgs = requestID + "/" + userID
+	f.detailsInput = input
+	return f.detailsErr
 }
 func (f *fakeGameRequestCommands) RecordView(_ context.Context, requestID, userID string) error {
 	f.viewed = append(f.viewed, requestID+"/"+userID)
@@ -739,14 +739,13 @@ func TestParseCapacity(t *testing.T) {
 		}
 	}
 }
-
-func postCapacity(t *testing.T, commands *fakeGameRequestCommands, queries fakeGameRequestQueries, viewerID string, form url.Values) *httptest.ResponseRecorder {
+func postDetails(t *testing.T, commands *fakeGameRequestCommands, queries fakeGameRequestQueries, viewerID string, form url.Values) *httptest.ResponseRecorder {
 	t.Helper()
 	handler := NewGameRequests(commands, queries, nil, &fakeGameRequestDiscovery{}, nil, branding.Default())
 	router := chi.NewRouter()
-	router.Post("/{requestID}/capacity", handler.UpdateCapacity)
+	router.Post("/{requestID}/details", handler.UpdateDetails)
 
-	request := httptest.NewRequest(http.MethodPost, "/request-1/capacity", strings.NewReader(form.Encode()))
+	request := httptest.NewRequest(http.MethodPost, "/request-1/details", strings.NewReader(form.Encode()))
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	request = request.WithContext(webmiddleware.ContextWithUser(request.Context(), user.User{ID: viewerID, GameNick: "Ada"}))
 	response := httptest.NewRecorder()
@@ -754,109 +753,124 @@ func postCapacity(t *testing.T, commands *fakeGameRequestCommands, queries fakeG
 	return response
 }
 
-func TestUpdateCapacityCallsCommandAndRedirectsToDetail(t *testing.T) {
-	for value, want := range map[string]*int32{"6": new(int32(6)), "0": nil, "": nil} {
-		commands := &fakeGameRequestCommands{}
-		response := postCapacity(t, commands, fakeGameRequestQueries{}, "host-1", url.Values{"max_players": {value}})
-
-		if commands.capacityCalls != 1 || commands.capacityArgs != "request-1/host-1" {
-			t.Fatalf("max_players=%q: command calls = %d with %q", value, commands.capacityCalls, commands.capacityArgs)
-		}
-		if (commands.capacityValue == nil) != (want == nil) || (want != nil && *commands.capacityValue != *want) {
-			t.Errorf("max_players=%q reached the command as %v, want %v", value, commands.capacityValue, want)
-		}
-		if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/game-requests/request-1" {
-			t.Errorf("max_players=%q response = %d %q", value, response.Code, response.Header().Get("Location"))
-		}
+func TestUpdateDetailsParsesLocalTimeAndSubmitsAllEditableFields(t *testing.T) {
+	startsAt := time.Date(2027, 5, 1, 12, 0, 0, 0, time.UTC)
+	queries := fakeGameRequestQueries{request: requestquery.Request{
+		ID: "request-1", CreatorID: "host-1", Status: gamerequest.StatusOpen, StartsAt: startsAt,
+	}}
+	commands := &fakeGameRequestCommands{}
+	form := url.Values{
+		"max_players": {"0"}, "start_date": {"2027-05-01"}, "start_time": {"18:30"},
+		"timezone": {"America/Los_Angeles"}, "description": {"  bring snacks  "},
+	}
+	response := postDetails(t, commands, queries, "host-1", form)
+	if commands.detailsCalls != 1 || commands.detailsArgs != "request-1/host-1" {
+		t.Fatalf("command calls = %d with %q", commands.detailsCalls, commands.detailsArgs)
+	}
+	wantStart := time.Date(2027, 5, 2, 1, 30, 0, 0, time.UTC)
+	if commands.detailsInput.MaxPlayers != nil || !commands.detailsInput.StartsAt.Equal(wantStart) || commands.detailsInput.Description != "bring snacks" {
+		t.Errorf("input = %#v, want unlimited, %s, trimmed description", commands.detailsInput, wantStart)
+	}
+	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/game-requests/request-1" {
+		t.Errorf("response = %d %q", response.Code, response.Header().Get("Location"))
 	}
 }
 
-func TestUpdateCapacityRejectsInvalidInputBeforeTheCommand(t *testing.T) {
+func TestUpdateDetailsPlayingKeepsStoredStartDespiteForgedFields(t *testing.T) {
+	startsAt := time.Date(2027, 5, 1, 12, 0, 0, 0, time.UTC)
 	queries := fakeGameRequestQueries{request: requestquery.Request{
-		ID: "request-1", Game: game.GamePresentation{Name: "Warcraft III"}, CreatorID: "host-1", Status: gamerequest.StatusOpen,
+		ID: "request-1", CreatorID: "host-1", Status: gamerequest.StatusPlaying, StartsAt: startsAt,
 	}}
-	for _, value := range []string{"1", "abc", "1000", "-3"} {
-		commands := &fakeGameRequestCommands{}
-		response := postCapacity(t, commands, queries, "host-1", url.Values{"max_players": {value}})
-		if response.Code != http.StatusUnprocessableEntity {
-			t.Errorf("max_players=%q status = %d, want 422", value, response.Code)
-		}
-		if commands.capacityCalls != 0 {
-			t.Errorf("max_players=%q reached the command", value)
-		}
+	commands := &fakeGameRequestCommands{}
+	response := postDetails(t, commands, queries, "host-1", url.Values{
+		"max_players": {"5"}, "start_date": {"2099-01-01"}, "start_time": {"00:00"},
+		"timezone": {"Pacific/Kiritimati"}, "description": {"playing update"},
+	})
+	if commands.detailsCalls != 1 || !commands.detailsInput.StartsAt.Equal(startsAt) {
+		t.Fatalf("playing start = %v, calls = %d; want stored %v", commands.detailsInput.StartsAt, commands.detailsCalls, startsAt)
+	}
+	if commands.detailsInput.MaxPlayers == nil || *commands.detailsInput.MaxPlayers != 5 ||
+		commands.detailsInput.Description != "playing update" || response.Code != http.StatusSeeOther {
+		t.Errorf("playing update input/response = %#v, %d", commands.detailsInput, response.Code)
 	}
 }
 
-func TestUpdateCapacityMapsBusinessFailures(t *testing.T) {
+func TestUpdateDetailsKeepsRawValuesBesideFieldError(t *testing.T) {
+	startsAt := time.Date(2027, 5, 1, 12, 0, 0, 0, time.UTC)
 	queries := fakeGameRequestQueries{request: requestquery.Request{
-		ID: "request-1", Game: game.GamePresentation{Name: "Warcraft III"}, CreatorID: "host-1", Status: gamerequest.StatusOpen,
+		ID: "request-1", Game: game.GamePresentation{Name: "Warcraft III"}, CreatorID: "host-1",
+		Status: gamerequest.StatusOpen, StartsAt: startsAt,
 	}}
-	for cause, want := range map[error]int{
-		gamerequest.ErrCapacityBelowMembers: http.StatusConflict,
-		gamerequest.ErrNotActive:            http.StatusConflict,
-		gamerequest.ErrNotCreator:           http.StatusForbidden,
-		gamerequest.ErrNotFound:             http.StatusNotFound,
-		errors.New("database unavailable"):  http.StatusInternalServerError,
+	commands := &fakeGameRequestCommands{}
+	response := postDetails(t, commands, queries, "host-1", url.Values{
+		"max_players": {"1"}, "start_date": {"2027-05-03"}, "start_time": {"19:45"},
+		"timezone": {"Europe/Paris"}, "description": {"raw description"},
+	})
+	body := response.Body.String()
+	if response.Code != http.StatusUnprocessableEntity || commands.detailsCalls != 0 {
+		t.Fatalf("status/calls = %d/%d, want 422/0", response.Code, commands.detailsCalls)
+	}
+	for _, want := range []string{
+		`action="/game-requests/request-1/details"`, `id="capacity-error"`, `value="1"`,
+		`value="2027-05-03"`, `value="19:45"`, `value="Europe/Paris"`, "raw description",
+		"Maximum players must be 0 for unlimited or a whole number from 2 to 999.",
 	} {
-		commands := &fakeGameRequestCommands{capacityErr: cause}
-		if response := postCapacity(t, commands, queries, "host-1", url.Values{"max_players": {"3"}}); response.Code != want {
-			t.Errorf("%v: status = %d, want %d", cause, response.Code, want)
+		if !strings.Contains(body, want) {
+			t.Errorf("error page lacks %q: %s", want, body)
 		}
 	}
 }
 
-// A rejected capacity comes back on the detail page beside the Host's editor,
-// with what was typed, and the detail keeps the request's own status code.
-func TestUpdateCapacityRendersFieldLocalErrorWithSubmittedValue(t *testing.T) {
+func TestUpdateDetailsKeepsBusinessErrorOnEditor(t *testing.T) {
 	limit := int32(4)
 	queries := fakeGameRequestQueries{request: requestquery.Request{
 		ID: "request-1", Game: game.GamePresentation{Name: "Warcraft III"}, CreatorID: "host-1",
 		Status: gamerequest.StatusPlaying, MemberCount: 3, MaxPlayers: &limit,
+		StartsAt: time.Date(2027, 5, 1, 12, 0, 0, 0, time.UTC),
 	}}
-	for name, tc := range map[string]struct {
-		value string
-		cause error
-		code  int
-		text  string
-	}{
-		"invalid value":    {"1", nil, http.StatusUnprocessableEntity, "Maximum players must be 0 for unlimited or a whole number from 2 to 999."},
-		"below membership": {"2", gamerequest.ErrCapacityBelowMembers, http.StatusConflict, "Maximum players cannot be lower than the current player count."},
-	} {
-		commands := &fakeGameRequestCommands{capacityErr: tc.cause}
-		response := postCapacity(t, commands, queries, "host-1", url.Values{"max_players": {tc.value}})
-		body := response.Body.String()
-
-		if response.Code != tc.code {
-			t.Errorf("%s: status = %d, want %d", name, response.Code, tc.code)
-		}
-		for _, want := range []string{`id="capacity-error"`, tc.text, `value="` + tc.value + `"`, `aria-invalid="true"`} {
-			if !strings.Contains(body, want) {
-				t.Errorf("%s: body lacks %q", name, want)
-			}
-		}
-	}
-}
-
-func TestUpdateCapacityKeepsRefusalsTheEditorCannotShowAsPageAlerts(t *testing.T) {
-	limit := int32(4)
-	closed := fakeGameRequestQueries{request: requestquery.Request{
-		ID: "request-1", Game: game.GamePresentation{Name: "Warcraft III"}, CreatorID: "host-1",
-		Status: gamerequest.StatusClosed, MemberCount: 2, MaxPlayers: &limit,
-	}}
-	response := postCapacity(t, &fakeGameRequestCommands{capacityErr: gamerequest.ErrNotActive}, closed, "host-1", url.Values{"max_players": {"6"}})
+	commands := &fakeGameRequestCommands{detailsErr: gamerequest.ErrCapacityBelowMembers}
+	response := postDetails(t, commands, queries, "host-1", url.Values{
+		"max_players": {"2"}, "description": {"raw"},
+	})
 	body := response.Body.String()
-	if response.Code != http.StatusConflict || !strings.Contains(body, `role="alert"`) ||
-		!strings.Contains(body, "Capacity can only be changed while the Game Request is active.") {
-		t.Errorf("inactive refusal: status = %d, body = %s", response.Code, body)
-	}
-
-	open := fakeGameRequestQueries{request: requestquery.Request{
-		ID: "request-1", Game: game.GamePresentation{Name: "Warcraft III"}, CreatorID: "host-1",
-		Status: gamerequest.StatusOpen, MemberCount: 2, MaxPlayers: &limit,
-	}}
-	response = postCapacity(t, &fakeGameRequestCommands{capacityErr: gamerequest.ErrNotCreator}, open, "user-2", url.Values{"max_players": {"6"}})
-	body = response.Body.String()
-	if response.Code != http.StatusForbidden || !strings.Contains(body, `role="alert"`) || strings.Contains(body, "capacity-error") {
-		t.Errorf("non-Host refusal: status = %d, body = %s", response.Code, body)
+	if response.Code != http.StatusConflict ||
+		!strings.Contains(body, `id="capacity-error"`) ||
+		!strings.Contains(body, `value="2"`) ||
+		!strings.Contains(body, "Maximum players cannot be lower than the current player count.") {
+		t.Errorf("business error response = %d, body = %s", response.Code, body)
 	}
 }
+
+func TestViewEditModeRequiresHostAndActiveRequest(t *testing.T) {
+	for name, tc := range map[string]struct {
+		status gamerequest.Status
+		viewer string
+		show   bool
+	}{
+		"open Host":      {gamerequest.StatusOpen, "host-1", true},
+		"playing Host":   {gamerequest.StatusPlaying, "host-1", true},
+		"participant":    {gamerequest.StatusOpen, "user-2", false},
+		"closed Host":    {gamerequest.StatusClosed, "host-1", false},
+		"cancelled Host": {gamerequest.StatusCancelled, "host-1", false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			commands := &fakeGameRequestCommands{}
+			queries := fakeGameRequestQueries{request: requestquery.Request{
+				ID: "request-1", Game: game.GamePresentation{Name: "Warcraft III"}, CreatorID: "host-1",
+				Status: tc.status, StartsAt: time.Date(2027, 5, 1, 12, 0, 0, 0, time.UTC),
+			}}
+			handler := NewGameRequests(commands, queries, nil, &fakeGameRequestDiscovery{}, nil, branding.Default())
+			router := chi.NewRouter()
+			router.Get("/{requestID}", handler.View)
+			request := httptest.NewRequest(http.MethodGet, "/request-1?edit=1", nil)
+			request = request.WithContext(webmiddleware.ContextWithUser(request.Context(), user.User{ID: tc.viewer, GameNick: "Ada"}))
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, request)
+			got := strings.Contains(response.Body.String(), `action="/game-requests/request-1/details"`)
+			if got != tc.show {
+				t.Errorf("edit mode = %v, want %v; response %s", got, tc.show, response.Body.String())
+			}
+		})
+	}
+}
+
