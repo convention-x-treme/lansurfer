@@ -110,7 +110,7 @@ func (h *OnboardingHandler) SubmitPending(w http.ResponseWriter, r *http.Request
 		return
 	}
 	http.SetCookie(w, webmiddleware.SessionCookie(session.Token, session.ExpiresAt, h.secureCookies))
-	http.Redirect(w, r, "/game-requests", http.StatusSeeOther)
+	http.Redirect(w, r, consumeReturnPath(w, r, h.secureCookies), http.StatusSeeOther)
 }
 
 // ShowExisting renders the Game Nick form for an already-signed-in, upgraded
@@ -146,7 +146,7 @@ func (h *OnboardingHandler) SubmitExisting(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "claim Game Nick", http.StatusInternalServerError)
 		return
 	}
-	http.Redirect(w, r, "/game-requests", http.StatusSeeOther)
+	http.Redirect(w, r, consumeReturnPath(w, r, h.secureCookies), http.StatusSeeOther)
 }
 
 // resolveOptions offers proving an existing account through any configured

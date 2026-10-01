@@ -1886,6 +1886,237 @@
     border-bottom: 0;
   }
 
+  /* The landing page, like the login stage, is the dark key visual in both
+     themes, so its ink and focus ring stay fixed. */
+  .home-header,
+  .home-stage {
+    --focus-ring: var(--brand-golden-hour);
+    color: var(--brand-white-sand);
+  }
+
+  .home-header {
+    display: flex;
+    justify-content: center;
+    padding: 1.125rem 1rem;
+    border-bottom: 1px solid color-mix(in srgb, var(--brand-aqua-wave) 14%, transparent);
+    background: color-mix(in srgb, var(--brand-deep-ocean) 82%, var(--brand-surf-blue));
+  }
+
+  /* The content block sits on the golden ratio: the free space above it and
+     below it split 0.382 : 0.618, so it reads slightly above centre. */
+  .home-stage {
+    position: relative;
+    display: grid;
+    flex: 1;
+    grid-template-rows: minmax(0, 0.382fr) auto minmax(0, 0.618fr);
+    overflow: hidden;
+    min-height: 0;
+    padding: 1rem clamp(1rem, 4vw, 3.5rem);
+    background:
+      radial-gradient(ellipse 70% 55% at 50% 30%, color-mix(in srgb, var(--brand-aqua-wave) 12%, transparent), transparent 70%),
+      var(--brand-deep-ocean);
+  }
+
+  .home-content {
+    position: relative;
+    z-index: 2;
+    grid-row: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: clamp(1rem, 4dvh, 2.75rem);
+  }
+
+  .home-mascot {
+    position: absolute;
+    right: -1.5rem;
+    bottom: -2.5rem;
+    z-index: 1;
+    width: clamp(12rem, 24vw, 22rem);
+    height: auto;
+    max-height: 60dvh;
+    object-fit: contain;
+    pointer-events: none;
+  }
+
+  .home-explainer {
+    max-width: 42rem;
+    font-size: 1rem;
+    line-height: 1.5;
+    color: color-mix(in srgb, var(--brand-white-sand) 70%, var(--brand-deep-ocean));
+  }
+
+  .home-hero {
+    display: grid;
+    justify-items: center;
+    gap: 0.75rem;
+    text-align: center;
+  }
+
+  .home-headline {
+    font-size: clamp(2.5rem, min(8vw, 9dvh), 4.5rem);
+    font-weight: 900;
+    letter-spacing: -0.04em;
+    line-height: 1;
+  }
+
+  .home-subline {
+    font-size: clamp(1.125rem, 3vw, 1.5rem);
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    color: color-mix(in srgb, var(--brand-white-sand) 82%, var(--brand-deep-ocean));
+  }
+
+  /* Five 3:4 slots on a wide screen; on a narrow one the row scrolls sideways
+     instead of crushing the covers. */
+  .home-tiles {
+    display: grid;
+    width: 100%;
+    /* Sized from the viewport height so the 3:4 tiles leave room for the
+       rest of the page on a short desktop screen. */
+    max-width: min(65rem, calc(97.5dvh + 4.5rem));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 1.125rem;
+  }
+
+  @media (max-width: 52rem) {
+    .home-tiles {
+      display: flex;
+      overflow-x: auto;
+      padding-bottom: 0.5rem;
+      scroll-snap-type: x proximity;
+    }
+
+    .home-tiles > li {
+      flex: none;
+      width: 9rem;
+      scroll-snap-align: start;
+    }
+  }
+
+  .home-tile {
+    position: relative;
+    display: block;
+    aspect-ratio: 3 / 4;
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--brand-aqua-wave) 18%, transparent);
+    border-radius: 0.875rem;
+    background: color-mix(in srgb, var(--brand-surf-blue) 22%, var(--brand-deep-ocean));
+    color: var(--brand-white-sand);
+    transition: transform 160ms ease-out, border-color 160ms ease-out, box-shadow 160ms ease-out;
+  }
+
+  .home-tile:hover,
+  .home-tile:focus-visible {
+    border-color: color-mix(in srgb, var(--brand-aqua-wave) 70%, transparent);
+    box-shadow: 0 18px 40px color-mix(in srgb, black 60%, transparent);
+    transform: translateY(-4px);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .home-tile {
+      transition: none;
+    }
+
+    .home-tile:hover,
+    .home-tile:focus-visible {
+      transform: none;
+    }
+  }
+
+  /* No cover: the abbreviation stands in, centred like the Trending rail's. */
+  .home-tile .cover-art-fallback {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    font-size: 2rem;
+  }
+
+  .home-tile-shade {
+    position: absolute;
+    inset: auto 0 0;
+    height: 55%;
+    background: linear-gradient(to top, color-mix(in srgb, var(--brand-deep-ocean) 95%, black), transparent);
+  }
+
+  .home-tile-name {
+    position: absolute;
+    inset: auto 0.875rem 0.875rem;
+    font-size: 1.125rem;
+    font-weight: 900;
+    letter-spacing: -0.01em;
+    line-height: 1.15;
+  }
+
+  .home-badge {
+    position: absolute;
+    top: 0.625rem;
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    background: color-mix(in srgb, var(--brand-deep-ocean) 82%, transparent);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--brand-aqua-wave);
+  }
+
+  .home-badge[data-hot="true"] {
+    color: var(--brand-sunset);
+  }
+
+  .home-badge-open {
+    right: 0.625rem;
+  }
+
+  .home-badge-open::before {
+    width: 0.375rem;
+    height: 0.375rem;
+    border-radius: 50%;
+    background: currentColor;
+    content: "";
+  }
+
+  .home-badge-players {
+    left: 0.625rem;
+  }
+
+  .home-tile-any {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.75rem;
+    border-style: dashed;
+    border-color: color-mix(in srgb, var(--brand-aqua-wave) 35%, transparent);
+    background: color-mix(in srgb, var(--brand-surf-blue) 12%, transparent);
+    text-align: center;
+  }
+
+  .home-tile-plus {
+    font-size: 3.5rem;
+    line-height: 1;
+    color: var(--brand-aqua-wave);
+  }
+
+  .home-tile-name-any {
+    font-size: 1.0625rem;
+    font-weight: 600;
+  }
+
+  .home-tile-hint {
+    font-size: 0.8125rem;
+    color: color-mix(in srgb, var(--brand-white-sand) 75%, var(--brand-deep-ocean));
+  }
+
+  .home-login {
+    min-width: 15rem;
+  }
+
   .auth-header {
     position: absolute;
     inset: 0 0 auto;
@@ -2326,6 +2557,7 @@ textarea::placeholder {
 }
 
 @media (max-width: 61.99rem) {
+  .home-mascot,
   .auth-mascot {
     display: none;
   }

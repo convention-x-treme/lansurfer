@@ -468,6 +468,12 @@ Twitch authentication is an optional third provider adapter in the same registry
 
 Provider names and email addresses are private account data. Normal player and global administrator views must not expose them to anyone except the account owner.
 
+### Return path after login
+
+The post-login destination is carried in a short-lived `lansurfer_return` cookie (HttpOnly, SameSite=Lax, Secure when configured, `Path=/`, 15 minutes), not in the OAuth `state`, the session, or the database. `GET /auth/login?return_to=<path>` and `RequireAuthentication` (full-page GET requests only, never HTMX fragments or the event stream) capture it; the callback's normal-login branch and onboarding completion consume and clear it. Link and `/account` flows ignore it. The path is validated on capture and again on consumption: a local path only, not `//` or `/\`, no scheme or host, and not under `/auth` or `/onboarding`. A missing or invalid value falls back to `/game-requests`.
+
+The public landing page reads the existing Trending ranking plus one aggregate read-model query in `internal/query/gamerequest`; it performs no writes and exposes no player identity.
+
 ---
 
 ## 14. Sessions

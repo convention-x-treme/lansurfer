@@ -183,6 +183,7 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		GameResolver:        gameDiscovery,
 		GameRequests:        gameRequests,
 		RequestQueries:      gameRequestQueries,
+		Landing:             gameRequestQueries,
 		NavigationQueries:   gameRequestQueries,
 		NavigationCatalog:   gameDiscovery,
 		Realtime:            realtime,

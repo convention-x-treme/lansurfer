@@ -1,0 +1,71 @@
+package pages
+
+import (
+	"fmt"
+	"net/url"
+
+	requestquery "github.com/convention-x-treme/lansurfer/internal/query/gamerequest"
+	"github.com/convention-x-treme/lansurfer/internal/web/branding"
+	"github.com/convention-x-treme/lansurfer/internal/web/components"
+)
+
+// hotOpenRequests is the open-request count from which a tile's badge turns
+// from the quiet accent to the hot one.
+const hotOpenRequests = 3
+
+// Home is the public landing page for a logged-out GET /: one promise, the
+// Games people are playing right now, and Log in. Tiles carry aggregate
+// counts only; no player identity is ever rendered here.
+templ Home(brand branding.Brand, games []requestquery.LandingGame) {
+	@components.HomeLayout(brand, "Find your crew") {
+		<section class="home-stage">
+			<img class="home-mascot" src="/assets/images/mascot-welcome-pose.webp" alt="" width="520" height="520"/>
+			<div class="home-content">
+			<div class="home-hero">
+				<h1 class="home-headline">Find your crew.</h1>
+				<p class="home-subline">Catch the next game.</p>
+				<p class="home-explainer">Who at this LAN wants to play right now? Pick a game, post a request, and watch players join in seconds. No hunting through chats: hit START and play.</p>
+			</div>
+			<ul class="home-tiles">
+				for _, entry := range games {
+					<li>
+						<a class="home-tile" href={ templ.SafeURL(loginReturnURL("/game-requests?q=" + url.QueryEscape(entry.GameName))) } aria-label={ homeTileLabel(entry) }>
+							@CoverArt(entry.CoverImageID, entry.GameName, false)
+							<span class="home-tile-shade" aria-hidden="true"></span>
+							<span class="home-badge home-badge-players" data-hot={ fmt.Sprint(entry.OpenRequests >= hotOpenRequests) } aria-hidden="true"><i class="ph ph-users" aria-hidden="true"></i>{ fmt.Sprint(entry.Players) }</span>
+							<span class="home-badge home-badge-open" data-hot={ fmt.Sprint(entry.OpenRequests >= hotOpenRequests) } aria-hidden="true">{ fmt.Sprint(entry.OpenRequests) } open</span>
+							<span class="home-tile-name" aria-hidden="true">{ entry.GameName }</span>
+						</a>
+					</li>
+				}
+				<li>
+					<a class="home-tile home-tile-any" href={ templ.SafeURL(loginReturnURL("/game-requests/new")) }>
+						<span class="home-tile-plus" aria-hidden="true">+</span>
+						<span class="home-tile-name-any">Any game</span>
+						<span class="home-tile-hint">Start a request for anything</span>
+					</a>
+				</li>
+			</ul>
+			<a class="btn btn-primary btn-lg home-login" href="/auth/login">START</a>
+			</div>
+		</section>
+	}
+}
+
+// loginReturnURL sends a visitor through login and back to path afterwards.
+func loginReturnURL(path string) string {
+	return "/auth/login?return_to=" + url.QueryEscape(path)
+}
+
+// homeTileLabel is a Game tile's whole accessible name: the badges are
+// visual shorthand for the counts it states in words.
+func homeTileLabel(entry requestquery.LandingGame) string {
+	return fmt.Sprintf("%s, %s, %s", entry.GameName, pluralize(entry.OpenRequests, "open request", "open requests"), pluralize(entry.Players, "player", "players"))
+}
+
+func pluralize(n int64, one, many string) string {
+	if n == 1 {
+		return "1 " + one
+	}
+	return fmt.Sprintf("%d %s", n, many)
+}
