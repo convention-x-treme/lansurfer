@@ -134,48 +134,105 @@ func TestHealthEndpointsRejectOtherMethods(t *testing.T) {
 	}
 }
 
-func TestRootRendersLoginLandingPage(t *testing.T) {
-	authentication := &routerAuthentication{}
-	request := httptest.NewRequest(http.MethodGet, "/", nil)
-	response := httptest.NewRecorder()
+type routerLanding struct {
+	games []requestquery.LandingGame
+	err   error
+}
 
+func (l routerLanding) Landing(context.Context) ([]requestquery.LandingGame, error) {
+	return l.games, l.err
+}
+
+func serveLanding(t *testing.T, landing handler.LandingQueries) (int, string) {
+	t.Helper()
+	authentication := &routerAuthentication{}
+	response := httptest.NewRecorder()
 	NewRouter(RouterDependencies{
 		Ready:          func(context.Context) error { return nil },
 		Authentication: authentication,
 		Sessions:       authentication,
-	}).ServeHTTP(response, request)
+		Landing:        landing,
+	}).ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/", nil))
+	return response.Code, response.Body.String()
+}
 
-	result := response.Result()
-	defer result.Body.Close()
-	if result.StatusCode != http.StatusOK {
-		t.Fatalf("status = %d, want %d", result.StatusCode, http.StatusOK)
-	}
-	if got := result.Header.Get("Content-Type"); got != "text/html; charset=utf-8" {
-		t.Errorf("Content-Type = %q", got)
-	}
-	body, err := io.ReadAll(result.Body)
-	if err != nil {
-		t.Fatalf("read body: %v", err)
+func TestRootRendersPublicLandingPage(t *testing.T) {
+	code, body := serveLanding(t, routerLanding{games: []requestquery.LandingGame{
+		{GameName: "Counter-Strike 2", CoverImageID: "co1", OpenRequests: 4, Players: 9},
+		{GameName: "Trackmania & Co", OpenRequests: 1, Players: 1},
+	}})
+
+	if code != http.StatusOK {
+		t.Fatalf("status = %d", code)
 	}
 	for _, want := range []string{
-		"LANsurfer",
-		"Find your crew. Catch the next game.",
-		"Continue with CXT account",
-		"Continue with Discord",
-		`href="https://www.convention-x-treme.de"`,
-		`href="/assets/app.css"`,
-		`src="/assets/app.js"`,
-		`data-theme-toggle`,
-		`href="/terms"`,
-		`href="/privacy"`,
-		"By logging in you agree to the",
+		"Find your crew.", "Catch the next game.",
+		`href="/auth/login?return_to=%2Fgame-requests%3Fq%3DCounter-Strike%2B2"`,
+		`href="/auth/login?return_to=%2Fgame-requests%3Fq%3DTrackmania%2B%2526%2BCo"`,
+		`href="/auth/login?return_to=%2Fgame-requests%2Fnew"`,
+		"Any game", "Start a request for anything",
+		"4 open", "1 open", "/media/igdb/big/co1",
+		`href="/auth/login"`, `href="/terms"`, `href="/privacy"`,
 	} {
-		if !strings.Contains(string(body), want) {
-			t.Errorf("body does not contain %q", want)
+		if !strings.Contains(body, want) {
+			t.Errorf("landing page does not contain %q", want)
 		}
 	}
-	if remoteAssetPattern.Match(body) {
-		t.Error("login page unexpectedly loads a remote runtime asset")
+	if remoteAssetPattern.MatchString(body) {
+		t.Error("landing page unexpectedly loads a remote runtime asset")
+	}
+}
+
+// The landing page is public: it may state Game names and counts, never who
+// is playing. LandingGame has no identity field, so this pins the markup too.
+func TestLandingPageExposesNoPlayerIdentity(t *testing.T) {
+	_, body := serveLanding(t, routerLanding{games: []requestquery.LandingGame{{GameName: "Trackmania", OpenRequests: 2, Players: 3}}})
+
+	for _, forbidden := range []string{"/media/avatar/", "game_nick", "Game Nick"} {
+		if strings.Contains(body, forbidden) {
+			t.Errorf("public landing page contains %q", forbidden)
+		}
+	}
+}
+
+func TestLandingPageQuietInstanceStillOffersAnyGameAndLogin(t *testing.T) {
+	for name, landing := range map[string]handler.LandingQueries{
+		"no activity":  routerLanding{},
+		"query failed": routerLanding{err: errors.New("database unavailable")},
+		"unconfigured": nil,
+	} {
+		t.Run(name, func(t *testing.T) {
+			code, body := serveLanding(t, landing)
+
+			if code != http.StatusOK {
+				t.Fatalf("status = %d", code)
+			}
+			for _, want := range []string{"Find your crew.", "Any game", `href="/auth/login"`} {
+				if !strings.Contains(body, want) {
+					t.Errorf("body does not contain %q", want)
+				}
+			}
+			if strings.Contains(body, "home-tile\"") {
+				t.Error("quiet landing page rendered a Game tile")
+			}
+		})
+	}
+}
+
+func TestLoginPageStaysReachableAtAuthLogin(t *testing.T) {
+	authentication := &routerAuthentication{}
+	response := httptest.NewRecorder()
+	NewRouter(RouterDependencies{
+		Ready:          func(context.Context) error { return nil },
+		Authentication: authentication,
+		Sessions:       authentication,
+	}).ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/auth/login", nil))
+
+	body := response.Body.String()
+	for _, want := range []string{"Continue with CXT account", "Continue with Discord", "By logging in you agree to the", "data-theme-toggle"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("login page does not contain %q", want)
+		}
 	}
 }
 

@@ -483,3 +483,42 @@ func isCheckConstraintViolation(err error) bool {
 	var databaseError *pgconn.PgError
 	return errors.As(err, &databaseError) && databaseError.Code == "23514"
 }
+
+// The landing page's badges count only `open` requests and each player once,
+// however many open requests they sit in; a started round leaves both counts.
+func TestLandingCountsOpenRequestsAndDistinctPlayers(t *testing.T) {
+	fixture := newPlayingFixture(t)
+	queries := gamerequestquery.NewStore(fixture.pool)
+
+	first := fixture.create(t, "Landing one")
+	if err := fixture.requests.Join(t.Context(), first.ID, fixture.guest); err != nil {
+		t.Fatalf("join first as guest: %v", err)
+	}
+	fixture.create(t, "Landing two")
+
+	landing := func() gamerequestquery.LandingGame {
+		t.Helper()
+		games, err := queries.Landing(t.Context())
+		if err != nil {
+			t.Fatalf("Landing: %v", err)
+		}
+		for _, entry := range games {
+			if entry.GameName == "Playing Game" {
+				return entry
+			}
+		}
+		t.Fatalf("landing has no entry for the Game: %#v", games)
+		return gamerequestquery.LandingGame{}
+	}
+
+	if got := landing(); got.OpenRequests != 2 || got.Players != 2 {
+		t.Fatalf("landing = %d open, %d players; want 2 open, 2 players (host counted once)", got.OpenRequests, got.Players)
+	}
+
+	if err := fixture.requests.Start(t.Context(), first.ID, fixture.host); err != nil {
+		t.Fatalf("start first: %v", err)
+	}
+	if got := landing(); got.OpenRequests != 1 || got.Players != 1 {
+		t.Fatalf("landing after start = %d open, %d players; want 1 open, 1 player", got.OpenRequests, got.Players)
+	}
+}

@@ -262,6 +262,54 @@ func (s *Store) Trending(ctx context.Context) ([]TrendingGame, error) {
 	return result, nil
 }
 
+// LandingGame is one tile of the public landing page: a Trending Game with the
+// aggregate counts a logged-out visitor may see. It carries no player identity.
+type LandingGame struct {
+	GameName     string
+	CoverImageID string
+	OpenRequests int64
+	Players      int64
+}
+
+// landingTiles is how many Trending Games the landing page shows.
+const landingTiles = 4
+
+// Landing returns the leading Trending Games with their open-request and
+// player counts. Ranking is Trending's; this only adds the counts.
+func (s *Store) Landing(ctx context.Context) ([]LandingGame, error) {
+	trending, err := s.Trending(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(trending) > landingTiles {
+		trending = trending[:landingTiles]
+	}
+	if len(trending) == 0 {
+		return nil, nil
+	}
+	ids := make([]string, len(trending))
+	for i, game := range trending {
+		ids[i] = game.GameID
+	}
+	rows, err := s.queries.GameOpenCounts(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("count open requests for landing games: %w", err)
+	}
+	counts := make(map[string]sqlcgen.GameOpenCountsRow, len(rows))
+	for _, row := range rows {
+		counts[row.GameID] = row
+	}
+	result := make([]LandingGame, 0, len(trending))
+	for _, game := range trending {
+		row := counts[game.GameID]
+		result = append(result, LandingGame{
+			GameName: game.GameName, CoverImageID: game.CoverImageID,
+			OpenRequests: row.OpenRequests, Players: row.Players,
+		})
+	}
+	return result, nil
+}
+
 // CountActive reports how many Game Requests are active (`open` or `playing`)
 // on this installation, independent of any discovery filter, so the navigation
 // badge keeps one meaning whether or not the list beside it is narrowed.

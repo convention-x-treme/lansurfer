@@ -102,6 +102,19 @@ GROUP BY g.id, g.name, enrichment.game_id
 ORDER BY count(*) DESC, count(DISTINCT a.game_request_id) DESC, lower(g.name), g.id
 LIMIT sqlc.arg(result_limit);
 
+-- GameOpenCounts backs the public landing page's tile badges: per Game, how
+-- many Game Requests are `open` and how many distinct players are members of
+-- them. Aggregates only; no identity leaves this query.
+-- name: GameOpenCounts :many
+SELECT gr.game_id::text AS game_id,
+       count(DISTINCT gr.id) AS open_requests,
+       count(DISTINCT m.user_id) AS players
+FROM game_requests gr
+LEFT JOIN game_request_members m ON m.game_request_id = gr.id
+WHERE gr.status = 'open'
+  AND gr.game_id::text = ANY(sqlc.arg(game_ids)::text[])
+GROUP BY gr.game_id;
+
 -- CountActiveGameRequests backs the navigation badge, which states how many Game
 -- Requests are active (`open` or `playing`) on this installation and is therefore
 -- deliberately not affected by the viewer's discovery filters.

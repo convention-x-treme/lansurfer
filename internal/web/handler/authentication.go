@@ -70,6 +70,7 @@ func NewAuthentication(authentication Authentication, sessions Sessions, brand b
 }
 
 func (h *AuthenticationHandler) Login(w http.ResponseWriter, r *http.Request) {
+	setReturnPath(w, r.URL.Query().Get(returnQueryParam), h.secureCookies)
 	render(w, r, http.StatusOK, pages.Login(h.brand, h.providers()))
 }
 
@@ -187,7 +188,7 @@ func (h *AuthenticationHandler) CallbackFor(providerKind string) http.HandlerFun
 			http.Redirect(w, r, "/account", http.StatusSeeOther)
 		default: // FlowLogin or FlowResolution: a normal session was created.
 			http.SetCookie(w, webmiddleware.SessionCookie(result.Session.Token, result.Session.ExpiresAt, h.secureCookies))
-			http.Redirect(w, r, "/game-requests", http.StatusSeeOther)
+			http.Redirect(w, r, consumeReturnPath(w, r, h.secureCookies), http.StatusSeeOther)
 		}
 	}
 }

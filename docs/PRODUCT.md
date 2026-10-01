@@ -149,6 +149,14 @@ Do not create generic abstractions merely to make these possibilities easier lat
 
 LANsurfer owns a local User record. External identities authenticate that user but are not the LANsurfer user ID.
 
+### Landing page
+
+A logged-out `GET /` shows a public landing page instead of the bare login screen: one promise ("Find your crew. Catch the next game."), up to four Games from the same six-hour Trending ranking as the Game Requests rail, a dashed "Any game" tile, and one **Log in** action. Each Game tile states how many Game Requests are `open` for it and how many distinct players are members of those requests. Signed-in visitors are redirected to onboarding or Game Requests as before; the login screen stays at `/auth/login`.
+
+This makes Game names and aggregate counts visible without an account. It exposes no player identity: no Game Nicks, avatars, request details, or rosters. Tiles lead through login and then to the matching Game Request search, or to the composer for "Any game". The copy is fixed product copy, not operator configuration.
+
+A visitor who is sent to login from a page, or who clicks a landing tile, returns to that page afterwards. The return target is a validated local path only; anything else falls back to Game Requests.
+
 ### Public player identity
 
 - Every player must choose a unique, case-insensitive public **Game Nick** after first login. Existing prototype users complete this once after upgrade.

@@ -10,6 +10,7 @@ Use these terms consistently. Do not invent synonyms for domain concepts unless 
 - **Player**: a person using LANsurfer in user-facing language. Do not use provider account data as public player identity.
 - **Game Nick**: the player's unique, case-insensitive public LANsurfer identity.
 - **Provider identity**: an OIDC, Discord, Twitch, or other authentication-provider identity linked to a local User. Provider display names, usernames, email addresses, and pictures are not the public LANsurfer identity unless a separate approved feature explicitly uses them.
+- **Landing page**: the public logged-out `GET /`. Signed-in players never see it; they are redirected to onboarding or Game Requests. Not to be confused with Game Requests, the signed-in home of the product.
 - **Game**: the authoritative local LANsurfer Game record.
 - **Provider game / discovery result**: a provider-index result, such as an IGDB result, that is not yet necessarily an authoritative local Game.
 - **Follow Game**: the user action represented by a `GameSubscription`.

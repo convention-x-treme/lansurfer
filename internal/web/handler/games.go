@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/convention-x-treme/lansurfer/internal/game"
 	"github.com/convention-x-treme/lansurfer/internal/web/branding"
@@ -187,12 +188,19 @@ func (h *Games) navigationFor(r *http.Request, section string) components.Naviga
 	return h.navigation.For(r, section)
 }
 
-func RequireAuthentication(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := webmiddleware.CurrentUser(r.Context()); !ok {
-			http.Redirect(w, r, "/auth/login", http.StatusSeeOther)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
+func RequireAuthentication(secureCookies bool) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if _, ok := webmiddleware.CurrentUser(r.Context()); !ok {
+				// Only a full-page GET can be replayed by the redirect back after
+				// login: not a form POST, an HTMX fragment, or the SSE stream.
+				if r.Method == http.MethodGet && r.Header.Get("HX-Request") == "" && !strings.Contains(r.Header.Get("Accept"), "text/event-stream") {
+					setReturnPath(w, r.URL.RequestURI(), secureCookies)
+				}
+				http.Redirect(w, r, "/auth/login", http.StatusSeeOther)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }

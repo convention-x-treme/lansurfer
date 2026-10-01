@@ -151,6 +151,33 @@ templ AuthLayout(brand branding.Brand, title string) {
 	</html>
 }
 
+templ HomeLayout(brand branding.Brand, title string) {
+	<!doctype html>
+	<html lang="en" { themeAttributes(ctx)... }>
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<meta name="description" content={ brand.Tagline }/>
+			<title>{ PageTitle(ctx, brand, title) }</title>
+			@FontPreloads(brand)
+			@PWAHeadLinks(brand)
+			<link rel="stylesheet" href={ brand.Assets.Stylesheet }/>
+			<link rel="stylesheet" href={ brand.Assets.IconStylesheet }/>
+			<script src={ brand.Assets.Script } defer></script>
+		</head>
+		<body class="bg-base-100 text-base-content antialiased">
+			<a class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-sm focus:bg-warning focus:px-4 focus:py-2 focus:text-warning-content" href="#main-content">Skip to content</a>
+			<div class="flex min-h-dvh flex-col lg:h-dvh">
+				<header class="home-header">
+					<a class="brand-wordmark text-3xl" href="/" aria-label={ brand.Name + " home" }><span>LAN</span><span class="text-primary">surfer</span></a>
+				</header>
+				<main id="main-content" class="flex min-h-0 flex-1 flex-col">{ children... }</main>
+				@Footer(brand)
+			</div>
+		</body>
+	</html>
+}
+
 templ PublicHeader(brand branding.Brand, state NavigationState) {
 	<header class="border-b border-base-300 bg-base-100/95">
 		<nav class="page-shell flex min-h-16 items-center justify-between gap-4" aria-label="Primary navigation">
