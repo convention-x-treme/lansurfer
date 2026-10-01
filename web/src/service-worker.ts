@@ -23,7 +23,7 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(self.clients.claim());
 });
 
-type PushKind = "created" | "joined" | "left" | "closed" | "cancelled";
+type PushKind = "created" | "joined" | "left" | "started" | "closed" | "cancelled";
 
 interface PushPayload {
   version: 3;
@@ -39,7 +39,7 @@ interface PushPayload {
 }
 
 function isPushKind(value: unknown): value is PushKind {
-  return value === "created" || value === "joined" || value === "left" || value === "closed" || value === "cancelled";
+  return value === "created" || value === "joined" || value === "left" || value === "started" || value === "closed" || value === "cancelled";
 }
 
 function gameRequestURL(value: unknown): URL | null {
@@ -110,17 +110,21 @@ self.addEventListener("push", (event) => {
       }
     })) return;
 
-    const title = payload.creator_game_nick
-      ? `${payload.creator_game_nick} is looking for ${payload.game}`
-      : payload.game;
+    const title = payload.kind === "started"
+      ? payload.game
+      : payload.creator_game_nick
+        ? `${payload.creator_game_nick} is looking for ${payload.game}`
+        : payload.game;
     const startsAt = payload.starts_at
       ? new Intl.DateTimeFormat(undefined, { dateStyle: "full", timeStyle: "short" }).format(new Date(payload.starts_at))
       : "Not set";
     const prefix = payload.kind === "joined" || payload.kind === "left"
       ? `${payload.actor_game_nick} ${payload.kind} · `
-      : payload.kind === "closed" || payload.kind === "cancelled"
-        ? `Request ${payload.kind} · `
-        : "";
+      : payload.kind === "started"
+        ? "Game started · "
+        : payload.kind === "closed" || payload.kind === "cancelled"
+          ? `Request ${payload.kind} · `
+          : "";
     const players = payload.max_players === undefined
       ? `${payload.member_count} players (unlimited)`
       : `${payload.member_count}/${payload.max_players} players`;
