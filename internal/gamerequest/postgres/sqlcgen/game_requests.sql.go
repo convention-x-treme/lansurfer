@@ -190,6 +190,36 @@ func (q *Queries) LockGameRequest(ctx context.Context, id pgtype.UUID) (LockGame
 	return i, err
 }
 
+const recordCapacityChangedActivity = `-- name: RecordCapacityChangedActivity :exec
+INSERT INTO game_request_activity (game_request_id, actor_id, kind, previous_max_players, new_max_players)
+VALUES (
+    $1::uuid,
+    $2::uuid,
+    'capacity_changed',
+    $3::integer,
+    $4::integer
+)
+`
+
+type RecordCapacityChangedActivityParams struct {
+	GameRequestID      pgtype.UUID
+	ActorID            pgtype.UUID
+	PreviousMaxPlayers pgtype.Int4
+	NewMaxPlayers      pgtype.Int4
+}
+
+// RecordCapacityChangedActivity is separate from RecordGameRequestActivity so
+// the before/after columns stay reachable only for capacity_changed.
+func (q *Queries) RecordCapacityChangedActivity(ctx context.Context, arg RecordCapacityChangedActivityParams) error {
+	_, err := q.db.Exec(ctx, recordCapacityChangedActivity,
+		arg.GameRequestID,
+		arg.ActorID,
+		arg.PreviousMaxPlayers,
+		arg.NewMaxPlayers,
+	)
+	return err
+}
+
 const recordGameRequestActivity = `-- name: RecordGameRequestActivity :exec
 INSERT INTO game_request_activity (game_request_id, actor_id, kind)
 VALUES ($1::uuid, $2::uuid, $3)
@@ -262,6 +292,31 @@ type StartGameRequestParams struct {
 // silently rewrite a request out of a state it no longer holds.
 func (q *Queries) StartGameRequest(ctx context.Context, arg StartGameRequestParams) (int64, error) {
 	result, err := q.db.Exec(ctx, startGameRequest, arg.ID, arg.CreatorID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const updateGameRequestCapacity = `-- name: UpdateGameRequestCapacity :execrows
+UPDATE game_requests
+SET max_players = $1::integer, updated_at = now()
+WHERE id = $2::uuid
+  AND creator_id = $3::uuid
+  AND status IN ('open', 'playing')
+  AND max_players IS DISTINCT FROM $1::integer
+`
+
+type UpdateGameRequestCapacityParams struct {
+	MaxPlayers pgtype.Int4
+	ID         pgtype.UUID
+	CreatorID  pgtype.UUID
+}
+
+// UpdateGameRequestCapacity refuses a semantic no-op, so a caller that got zero
+// rows back knows nothing changed and must not record activity.
+func (q *Queries) UpdateGameRequestCapacity(ctx context.Context, arg UpdateGameRequestCapacityParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateGameRequestCapacity, arg.MaxPlayers, arg.ID, arg.CreatorID)
 	if err != nil {
 		return 0, err
 	}

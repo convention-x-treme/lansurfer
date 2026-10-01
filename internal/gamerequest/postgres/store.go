@@ -70,8 +70,8 @@ func (s *Store) Join(ctx context.Context, requestID, userID string) error {
 		return gamerequest.ErrNotFound
 	}
 	return s.withLockedRequest(ctx, databaseRequestID, func(queries *sqlcgen.Queries, locked sqlcgen.LockGameRequestRow) error {
-		if locked.Status != string(gamerequest.StatusOpen) {
-			return gamerequest.ErrNotOpen
+		if !isActive(locked.Status) {
+			return gamerequest.ErrNotActive
 		}
 		exists, err := queries.GameRequestMemberExists(ctx, sqlcgen.GameRequestMemberExistsParams{
 			GameRequestID: databaseRequestID, UserID: databaseUserID,
@@ -109,8 +109,8 @@ func (s *Store) Leave(ctx context.Context, requestID, userID string) error {
 		return gamerequest.ErrNotFound
 	}
 	return s.withLockedRequest(ctx, databaseRequestID, func(queries *sqlcgen.Queries, locked sqlcgen.LockGameRequestRow) error {
-		if locked.Status != string(gamerequest.StatusOpen) {
-			return gamerequest.ErrNotOpen
+		if !isActive(locked.Status) {
+			return gamerequest.ErrNotActive
 		}
 		if locked.CreatorID == userID {
 			return gamerequest.ErrCreatorCannotLeave
@@ -205,6 +205,64 @@ func (s *Store) SetStatus(ctx context.Context, requestID, userID string, status 
 		}
 		return recordActivity(ctx, queries, databaseRequestID, databaseUserID, activity)
 	})
+}
+
+// UpdateCapacity reports whether the stored maximum actually changed. It runs
+// under the same request row lock as Join and Leave, so a racing membership
+// change is counted either entirely before or entirely after this edit.
+func (s *Store) UpdateCapacity(ctx context.Context, requestID, userID string, maxPlayers *int32) (bool, error) {
+	databaseRequestID, databaseUserID, err := parseIDs(requestID, userID)
+	if err != nil {
+		return false, gamerequest.ErrNotFound
+	}
+	changed := false
+	err = s.withLockedRequest(ctx, databaseRequestID, func(queries *sqlcgen.Queries, locked sqlcgen.LockGameRequestRow) error {
+		if locked.CreatorID != userID {
+			return gamerequest.ErrNotCreator
+		}
+		if !isActive(locked.Status) {
+			return gamerequest.ErrNotActive
+		}
+		requested := nullableInt4(maxPlayers)
+		if requested == locked.MaxPlayers {
+			return nil
+		}
+		if requested.Valid {
+			count, err := queries.CountGameRequestMembers(ctx, databaseRequestID)
+			if err != nil {
+				return fmt.Errorf("count game request members: %w", err)
+			}
+			if count > int64(requested.Int32) {
+				return gamerequest.ErrCapacityBelowMembers
+			}
+		}
+		updated, err := queries.UpdateGameRequestCapacity(ctx, sqlcgen.UpdateGameRequestCapacityParams{
+			ID: databaseRequestID, CreatorID: databaseUserID, MaxPlayers: requested,
+		})
+		if err != nil {
+			return fmt.Errorf("update game request capacity: %w", err)
+		}
+		if updated != 1 {
+			// Unreachable while this transaction holds the row lock: the guards
+			// above and the update's WHERE clause read the same locked row.
+			return errors.New("update game request capacity: no row matched")
+		}
+		if err := queries.RecordCapacityChangedActivity(ctx, sqlcgen.RecordCapacityChangedActivityParams{
+			GameRequestID: databaseRequestID, ActorID: databaseUserID,
+			PreviousMaxPlayers: locked.MaxPlayers, NewMaxPlayers: requested,
+		}); err != nil {
+			return fmt.Errorf("record game request capacity activity: %w", err)
+		}
+		changed = true
+		return nil
+	})
+	return changed && err == nil, err
+}
+
+// isActive is the one definition of "participation is allowed": a request that
+// is open or playing. Join, Leave and capacity edits all route through it.
+func isActive(status string) bool {
+	return status == string(gamerequest.StatusOpen) || status == string(gamerequest.StatusPlaying)
 }
 
 // recordActivity keeps the durable record inside the caller's transaction, so a

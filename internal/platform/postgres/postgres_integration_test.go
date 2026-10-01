@@ -3436,8 +3436,8 @@ func TestGameRequestWorkflowAndConcurrentCapacity(t *testing.T) {
 	if err := requests.Close(t.Context(), created.ID, creator.ID); err != nil {
 		t.Fatalf("creator close: %v", err)
 	}
-	if err := requests.Join(t.Context(), created.ID, secondJoiner.ID); !errors.Is(err, gamerequest.ErrNotOpen) {
-		t.Fatalf("join closed request error = %v", err)
+	if err := requests.Join(t.Context(), created.ID, secondJoiner.ID); !errors.Is(err, gamerequest.ErrNotActive) {
+		t.Fatalf("join closed request error = %v, want ErrNotActive", err)
 	}
 	unlimited, err := requests.Create(t.Context(), creator.ID, selectedGame.ID, nil, startsAt, "No limit")
 	if err != nil {
@@ -3474,8 +3474,8 @@ func TestMigrateAndReadyCheck(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get migration version: %v", err)
 	}
-	if version != 23 {
-		t.Errorf("migration version = %d, want 23", version)
+	if version != 24 {
+		t.Errorf("migration version = %d, want 24", version)
 	}
 	if err := migrateFS(t.Context(), pool, migrationFS, logger); err != nil {
 		t.Fatalf("second migrateFS() error = %v", err)
@@ -3771,10 +3771,14 @@ func TestGameRequestDuplicateAndOverlappingMutations(t *testing.T) {
 		t.Fatalf("repeated start error = %v, want ErrNotOpen", err)
 	}
 
-	// A member of a request that is no longer open cannot be added by a late
-	// click that was already in flight when the creator settled its lifecycle.
-	if err := requests.Join(t.Context(), lifecycle.ID, joiner.ID); !errors.Is(err, gamerequest.ErrNotOpen) {
-		t.Fatalf("join after the lifecycle race error = %v, want ErrNotOpen", err)
+	// Whichever lifecycle change won, a late Join follows the settled state: a
+	// playing request is still active, a cancelled one is not.
+	lateJoin := requests.Join(t.Context(), lifecycle.ID, joiner.ID)
+	if wantStatus == gamerequest.StatusPlaying && lateJoin != nil {
+		t.Fatalf("join after start won the lifecycle race error = %v, want success", lateJoin)
+	}
+	if wantStatus == gamerequest.StatusCancelled && !errors.Is(lateJoin, gamerequest.ErrNotActive) {
+		t.Fatalf("join after cancel won the lifecycle race error = %v, want ErrNotActive", lateJoin)
 	}
 }
 
@@ -4285,9 +4289,13 @@ func TestGameRequestActivityDiscoveryAndTrending(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create open request: %v", err)
 	}
-	full, err := requests.Create(t.Context(), host.ID, quake.ID, ptr(int32(1)), startsAt, "Full round")
+	full, err := requests.Create(t.Context(), host.ID, quake.ID, ptr(int32(2)), startsAt, "Full round")
 	if err != nil {
 		t.Fatalf("create full request: %v", err)
+	}
+	// A finite maximum is at least 2, so the Host alone never fills a request.
+	if err := requests.Join(t.Context(), full.ID, outsider.ID); err != nil {
+		t.Fatalf("fill the full request: %v", err)
 	}
 
 	byAlias, err := readStore.ListActive(t.Context(), guest.ID, gamerequestquery.Filter{Search: "wC3"})

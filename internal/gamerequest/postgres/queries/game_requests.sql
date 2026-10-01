@@ -67,6 +67,28 @@ WHERE id = sqlc.arg(id)::uuid
   AND creator_id = sqlc.arg(creator_id)::uuid
   AND status = 'playing';
 
+-- UpdateGameRequestCapacity refuses a semantic no-op, so a caller that got zero
+-- rows back knows nothing changed and must not record activity.
+-- name: UpdateGameRequestCapacity :execrows
+UPDATE game_requests
+SET max_players = sqlc.narg(max_players)::integer, updated_at = now()
+WHERE id = sqlc.arg(id)::uuid
+  AND creator_id = sqlc.arg(creator_id)::uuid
+  AND status IN ('open', 'playing')
+  AND max_players IS DISTINCT FROM sqlc.narg(max_players)::integer;
+
+-- RecordCapacityChangedActivity is separate from RecordGameRequestActivity so
+-- the before/after columns stay reachable only for capacity_changed.
+-- name: RecordCapacityChangedActivity :exec
+INSERT INTO game_request_activity (game_request_id, actor_id, kind, previous_max_players, new_max_players)
+VALUES (
+    sqlc.arg(game_request_id)::uuid,
+    sqlc.arg(actor_id)::uuid,
+    'capacity_changed',
+    sqlc.narg(previous_max_players)::integer,
+    sqlc.narg(new_max_players)::integer
+);
+
 -- RecordGameRequestView is idempotent per (player, request): a repeat visit
 -- refreshes the timestamp instead of growing history, so "Recently viewed"
 -- lists distinct requests newest-first.
