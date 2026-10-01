@@ -12,18 +12,20 @@ import (
 const maxDescriptionLength = 1000
 
 var (
-	ErrNotFound           = errors.New("game request not found")
-	ErrGameUnavailable    = errors.New("game unavailable")
-	ErrInvalidMaxPlayers  = errors.New("invalid maximum players")
-	ErrInvalidStartsAt    = errors.New("invalid start time")
-	ErrInvalidDescription = errors.New("invalid description")
-	ErrNotOpen            = errors.New("game request is not open")
-	ErrNotPlaying         = errors.New("game request is not playing")
-	ErrFull               = errors.New("game request is full")
-	ErrAlreadyMember      = errors.New("user is already a member")
-	ErrNotMember          = errors.New("user is not a member")
-	ErrCreatorCannotLeave = errors.New("creator cannot leave game request")
-	ErrNotCreator         = errors.New("user is not the game request creator")
+	ErrNotFound             = errors.New("game request not found")
+	ErrGameUnavailable      = errors.New("game unavailable")
+	ErrInvalidMaxPlayers    = errors.New("invalid maximum players")
+	ErrInvalidStartsAt      = errors.New("invalid start time")
+	ErrInvalidDescription   = errors.New("invalid description")
+	ErrNotOpen              = errors.New("game request is not open")
+	ErrNotPlaying           = errors.New("game request is not playing")
+	ErrNotActive            = errors.New("game request is not active")
+	ErrFull                 = errors.New("game request is full")
+	ErrAlreadyMember        = errors.New("user is already a member")
+	ErrNotMember            = errors.New("user is not a member")
+	ErrCreatorCannotLeave   = errors.New("creator cannot leave game request")
+	ErrNotCreator           = errors.New("user is not the game request creator")
+	ErrCapacityBelowMembers = errors.New("maximum players is below current membership")
 )
 
 type Status string
@@ -40,12 +42,13 @@ const (
 type EventType string
 
 const (
-	EventCreated   EventType = "GameRequestCreated"
-	EventJoined    EventType = "GameRequestJoined"
-	EventLeft      EventType = "GameRequestLeft"
-	EventStarted   EventType = "GameRequestStarted"
-	EventClosed    EventType = "GameRequestClosed"
-	EventCancelled EventType = "GameRequestCancelled"
+	EventCreated         EventType = "GameRequestCreated"
+	EventJoined          EventType = "GameRequestJoined"
+	EventLeft            EventType = "GameRequestLeft"
+	EventStarted         EventType = "GameRequestStarted"
+	EventClosed          EventType = "GameRequestClosed"
+	EventCancelled       EventType = "GameRequestCancelled"
+	EventCapacityChanged EventType = "GameRequestCapacityChanged"
 )
 
 type Event struct {
@@ -61,12 +64,13 @@ type Event struct {
 type ActivityKind string
 
 const (
-	ActivityCreated   ActivityKind = "created"
-	ActivityJoined    ActivityKind = "joined"
-	ActivityLeft      ActivityKind = "left"
-	ActivityStarted   ActivityKind = "started"
-	ActivityClosed    ActivityKind = "closed"
-	ActivityCancelled ActivityKind = "cancelled"
+	ActivityCreated         ActivityKind = "created"
+	ActivityJoined          ActivityKind = "joined"
+	ActivityLeft            ActivityKind = "left"
+	ActivityStarted         ActivityKind = "started"
+	ActivityClosed          ActivityKind = "closed"
+	ActivityCancelled       ActivityKind = "cancelled"
+	ActivityCapacityChanged ActivityKind = "capacity_changed"
 )
 
 // EventPublisher is implemented by delivery infrastructure. Publishing is a
@@ -93,6 +97,7 @@ type Repository interface {
 	Leave(context.Context, string, string) error
 	SetStatus(context.Context, string, string, Status) error
 	RecordView(context.Context, string, string) error
+	UpdateCapacity(context.Context, string, string, *int32) (bool, error)
 }
 
 // GameLookup is implemented by the game module and keeps catalog rules with its owner.
@@ -118,7 +123,7 @@ func NewService(repository Repository, games GameLookup, publisher EventPublishe
 // using it as the single source of truth for the same checks.
 func ValidateCreateInput(maxPlayers *int32, startsAt time.Time, description string) (string, error) {
 	description = strings.TrimSpace(description)
-	if maxPlayers != nil && *maxPlayers < 1 {
+	if maxPlayers != nil && *maxPlayers < 2 {
 		return description, ErrInvalidMaxPlayers
 	}
 	if startsAt.IsZero() {
@@ -164,6 +169,19 @@ func (s *Service) Leave(ctx context.Context, requestID, userID string) error {
 	err := s.repository.Leave(ctx, requestID, userID)
 	if err == nil {
 		s.publish(Event{Type: EventLeft, RequestID: requestID})
+	}
+	return err
+}
+
+// UpdateCapacity changes the optional maximum player count (nil = unlimited).
+// A semantically identical value is a no-op and publishes no event.
+func (s *Service) UpdateCapacity(ctx context.Context, requestID, userID string, maxPlayers *int32) error {
+	if maxPlayers != nil && *maxPlayers < 2 {
+		return ErrInvalidMaxPlayers
+	}
+	changed, err := s.repository.UpdateCapacity(ctx, requestID, userID, maxPlayers)
+	if err == nil && changed {
+		s.publish(Event{Type: EventCapacityChanged, RequestID: requestID})
 	}
 	return err
 }
