@@ -58,6 +58,7 @@ type RouterDependencies struct {
 	PendingIdentities    handler.PendingIdentities
 	AccountRegistration  handler.AccountRegistration
 	GameNickClaims       handler.GameNickClaims
+	AccountDeleter       handler.AccountDeleter
 	Identities           handler.IdentityLookup
 	IdentityUnlinker     handler.IdentityUnlinker
 	Games                handler.GameAdministration
@@ -140,7 +141,7 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 		dependencies.DiscordConnector != nil && dependencies.DiscordLifecycle != nil && dependencies.DiscordStatus != nil
 	navigation := handler.NewNavigation(dependencies.NavigationQueries, dependencies.NavigationCatalog, dependencies.ViewerAvatars, discordDeliveryConfigured)
 	legalHandler := handler.NewLegal(navigation, brand)
-	accountHandler := handler.NewAccount(dependencies.Identities, dependencies.IdentityUnlinker, dependencies.AvatarSelector, dependencies.GameNickClaims, dependencies.Authentication, navigation, brand)
+	accountHandler := handler.NewAccount(dependencies.Identities, dependencies.IdentityUnlinker, dependencies.AvatarSelector, dependencies.GameNickClaims, dependencies.AccountDeleter, dependencies.Authentication, navigation, brand, dependencies.SecureCookies)
 	administrationHandler := handler.NewAdministration(
 		dependencies.Games, dependencies.ProviderSync, navigation, brand,
 		resolvedInstanceName, dependencies.BaseURL, SecureContextStatus(dependencies.BaseURL),
@@ -230,6 +231,7 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 			account.Post("/link/twitch", authenticationHandler.LinkFor("twitch"))
 			account.Post("/identities/{identityID}/unlink", accountHandler.Unlink)
 			account.Post("/avatar", accountHandler.SelectAvatar)
+			account.Post("/delete", accountHandler.Delete)
 			account.Route("/notifications", func(notifications chi.Router) {
 				notifications.Get("/", notificationSettingsHandler.Show)
 				if dependencies.Subscriptions != nil {

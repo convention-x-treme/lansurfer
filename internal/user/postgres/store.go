@@ -130,6 +130,27 @@ func (s *Store) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
+func (s *Store) DeleteAccount(ctx context.Context, id string) error {
+	databaseID, err := parseUUID(id)
+	if err != nil {
+		return user.ErrNotFound
+	}
+	deleted, err := s.queries.DeleteUserUnlessLastAdmin(ctx, databaseID)
+	if err != nil {
+		return fmt.Errorf("delete account: %w", err)
+	}
+	if deleted > 0 {
+		return nil
+	}
+	// Nothing deleted: the user is gone or is the last administrator.
+	if _, err := s.queries.GetUser(ctx, databaseID); errors.Is(err, pgx.ErrNoRows) {
+		return user.ErrNotFound
+	} else if err != nil {
+		return fmt.Errorf("delete account: %w", err)
+	}
+	return user.ErrLastAdmin
+}
+
 func parseUUID(value string) (pgtype.UUID, error) {
 	var id pgtype.UUID
 	if err := id.Scan(value); err != nil {

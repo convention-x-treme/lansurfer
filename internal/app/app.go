@@ -172,6 +172,7 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		PendingIdentities:   flowService,
 		AccountRegistration: accountRegistration,
 		GameNickClaims:      userService,
+		AccountDeleter:      userService,
 		Identities:          identityStore,
 		IdentityUnlinker:    identityStore,
 		AvatarSelector:      identityStore,

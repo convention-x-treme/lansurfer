@@ -21,6 +21,12 @@ var (
 	// ErrGameNickTaken indicates that another player has claimed the same
 	// case-insensitive Game Nick.
 	ErrGameNickTaken = errors.New("game nick already taken")
+	// ErrGameNickMismatch indicates that the confirmation did not repeat the
+	// current Game Nick exactly.
+	ErrGameNickMismatch = errors.New("game nick confirmation does not match")
+	// ErrLastAdmin indicates that deleting the account would leave LANsurfer
+	// without an administrator.
+	ErrLastAdmin = errors.New("cannot delete the last administrator")
 )
 
 // Role is a deliberately small local authorization role.
@@ -49,6 +55,9 @@ type Repository interface {
 	SetGameNick(context.Context, string, string) (User, error)
 	SetRole(context.Context, string, Role) (User, error)
 	Delete(context.Context, string) error
+	// DeleteAccount deletes a user unless it is the last administrator, which
+	// returns ErrLastAdmin.
+	DeleteAccount(context.Context, string) error
 }
 
 // Service owns local user behavior.
@@ -120,4 +129,18 @@ func (s *Service) PromoteToAdmin(ctx context.Context, id string) (User, error) {
 // attempt that could not be completed.
 func (s *Service) RollbackRegistration(ctx context.Context, id string) error {
 	return s.repository.Delete(ctx, id)
+}
+
+// DeleteAccount permanently removes the account and every record attributable
+// to it. The caller must retype the current Game Nick exactly: this is the
+// last line of defence behind the page, which only gates the button.
+func (s *Service) DeleteAccount(ctx context.Context, userID, typedGameNick string) error {
+	account, err := s.repository.ByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if typedGameNick != account.GameNick {
+		return ErrGameNickMismatch
+	}
+	return s.repository.DeleteAccount(ctx, userID)
 }

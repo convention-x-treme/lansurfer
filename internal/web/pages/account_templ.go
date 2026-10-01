@@ -37,7 +37,7 @@ type AccountProviderOption struct {
 	Href  string
 }
 
-func Account(brand branding.Brand, navigation components.NavigationState, currentGameNick, avatarKey string, identities []AccountIdentityRow, linkable []AccountProviderOption, linkError bool, gameNickInput, gameNickError string) templ.Component {
+func Account(brand branding.Brand, navigation components.NavigationState, currentGameNick, avatarKey string, identities []AccountIdentityRow, linkable []AccountProviderOption, linkError bool, gameNickInput, gameNickError, deleteError string) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -446,7 +446,64 @@ func Account(brand branding.Brand, navigation components.NavigationState, curren
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "</div></section></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "</div></section><section class=\"account-section\" aria-labelledby=\"account-danger\"><div class=\"account-section-intro\"><h2 id=\"account-danger\" class=\"account-section-title\">Danger zone</h2><p>Deleting your account is permanent and cannot be undone.</p></div><form method=\"post\" action=\"/account/delete\" class=\"grid max-w-lg gap-3\" data-delete-account=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var20 string
+			templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.ResolveAttributeValue(currentGameNick)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/account.templ`, Line: 139, Col: 114}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var20)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 49, "\" data-confirm=\"Permanently delete your account? This cannot be undone.\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = components.CSRFInput().Render(ctx, templ_7745c5c3_Buffer)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, "<p class=\"text-sm text-base-content/80\">Your sign-in methods, followed games, sessions, and notification devices are deleted. Game Requests you created are deleted for every player, and you leave the ones you joined. Your Game Nick becomes available to other players immediately.</p><label class=\"grid gap-2\"><span class=\"label-text font-medium\">Type your Game Nick <strong class=\"data-text\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var21 string
+			templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(currentGameNick)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/account.templ`, Line: 145, Col: 106}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 51, "</strong> to confirm</span> <input class=\"input input-bordered w-full\" type=\"text\" name=\"confirm_game_nick\" autocomplete=\"off\" autocapitalize=\"off\" spellcheck=\"false\" required></label> ")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if deleteError != "" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, "<div role=\"alert\" class=\"alert alert-error text-sm\"><span>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var22 string
+				templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs(deleteError)
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/account.templ`, Line: 150, Col: 26}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "</span></div>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, "<button class=\"btn btn-danger btn-sm w-fit\" type=\"submit\"><i class=\"ph ph-trash\" aria-hidden=\"true\"></i>Delete account</button></form></section></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

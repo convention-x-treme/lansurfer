@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/convention-x-treme/lansurfer/internal/auth"
+	"github.com/convention-x-treme/lansurfer/internal/user"
 	"github.com/convention-x-treme/lansurfer/internal/web/branding"
 	webmiddleware "github.com/convention-x-treme/lansurfer/internal/web/middleware"
 	"github.com/convention-x-treme/lansurfer/internal/web/pages"
@@ -25,25 +26,33 @@ type AvatarSelector interface {
 	SelectAvatar(ctx context.Context, userID, identityID string) error
 }
 
+// AccountDeleter permanently deletes the caller's account once they have
+// retyped their current Game Nick. It is satisfied by *user.Service.
+type AccountDeleter interface {
+	DeleteAccount(ctx context.Context, userID, typedGameNick string) error
+}
+
 type AccountHandler struct {
 	identities     IdentityLookup
 	unlinker       IdentityUnlinker
 	avatars        AvatarSelector
 	claims         GameNickClaims
+	deleter        AccountDeleter
 	authentication Authentication
 	navigation     *Navigation
 	brand          branding.Brand
+	secureCookies  bool
 }
 
-func NewAccount(identities IdentityLookup, unlinker IdentityUnlinker, avatars AvatarSelector, claims GameNickClaims, authentication Authentication, navigation *Navigation, brand branding.Brand) *AccountHandler {
+func NewAccount(identities IdentityLookup, unlinker IdentityUnlinker, avatars AvatarSelector, claims GameNickClaims, deleter AccountDeleter, authentication Authentication, navigation *Navigation, brand branding.Brand, secureCookies bool) *AccountHandler {
 	return &AccountHandler{
-		identities: identities, unlinker: unlinker, avatars: avatars, claims: claims,
-		authentication: authentication, navigation: navigation, brand: brand,
+		identities: identities, unlinker: unlinker, avatars: avatars, claims: claims, deleter: deleter,
+		authentication: authentication, navigation: navigation, brand: brand, secureCookies: secureCookies,
 	}
 }
 
 func (h *AccountHandler) Show(w http.ResponseWriter, r *http.Request) {
-	h.render(w, r, http.StatusOK, "", "")
+	h.render(w, r, http.StatusOK, "", "", "")
 }
 
 // RenameGameNick claims a new Game Nick under the same validation and
@@ -57,7 +66,7 @@ func (h *AccountHandler) RenameGameNick(w http.ResponseWriter, r *http.Request) 
 	gameNick := r.FormValue("game_nick")
 	if _, err := h.claims.ClaimGameNick(r.Context(), account.ID, gameNick); err != nil {
 		if isGameNickInputError(err) {
-			h.render(w, r, http.StatusUnprocessableEntity, gameNick, gameNickErrorMessage(err))
+			h.render(w, r, http.StatusUnprocessableEntity, gameNick, gameNickErrorMessage(err), "")
 			return
 		}
 		webmiddleware.LogError(r, "rename Game Nick", err)
@@ -109,7 +118,36 @@ func (h *AccountHandler) SelectAvatar(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/account", http.StatusSeeOther)
 }
 
-func (h *AccountHandler) render(w http.ResponseWriter, r *http.Request, status int, gameNickInput, gameNickError string) {
+// Delete permanently removes the caller's account after they retype their
+// current Game Nick. The deletion is one cascading statement, so a failure
+// leaves the account intact; on success the sessions are already gone and the
+// browser's cookies are expired.
+func (h *AccountHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	account, ok := webmiddleware.CurrentUser(r.Context())
+	if !ok {
+		http.Error(w, "authentication required", http.StatusUnauthorized)
+		return
+	}
+	err := h.deleter.DeleteAccount(r.Context(), account.ID, r.FormValue("confirm_game_nick"))
+	switch {
+	case err == nil, errors.Is(err, user.ErrNotFound):
+	case errors.Is(err, user.ErrGameNickMismatch):
+		h.render(w, r, http.StatusUnprocessableEntity, "", "", "That is not your current Game Nick. Nothing was deleted.")
+		return
+	case errors.Is(err, user.ErrLastAdmin):
+		h.render(w, r, http.StatusUnprocessableEntity, "", "", "You are the only administrator. Promote another administrator before deleting this account.")
+		return
+	default:
+		webmiddleware.LogError(r, "delete account", err)
+		http.Error(w, "delete account", http.StatusInternalServerError)
+		return
+	}
+	http.SetCookie(w, webmiddleware.ExpiredSessionCookie(h.secureCookies))
+	http.SetCookie(w, webmiddleware.ExpiredDeviceCookie(h.secureCookies))
+	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+func (h *AccountHandler) render(w http.ResponseWriter, r *http.Request, status int, gameNickInput, gameNickError, deleteError string) {
 	account, ok := webmiddleware.CurrentUser(r.Context())
 	if !ok {
 		http.Error(w, "authentication required", http.StatusUnauthorized)
@@ -124,7 +162,7 @@ func (h *AccountHandler) render(w http.ResponseWriter, r *http.Request, status i
 	rows, linkable := accountIdentityRows(identities, h.providers())
 	linkError := r.URL.Query().Get("link_error") != ""
 	navigation := h.navigation.For(r, "account")
-	render(w, r, status, pages.Account(h.brand, navigation, account.GameNick, selectedAvatarKey(identities), rows, linkable, linkError, gameNickInput, gameNickError))
+	render(w, r, status, pages.Account(h.brand, navigation, account.GameNick, selectedAvatarKey(identities), rows, linkable, linkError, gameNickInput, gameNickError, deleteError))
 }
 
 func (h *AccountHandler) providers() []auth.ProviderAvailability {

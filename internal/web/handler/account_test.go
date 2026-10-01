@@ -10,6 +10,7 @@ import (
 	"github.com/convention-x-treme/lansurfer/internal/auth"
 	"github.com/convention-x-treme/lansurfer/internal/user"
 	"github.com/convention-x-treme/lansurfer/internal/web/branding"
+	webmiddleware "github.com/convention-x-treme/lansurfer/internal/web/middleware"
 )
 
 func TestAccountShowRendersLinkedIdentitiesAndLinkableProviders(t *testing.T) {
@@ -19,7 +20,7 @@ func TestAccountShowRendersLinkedIdentitiesAndLinkableProviders(t *testing.T) {
 	authentication := &stubAuthentication{providers: []auth.ProviderAvailability{
 		{Kind: "discord", DisplayName: "Discord"}, {Kind: "oidc", DisplayName: "CXT account"},
 	}}
-	handler := NewAccount(identities, &stubUnlinker{}, &stubAvatarSelector{}, &stubGameNickClaims{}, authentication, nil, branding.Default())
+	handler := NewAccount(identities, &stubUnlinker{}, &stubAvatarSelector{}, &stubGameNickClaims{}, &stubAccountDeleter{}, authentication, nil, branding.Default(), false)
 	request := withCurrentUser(httptest.NewRequest(http.MethodGet, "/account", nil), user.User{ID: "user-1", GameNick: "NightOtter"})
 	response := httptest.NewRecorder()
 
@@ -45,7 +46,7 @@ func TestAccountShowOffersUnlinkWithMultipleIdentities(t *testing.T) {
 		{ID: "identity-1", ProviderKind: "discord"},
 		{ID: "identity-2", ProviderKind: "oidc"},
 	}}
-	handler := NewAccount(identities, &stubUnlinker{}, &stubAvatarSelector{}, &stubGameNickClaims{}, &stubAuthentication{}, nil, branding.Default())
+	handler := NewAccount(identities, &stubUnlinker{}, &stubAvatarSelector{}, &stubGameNickClaims{}, &stubAccountDeleter{}, &stubAuthentication{}, nil, branding.Default(), false)
 	request := withCurrentUser(httptest.NewRequest(http.MethodGet, "/account", nil), user.User{ID: "user-1", GameNick: "NightOtter"})
 	response := httptest.NewRecorder()
 
@@ -61,7 +62,7 @@ func TestAccountShowOffersUnlinkWithMultipleIdentities(t *testing.T) {
 
 func TestAccountRenameGameNickRejectsInvalidInput(t *testing.T) {
 	claims := &stubGameNickClaims{err: user.ErrGameNickTaken}
-	handler := NewAccount(&stubIdentityLookup{}, &stubUnlinker{}, &stubAvatarSelector{}, claims, &stubAuthentication{}, nil, branding.Default())
+	handler := NewAccount(&stubIdentityLookup{}, &stubUnlinker{}, &stubAvatarSelector{}, claims, &stubAccountDeleter{}, &stubAuthentication{}, nil, branding.Default(), false)
 	request := withCurrentUser(httptest.NewRequest(http.MethodPost, "/account/game-nick", strings.NewReader("game_nick=Taken")), user.User{ID: "user-1", GameNick: "NightOtter"})
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	response := httptest.NewRecorder()
@@ -77,7 +78,7 @@ func TestAccountRenameGameNickRejectsInvalidInput(t *testing.T) {
 }
 
 func TestAccountRenameGameNickRedirectsOnSuccess(t *testing.T) {
-	handler := NewAccount(&stubIdentityLookup{}, &stubUnlinker{}, &stubAvatarSelector{}, &stubGameNickClaims{}, &stubAuthentication{}, nil, branding.Default())
+	handler := NewAccount(&stubIdentityLookup{}, &stubUnlinker{}, &stubAvatarSelector{}, &stubGameNickClaims{}, &stubAccountDeleter{}, &stubAuthentication{}, nil, branding.Default(), false)
 	request := withCurrentUser(httptest.NewRequest(http.MethodPost, "/account/game-nick", strings.NewReader("game_nick=NewNick")), user.User{ID: "user-1", GameNick: "NightOtter"})
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	response := httptest.NewRecorder()
@@ -91,7 +92,7 @@ func TestAccountRenameGameNickRedirectsOnSuccess(t *testing.T) {
 
 func TestAccountUnlinkRedirectsWithErrorOnFailure(t *testing.T) {
 	unlinker := &stubUnlinker{err: auth.ErrIdentityNotFound}
-	handler := NewAccount(&stubIdentityLookup{}, unlinker, &stubAvatarSelector{}, &stubGameNickClaims{}, &stubAuthentication{}, nil, branding.Default())
+	handler := NewAccount(&stubIdentityLookup{}, unlinker, &stubAvatarSelector{}, &stubGameNickClaims{}, &stubAccountDeleter{}, &stubAuthentication{}, nil, branding.Default(), false)
 	request := withCurrentUser(withURLParam(httptest.NewRequest(http.MethodPost, "/account/identities/identity-1/unlink", nil), "identityID", "identity-1"), user.User{ID: "user-1"})
 	response := httptest.NewRecorder()
 
@@ -106,7 +107,7 @@ func TestAccountUnlinkRedirectsWithErrorOnFailure(t *testing.T) {
 }
 
 func TestAccountUnlinkRedirectsToAccountOnSuccess(t *testing.T) {
-	handler := NewAccount(&stubIdentityLookup{}, &stubUnlinker{}, &stubAvatarSelector{}, &stubGameNickClaims{}, &stubAuthentication{}, nil, branding.Default())
+	handler := NewAccount(&stubIdentityLookup{}, &stubUnlinker{}, &stubAvatarSelector{}, &stubGameNickClaims{}, &stubAccountDeleter{}, &stubAuthentication{}, nil, branding.Default(), false)
 	request := withCurrentUser(withURLParam(httptest.NewRequest(http.MethodPost, "/account/identities/identity-1/unlink", nil), "identityID", "identity-1"), user.User{ID: "user-1"})
 	response := httptest.NewRecorder()
 
@@ -122,7 +123,7 @@ func TestAccountShowRendersAvatarChoicesAndSameOriginAvatar(t *testing.T) {
 		{ID: "identity-1", ProviderKind: "discord", AvatarRef: "0123456789abcdef0123456789abcdef", AvatarKey: "0123456789abcdef0123456789abcdef", AvatarSelected: true},
 		{ID: "identity-2", ProviderKind: "oidc"},
 	}}
-	handler := NewAccount(identities, &stubUnlinker{}, &stubAvatarSelector{}, &stubGameNickClaims{}, &stubAuthentication{}, nil, branding.Default())
+	handler := NewAccount(identities, &stubUnlinker{}, &stubAvatarSelector{}, &stubGameNickClaims{}, &stubAccountDeleter{}, &stubAuthentication{}, nil, branding.Default(), false)
 	request := withCurrentUser(httptest.NewRequest(http.MethodGet, "/account", nil), user.User{ID: "user-1", GameNick: "NightOtter"})
 	response := httptest.NewRecorder()
 
@@ -150,7 +151,7 @@ func TestAccountSelectAvatar(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			selector := &stubAvatarSelector{err: test.err}
-			handler := NewAccount(&stubIdentityLookup{}, &stubUnlinker{}, selector, &stubGameNickClaims{}, &stubAuthentication{}, nil, branding.Default())
+			handler := NewAccount(&stubIdentityLookup{}, &stubUnlinker{}, selector, &stubGameNickClaims{}, &stubAccountDeleter{}, &stubAuthentication{}, nil, branding.Default(), false)
 			request := withCurrentUser(httptest.NewRequest(http.MethodPost, "/account/avatar", strings.NewReader(test.form)), user.User{ID: "user-1"})
 			request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 			response := httptest.NewRecorder()
@@ -182,4 +183,66 @@ type stubUnlinker struct {
 func (s *stubUnlinker) Unlink(_ context.Context, userID, identityID string) error {
 	s.userID, s.identityID = userID, identityID
 	return s.err
+}
+
+type stubAccountDeleter struct {
+	userID, typed string
+	err           error
+}
+
+func (s *stubAccountDeleter) DeleteAccount(_ context.Context, userID, typed string) error {
+	s.userID, s.typed = userID, typed
+	return s.err
+}
+
+func deleteAccountRequest(typed string) *http.Request {
+	request := withCurrentUser(httptest.NewRequest(http.MethodPost, "/account/delete", strings.NewReader("confirm_game_nick="+typed)), user.User{ID: "user-1", GameNick: "NightOtter"})
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	return request
+}
+
+func TestAccountDeleteExpiresCookiesAndLeavesSignedOut(t *testing.T) {
+	deleter := &stubAccountDeleter{}
+	handler := NewAccount(&stubIdentityLookup{}, &stubUnlinker{}, &stubAvatarSelector{}, &stubGameNickClaims{}, deleter, &stubAuthentication{}, nil, branding.Default(), false)
+	response := httptest.NewRecorder()
+
+	handler.Delete(response, deleteAccountRequest("NightOtter"))
+
+	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/" {
+		t.Fatalf("status/location = %d, %q", response.Code, response.Header().Get("Location"))
+	}
+	if deleter.userID != "user-1" || deleter.typed != "NightOtter" {
+		t.Fatalf("deleter got %q, %q", deleter.userID, deleter.typed)
+	}
+	expired := map[string]bool{}
+	for _, cookie := range response.Result().Cookies() {
+		expired[cookie.Name] = cookie.MaxAge < 0
+	}
+	if !expired[webmiddleware.SessionCookieName] || !expired[webmiddleware.DeviceCookieName] {
+		t.Fatalf("cookies not expired: %v", expired)
+	}
+}
+
+func TestAccountDeleteRefusesWithoutDeletingAndKeepsSession(t *testing.T) {
+	for name, test := range map[string]struct {
+		err  error
+		want string
+	}{
+		"mismatch":   {user.ErrGameNickMismatch, "not your current Game Nick"},
+		"last admin": {user.ErrLastAdmin, "only administrator"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			handler := NewAccount(&stubIdentityLookup{}, &stubUnlinker{}, &stubAvatarSelector{}, &stubGameNickClaims{}, &stubAccountDeleter{err: test.err}, &stubAuthentication{}, nil, branding.Default(), false)
+			response := httptest.NewRecorder()
+
+			handler.Delete(response, deleteAccountRequest("wrong"))
+
+			if response.Code != http.StatusUnprocessableEntity || !strings.Contains(response.Body.String(), test.want) {
+				t.Fatalf("status/body = %d, %q", response.Code, response.Body.String())
+			}
+			if len(response.Result().Cookies()) != 0 {
+				t.Fatalf("a refused deletion must keep the session: %v", response.Result().Cookies())
+			}
+		})
+	}
 }
