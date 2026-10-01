@@ -587,7 +587,7 @@ func TestComposerRecoveryDiscoveryPreservesDetailsInNoJSActions(t *testing.T) {
 		LocalGameID: "local-2", GamePresentation: game.GamePresentation{Name: "Age of Empires"}, Materialized: true,
 	}}}
 	form := GameRequestForm{
-		MaxPlayers: "4", StartPreset: "custom", StartDate: "2027-05-01", StartTime: "18:00", TimezoneOffset: "-120", Description: "LAN night",
+		MaxPlayers: "4", StartPreset: "custom", StartDate: "2027-05-01", StartTime: "18:00", Timezone: "Europe/Berlin", Description: "LAN night",
 	}
 
 	var rendered bytes.Buffer
@@ -600,9 +600,9 @@ func TestComposerRecoveryDiscoveryPreservesDetailsInNoJSActions(t *testing.T) {
 		`name="start_preset" value="custom"`,
 		`name="start_date" value="2027-05-01"`,
 		`name="start_time" value="18:00"`,
-		`name="timezone_offset" value="-120"`,
+		`name="timezone" value="Europe/Berlin"`,
 		`name="description" value="LAN night"`,
-		`href="/game-requests/new?description=LAN+night&amp;game_id=local-2&amp;max_players=4&amp;start_date=2027-05-01&amp;start_preset=custom&amp;start_time=18%3A00&amp;timezone_offset=-120"`,
+		`href="/game-requests/new?description=LAN+night&amp;game_id=local-2&amp;max_players=4&amp;start_date=2027-05-01&amp;start_preset=custom&amp;start_time=18%3A00&amp;timezone=Europe%2FBerlin"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("recovery discovery missing %q: %s", want, body)

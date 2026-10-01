@@ -1187,14 +1187,14 @@ func UpcomingGames(state NavigationState) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 91, "\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 91, "\" data-local-time=\"start\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var59 string
 				templ_7745c5c3_Var59, templ_7745c5c3_Err = templ.JoinStringErrs(StartLabel(request.StartsAt))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/layout.templ`, Line: 289, Col: 181}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/layout.templ`, Line: 289, Col: 205}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var59))
 				if templ_7745c5c3_Err != nil {
@@ -1320,14 +1320,14 @@ func RecentlyViewedRequests(state NavigationState) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 102, "\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 102, "\" data-local-time=\"title\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var66 string
 				templ_7745c5c3_Var66, templ_7745c5c3_Err = templ.JoinStringErrs(ViewedAgoLabel(entry.ViewedAt))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/layout.templ`, Line: 316, Col: 190}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/layout.templ`, Line: 316, Col: 214}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var66))
 				if templ_7745c5c3_Err != nil {
@@ -2174,7 +2174,7 @@ const startsNowWithin = 2 * time.Minute
 // relative time in the product carries it as a hover title, so "in 12 min"
 // is never the only thing a player can read off the screen.
 func AbsoluteTime(value time.Time) string {
-	return value.Local().Format("2006-01-02 15:04")
+	return value.UTC().Format("2006-01-02 15:04")
 }
 
 // StartLabel states when a Game Request starts, relative to now and coarse
@@ -2192,7 +2192,7 @@ func StartLabel(startsAt time.Time) string {
 	if remaining < 24*time.Hour {
 		return fmt.Sprintf("in %d h", max(1, int(remaining.Round(time.Hour)/time.Hour)))
 	}
-	return startsAt.Local().Format("Jan 2")
+	return startsAt.UTC().Format("Jan 2")
 }
 
 // ViewedAgoLabel states how long ago the viewer opened a Game Request, in the
