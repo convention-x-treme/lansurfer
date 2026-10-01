@@ -226,6 +226,35 @@ document.addEventListener("htmx:afterRequest", () => {
   refreshGameRequests();
 });
 
+// Detail refreshes update the roster and activity even while the Host edits
+// capacity. Keep only a dirty or rejected form; an untouched editor follows
+// the server, and a terminal request no longer renders an editor at all.
+const capacityDrafts = new WeakMap<HTMLElement, { form: HTMLFormElement; focused: HTMLElement | null }>();
+
+document.addEventListener("htmx:beforeSwap", (event) => {
+  const target = (event as CustomEvent<{ target: HTMLElement }>).detail.target;
+  if (target.id !== "game-request-detail") return;
+  const input = target.querySelector<HTMLInputElement>("form[action$='/capacity'] input[name='max_players']");
+  const form = input?.form;
+  if (!input || !form || (input.value === input.defaultValue && !form.querySelector("#capacity-error"))) return;
+  const active = document.activeElement;
+  capacityDrafts.set(target, {
+    form,
+    focused: active instanceof HTMLElement && form.contains(active) ? active : null,
+  });
+});
+
+document.addEventListener("htmx:afterSwap", (event) => {
+  const target = (event as CustomEvent<{ target: HTMLElement }>).detail.target;
+  const draft = capacityDrafts.get(target);
+  if (!draft) return;
+  capacityDrafts.delete(target);
+  const editor = document.querySelector<HTMLFormElement>("#game-request-detail form[action$='/capacity']");
+  if (!editor) return;
+  editor.replaceWith(draft.form);
+  draft.focused?.focus({ preventScroll: true });
+});
+
 // Without an event the current view is refreshed as a whole, which is what a
 // page needs after it was disconnected from the stream for a while. A deferred
 // refresh drops the event, and with it only the highlight on a new row; the
