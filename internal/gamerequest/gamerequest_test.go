@@ -66,6 +66,9 @@ func TestPublishesSuccessfulLifecycleChangesOnly(t *testing.T) {
 	if err := service.Leave(t.Context(), "request-1", "user-1"); err != nil {
 		t.Fatal(err)
 	}
+	if err := service.Start(t.Context(), "request-1", "user-1"); err != nil {
+		t.Fatal(err)
+	}
 	if err := service.Close(t.Context(), "request-1", "user-1"); err != nil {
 		t.Fatal(err)
 	}
@@ -76,6 +79,7 @@ func TestPublishesSuccessfulLifecycleChangesOnly(t *testing.T) {
 	want := []Event{
 		{Type: EventJoined, RequestID: "request-1"},
 		{Type: EventLeft, RequestID: "request-1"},
+		{Type: EventStarted, RequestID: "request-1"},
 		{Type: EventClosed, RequestID: "request-1"},
 		{Type: EventCancelled, RequestID: "request-2"},
 	}
@@ -95,11 +99,20 @@ func TestPublishesSuccessfulLifecycleChangesOnly(t *testing.T) {
 	if len(publisher.events) != len(want) {
 		t.Error("failed change published an event")
 	}
+	repository.statusErr = errors.New("status update failed")
+	if err := service.Start(t.Context(), "request-3", "user-1"); !errors.Is(err, repository.statusErr) {
+		t.Fatalf("Start() error = %v", err)
+	}
+	if len(publisher.events) != len(want) {
+		t.Error("failed start published an event")
+	}
 }
 
 type recordingRepository struct {
-	created GameRequest
-	joinErr error
+	created   GameRequest
+	joinErr   error
+	status    Status
+	statusErr error
 }
 
 func (r *recordingRepository) Create(_ context.Context, request GameRequest) (GameRequest, error) {
@@ -107,10 +120,13 @@ func (r *recordingRepository) Create(_ context.Context, request GameRequest) (Ga
 	request.ID = "request-1"
 	return request, nil
 }
-func (r *recordingRepository) Join(context.Context, string, string) error            { return r.joinErr }
-func (*recordingRepository) Leave(context.Context, string, string) error             { return nil }
-func (*recordingRepository) SetStatus(context.Context, string, string, Status) error { return nil }
-func (*recordingRepository) RecordView(context.Context, string, string) error        { return nil }
+func (r *recordingRepository) Join(context.Context, string, string) error { return r.joinErr }
+func (*recordingRepository) Leave(context.Context, string, string) error  { return nil }
+func (r *recordingRepository) SetStatus(_ context.Context, _, _ string, status Status) error {
+	r.status = status
+	return r.statusErr
+}
+func (*recordingRepository) RecordView(context.Context, string, string) error { return nil }
 
 type staticGames bool
 

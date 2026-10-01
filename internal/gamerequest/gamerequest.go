@@ -18,6 +18,7 @@ var (
 	ErrInvalidStartsAt    = errors.New("invalid start time")
 	ErrInvalidDescription = errors.New("invalid description")
 	ErrNotOpen            = errors.New("game request is not open")
+	ErrNotPlaying         = errors.New("game request is not playing")
 	ErrFull               = errors.New("game request is full")
 	ErrAlreadyMember      = errors.New("user is already a member")
 	ErrNotMember          = errors.New("user is not a member")
@@ -29,6 +30,7 @@ type Status string
 
 const (
 	StatusOpen      Status = "open"
+	StatusPlaying   Status = "playing"
 	StatusClosed    Status = "closed"
 	StatusCancelled Status = "cancelled"
 )
@@ -41,6 +43,7 @@ const (
 	EventCreated   EventType = "GameRequestCreated"
 	EventJoined    EventType = "GameRequestJoined"
 	EventLeft      EventType = "GameRequestLeft"
+	EventStarted   EventType = "GameRequestStarted"
 	EventClosed    EventType = "GameRequestClosed"
 	EventCancelled EventType = "GameRequestCancelled"
 )
@@ -53,19 +56,19 @@ type Event struct {
 
 // ActivityKind names a durable request-local activity entry. The repository
 // records one entry per successful change in the same transaction as the change
-// itself, which is also what makes the record usable as Track E's notification
-// intent: a rolled-back mutation leaves neither.
+// itself, which also makes the record usable as the notification handoff: a
+// rolled-back mutation leaves neither.
 type ActivityKind string
 
 const (
 	ActivityCreated   ActivityKind = "created"
 	ActivityJoined    ActivityKind = "joined"
 	ActivityLeft      ActivityKind = "left"
+	ActivityStarted   ActivityKind = "started"
 	ActivityClosed    ActivityKind = "closed"
 	ActivityCancelled ActivityKind = "cancelled"
 )
 
-// EventPublisher is implemented by delivery infrastructure. Publishing is a
 // best-effort signal: PostgreSQL remains the source of truth for refreshed UI.
 type EventPublisher interface {
 	Publish(Event)
@@ -174,6 +177,10 @@ func (s *Service) RecordView(ctx context.Context, requestID, userID string) erro
 
 func (s *Service) Close(ctx context.Context, requestID, userID string) error {
 	return s.setStatus(ctx, requestID, userID, StatusClosed, EventClosed)
+}
+
+func (s *Service) Start(ctx context.Context, requestID, userID string) error {
+	return s.setStatus(ctx, requestID, userID, StatusPlaying, EventStarted)
 }
 
 func (s *Service) Cancel(ctx context.Context, requestID, userID string) error {
