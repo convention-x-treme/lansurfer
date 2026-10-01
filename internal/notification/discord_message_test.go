@@ -20,6 +20,7 @@ func TestDiscordMessageCurrentState(t *testing.T) {
 		{"open", "open", "Bring snacks", "2/4 players (2 free)", 2, &four, 0x00B4D8},
 		{"full", "open", "", "3/3 players (full)", 3, &three, 0x00B4D8},
 		{"unlimited", "open", "ok", "7 players (unlimited)", 7, nil, 0x00B4D8},
+		{"playing", "playing", "", "2/4 players (2 free)", 2, &four, 0xFF6B35},
 		{"closed", "closed", "", "2/4 players (2 free)", 2, &four, 0xBED3DF},
 		{"cancelled", "cancelled", "", "2/4 players (2 free)", 2, &four, 0xFF3F73},
 	}

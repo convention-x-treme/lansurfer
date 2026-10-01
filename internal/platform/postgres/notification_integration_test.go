@@ -1138,3 +1138,34 @@ func TestNotificationManualRetryUncertainReopensUncertainDeliveryEndToEnd(t *tes
 		t.Fatalf("status after ManualRetryUncertain() = %q, want %q", statusAfterRetry, "pending")
 	}
 }
+
+func TestNotificationStartedActivityMaterializesWork(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+	fixture := newNotificationFixture(t, pool)
+	store := notificationpostgres.NewStore(pool)
+	request, err := fixture.requests.Create(t.Context(), fixture.host.ID, fixture.gameID, nil, time.Now().Add(time.Hour), "Start me")
+	if err != nil {
+		t.Fatalf("create game request: %v", err)
+	}
+	if err := store.InitializeBaseline(t.Context()); err != nil {
+		t.Fatalf("InitializeBaseline() error = %v", err)
+	}
+	if err := fixture.requests.Start(t.Context(), request.ID, fixture.host.ID); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+
+	activities, err := store.DiscoverActivity(t.Context(), 10)
+	if err != nil || len(activities) != 1 || activities[0].Kind != notification.ActivityStarted || activities[0].GameRequestID != request.ID {
+		t.Fatalf("DiscoverActivity() = %#v, %v, want exactly one started activity for %s", activities, err, request.ID)
+	}
+	if err := store.MaterializeWork(t.Context(), activities[0], nil); err != nil {
+		t.Fatalf("MaterializeWork() for started error = %v", err)
+	}
+	var count int
+	if err := pool.QueryRow(t.Context(), "SELECT count(*) FROM notification_work WHERE kind = 'started' AND game_request_id = $1", request.ID).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("started notification_work rows = %d, %v, want 1", count, err)
+	}
+}

@@ -17,6 +17,7 @@ func TestWebPushPayloadKindsAndPrivacy(t *testing.T) {
 		{ActivityCreated, false},
 		{ActivityJoined, true},
 		{ActivityLeft, true},
+		{ActivityStarted, false},
 		{ActivityClosed, false},
 		{ActivityCancelled, false},
 	} {

@@ -45,7 +45,7 @@ func buildWebPushPayload(activity Activity, summary GameRequestSummary, actorGam
 			return nil, fmt.Errorf("actor Game Nick required for %s", activity.Kind)
 		}
 		payload.ActorGameNick = actorGameNick
-	case ActivityClosed, ActivityCancelled:
+	case ActivityStarted, ActivityClosed, ActivityCancelled:
 	default:
 		return nil, fmt.Errorf("unsupported Web Push activity: %s", activity.Kind)
 	}

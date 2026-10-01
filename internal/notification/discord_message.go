@@ -92,6 +92,8 @@ func buildDiscordMessage(summary GameRequestSummary, baseURL, instanceName strin
 	switch summary.Status {
 	case "open":
 		embed.Color = 0x00B4D8
+	case "playing":
+		embed.Color = 0xFF6B35
 	case "closed":
 		embed.Color = 0xBED3DF
 	case "cancelled":
