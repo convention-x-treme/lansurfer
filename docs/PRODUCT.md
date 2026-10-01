@@ -149,6 +149,14 @@ Do not create generic abstractions merely to make these possibilities easier lat
 
 LANsurfer owns a local User record. External identities authenticate that user but are not the LANsurfer user ID.
 
+### Landing page
+
+A logged-out `GET /` shows a public landing page instead of the bare login screen: one promise ("Find your crew. Catch the next game."), up to four Games from the same six-hour Trending ranking as the Game Requests rail, a dashed "Any game" tile, and one **Log in** action. Each Game tile states how many Game Requests are `open` for it and how many distinct players are members of those requests. Signed-in visitors are redirected to onboarding or Game Requests as before; the login screen stays at `/auth/login`.
+
+This makes Game names and aggregate counts visible without an account. It exposes no player identity: no Game Nicks, avatars, request details, or rosters. Tiles lead through login and then to the matching Game Request search, or to the composer for "Any game". The copy is fixed product copy, not operator configuration.
+
+A visitor who is sent to login from a page, or who clicks a landing tile, returns to that page afterwards. The return target is a validated local path only; anything else falls back to Game Requests.
+
 ### Public player identity
 
 - Every player must choose a unique, case-insensitive public **Game Nick** after first login. Existing prototype users complete this once after upgrade.
@@ -180,6 +188,14 @@ LANsurfer owns a local User record. External identities authenticate that user b
 Discord authentication and Discord notification delivery are separate integrations.
 
 Twitch is an optional third authentication provider. Twitch login reuses the same local identity, explicit linking, onboarding, and session model as OIDC and Discord. It requests only a stable Twitch subject and display username, never Twitch email; a Twitch account may be explicitly linked to the same local User as the other providers. Twitch login and IGDB discovery share optional Twitch application credentials but remain independently enabled features.
+
+### Account deletion
+
+- A signed-in player can permanently delete their own account from the **Danger zone** on the account page. No re-authentication is required; the player must retype their current Game Nick exactly before the final action is available.
+- Deletion removes the local account and everything attributable to it: linked identities, sessions, notification devices, followed games, memberships, Game Requests the player created (for every player), and the activity the player caused. No "Deleted user" placeholder is kept.
+- The Game Nick is released immediately.
+- The only administrator cannot delete their account; another administrator must exist first.
+- Discord messages already posted for deleted Game Requests are not edited or removed.
 
 ## 7. Roles and Management Boundaries
 

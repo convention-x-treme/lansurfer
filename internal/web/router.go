@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/a-h/templ"
-	"github.com/convention-x-treme/lansurfer/internal/auth"
+	requestquery "github.com/convention-x-treme/lansurfer/internal/query/gamerequest"
 	"github.com/convention-x-treme/lansurfer/internal/web/assets"
 	"github.com/convention-x-treme/lansurfer/internal/web/branding"
 	"github.com/convention-x-treme/lansurfer/internal/web/components"
@@ -58,6 +58,7 @@ type RouterDependencies struct {
 	PendingIdentities    handler.PendingIdentities
 	AccountRegistration  handler.AccountRegistration
 	GameNickClaims       handler.GameNickClaims
+	AccountDeleter       handler.AccountDeleter
 	Identities           handler.IdentityLookup
 	IdentityUnlinker     handler.IdentityUnlinker
 	Games                handler.GameAdministration
@@ -71,6 +72,8 @@ type RouterDependencies struct {
 	DiscordLifecycle     handler.DiscordDestinationLifecycle
 	DiscordStatus        handler.DiscordDestinationStatusReader
 	RequestQueries       handler.GameRequestQueries
+	// Landing feeds the public home page; nil renders it without Game tiles.
+	Landing handler.LandingQueries
 	// NavigationQueries and NavigationCatalog back the shared sidebar every
 	// authenticated screen renders. The same concrete read model and
 	// discovery service behind RequestQueries/Discovery satisfy them; saying
@@ -140,7 +143,7 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 		dependencies.DiscordConnector != nil && dependencies.DiscordLifecycle != nil && dependencies.DiscordStatus != nil
 	navigation := handler.NewNavigation(dependencies.NavigationQueries, dependencies.NavigationCatalog, dependencies.ViewerAvatars, discordDeliveryConfigured)
 	legalHandler := handler.NewLegal(navigation, brand)
-	accountHandler := handler.NewAccount(dependencies.Identities, dependencies.IdentityUnlinker, dependencies.AvatarSelector, dependencies.GameNickClaims, dependencies.Authentication, navigation, brand)
+	accountHandler := handler.NewAccount(dependencies.Identities, dependencies.IdentityUnlinker, dependencies.AvatarSelector, dependencies.GameNickClaims, dependencies.AccountDeleter, dependencies.Authentication, navigation, brand, dependencies.SecureCookies)
 	administrationHandler := handler.NewAdministration(
 		dependencies.Games, dependencies.ProviderSync, navigation, brand,
 		resolvedInstanceName, dependencies.BaseURL, SecureContextStatus(dependencies.BaseURL),
@@ -195,7 +198,7 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 	router.Head("/service-worker.js", serviceWorker)
 	router.Group(func(authenticated chi.Router) {
 		authenticated.Use(webmiddleware.Authentication(dependencies.Sessions, dependencies.SecureCookies))
-		authenticated.Get("/", rootHandler(brand, dependencies.Authentication))
+		authenticated.Get("/", rootHandler(brand, dependencies.Landing))
 		// Public: no RequireAuthentication, but the session is resolved so a
 		// signed-in player keeps the application shell.
 		authenticated.Get("/terms", legalHandler.Terms)
@@ -222,7 +225,7 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 			onboarding.Post("/{pendingID}", onboardingHandler.SubmitPending)
 		})
 		authenticated.Route("/account", func(account chi.Router) {
-			account.Use(handler.RequireAuthentication, handler.RequireGameNick)
+			account.Use(handler.RequireAuthentication(dependencies.SecureCookies), handler.RequireGameNick)
 			account.Get("/", accountHandler.Show)
 			account.Post("/game-nick", accountHandler.RenameGameNick)
 			account.Post("/link/oidc", authenticationHandler.LinkFor("oidc"))
@@ -230,6 +233,7 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 			account.Post("/link/twitch", authenticationHandler.LinkFor("twitch"))
 			account.Post("/identities/{identityID}/unlink", accountHandler.Unlink)
 			account.Post("/avatar", accountHandler.SelectAvatar)
+			account.Post("/delete", accountHandler.Delete)
 			account.Route("/notifications", func(notifications chi.Router) {
 				notifications.Get("/", notificationSettingsHandler.Show)
 				if dependencies.Subscriptions != nil {
@@ -244,7 +248,7 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 		})
 		if dependencies.Discovery != nil {
 			authenticated.Route("/games", func(games chi.Router) {
-				games.Use(handler.RequireAuthentication, handler.RequireGameNick)
+				games.Use(handler.RequireAuthentication(dependencies.SecureCookies), handler.RequireGameNick)
 				games.Get("/", gamesHandler.Browse)
 				games.Get("/mine", gamesHandler.MyGames)
 				games.Post("/providers/{provider}/{externalID}/follow", gamesHandler.FollowProvider)
@@ -254,7 +258,7 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 		}
 		if dependencies.GameRequests != nil && dependencies.RequestQueries != nil {
 			authenticated.Route("/game-requests", func(requests chi.Router) {
-				requests.Use(handler.RequireAuthentication, handler.RequireGameNick)
+				requests.Use(handler.RequireAuthentication(dependencies.SecureCookies), handler.RequireGameNick)
 				requests.Get("/", gameRequestsHandler.List)
 				requests.Get("/new", gameRequestsHandler.New)
 				requests.Get("/new/discovery", gameRequestsHandler.Discovery)
@@ -271,7 +275,7 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 			})
 		}
 		if dependencies.Realtime != nil {
-			authenticated.With(handler.RequireAuthentication, handler.RequireGameNick).Get("/events/game-requests", realtimeHandler.GameRequests)
+			authenticated.With(handler.RequireAuthentication(dependencies.SecureCookies), handler.RequireGameNick).Get("/events/game-requests", realtimeHandler.GameRequests)
 		}
 		if dependencies.Games != nil || discordDeliveryHandler != nil {
 			authenticated.Route("/admin", func(admin chi.Router) {
@@ -314,7 +318,7 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 	return router
 }
 
-func rootHandler(brand branding.Brand, authentication handler.Authentication) http.HandlerFunc {
+func rootHandler(brand branding.Brand, landing handler.LandingQueries) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if account, ok := webmiddleware.CurrentUser(r.Context()); ok {
 			if account.GameNick == "" {
@@ -324,11 +328,16 @@ func rootHandler(brand branding.Brand, authentication handler.Authentication) ht
 			http.Redirect(w, r, "/game-requests", http.StatusSeeOther)
 			return
 		}
-		var providers []auth.ProviderAvailability
-		if authentication != nil {
-			providers = authentication.Providers()
+		var games []requestquery.LandingGame
+		if landing != nil {
+			var err error
+			if games, err = landing.Landing(r.Context()); err != nil {
+				// The landing page must never fail a visitor over a ranking.
+				webmiddleware.LogError(r, "load landing Games", err)
+				games = nil
+			}
 		}
-		componentHandler(pages.Login(brand, providers)).ServeHTTP(w, r)
+		componentHandler(pages.Home(brand, games)).ServeHTTP(w, r)
 	}
 }
 

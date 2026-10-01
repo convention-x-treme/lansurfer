@@ -121,6 +121,19 @@ new MutationObserver((records) => {
   );
 }).observe(document.documentElement, { childList: true, subtree: true });
 
+// Account deletion stays unavailable until the player retypes their Game Nick
+// exactly. Disabled here rather than in markup so the form still works without
+// JavaScript; the server compares the nick again either way.
+document.querySelectorAll<HTMLFormElement>("form[data-delete-account]").forEach((form) => {
+  const input = form.elements.namedItem("confirm_game_nick") as HTMLInputElement;
+  const button = form.querySelector<HTMLButtonElement>("button[type=submit]")!;
+  const sync = () => {
+    button.disabled = input.value !== form.dataset.deleteAccount;
+  };
+  input.addEventListener("input", sync);
+  sync();
+});
+
 // IGDB is the only approved remote-content host, and its cover images can 404
 // or time out independently of LANsurfer's own availability (spec: "Covers").
 // `error` does not bubble on media elements, so this listens during the

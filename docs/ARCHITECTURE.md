@@ -272,6 +272,8 @@ Owns:
 - internal LANsurfer roles
 - unique public Game Nick
 
+Account deletion is `user.Service.DeleteAccount`, which verifies the retyped Game Nick and deletes the `users` row in one statement guarded against removing the last administrator (administrator rows are locked in id order so concurrent deletions serialize). Every foreign key into `users` is `ON DELETE CASCADE`, so the database removes sessions, identities, follows, memberships, created Game Requests (and through them activity, notification work, and deliveries) atomically; no module writes another module's tables. A new table that references `users` must cascade as well; an integration test fails on any other `ON DELETE` action.
+
 Rich biographies, per-Game player handles, and richer public profiles are outside the current product model.
 
 ### `auth`
@@ -467,6 +469,12 @@ Twitch authentication is an optional third provider adapter in the same registry
 `auth` owns provider avatars. Each identity stores an optional `avatar_ref` (Discord avatar hash; Twitch or OIDC `https` `picture` URL, Twitch limited to `static-cdn.jtvnw.net`), a derived content key `avatar_key` (`hex(sha256(kind|subject|avatar_ref))[:32]`), and `avatar_selected`. A partial unique index allows at most one selected identity per user; no selected row means Default. Every login/link refreshes `avatar_ref`/`avatar_key` but never `avatar_selected`; unlinking deletes the row and therefore the selection. An invalid or missing avatar never fails authentication. Read models join the selected `avatar_key` read-only.
 
 Provider names and email addresses are private account data. Normal player and global administrator views must not expose them to anyone except the account owner.
+
+### Return path after login
+
+The post-login destination is carried in a short-lived `lansurfer_return` cookie (HttpOnly, SameSite=Lax, Secure when configured, `Path=/`, 15 minutes), not in the OAuth `state`, the session, or the database. `GET /auth/login?return_to=<path>` and `RequireAuthentication` (full-page GET requests only, never HTMX fragments or the event stream) capture it; the callback's normal-login branch and onboarding completion consume and clear it. Link and `/account` flows ignore it. The path is validated on capture and again on consumption: a local path only, not `//` or `/\`, no scheme or host, and not under `/auth` or `/onboarding`. A missing or invalid value falls back to `/game-requests`.
+
+The public landing page reads the existing Trending ranking plus one aggregate read-model query in `internal/query/gamerequest`; it performs no writes and exposes no player identity.
 
 ---
 

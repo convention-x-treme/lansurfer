@@ -51,6 +51,7 @@ func main() {
 		Ready:             func(context.Context) error { return nil },
 		Authentication:    state,
 		Sessions:          state,
+		Identities:        state,
 		Discovery:         state,
 		GameRequests:      state,
 		RequestQueries:    state,
@@ -538,3 +539,7 @@ func gameName(gameID string) string {
 	}
 	return "Warcraft III"
 }
+
+// ListByUser serves the account page; the fixture player has no linked
+// identities worth showing.
+func (*fixture) ListByUser(context.Context, string) ([]auth.Identity, error) { return nil, nil }

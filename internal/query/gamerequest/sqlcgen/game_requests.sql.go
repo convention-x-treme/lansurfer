@@ -25,6 +25,46 @@ func (q *Queries) CountActiveGameRequests(ctx context.Context) (int64, error) {
 	return count, err
 }
 
+const gameOpenCounts = `-- name: GameOpenCounts :many
+SELECT gr.game_id::text AS game_id,
+       count(DISTINCT gr.id) AS open_requests,
+       count(DISTINCT m.user_id) AS players
+FROM game_requests gr
+LEFT JOIN game_request_members m ON m.game_request_id = gr.id
+WHERE gr.status = 'open'
+  AND gr.game_id::text = ANY($1::text[])
+GROUP BY gr.game_id
+`
+
+type GameOpenCountsRow struct {
+	GameID       string
+	OpenRequests int64
+	Players      int64
+}
+
+// GameOpenCounts backs the public landing page's tile badges: per Game, how
+// many Game Requests are `open` and how many distinct players are members of
+// them. Aggregates only; no identity leaves this query.
+func (q *Queries) GameOpenCounts(ctx context.Context, gameIds []string) ([]GameOpenCountsRow, error) {
+	rows, err := q.db.Query(ctx, gameOpenCounts, gameIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GameOpenCountsRow
+	for rows.Next() {
+		var i GameOpenCountsRow
+		if err := rows.Scan(&i.GameID, &i.OpenRequests, &i.Players); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getGameRequest = `-- name: GetGameRequest :one
 SELECT gr.id::text AS request_id,
        g.id::text AS game_id,

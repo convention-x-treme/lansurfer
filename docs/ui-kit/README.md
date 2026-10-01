@@ -1,6 +1,6 @@
 # LANsurfer UI Kit
 
-Target design for login and Game Requests. Dark first, desktop 1440, English as the UI language.
+Target design for the landing page, login and Game Requests. Dark first, desktop 1440, English as the UI language.
 
 The leading source for colour and typography is the Claude Design project [LANsurfer UI Kit](https://claude.ai/design/p/c259a8f4-c239-427e-8e18-32443502b873); `index.html` is an older snapshot and still shows Montserrat type and the pre-Harbour palette. Follow [BRANDING.md](../BRANDING.md) for tokens.
 
@@ -10,8 +10,9 @@ The leading source for colour and typography is the Claude Design project [LANsu
 
 | ID | Screen | Route |
 | --- | --- | --- |
+| 0 | Landing page (logged out, proposal 1b) | `GET /` |
 | 1a | Login | `GET /auth/login` |
-| 1b | Game Requests (home page) | `GET /game-requests` |
+| 1b | Game Requests (signed-in home) | `GET /game-requests` |
 | 1c | List states: Arrival, Skeleton, Empty, Alerts | `GET /game-requests/refresh`, `GET /events/game-requests` |
 | 1d | Composer and mobile drawer | `GET /game-requests/new`, `POST /game-requests` |
 | 1f | Game Request Detail | `GET /game-requests/{requestID}` |
@@ -20,7 +21,7 @@ The leading source for colour and typography is the Claude Design project [LANsu
 
 ## Decisions Defined by the Kit
 
-- "Dashboard" has been removed as a term: the home page is called Game Requests.
+- "Dashboard" has been removed as a term: the signed-in home is called Game Requests; the logged-out `GET /` is the landing page (`UI-Kit-Home` in the Claude Design project). Game tiles carry an "N open" badge top-right and a player-count badge top-left; the dashed last tile is "Any game".
 - Dense rows: abbreviation, place counter, relative start time, Join. Details live on their own detail page.
 - Join changes the row to "Leave"; no toast. Toasts are only for errors and things outside the current viewport.
 - Vocabulary: **places** for available spots, **max players** for the field. "Seat" is not used.

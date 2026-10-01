@@ -59,10 +59,31 @@ func TestPromoteToAdmin(t *testing.T) {
 	}
 }
 
+func TestDeleteAccountRequiresExactGameNick(t *testing.T) {
+	repository := &recordingRepository{}
+	service := NewService(repository)
+
+	for _, typed := range []string{"", "ada player", "Ada Player ", "Ada"} {
+		if err := service.DeleteAccount(t.Context(), "user-id", typed); !errors.Is(err, ErrGameNickMismatch) {
+			t.Errorf("DeleteAccount(%q) error = %v, want ErrGameNickMismatch", typed, err)
+		}
+	}
+	if repository.deletedID != "" {
+		t.Fatalf("mismatched confirmation deleted %q", repository.deletedID)
+	}
+	if err := service.DeleteAccount(t.Context(), "user-id", "Ada Player"); err != nil || repository.deletedID != "user-id" {
+		t.Fatalf("DeleteAccount() = %v, deleted %q", err, repository.deletedID)
+	}
+	if err := service.DeleteAccount(t.Context(), "missing", "x"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing user error = %v, want ErrNotFound", err)
+	}
+}
+
 type recordingRepository struct {
 	gameNick   string
 	promotedID string
 	role       Role
+	deletedID  string
 }
 
 func (r *recordingRepository) Create(_ context.Context, gameNick string, role Role) (User, error) {
@@ -71,7 +92,10 @@ func (r *recordingRepository) Create(_ context.Context, gameNick string, role Ro
 	return User{ID: "user-id", GameNick: gameNick, Role: role}, nil
 }
 
-func (*recordingRepository) ByID(context.Context, string) (User, error) {
+func (*recordingRepository) ByID(_ context.Context, id string) (User, error) {
+	if id == "user-id" {
+		return User{ID: id, GameNick: "Ada Player"}, nil
+	}
 	return User{}, ErrNotFound
 }
 
@@ -90,5 +114,10 @@ func (r *recordingRepository) SetRole(_ context.Context, id string, role Role) (
 }
 
 func (*recordingRepository) Delete(context.Context, string) error {
+	return nil
+}
+
+func (r *recordingRepository) DeleteAccount(_ context.Context, id string) error {
+	r.deletedID = id
 	return nil
 }

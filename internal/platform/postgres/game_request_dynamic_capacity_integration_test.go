@@ -109,11 +109,11 @@ func (f playingFixture) memberCount(t *testing.T, requestID string) int {
 	return count
 }
 
-// Migration 24 must not rewrite history: a request that already holds the
+// Migration 25 must not rewrite history: a request that already holds the
 // legacy finite limit 1 keeps it, and stays usable.
-func TestMigration24PreservesLegacyCapacityOne(t *testing.T) {
+func TestMigration25PreservesLegacyCapacityOne(t *testing.T) {
 	pool := newTestPool(t)
-	migrateToVersion(t, pool, productionMigrationFS(t), 23)
+	migrateToVersion(t, pool, productionMigrationFS(t), 24)
 
 	users := user.NewService(userpostgres.NewStore(pool))
 	host, err := users.Register(t.Context(), "Legacy Capacity Host")
