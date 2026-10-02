@@ -254,4 +254,3 @@ func (g staticGames) ActiveExists(context.Context, string) (bool, error) { retur
 type recordingPublisher struct{ events []Event }
 
 func (p *recordingPublisher) Publish(event Event) { p.events = append(p.events, event) }
-

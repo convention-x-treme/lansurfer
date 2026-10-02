@@ -1011,10 +1011,10 @@ func TestHostEditActionAndEditorFollowOwnershipAndStatus(t *testing.T) {
 		viewer string
 		show   bool
 	}{
-		"open Host":     {gamerequest.StatusOpen, "host-1", true},
-		"playing Host":  {gamerequest.StatusPlaying, "host-1", true},
-		"participant":   {gamerequest.StatusOpen, "user-2", false},
-		"closed Host":   {gamerequest.StatusClosed, "host-1", false},
+		"open Host":      {gamerequest.StatusOpen, "host-1", true},
+		"playing Host":   {gamerequest.StatusPlaying, "host-1", true},
+		"participant":    {gamerequest.StatusOpen, "user-2", false},
+		"closed Host":    {gamerequest.StatusClosed, "host-1", false},
 		"cancelled Host": {gamerequest.StatusCancelled, "host-1", false},
 	} {
 		body := renderCapacityDetail(t, capacityRequest(tc.status, &limit), tc.viewer, GameRequestDetailMessage{})
@@ -1089,7 +1089,6 @@ func TestFullActiveRowSaysFullInsteadOfJoin(t *testing.T) {
 	}
 }
 
-
 func renderCapacityDetail(t *testing.T, request requestquery.Request, viewerID string, message GameRequestDetailMessage) string {
 	t.Helper()
 	var rendered bytes.Buffer
@@ -1106,6 +1105,3 @@ func capacityRequest(status gamerequest.Status, limit *int32) requestquery.Reque
 		Members: []requestquery.Member{{ID: "host-1", GameNick: "Otter"}, {ID: "user-2", GameNick: "Alex"}},
 	}
 }
-
-
-

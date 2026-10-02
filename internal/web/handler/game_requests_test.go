@@ -873,4 +873,3 @@ func TestViewEditModeRequiresHostAndActiveRequest(t *testing.T) {
 		})
 	}
 }
-

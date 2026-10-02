@@ -578,7 +578,6 @@ func parseCapacity(value string) (*int32, error) {
 	return &maximum, nil
 }
 
-
 func requestDetailsForm(request requestquery.Request) pages.GameRequestForm {
 	maxPlayers := "0"
 	if request.MaxPlayers != nil {

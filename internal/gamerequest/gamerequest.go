@@ -105,6 +105,7 @@ type UpdateDetailsInput struct {
 	StartsAt    time.Time
 	Description string
 }
+
 // GameLookup is implemented by the game module and keeps catalog rules with its owner.
 type GameLookup interface {
 	ActiveExists(context.Context, string) (bool, error)
