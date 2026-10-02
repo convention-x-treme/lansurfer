@@ -99,7 +99,20 @@ function localizeTime(element: HTMLElement): void {
     element.textContent = text.replace(clockSuffix, format.format(date));
   } else if (kind === "start") {
     element.textContent = text.replace(daySuffix, dayFormat.format(date));
+  } else if (kind === "absolute") {
+    element.textContent = absolute(date);
   }
+}
+
+function localizeStartEditor(form: HTMLFormElement): void {
+  const startsAt = new Date(form.dataset.startInstant ?? "");
+  const dateInput = form.elements.namedItem("start_date");
+  const timeInput = form.elements.namedItem("start_time");
+  if (Number.isNaN(startsAt.getTime()) || !(dateInput instanceof HTMLInputElement) || !(timeInput instanceof HTMLInputElement)) return;
+  dateInput.value = `${startsAt.getFullYear()}-${String(startsAt.getMonth() + 1).padStart(2, "0")}-${String(startsAt.getDate()).padStart(2, "0")}`;
+  timeInput.value = `${String(startsAt.getHours()).padStart(2, "0")}:${String(startsAt.getMinutes()).padStart(2, "0")}`;
+  dateInput.defaultValue = dateInput.value;
+  timeInput.defaultValue = timeInput.value;
 }
 
 function localize(root: ParentNode): void {
@@ -108,7 +121,10 @@ function localize(root: ParentNode): void {
   root.querySelectorAll<HTMLInputElement>("[data-timezone]").forEach((input) => {
     input.value = zoneName;
   });
+  if (root instanceof HTMLFormElement && root.matches("[data-local-start]")) localizeStartEditor(root);
+  root.querySelectorAll<HTMLFormElement>("form[data-local-start]").forEach(localizeStartEditor);
 }
+
 
 localize(document);
 // HTMX swaps and SSE updates insert server-rendered nodes; only added elements
@@ -217,7 +233,7 @@ function liveNotice(variant: "info" | "warning" | "error", message: string): HTM
 }
 
 type GameRequestEvent = {
-  type: "GameRequestCreated" | "GameRequestJoined" | "GameRequestLeft" | "GameRequestStarted" | "GameRequestClosed" | "GameRequestCancelled";
+  type: "GameRequestCreated" | "GameRequestJoined" | "GameRequestLeft" | "GameRequestStarted" | "GameRequestClosed" | "GameRequestCancelled" | "GameRequestUpdated";
   requestId: string;
   gameId?: string;
 };
@@ -239,19 +255,22 @@ document.addEventListener("htmx:afterRequest", () => {
   refreshGameRequests();
 });
 
-// Detail refreshes update the roster and activity even while the Host edits
-// capacity. Keep only a dirty or rejected form; an untouched editor follows
-// the server, and a terminal request no longer renders an editor at all.
-const capacityDrafts = new WeakMap<HTMLElement, { form: HTMLFormElement; focused: HTMLElement | null }>();
+// Detail refreshes preserve dirty or rejected Host edits while refreshing the
+// rest of the request. Untouched editors follow the server's current state.
+const requestDetailsDrafts = new WeakMap<HTMLElement, { form: HTMLFormElement; focused: HTMLElement | null }>();
 
 document.addEventListener("htmx:beforeSwap", (event) => {
   const target = (event as CustomEvent<{ target: HTMLElement }>).detail.target;
   if (target.id !== "game-request-detail") return;
-  const input = target.querySelector<HTMLInputElement>("form[action$='/capacity'] input[name='max_players']");
-  const form = input?.form;
-  if (!input || !form || (input.value === input.defaultValue && !form.querySelector("#capacity-error"))) return;
+  const form = target.querySelector<HTMLFormElement>("form[action$='/details']");
+  if (!form) return;
+  const fields = form.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>(
+    "input[name='max_players'], input[name='start_date'], input[name='start_time'], textarea[name='description']",
+  );
+  const dirty = [...fields].some((field) => field.value !== field.defaultValue);
+  if (!dirty && !form.querySelector(".field-error")) return;
   const active = document.activeElement;
-  capacityDrafts.set(target, {
+  requestDetailsDrafts.set(target, {
     form,
     focused: active instanceof HTMLElement && form.contains(active) ? active : null,
   });
@@ -259,10 +278,10 @@ document.addEventListener("htmx:beforeSwap", (event) => {
 
 document.addEventListener("htmx:afterSwap", (event) => {
   const target = (event as CustomEvent<{ target: HTMLElement }>).detail.target;
-  const draft = capacityDrafts.get(target);
+  const draft = requestDetailsDrafts.get(target);
   if (!draft) return;
-  capacityDrafts.delete(target);
-  const editor = document.querySelector<HTMLFormElement>("#game-request-detail form[action$='/capacity']");
+  requestDetailsDrafts.delete(target);
+  const editor = document.querySelector<HTMLFormElement>("#game-request-detail form[action$='/details']");
   if (!editor) return;
   editor.replaceWith(draft.form);
   draft.focused?.focus({ preventScroll: true });
@@ -293,8 +312,9 @@ function refreshGameRequests(event?: GameRequestEvent): void {
 
   const detail = document.querySelector<HTMLElement>("[data-game-request-detail]");
   const detailID = detail?.dataset.gameRequestId;
-  if (detailID && (event === undefined || detailID === event.requestId)) {
-    void htmx.ajax("get", `/game-requests/${encodeURIComponent(detailID)}/refresh`, {
+  const detailRefreshURL = detail?.dataset.refreshUrl;
+  if (detailID && detailRefreshURL && (event === undefined || detailID === event.requestId)) {
+    void htmx.ajax("get", detailRefreshURL, {
       target: "#game-request-detail",
       swap: "outerHTML",
     });

@@ -607,7 +607,7 @@ templ GameRequestDetailContent(request requestquery.Request, viewerID string, re
 	if refresh {
 		@DetailStamp(true)
 	}
-	<div id="game-request-detail" data-game-request-detail data-game-request-id={ request.ID } class="detail-shell">
+	<div id="game-request-detail" data-game-request-detail data-game-request-id={ request.ID } data-refresh-url={ detailRefreshURL(request.ID, message.Editing) } class="detail-shell">
 		<div class="detail-main">
 			<article class={ detailHeroClass(request) }>
 				<div class="flex flex-wrap items-start gap-4">
@@ -829,6 +829,14 @@ templ GameRequestError(brand branding.Brand, navigation components.NavigationSta
 
 templ GameRequestActionError(message string) {
 	<div role="alert" class="alert alert-error" data-live-toast><i class="ph ph-warning-circle live-toast-icon" aria-hidden="true"></i><span>{ message }</span><button type="button" class="btn btn-ghost btn-sm" data-dismiss-live-toast aria-label="Dismiss error"><i class="ph ph-x" aria-hidden="true"></i>Dismiss</button></div>
+}
+
+func detailRefreshURL(requestID string, editing bool) string {
+	target := "/game-requests/" + requestID + "/refresh"
+	if editing {
+		return target + "?edit=1"
+	}
+	return target
 }
 
 func requestFull(request requestquery.Request) bool {

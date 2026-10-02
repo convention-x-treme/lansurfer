@@ -38,7 +38,10 @@ import (
 	"github.com/convention-x-treme/lansurfer/internal/web"
 )
 
-const viewerID = "11111111-1111-1111-1111-111111111111"
+const (
+	viewerID      = "11111111-1111-1111-1111-111111111111"
+	otherViewerID = "22222222-2222-2222-2222-222222222222"
+)
 
 func main() {
 	address := flag.String("address", "127.0.0.1:8123", "listen address")
@@ -126,9 +129,8 @@ func (f *fixture) seed(gameName string, maxPlayers int32, members int64, status 
 
 // --- authentication -------------------------------------------------------
 //
-// Any session cookie resolves to the same player. The fixture never sees a
-// credential, and the product's own authentication middleware, CSRF middleware,
-// and session cookie handling run unchanged.
+// Browser tests use two fixed players when they need to verify another
+// viewer's read model; all product authentication middleware still runs.
 
 func (*fixture) Available() bool { return true }
 
@@ -146,7 +148,10 @@ func (*fixture) Complete(context.Context, auth.OAuthCompletion) (auth.OAuthResul
 
 func (*fixture) Logout(context.Context, string) error { return nil }
 
-func (*fixture) Authenticate(context.Context, string) (user.User, error) {
+func (*fixture) Authenticate(_ context.Context, session string) (user.User, error) {
+	if session == "browser-test-other" {
+		return user.User{ID: otherViewerID, GameNick: "Grace Player", Role: user.RoleUser}, nil
+	}
 	return user.User{ID: viewerID, GameNick: "Ada Player", Role: user.RoleUser}, nil
 }
 
@@ -356,7 +361,7 @@ func (f *fixture) beforeMutation(kind string) error {
 
 // --- game request queries -------------------------------------------------
 
-func (f *fixture) ListActive(_ context.Context, _ string, filter requestquery.Filter) ([]requestquery.Request, error) {
+func (f *fixture) ListActive(_ context.Context, viewerID string, filter requestquery.Filter) ([]requestquery.Request, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	result := make([]requestquery.Request, 0, len(f.order))
@@ -369,36 +374,35 @@ func (f *fixture) ListActive(_ context.Context, _ string, filter requestquery.Fi
 		if filter.Search != "" && !strings.Contains(strings.ToLower(entry.request.Game.Name), strings.ToLower(filter.Search)) {
 			continue
 		}
-		switch filter.Scope {
-		case requestquery.ScopeMyGames:
-			if !entry.followed {
-				continue
-			}
-		case requestquery.ScopeJoined:
-			if !entry.request.ViewerJoined {
-				continue
-			}
-		case requestquery.ScopeMine:
-			if entry.request.CreatorID != viewerID {
-				continue
-			}
+		if filter.Scope == requestquery.ScopeMyGames && !entry.followed {
+			continue
+		}
+		if filter.Scope == requestquery.ScopeJoined && !entry.members[viewerID] {
+			continue
+		}
+		if filter.Scope == requestquery.ScopeMine && entry.request.CreatorID != viewerID {
+			continue
 		}
 		if filter.OpenPlacesOnly && entry.request.MaxPlayers != nil && entry.request.MemberCount >= int64(*entry.request.MaxPlayers) {
 			continue
 		}
-		result = append(result, entry.request)
+		request := entry.request
+		request.ViewerJoined = entry.members[viewerID]
+		result = append(result, request)
 	}
 	return result, nil
 }
 
-func (f *fixture) ByID(_ context.Context, id, _ string) (requestquery.Request, error) {
+func (f *fixture) ByID(_ context.Context, id, viewerID string) (requestquery.Request, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	entry, ok := f.requests[id]
 	if !ok {
 		return requestquery.Request{}, gamerequest.ErrNotFound
 	}
-	return entry.request, nil
+	request := entry.request
+	request.ViewerJoined = entry.members[viewerID]
+	return request, nil
 }
 
 // CountActive is the whole installation's active total (`open` or `playing`),

@@ -10,15 +10,15 @@ test.beforeEach(async ({ request }) => {
   await resetFixture(request);
 });
 
-// The capacity editor shares the detail refresh target. A refresh must still
-// happen while editing, without throwing away the draft, its error or focus.
+// Detail refreshes retain edits and validation messages in the shared Host editor.
 for (const scenario of ["draft", "validation error", "tab return"] as const) {
-  test(`a detail refresh preserves the capacity ${scenario}`, async ({ page, request }) => {
+  test(`a detail refresh preserves the request edit ${scenario}`, async ({ page, request }) => {
     await page.goto("/game-requests/new?game_id=game-1");
     await page.locator("input[name='max_players']").fill("4");
     await page.getByRole("button", { name: "Create Game Request" }).click();
-    await page.waitForURL(/\/game-requests\/[0-9a-f-]+/);
-
+    await page.waitForURL(/\/game-requests\/[0-9a-f-]+(?:\?.*)?$/);
+    await page.getByRole("link", { name: "Edit" }).click();
+    await page.waitForURL(/\?edit=1$/);
     const capacity = page.getByLabel("Maximum players");
     const value = scenario === "validation error" ? "1" : "6";
     await capacity.fill(value);
@@ -48,23 +48,33 @@ for (const scenario of ["draft", "validation error", "tab return"] as const) {
   });
 }
 
-test("a detail refresh updates an untouched capacity editor and removes a draft when cancelled", async ({ page, request }) => {
+test("a detail refresh updates an untouched request editor and removes a draft when cancelled", async ({ page, request }) => {
   await page.goto("/game-requests/new?game_id=game-1");
   await page.locator("input[name='max_players']").fill("4");
   await page.getByRole("button", { name: "Create Game Request" }).click();
-  await page.waitForURL(/\/game-requests\/[0-9a-f-]+/);
-  await waitForRealtime(page, request, 1);
+  await page.waitForURL(/\/game-requests\/[0-9a-f-]+(?:\?.*)?$/);
+  await page.getByRole("link", { name: "Edit" }).click();
+  await page.waitForURL(/\?edit=1$/);
+  await instrumentHtmx(page);
+  const capacity = page.getByLabel("Maximum players");
 
   const detail = page.locator("#game-request-detail");
   const id = await detail.getAttribute("data-game-request-id");
   const csrf = await detail.locator("input[name='csrf_token']").first().inputValue();
-  // A separate request changes the stored value; the untouched editor must
-  // follow the resulting SSE refresh, rather than preserving a stale form.
-  const changed = await page.request.post(`/game-requests/${id}/capacity`, {
-    form: { max_players: "5", csrf_token: csrf },
+  const startDate = await page.locator("input[name='start_date']").inputValue();
+  const startTime = await page.locator("input[name='start_time']").inputValue();
+  const timezone = await page.locator("input[name='timezone']").inputValue();
+  const description = await page.locator("textarea[name='description']").inputValue();
+  const changed = await page.request.post(`/game-requests/${id}/details`, {
+    form: {
+      max_players: "5", start_date: startDate, start_time: startTime,
+      timezone, description, csrf_token: csrf,
+    },
   });
   expect(changed.ok()).toBe(true);
-  const capacity = page.getByLabel("Maximum players");
+  expect(new URL(changed.url()).pathname).toBe(`/game-requests/${id}`);
+  await expect.poll(async () => (await htmxCounters(page)).after).toBeGreaterThan(0);
+
   await expect(capacity).toHaveValue("5");
 
   await capacity.fill("6");

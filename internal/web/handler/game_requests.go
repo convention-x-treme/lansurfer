@@ -394,14 +394,7 @@ func (h *GameRequests) View(w http.ResponseWriter, r *http.Request) {
 	if err := h.commands.RecordView(r.Context(), request.ID, account.ID); err != nil {
 		webmiddleware.LogError(r, "record Game Request view", err)
 	}
-	message := pages.GameRequestDetailMessage{}
-	if r.URL.Query().Get("edit") == "1" && request.CreatorID == account.ID &&
-		(request.Status == gamerequest.StatusOpen || request.Status == gamerequest.StatusPlaying) {
-		message = pages.GameRequestDetailMessage{
-			Editing: true, InitializeStart: request.Status == gamerequest.StatusOpen,
-			Form: requestDetailsForm(request),
-		}
-	}
+	message := detailEditorMessage(request, account.ID, r.URL.Query().Get("edit") == "1")
 	render(w, r, http.StatusOK, pages.GameRequestDetail(h.brand, h.navigationFor(r), request, account.ID, message, notice(r)))
 }
 
@@ -417,7 +410,18 @@ func (h *GameRequests) RefreshView(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "refresh game request", http.StatusInternalServerError)
 		return
 	}
-	render(w, r, http.StatusOK, pages.GameRequestDetailContent(request, account.ID, true, pages.GameRequestDetailMessage{}))
+	message := detailEditorMessage(request, account.ID, r.URL.Query().Get("edit") == "1")
+	render(w, r, http.StatusOK, pages.GameRequestDetailContent(request, account.ID, true, message))
+}
+func detailEditorMessage(request requestquery.Request, viewerID string, editing bool) pages.GameRequestDetailMessage {
+	if !editing || request.CreatorID != viewerID ||
+		(request.Status != gamerequest.StatusOpen && request.Status != gamerequest.StatusPlaying) {
+		return pages.GameRequestDetailMessage{}
+	}
+	return pages.GameRequestDetailMessage{
+		Editing: true, InitializeStart: request.Status == gamerequest.StatusOpen,
+		Form: requestDetailsForm(request),
+	}
 }
 
 func (h *GameRequests) Join(w http.ResponseWriter, r *http.Request) {
