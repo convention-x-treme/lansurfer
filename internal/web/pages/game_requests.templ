@@ -392,63 +392,56 @@ templ GameRequestGameFields(item game.DiscoveryItem) {
 // players, when the round starts, and an optional description. Every value
 // here survives a trip back to the pick list, because "Change game" carries
 // them in its own URL.
+templ GameRequestMaxPlayersField(value string, message ComposerMessage) {
+	<div class="grid content-start gap-2">
+		<label class="label-text font-medium" for="max-players">Max players</label>
+		<input id="max-players" class="input input-bordered data-text w-32 text-2xl placeholder:text-sm" type="number" name="max_players" min="0" max="999" step="1" inputmode="numeric" value={ value } { fieldState("max-players-hint", message.for_("max_players"), "max-players-error")... }/>
+		if message.for_("max_players") {
+			<p id="max-players-error" class="field-error">{ message.Text }</p>
+		}
+		<span id="max-players-hint" class="text-xs text-base-content/65">0 for an open round, or 2 to 999 players.</span>
+	</div>
+}
+
+templ GameRequestStartFields(form GameRequestForm, message ComposerMessage) {
+	<fieldset class="grid gap-3" data-start-options { describedBy("", message.for_("start"), "start-error")... }>
+		<legend class="label-text mb-2 font-medium">Start</legend>
+		if message.for_("start") {
+			<p id="start-error" class="field-error">{ message.Text }</p>
+		}
+		<div class="flex flex-wrap gap-2">
+			@StartChoice("now", "Now", form.StartPreset)
+			@StartChoice("15", "in 15 min", form.StartPreset)
+			@StartChoice("30", "in 30 min", form.StartPreset)
+			@StartChoice("60", "in 1 h", form.StartPreset)
+			@StartChoice("custom", "Pick date & time", form.StartPreset)
+		</div>
+		<div class="custom-start-fields gap-3 rounded-md bg-base-100 p-4 sm:grid-cols-2" data-custom-start>
+			<label class="grid gap-2"><span class="section-label">Date</span><input class="input input-bordered data-text w-full" type="date" name="start_date" value={ form.StartDate } { fieldState("", message.for_("start"), "start-error")... }/></label>
+			<label class="grid gap-2"><span class="section-label">Time</span><input class="input input-bordered data-text w-full" type="time" name="start_time" value={ form.StartTime }/></label>
+		</div>
+		<input type="hidden" name="timezone" value={ form.Timezone } data-timezone/>
+	</fieldset>
+}
+
+templ GameRequestDescriptionField(value string, message ComposerMessage) {
+	<label class="grid gap-2">
+		<span class="label-text font-medium">Description <span class="font-normal text-base-content/65">(optional)</span></span>
+		<textarea class="textarea textarea-bordered min-h-24 w-full" rows="3" name="description" maxlength="1000" placeholder="Anything players should know" data-description { fieldState("", message.for_("description"), "description-error")... }>{ value }</textarea>
+		if message.for_("description") {
+			<p id="description-error" class="field-error">{ message.Text }</p>
+		}
+		<span class="flex justify-end gap-4 text-xs text-base-content/65"><span class="data-text" data-description-count>{ fmt.Sprintf("%d / 1000", utf8.RuneCountInString(value)) }</span></span>
+	</label>
+}
+
 templ GameRequestDetailsFields(form GameRequestForm, message ComposerMessage) {
 	<div id="game-request-details" class="grid gap-6">
 		<div class="grid gap-6">
-			<div class="grid content-start gap-2">
-				<label class="label-text font-medium" for="max-players">Max players</label>
-				<input
-					id="max-players"
-					class="input input-bordered data-text w-32 text-2xl placeholder:text-sm"
-					type="number"
-					name="max_players"
-					min="0"
-					max="999"
-					step="1"
-					inputmode="numeric"
-					value={ form.MaxPlayers }
-					{ fieldState("max-players-hint", message.for_("max_players"), "max-players-error")... }
-				/>
-				if message.for_("max_players") {
-					<p id="max-players-error" class="field-error">{ message.Text }</p>
-				}
-				<span id="max-players-hint" class="text-xs text-base-content/65">0 for an open round, or 2 to 999 players.</span>
-			</div>
-			<fieldset class="grid gap-3" data-start-options { describedBy("", message.for_("start"), "start-error")... }>
-				<legend class="label-text mb-2 font-medium">Start</legend>
-				if message.for_("start") {
-					<p id="start-error" class="field-error">{ message.Text }</p>
-				}
-				<div class="flex flex-wrap gap-2">
-					@StartChoice("now", "Now", form.StartPreset)
-					@StartChoice("15", "in 15 min", form.StartPreset)
-					@StartChoice("30", "in 30 min", form.StartPreset)
-					@StartChoice("60", "in 1 h", form.StartPreset)
-					@StartChoice("custom", "Pick date & time", form.StartPreset)
-				</div>
-				<div class="custom-start-fields gap-3 rounded-md bg-base-100 p-4 sm:grid-cols-2" data-custom-start>
-					<label class="grid gap-2"><span class="section-label">Date</span><input class="input input-bordered data-text w-full" type="date" name="start_date" value={ form.StartDate } { fieldState("", message.for_("start"), "start-error")... }/></label>
-					<label class="grid gap-2"><span class="section-label">Time</span><input class="input input-bordered data-text w-full" type="time" name="start_time" value={ form.StartTime }/></label>
-				</div>
-			</fieldset>
+			@GameRequestMaxPlayersField(form.MaxPlayers, message)
+			@GameRequestStartFields(form, message)
 		</div>
-		<input type="hidden" name="timezone" value={ form.Timezone } data-timezone/>
-		<label class="grid gap-2">
-			<span class="label-text font-medium">Description <span class="font-normal text-base-content/65">(optional)</span></span>
-			<textarea
-				class="textarea textarea-bordered min-h-24 w-full"
-				rows="3"
-				name="description"
-				maxlength="1000"
-				placeholder="Anything players should know"
-				data-description
-				{ fieldState("", message.for_("description"), "description-error")... }
-			>{ form.Description }</textarea>
-			if message.for_("description") {
-				<p id="description-error" class="field-error">{ message.Text }</p>
-			}
-			<span class="flex justify-end gap-4 text-xs text-base-content/65"><span class="data-text" data-description-count>{ fmt.Sprintf("%d / 1000", len([]rune(form.Description))) }</span></span>
-		</label>
+		@GameRequestDescriptionField(form.Description, message)
 	</div>
 }
 
@@ -695,6 +688,7 @@ templ GameRequestDetailContent(request requestquery.Request, viewerID string, re
 								@components.CSRFInput()
 								<button class="btn btn-primary btn-sm w-full" type="submit"><i class="ph ph-play" aria-hidden="true"></i>Start game</button>
 							</form>
+							<a class="btn btn-quiet btn-sm w-full" href={ "/game-requests/" + request.ID + "?edit=1" }><i class="ph ph-pencil-simple" aria-hidden="true"></i>Edit</a>
 							<form method="post" action={ "/game-requests/" + request.ID + "/cancel" } data-confirm="Cancel this Game Request? This cannot be reopened.">
 								@components.CSRFInput()
 								<button class="btn btn-danger btn-sm w-full" type="submit"><i class="ph ph-x-circle" aria-hidden="true"></i>Cancel Game Request</button>
@@ -705,9 +699,9 @@ templ GameRequestDetailContent(request requestquery.Request, viewerID string, re
 								@components.CSRFInput()
 								<button class="btn btn-step-back btn-sm w-full" type="submit"><i class="ph ph-prohibit" aria-hidden="true"></i>Close game</button>
 							</form>
+							<a class="btn btn-quiet btn-sm w-full" href={ "/game-requests/" + request.ID + "?edit=1" }><i class="ph ph-pencil-simple" aria-hidden="true"></i>Edit</a>
 							<p class="text-xs leading-relaxed text-base-content/65">Visible to the Host only. Close the game when everyone is done.</p>
 						}
-						<a class="btn btn-quiet btn-sm w-full" href={ "/game-requests/" + request.ID + "?edit=1" }><i class="ph ph-pencil-simple" aria-hidden="true"></i>Edit</a>
 					}
 				</section>
 			}
@@ -744,14 +738,19 @@ templ GameRequestDetailContent(request requestquery.Request, viewerID string, re
 								if !entry.OccurredAt.IsZero() {
 									<time class="data-text w-12 flex-none text-xs text-base-content/70" datetime={ entry.OccurredAt.Format(time.RFC3339) } title={ components.AbsoluteTime(entry.OccurredAt) } data-local-time="clock">{ clockLabel(entry.OccurredAt) }</time>
 								}
-								<span class="flex-1 text-sm text-base-content/80">{ activityLabel(entry) }</span>
-								if activityHasStartChange(entry) {
-									<span class="text-xs"> (from</span>
-									<time class="data-text text-xs" datetime={ entry.PreviousStartsAt.Format(time.RFC3339) } title={ components.AbsoluteTime(*entry.PreviousStartsAt) } data-local-time="absolute">{ entry.PreviousStartsAt.UTC().Format("2006-01-02 15:04") }</time>
-									<span class="text-xs">to</span>
-									<time class="data-text text-xs" datetime={ entry.NewStartsAt.Format(time.RFC3339) } title={ components.AbsoluteTime(*entry.NewStartsAt) } data-local-time="absolute">{ entry.NewStartsAt.UTC().Format("2006-01-02 15:04") }</time>
-									<span class="text-xs">)</span>
-								}
+								<div class="activity-content min-w-0 flex-1">
+									<p class="text-sm text-base-content/80">{ activityLabel(entry) }</p>
+									if activityHasStartChange(entry) {
+										<p class="activity-detail min-w-0 text-xs">
+											if entry.PreviousMaxPlayers != nil || entry.NewMaxPlayers != nil || entry.DescriptionChanged {
+												Planned start:
+											}
+											<time class="data-text text-xs" datetime={ entry.PreviousStartsAt.Format(time.RFC3339) } title={ components.AbsoluteTime(*entry.PreviousStartsAt) } data-local-time="absolute">{ entry.PreviousStartsAt.UTC().Format("2006-01-02 15:04") }</time>
+											{" → "}
+											<time class="data-text text-xs" datetime={ entry.NewStartsAt.Format(time.RFC3339) } title={ components.AbsoluteTime(*entry.NewStartsAt) } data-local-time="absolute">{ entry.NewStartsAt.UTC().Format("2006-01-02 15:04") }</time>
+										</p>
+									}
+								</div>
 							</li>
 						}
 					</ol>
@@ -763,56 +762,16 @@ templ GameRequestDetailContent(request requestquery.Request, viewerID string, re
 templ GameRequestDetailsEditor(request requestquery.Request, message GameRequestDetailMessage) {
 	<form method="post" action={ "/game-requests/" + request.ID + "/details" } class="grid gap-4" data-local-start?={ message.InitializeStart } data-start-instant={ request.StartsAt.Format(time.RFC3339) }>
 		@components.CSRFInput()
-		<label class="grid gap-2">
-			<span class="label-text font-medium">Maximum players</span>
-			<input
-				class="input input-bordered data-text w-32"
-				type="number"
-				name="max_players"
-				min="0"
-				max="999"
-				step="1"
-				inputmode="numeric"
-				value={ capacityInputValue(request, message) }
-				{ fieldState("capacity-hint", message.forField("max_players"), "capacity-error")... }
-			/>
-		</label>
-		if message.forField("max_players") {
-			<p id="capacity-error" class="field-error">{ message.Text }</p>
-		}
-		<span id="capacity-hint" class="text-xs text-base-content/65">0 means unlimited; finite limits start at 2.</span>
+		@GameRequestMaxPlayersField(capacityInputValue(request, message), ComposerMessage{Text: message.Text, Field: message.Field})
 		if request.Status == gamerequest.StatusOpen {
-			<fieldset class="grid gap-2" { describedBy("", message.forField("start"), "start-error")... }>
-				<legend class="label-text font-medium">Planned start</legend>
-				if message.forField("start") {
-					<p id="start-error" class="field-error">{ message.Text }</p>
-				}
-				<div class="grid grid-cols-2 gap-3">
-					<label class="grid gap-2">
-						<span class="label-text text-sm">Date</span>
-						<input class="input input-bordered data-text" type="date" name="start_date" value={ message.Form.StartDate } required/>
-					</label>
-					<label class="grid gap-2">
-						<span class="label-text text-sm">Time</span>
-						<input class="input input-bordered data-text" type="time" name="start_time" value={ message.Form.StartTime } required/>
-					</label>
-				</div>
-				<input type="hidden" name="timezone" value={ message.Form.Timezone } data-timezone/>
-			</fieldset>
+			@GameRequestStartFields(message.Form, ComposerMessage{Text: message.Text, Field: message.Field})
 		} else {
 			<div class="grid gap-2">
-				<p class="label-text font-medium">Planned start</p>
+				<p class="label-text font-medium">Start</p>
 				<time class="data-text" datetime={ request.StartsAt.Format(time.RFC3339) } title={ components.AbsoluteTime(request.StartsAt) } data-local-time="absolute">{ request.StartsAt.UTC().Format("2006-01-02 15:04") }</time>
 			</div>
 		}
-		<label class="grid gap-2">
-			<span class="label-text font-medium">Description</span>
-			<textarea class="textarea textarea-bordered min-h-28" name="description" maxlength="1000" data-description-input { fieldState("", message.forField("description"), "description-error")... }>{ message.Form.Description }</textarea>
-			if message.forField("description") {
-				<p id="description-error" class="field-error">{ message.Text }</p>
-			}
-			<span class="text-xs text-base-content/65"><span data-description-count>{ utf8.RuneCountInString(message.Form.Description) }</span>/1000 characters</span>
-		</label>
+		@GameRequestDescriptionField(message.Form.Description, ComposerMessage{Text: message.Text, Field: message.Field})
 		<div class="grid grid-cols-2 gap-2">
 			<button class="btn btn-primary btn-sm" type="submit"><i class="ph ph-floppy-disk" aria-hidden="true"></i>Save</button>
 			<a class="btn btn-quiet btn-sm" href={ "/game-requests/" + request.ID }>Cancel</a>

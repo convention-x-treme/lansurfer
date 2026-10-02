@@ -590,17 +590,21 @@ func TestParseBrowserTimeAppliesDSTOfSelectedDate(t *testing.T) {
 func TestParseCreateFormSupportsStartPresets(t *testing.T) {
 	now := time.Date(2027, 5, 1, 8, 0, 0, 0, time.UTC)
 	handler := &GameRequests{now: func() time.Time { return now }}
-	request := httptest.NewRequest(http.MethodPost, "/game-requests", strings.NewReader(url.Values{
-		"game_id": {"game-1"}, "start_preset": {"30"},
-	}.Encode()))
-	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-
-	_, _, startsAt, err := handler.parseCreateForm(request)
-	if err != nil {
-		t.Fatalf("parseCreateForm() error = %v", err)
-	}
-	if want := now.Add(30 * time.Minute); !startsAt.Equal(want) {
-		t.Errorf("startsAt = %s, want %s", startsAt, want)
+	for _, preset := range []struct {
+		value string
+		want  time.Time
+	}{{"now", now}, {"15", now.Add(15 * time.Minute)}, {"30", now.Add(30 * time.Minute)}, {"60", now.Add(time.Hour)}} {
+		t.Run(preset.value, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodPost, "/game-requests", strings.NewReader(url.Values{
+				"game_id": {"game-1"}, "start_preset": {preset.value},
+				"start_date": {"2099-01-01"}, "start_time": {"00:00"},
+			}.Encode()))
+			request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			_, _, startsAt, err := handler.parseCreateForm(request)
+			if err != nil || !startsAt.Equal(preset.want) {
+				t.Errorf("parse start = %s, %v; want %s", startsAt, err, preset.want)
+			}
+		})
 	}
 }
 
@@ -753,6 +757,63 @@ func postDetails(t *testing.T, commands *fakeGameRequestCommands, queries fakeGa
 	return response
 }
 
+func postDetailsWithNow(t *testing.T, commands *fakeGameRequestCommands, queries fakeGameRequestQueries, form url.Values, now time.Time) *httptest.ResponseRecorder {
+	t.Helper()
+	handler := NewGameRequests(commands, queries, nil, &fakeGameRequestDiscovery{}, nil, branding.Default())
+	handler.now = func() time.Time { return now }
+	router := chi.NewRouter()
+	router.Post("/{requestID}/details", handler.UpdateDetails)
+	request := httptest.NewRequest(http.MethodPost, "/request-1/details", strings.NewReader(form.Encode()))
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	request = request.WithContext(webmiddleware.ContextWithUser(request.Context(), user.User{ID: "host-1", GameNick: "Ada"}))
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	return response
+}
+
+func TestUpdateDetailsUsesSelectedStartPreset(t *testing.T) {
+	now := time.Date(2027, 5, 1, 8, 0, 0, 0, time.UTC)
+	for _, tc := range []struct {
+		preset string
+		want   time.Time
+	}{
+		{"now", now}, {"15", now.Add(15 * time.Minute)}, {"30", now.Add(30 * time.Minute)}, {"60", now.Add(time.Hour)},
+	} {
+		t.Run(tc.preset, func(t *testing.T) {
+			queries := fakeGameRequestQueries{request: requestquery.Request{
+				ID: "request-1", CreatorID: "host-1", Status: gamerequest.StatusOpen, StartsAt: now.Add(time.Hour),
+			}}
+			commands := &fakeGameRequestCommands{}
+			response := postDetailsWithNow(t, commands, queries, url.Values{
+				"max_players": {"4"}, "start_preset": {tc.preset}, "start_date": {"2099-05-01"},
+				"start_time": {"18:30"}, "timezone": {"America/Los_Angeles"}, "description": {"same"},
+			}, now)
+			if response.Code != http.StatusSeeOther || commands.detailsCalls != 1 || !commands.detailsInput.StartsAt.Equal(tc.want) {
+				t.Errorf("response %d, calls %d, start %s; want redirect, one command, %s", response.Code, commands.detailsCalls, commands.detailsInput.StartsAt, tc.want)
+			}
+		})
+	}
+}
+
+func TestUpdateDetailsRejectsInvalidPresetWithoutCommand(t *testing.T) {
+	now := time.Date(2027, 5, 1, 8, 0, 0, 0, time.UTC)
+	for name, form := range map[string]url.Values{
+		"unknown preset":      {"max_players": {"4"}, "start_preset": {"tomorrow"}},
+		"missing custom time": {"max_players": {"4"}, "start_preset": {"custom"}, "start_date": {"2027-05-01"}},
+		"invalid custom zone": {"max_players": {"4"}, "start_preset": {"custom"}, "start_date": {"2027-05-01"}, "start_time": {"18:30"}, "timezone": {"Not/AZone"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			queries := fakeGameRequestQueries{request: requestquery.Request{ID: "request-1", CreatorID: "host-1", Status: gamerequest.StatusOpen, StartsAt: now}}
+			commands := &fakeGameRequestCommands{}
+			response := postDetailsWithNow(t, commands, queries, form, now)
+			if response.Code != http.StatusUnprocessableEntity || commands.detailsCalls != 0 ||
+				!strings.Contains(response.Body.String(), "Enter a valid planned start date and time.") {
+				t.Errorf("response %d, calls %d, body %s", response.Code, commands.detailsCalls, response.Body.String())
+			}
+		})
+	}
+}
+
 func TestUpdateDetailsParsesLocalTimeAndSubmitsAllEditableFields(t *testing.T) {
 	startsAt := time.Date(2027, 5, 1, 12, 0, 0, 0, time.UTC)
 	queries := fakeGameRequestQueries{request: requestquery.Request{
@@ -776,20 +837,24 @@ func TestUpdateDetailsParsesLocalTimeAndSubmitsAllEditableFields(t *testing.T) {
 	}
 }
 func TestUpdateDetailsPreservesSecondsWhenVisibleStartIsUnchanged(t *testing.T) {
-	startsAt := time.Date(2026, 10, 2, 18, 30, 47, 0, time.UTC)
-	queries := fakeGameRequestQueries{request: requestquery.Request{
-		ID: "request-1", CreatorID: "host-1", Status: gamerequest.StatusOpen, StartsAt: startsAt,
-	}}
-	commands := &fakeGameRequestCommands{}
-	response := postDetails(t, commands, queries, "host-1", url.Values{
-		"max_players": {"4"}, "start_date": {"2026-10-02"}, "start_time": {"20:30"},
-		"timezone": {"Europe/Berlin"}, "description": {"changed description"},
-	})
-	if response.Code != http.StatusSeeOther || commands.detailsCalls != 1 {
-		t.Fatalf("response/calls = %d/%d", response.Code, commands.detailsCalls)
-	}
-	if !commands.detailsInput.StartsAt.Equal(startsAt) || commands.detailsInput.StartsAt.Nanosecond() != startsAt.Nanosecond() {
-		t.Errorf("start = %s, want exact stored instant %s", commands.detailsInput.StartsAt.Format(time.RFC3339), startsAt.Format(time.RFC3339))
+	startsAt := time.Date(2026, 10, 2, 18, 30, 47, 123456789, time.UTC)
+	for _, preset := range []string{"", "custom"} {
+		t.Run(map[string]string{"": "without preset", "custom": "custom preset"}[preset], func(t *testing.T) {
+			queries := fakeGameRequestQueries{request: requestquery.Request{
+				ID: "request-1", CreatorID: "host-1", Status: gamerequest.StatusOpen, StartsAt: startsAt,
+			}}
+			commands := &fakeGameRequestCommands{}
+			response := postDetails(t, commands, queries, "host-1", url.Values{
+				"max_players": {"4"}, "start_preset": {preset}, "start_date": {"2026-10-02"},
+				"start_time": {"20:30"}, "timezone": {"Europe/Berlin"}, "description": {"changed description"},
+			})
+			if response.Code != http.StatusSeeOther || commands.detailsCalls != 1 {
+				t.Fatalf("response/calls = %d/%d", response.Code, commands.detailsCalls)
+			}
+			if !commands.detailsInput.StartsAt.Equal(startsAt) || commands.detailsInput.StartsAt.Nanosecond() != startsAt.Nanosecond() {
+				t.Errorf("start = %s, want exact stored instant %s", commands.detailsInput.StartsAt.Format(time.RFC3339Nano), startsAt.Format(time.RFC3339Nano))
+			}
+		})
 	}
 }
 
@@ -801,7 +866,7 @@ func TestUpdateDetailsPlayingRejectsForgedStartFields(t *testing.T) {
 	commands := &fakeGameRequestCommands{}
 	response := postDetails(t, commands, queries, "host-1", url.Values{
 		"max_players": {"5"}, "start_date": {"2099-01-01"}, "start_time": {"00:00"},
-		"timezone": {"Pacific/Kiritimati"}, "description": {"playing update"},
+		"timezone": {"Pacific/Kiritimati"}, "start_preset": {"15"}, "description": {"playing update"},
 	})
 	if response.Code != http.StatusUnprocessableEntity || commands.detailsCalls != 0 {
 		t.Fatalf("response/calls = %d/%d, want validation error and no update", response.Code, commands.detailsCalls)
@@ -844,7 +909,7 @@ func TestUpdateDetailsKeepsRawValuesBesideFieldError(t *testing.T) {
 		t.Fatalf("status/calls = %d/%d, want 422/0", response.Code, commands.detailsCalls)
 	}
 	for _, want := range []string{
-		`action="/game-requests/request-1/details"`, `id="capacity-error"`, `value="1"`,
+		`action="/game-requests/request-1/details"`, `id="max-players-error"`, `value="1"`,
 		`value="2027-05-03"`, `value="19:45"`, `value="Europe/Paris"`, "raw description",
 		"Maximum players must be 0 for unlimited or a whole number from 2 to 999.",
 	} {
@@ -867,7 +932,7 @@ func TestUpdateDetailsKeepsBusinessErrorOnEditor(t *testing.T) {
 	})
 	body := response.Body.String()
 	if response.Code != http.StatusConflict ||
-		!strings.Contains(body, `id="capacity-error"`) ||
+		!strings.Contains(body, `id="max-players-error"`) ||
 		!strings.Contains(body, `value="2"`) ||
 		!strings.Contains(body, "Maximum players cannot be lower than the current player count.") {
 		t.Errorf("business error response = %d, body = %s", response.Code, body)
@@ -902,6 +967,10 @@ func TestViewEditModeRequiresHostAndActiveRequest(t *testing.T) {
 			got := strings.Contains(response.Body.String(), `action="/game-requests/request-1/details"`)
 			if got != tc.show {
 				t.Errorf("edit mode = %v, want %v; response %s", got, tc.show, response.Body.String())
+			}
+			if tc.status == gamerequest.StatusOpen && tc.viewer == "host-1" &&
+				(!strings.Contains(response.Body.String(), `value="custom" checked`) || !strings.Contains(response.Body.String(), `name="start_date" value="2027-05-01"`)) {
+				t.Errorf("open editor does not initialize stored custom start: %s", response.Body.String())
 			}
 		})
 	}

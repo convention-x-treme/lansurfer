@@ -200,10 +200,16 @@ function setGameRequestSearchBusy(event: Event, busy: boolean): void {
 document.addEventListener("htmx:beforeRequest", (event) => setGameRequestSearchBusy(event, true));
 document.addEventListener("htmx:afterRequest", (event) => setGameRequestSearchBusy(event, false));
 
-const description = document.querySelector<HTMLTextAreaElement>("[data-description]");
-const descriptionCount = document.querySelector<HTMLElement>("[data-description-count]");
-description?.addEventListener("input", () => {
-  if (descriptionCount) descriptionCount.textContent = `${Array.from(description.value).length} / 1000`;
+function updateDescriptionCount(description: HTMLTextAreaElement): void {
+  const count = description.closest("label")?.querySelector<HTMLElement>("[data-description-count]");
+  if (count) count.textContent = `${Array.from(description.value).length} / 1000`;
+}
+
+document.addEventListener("input", (event) => {
+  const field = event.target;
+  if (field instanceof HTMLTextAreaElement && field.matches("textarea[data-description]")) {
+    updateDescriptionCount(field);
+  }
 });
 
 // Every live notice is dismissible: an outage can last as long as the event
@@ -264,7 +270,6 @@ type RequestDetailFieldDraft = {
   focused: boolean;
   error: string;
 };
-
 const requestDetailsDrafts = new WeakMap<HTMLElement, RequestDetailFieldDraft[]>();
 
 document.addEventListener("htmx:beforeSwap", (event) => {
@@ -278,7 +283,7 @@ document.addEventListener("htmx:beforeSwap", (event) => {
   const active = document.activeElement;
   const drafts: RequestDetailFieldDraft[] = [];
   for (const field of fields) {
-    const errorID = field.name === "max_players" ? "capacity-error"
+    const errorID = field.name === "max_players" ? "max-players-error"
       : field.name === "description" ? "description-error"
       : "start-error";
     const error = form.querySelector<HTMLElement>(`#${errorID}`);
@@ -295,9 +300,19 @@ document.addEventListener("htmx:beforeSwap", (event) => {
       });
     }
   }
+  const selectedPreset = form.querySelector<HTMLInputElement>("input[name='start_preset']:checked");
+  const presetError = form.querySelector<HTMLElement>("#start-error");
+  if (selectedPreset && (selectedPreset.checked !== selectedPreset.defaultChecked || presetError)) {
+    drafts.push({
+      name: "start_preset",
+      value: selectedPreset.value,
+      rejected: presetError !== null,
+      focused: active === selectedPreset,
+      error: presetError?.textContent?.trim() ?? "",
+    });
+  }
   if (drafts.length) requestDetailsDrafts.set(target, drafts);
 });
-
 document.addEventListener("htmx:afterSwap", (event) => {
   const target = (event as CustomEvent<{ target: HTMLElement }>).detail.target;
   const drafts = requestDetailsDrafts.get(target);
@@ -307,14 +322,21 @@ document.addEventListener("htmx:afterSwap", (event) => {
   if (!editor) return;
   let focus: HTMLElement | null = null;
   for (const draft of drafts) {
-    const field = editor.querySelector<HTMLInputElement | HTMLTextAreaElement>(
-      `[name="${draft.name}"]`,
-    );
+    if (draft.name === "start_preset") {
+      const radio = editor.querySelector<HTMLInputElement>(`input[name="start_preset"][value="${draft.value}"]`);
+      if (!radio) continue;
+      radio.checked = true;
+      if (draft.rejected) radio.setAttribute("aria-invalid", "true");
+      if (draft.focused) focus = radio;
+      continue;
+    }
+    const field = editor.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[name="${draft.name}"]`);
     if (!field) continue;
     field.value = draft.value;
+    if (field instanceof HTMLTextAreaElement) updateDescriptionCount(field);
     if (draft.rejected) {
       field.setAttribute("aria-invalid", "true");
-      const errorID = draft.name === "max_players" ? "capacity-error"
+      const errorID = draft.name === "max_players" ? "max-players-error"
         : draft.name === "description" ? "description-error"
         : "start-error";
       let error = editor.querySelector<HTMLElement>(`#${errorID}`);
@@ -331,7 +353,9 @@ document.addEventListener("htmx:afterSwap", (event) => {
       }
       if (error && draft.error) {
         error.textContent = draft.error;
-        field.setAttribute("aria-describedby", errorID);
+        const describedBy = new Set((field.getAttribute("aria-describedby") ?? "").split(/\s+/).filter(Boolean));
+        describedBy.add(errorID);
+        field.setAttribute("aria-describedby", [...describedBy].join(" "));
       }
     }
     if (draft.focused) focus = field;

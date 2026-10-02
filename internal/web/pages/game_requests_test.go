@@ -807,20 +807,20 @@ func renderLifecycleDetail(t *testing.T, status gamerequest.Status, viewerID str
 
 func TestDetailHostActionsFollowTheLifecycle(t *testing.T) {
 	open := renderLifecycleDetail(t, gamerequest.StatusOpen, "host-1")
-	for _, want := range []string{"Start game", "Cancel Game Request", `action="/game-requests/request-1/start"`, "data-confirm="} {
+	for _, want := range []string{"Start game", "Edit", "Cancel Game Request", "Visible to the Host only.", `action="/game-requests/request-1/start"`, `data-confirm="Start this game?`} {
 		if !strings.Contains(open, want) {
 			t.Errorf("open Host detail lacks %q", want)
 		}
 	}
-	if strings.Contains(open, "/close") {
-		t.Error("open Host detail offers Close")
+	openActions := open[strings.Index(open, `action="/game-requests/request-1/start"`):]
+	if !(strings.Index(openActions, "Start game") < strings.Index(openActions, `href="/game-requests/request-1?edit=1"`) &&
+		strings.Index(openActions, `href="/game-requests/request-1?edit=1"`) < strings.Index(openActions, "Cancel Game Request") &&
+		strings.Index(openActions, "Cancel Game Request") < strings.Index(openActions, "Visible to the Host only.")) {
+		t.Errorf("open Host action order is wrong: %s", openActions)
 	}
-	start := open[strings.Index(open, `action="/game-requests/request-1/start"`):]
-	start = start[:strings.Index(start, "</form>")]
-	for _, want := range []string{"Playing", "no longer be cancelled", "Close it when"} {
-		if !strings.Contains(start, want) {
-			t.Errorf("Start confirmation lacks %q: %s", want, start)
-		}
+	editLink := open[strings.Index(open, `href="/game-requests/request-1?edit=1"`):]
+	if strings.Contains(editLink[:strings.Index(editLink, ">Edit</a>")], "data-confirm") {
+		t.Error("Edit unexpectedly asks for confirmation")
 	}
 
 	playing := renderLifecycleDetail(t, gamerequest.StatusPlaying, "host-1")
@@ -832,8 +832,13 @@ func TestDetailHostActionsFollowTheLifecycle(t *testing.T) {
 			t.Errorf("playing Host detail contains %q", unwanted)
 		}
 	}
-	if !strings.Contains(playing, "status-chip-playing") || !strings.Contains(playing, "detail-hero-playing") {
-		t.Error("playing detail lacks Playing chip/hero accent")
+	playingActions := playing[strings.Index(playing, `action="/game-requests/request-1/close"`):]
+	if !(strings.Index(playingActions, "Close game") < strings.Index(playingActions, `href="/game-requests/request-1?edit=1"`) &&
+		strings.Index(playingActions, `href="/game-requests/request-1?edit=1"`) < strings.Index(playingActions, "Visible to the Host only.")) {
+		t.Errorf("playing Host action order is wrong: %s", playingActions)
+	}
+	if !strings.Contains(playingActions, `data-confirm="Close this game?`) {
+		t.Error("Close game confirmation changed")
 	}
 }
 
@@ -985,23 +990,103 @@ func TestUpdatedActivityLabelsChangedDimensions(t *testing.T) {
 
 func TestUpdatedActivityRendersPlannedStartTimesAsLocalizableInstants(t *testing.T) {
 	before, after := time.Date(2027, 5, 1, 17, 0, 0, 0, time.UTC), time.Date(2027, 5, 1, 18, 0, 0, 0, time.UTC)
-	request := capacityRequest(gamerequest.StatusOpen, nil)
-	request.Activity = []requestquery.Activity{{
-		Kind: gamerequest.ActivityUpdated, ActorGameNick: "Alex",
-		PreviousStartsAt: &before, NewStartsAt: &after,
-	}}
-	body := renderCapacityDetail(t, request, "user-2", GameRequestDetailMessage{})
-	for _, want := range []string{
-		"Alex changed the planned start",
-		`(from</span>`,
-		`datetime="2027-05-01T17:00:00Z"`,
-		`datetime="2027-05-01T18:00:00Z"`,
-		`data-local-time="absolute"`,
+	four, six := int32(4), int32(6)
+	for _, tc := range []struct {
+		name  string
+		entry requestquery.Activity
+		label string
+	}{
+		{"start only", requestquery.Activity{Kind: gamerequest.ActivityUpdated, ActorGameNick: "Alex", PreviousStartsAt: &before, NewStartsAt: &after}, "Alex changed the planned start"},
+		{"capacity and start", requestquery.Activity{Kind: gamerequest.ActivityUpdated, ActorGameNick: "Alex", PreviousMaxPlayers: &four, NewMaxPlayers: &six, PreviousStartsAt: &before, NewStartsAt: &after}, "Alex updated capacity and planned start"},
 	} {
-		if !strings.Contains(body, want) {
-			t.Errorf("updated activity lacks %q: %s", want, body)
+		t.Run(tc.name, func(t *testing.T) {
+			request := capacityRequest(gamerequest.StatusOpen, nil)
+			tc.entry.OccurredAt = time.Date(2027, 5, 1, 16, 0, 0, 0, time.UTC)
+			request.Activity = []requestquery.Activity{tc.entry}
+			body := renderCapacityDetail(t, request, "user-2", GameRequestDetailMessage{})
+			rowStart := strings.Index(body, `<li class="activity-row">`)
+			if rowStart < 0 {
+				t.Fatalf("activity row missing: %s", body)
+			}
+			rowEnd := strings.Index(body[rowStart:], `</li>`)
+			if rowEnd < 0 {
+				t.Fatalf("activity row is not closed: %s", body[rowStart:])
+			}
+			row := body[rowStart : rowStart+rowEnd]
+			contentStart := strings.Index(row, `<div class="activity-content`)
+			if contentStart < 0 {
+				t.Fatalf("activity content missing: %s", row)
+			}
+			contentEnd := strings.Index(row[contentStart:], `</div>`)
+			if contentEnd < 0 {
+				t.Fatalf("activity content is not closed: %s", row[contentStart:])
+			}
+			content := row[contentStart : contentStart+contentEnd]
+			for _, want := range []string{tc.label, `datetime="2027-05-01T17:00:00Z"`, `datetime="2027-05-01T18:00:00Z"`, `data-local-time="absolute"`} {
+				if !strings.Contains(content, want) {
+					t.Errorf("activity content lacks %q: %s", want, content)
+				}
+			}
+			detailStart := strings.Index(content, `<p class="activity-detail`)
+			if detailStart < 0 {
+				t.Fatalf("activity detail paragraph missing: %s", content)
+			}
+			detailEnd := strings.Index(content[detailStart:], `</p>`)
+			if detailEnd < 0 {
+				t.Fatalf("activity detail paragraph is not closed: %s", content[detailStart:])
+			}
+			detail := content[detailStart : detailStart+detailEnd]
+			if strings.Count(detail, `data-local-time="absolute"`) != 2 ||
+				!strings.Contains(row[:contentStart], `datetime="2027-05-01T16:00:00Z"`) ||
+				strings.Contains(row[:contentStart], `data-local-time="absolute"`) ||
+				strings.Contains(row[contentStart+contentEnd:], `data-local-time="absolute"`) {
+				t.Errorf("activity times do not match intended hierarchy: %s", row)
+			}
+		})
+	}
+}
+
+func TestCreateAndOpenEditShareFieldCopy(t *testing.T) {
+	create := renderComposerFields(t, GameRequestForm{MaxPlayers: "4", StartPreset: "now"}, ComposerMessage{})
+	request := capacityRequest(gamerequest.StatusOpen, nil)
+	editor := renderCapacityDetail(t, request, "host-1", GameRequestDetailMessage{Editing: true, Form: GameRequestForm{MaxPlayers: "4", StartPreset: "custom", Description: "draft"}})
+	editorStart := strings.Index(editor, `action="/game-requests/request-1/details"`)
+	editor = editor[editorStart:]
+	editor = editor[:strings.Index(editor, "</form>")]
+	for name, body := range map[string]string{"create": create, "edit": editor} {
+		if !strings.Contains(body, "Max players") || !strings.Contains(body, "0 for an open round, or 2 to 999 players.") || !strings.Contains(body, "Description") || !strings.Contains(body, "(optional)") {
+			t.Errorf("%s field copy differs: %s", name, body)
+		}
+		if strings.Contains(body, "Maximum players") || strings.Contains(body, "0 means unlimited; finite limits start at 2.") {
+			t.Errorf("%s retained old field copy: %s", name, body)
 		}
 	}
+}
+
+func TestOpenEditorOffersStartChoicesAndPrefillsStoredCustomStart(t *testing.T) {
+	request := capacityRequest(gamerequest.StatusOpen, nil)
+	request.StartsAt = time.Date(2027, 5, 1, 18, 30, 0, 0, time.UTC)
+	body := renderCapacityDetail(t, request, "host-1", GameRequestDetailMessage{Editing: true, InitializeStart: true, Form: GameRequestForm{StartPreset: "custom", StartDate: "2027-05-01", StartTime: "18:30", Timezone: "UTC"}})
+	editorStart := strings.Index(body, `action="/game-requests/request-1/details"`)
+	editor := body[editorStart:]
+	editor = editor[:strings.Index(editor, "</form>")]
+	for _, value := range []string{`value="now"`, `value="15"`, `value="30"`, `value="60"`, `value="custom"`, `name="start_date" value="2027-05-01"`, `name="start_time" value="18:30"`, `name="timezone" value="UTC"`, `data-start-options`, `data-custom-start`} {
+		if !strings.Contains(editor, value) {
+			t.Errorf("open editor lacks %q: %s", value, editor)
+		}
+	}
+	if !strings.Contains(editor, `value="custom" checked`) {
+		t.Errorf("custom start not selected: %s", editor)
+	}
+}
+
+func renderComposerFields(t *testing.T, form GameRequestForm, message ComposerMessage) string {
+	t.Helper()
+	var rendered bytes.Buffer
+	if err := GameRequestDetailsFields(form, message).Render(context.Background(), &rendered); err != nil {
+		t.Fatalf("render composer fields: %v", err)
+	}
+	return rendered.String()
 }
 
 func TestHostEditActionAndEditorFollowOwnershipAndStatus(t *testing.T) {
@@ -1044,9 +1129,9 @@ func TestRequestEditorKeepsCapacityUXAndReadOnlyGame(t *testing.T) {
 	editor = editor[:strings.Index(editor, "</form>")]
 	for _, want := range []string{
 		`name="max_players"`, `min="0"`, `max="999"`, `step="1"`, `type="number"`,
-		`value="1"`, "0 means unlimited; finite limits start at 2.", `id="capacity-error"`,
-		`name="start_date"`, `name="start_time"`, `name="timezone"`, `data-local-start`,
-		`name="description"`, "keep raw", ">Save</button>", ">Cancel</a>",
+		`value="1"`, "0 for an open round, or 2 to 999 players.", `id="max-players-error"`,
+		`name="start_date"`, `name="start_time"`, `name="timezone"`, `data-start-options`, `data-local-start`,
+		`name="description"`, "keep raw", `data-description-count`, ">Save</button>", ">Cancel</a>",
 	} {
 		if !strings.Contains(editor, want) {
 			t.Errorf("editor lacks %q: %s", want, editor)
@@ -1071,7 +1156,8 @@ func TestPlayingEditorCannotEditPlannedStart(t *testing.T) {
 	editor := body[start:]
 	editor = editor[:strings.Index(editor, "</form>")]
 	if strings.Contains(editor, `name="start_date"`) || strings.Contains(editor, `name="start_time"`) ||
-		!strings.Contains(editor, "Planned start") || !strings.Contains(editor, `datetime="2027-05-01T18:30:00Z"`) {
+		strings.Contains(editor, `name="timezone"`) || strings.Contains(editor, `name="start_preset"`) ||
+		!strings.Contains(editor, "Start") || !strings.Contains(editor, `datetime="2027-05-01T18:30:00Z"`) {
 		t.Errorf("playing start is not read-only: %s", editor)
 	}
 }

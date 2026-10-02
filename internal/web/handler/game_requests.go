@@ -517,29 +517,28 @@ func (h *GameRequests) UpdateDetails(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if request.Status == gamerequest.StatusOpen && form.StartPreset == "" {
+		form.StartPreset = "custom"
+	}
 	maxPlayers, err := parseCapacity(form.MaxPlayers)
 	startsAt := request.StartsAt
 	if err == nil {
 		if request.Status == gamerequest.StatusPlaying &&
-			(form.StartDate != "" || form.StartTime != "" || form.Timezone != "") {
+			(form.StartPreset != "" || form.StartDate != "" || form.StartTime != "" || form.Timezone != "") {
 			err = gamerequest.ErrInvalidStartsAt
 		} else if request.Status == gamerequest.StatusOpen {
-			if form.StartDate == "" || form.StartTime == "" {
-				err = gamerequest.ErrInvalidStartsAt
-			} else {
+			startsAt, err = parseGameRequestStart(form, h.now())
+			if err == nil && form.StartPreset == "custom" {
+				location := time.UTC
+				if form.Timezone != "" {
+					location, err = time.LoadLocation(form.Timezone)
+					if err != nil {
+						err = gamerequest.ErrInvalidStartsAt
+					}
+				}
 				submitted := form.StartDate + "T" + form.StartTime
-				startsAt, err = parseBrowserTime(submitted, form.Timezone)
-				if err == nil {
-					location := time.UTC
-					if form.Timezone != "" {
-						location, err = time.LoadLocation(form.Timezone)
-						if err != nil {
-							err = gamerequest.ErrInvalidStartsAt
-						}
-					}
-					if err == nil && request.StartsAt.In(location).Format(gameRequestTimeLayout) == submitted {
-						startsAt = request.StartsAt
-					}
+				if err == nil && request.StartsAt.In(location).Format(gameRequestTimeLayout) == submitted {
+					startsAt = request.StartsAt
 				}
 			}
 		}
@@ -603,15 +602,15 @@ func requestDetailsForm(request requestquery.Request) pages.GameRequestForm {
 	}
 	startsAt := request.StartsAt.UTC()
 	return pages.GameRequestForm{
-		MaxPlayers: maxPlayers, StartDate: startsAt.Format("2006-01-02"),
+		MaxPlayers: maxPlayers, StartPreset: "custom", StartDate: startsAt.Format("2006-01-02"),
 		StartTime: startsAt.Format("15:04"), Timezone: "UTC", Description: request.Description,
 	}
 }
 
 func requestDetailsFormFromValues(r *http.Request) pages.GameRequestForm {
 	return pages.GameRequestForm{
-		MaxPlayers: r.FormValue("max_players"), StartDate: r.FormValue("start_date"),
-		StartTime: r.FormValue("start_time"), Timezone: r.FormValue("timezone"),
+		MaxPlayers: r.FormValue("max_players"), StartPreset: strings.TrimSpace(r.FormValue("start_preset")),
+		StartDate: r.FormValue("start_date"), StartTime: r.FormValue("start_time"), Timezone: r.FormValue("timezone"),
 		Description: r.FormValue("description"),
 	}
 }
@@ -623,7 +622,7 @@ func updateDetailsMessage(err error, form pages.GameRequestForm) pages.GameReque
 	case errors.Is(err, gamerequest.ErrCapacityBelowMembers):
 		return pages.GameRequestDetailMessage{Text: "Maximum players cannot be lower than the current player count.", Field: "max_players", Value: form.MaxPlayers}
 	case errors.Is(err, gamerequest.ErrInvalidStartsAt):
-		return pages.GameRequestDetailMessage{Text: "Enter a valid planned start date and time.", Field: "start"}
+		return pages.GameRequestDetailMessage{Text: gameRequestMessage(err), Field: "start"}
 	case errors.Is(err, gamerequest.ErrInvalidDescription):
 		return pages.GameRequestDetailMessage{Text: gameRequestMessage(err), Field: "description"}
 	case errors.Is(err, gamerequest.ErrNotActive):
@@ -663,28 +662,37 @@ func (h *GameRequests) parseCreateForm(r *http.Request) (pages.GameRequestForm, 
 			maxPlayers = &parsed
 		}
 	}
-	startsAt := h.now().UTC()
-	var startErr error
+	startsAt, err := parseGameRequestStart(form, h.now())
+	if err != nil {
+		return form, maxPlayers, time.Time{}, err
+	}
+	return form, maxPlayers, startsAt, nil
+}
+
+func parseGameRequestStart(form pages.GameRequestForm, now time.Time) (time.Time, error) {
+	var startsAt time.Time
+	var err error
 	switch form.StartPreset {
 	case "", "now":
+		startsAt = now.UTC()
 		if form.StartPreset == "" && form.StartsAt != "" {
-			startsAt, startErr = parseBrowserTime(form.StartsAt, form.Timezone)
+			startsAt, err = parseBrowserTime(form.StartsAt, form.Timezone)
 		}
 	case "15", "30", "60":
 		minutes, _ := strconv.Atoi(form.StartPreset)
-		startsAt = h.now().Add(time.Duration(minutes) * time.Minute).UTC()
+		startsAt = now.Add(time.Duration(minutes) * time.Minute).UTC()
 	case "custom":
 		if form.StartDate == "" || form.StartTime == "" {
-			return form, maxPlayers, time.Time{}, gamerequest.ErrInvalidStartsAt
+			return time.Time{}, gamerequest.ErrInvalidStartsAt
 		}
-		startsAt, startErr = parseBrowserTime(form.StartDate+"T"+form.StartTime, form.Timezone)
+		startsAt, err = parseBrowserTime(form.StartDate+"T"+form.StartTime, form.Timezone)
 	default:
-		return form, maxPlayers, time.Time{}, gamerequest.ErrInvalidStartsAt
+		return time.Time{}, gamerequest.ErrInvalidStartsAt
 	}
-	if startErr != nil {
-		return form, maxPlayers, time.Time{}, gamerequest.ErrInvalidStartsAt
+	if err != nil {
+		return time.Time{}, gamerequest.ErrInvalidStartsAt
 	}
-	return form, maxPlayers, startsAt, nil
+	return startsAt, nil
 }
 
 // parseBrowserTime reads a browser-local date/time in the viewer's IANA zone,
@@ -770,7 +778,7 @@ func gameRequestMessage(err error) string {
 	case errors.Is(err, gamerequest.ErrInvalidMaxPlayers):
 		return "Maximum players must be 0 for unlimited or a whole number from 2 to 999."
 	case errors.Is(err, gamerequest.ErrInvalidStartsAt):
-		return "Enter a valid scheduled start time, or leave it blank to start now."
+		return "Enter a valid planned start date and time."
 	case errors.Is(err, gamerequest.ErrInvalidDescription):
 		return "Description must be 1000 characters or fewer."
 	case errors.Is(err, gamerequest.ErrFull):
