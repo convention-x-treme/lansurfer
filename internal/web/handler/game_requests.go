@@ -519,11 +519,29 @@ func (h *GameRequests) UpdateDetails(w http.ResponseWriter, r *http.Request) {
 
 	maxPlayers, err := parseCapacity(form.MaxPlayers)
 	startsAt := request.StartsAt
-	if err == nil && request.Status == gamerequest.StatusOpen {
-		if form.StartDate == "" || form.StartTime == "" {
+	if err == nil {
+		if request.Status == gamerequest.StatusPlaying &&
+			(form.StartDate != "" || form.StartTime != "" || form.Timezone != "") {
 			err = gamerequest.ErrInvalidStartsAt
-		} else {
-			startsAt, err = parseBrowserTime(form.StartDate+"T"+form.StartTime, form.Timezone)
+		} else if request.Status == gamerequest.StatusOpen {
+			if form.StartDate == "" || form.StartTime == "" {
+				err = gamerequest.ErrInvalidStartsAt
+			} else {
+				submitted := form.StartDate + "T" + form.StartTime
+				startsAt, err = parseBrowserTime(submitted, form.Timezone)
+				if err == nil {
+					location := time.UTC
+					if form.Timezone != "" {
+						location, err = time.LoadLocation(form.Timezone)
+						if err != nil {
+							err = gamerequest.ErrInvalidStartsAt
+						}
+					}
+					if err == nil && request.StartsAt.In(location).Format(gameRequestTimeLayout) == submitted {
+						startsAt = request.StartsAt
+					}
+				}
+			}
 		}
 	}
 	description := form.Description

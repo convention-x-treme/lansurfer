@@ -48,6 +48,77 @@ for (const scenario of ["draft", "validation error", "tab return"] as const) {
   });
 }
 
+for (const scenario of ["description draft", "capacity draft"] as const) {
+  test(`a detail refresh keeps only the dirty field for ${scenario}`, async ({ page }) => {
+    await page.goto("/game-requests/new?game_id=game-1");
+    await page.locator("input[name='max_players']").fill("4");
+    await page.getByRole("button", { name: "Create Game Request" }).click();
+    await page.waitForURL(/\/game-requests\/[0-9a-f-]+(?:\?.*)?$/);
+    await page.getByRole("link", { name: "Edit" }).click();
+    await page.waitForURL(/\?edit=1$/);
+    await waitForRealtime(page, page.request, 1);
+    await instrumentHtmx(page);
+
+    const detail = page.locator("#game-request-detail");
+    const id = await detail.getAttribute("data-game-request-id");
+    const csrf = await detail.locator("input[name='csrf_token']").first().inputValue();
+    const capacity = page.getByLabel("Maximum players");
+    const description = page.getByLabel("Description");
+    if (scenario === "description draft") await description.fill("Local description");
+    else await capacity.fill("6");
+
+    const serverUpdate = await page.request.post(`/game-requests/${id}/details`, {
+      form: {
+        max_players: scenario === "description draft" ? "6" : "4",
+        start_date: await page.locator("input[name='start_date']").inputValue(),
+        start_time: await page.locator("input[name='start_time']").inputValue(),
+        timezone: await page.locator("input[name='timezone']").inputValue(),
+        description: scenario === "description draft" ? "" : "Server description",
+        csrf_token: csrf,
+      },
+    });
+    expect(serverUpdate.ok()).toBe(true);
+    await expect.poll(async () => (await htmxCounters(page)).after).toBeGreaterThan(0);
+
+    if (scenario === "description draft") {
+      await expect(description).toHaveValue("Local description");
+      await expect(capacity).toHaveValue("6");
+    } else {
+      await expect(capacity).toHaveValue("6");
+      await expect(description).toHaveValue("Server description");
+    }
+    await page.getByRole("button", { name: "Save" }).click();
+    await page.waitForURL(/\/game-requests\/[0-9a-f-]+(?:\?.*)?$/);
+    await expect(page.locator("#game-request-detail")).toContainText("1/6");
+    await expect(page.locator("#game-request-detail")).toContainText(
+      scenario === "description draft" ? "Local description" : "Server description",
+    );
+  });
+}
+test("a Playing refresh does not restore removed planned-start controls", async ({ page }) => {
+  await page.goto("/game-requests/new?game_id=game-1");
+  await page.locator("input[name='max_players']").fill("4");
+  await page.getByRole("button", { name: "Create Game Request" }).click();
+  await page.waitForURL(/\/game-requests\/[0-9a-f-]+(?:\?.*)?$/);
+  await page.getByRole("link", { name: "Edit" }).click();
+  await page.waitForURL(/\?edit=1$/);
+  await waitForRealtime(page, page.request, 1);
+  await instrumentHtmx(page);
+
+  const detail = page.locator("#game-request-detail");
+  const id = await detail.getAttribute("data-game-request-id");
+  const csrf = await detail.locator("input[name='csrf_token']").first().inputValue();
+  await page.getByLabel("Description").fill("Local description");
+  const started = await page.request.post(`/game-requests/${id}/start`, { form: { csrf_token: csrf } });
+  expect(started.ok()).toBe(true);
+  await expect.poll(async () => (await htmxCounters(page)).after).toBeGreaterThan(0);
+
+  await expect(page.getByText("Playing", { exact: true }).first()).toBeVisible();
+  await expect(page.locator("form[action$='/details'] input[name='start_date'], form[action$='/details'] input[name='start_time']")).toHaveCount(0);
+  await expect(page.getByLabel("Maximum players")).toHaveValue("4");
+  await expect(page.getByLabel("Description")).toHaveValue("Local description");
+});
+
 test("a detail refresh updates an untouched request editor and removes a draft when cancelled", async ({ page, request }) => {
   await page.goto("/game-requests/new?game_id=game-1");
   await page.locator("input[name='max_players']").fill("4");

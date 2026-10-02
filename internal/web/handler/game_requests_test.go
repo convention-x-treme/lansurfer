@@ -775,8 +775,25 @@ func TestUpdateDetailsParsesLocalTimeAndSubmitsAllEditableFields(t *testing.T) {
 		t.Errorf("response = %d %q", response.Code, response.Header().Get("Location"))
 	}
 }
+func TestUpdateDetailsPreservesSecondsWhenVisibleStartIsUnchanged(t *testing.T) {
+	startsAt := time.Date(2026, 10, 2, 18, 30, 47, 0, time.UTC)
+	queries := fakeGameRequestQueries{request: requestquery.Request{
+		ID: "request-1", CreatorID: "host-1", Status: gamerequest.StatusOpen, StartsAt: startsAt,
+	}}
+	commands := &fakeGameRequestCommands{}
+	response := postDetails(t, commands, queries, "host-1", url.Values{
+		"max_players": {"4"}, "start_date": {"2026-10-02"}, "start_time": {"20:30"},
+		"timezone": {"Europe/Berlin"}, "description": {"changed description"},
+	})
+	if response.Code != http.StatusSeeOther || commands.detailsCalls != 1 {
+		t.Fatalf("response/calls = %d/%d", response.Code, commands.detailsCalls)
+	}
+	if !commands.detailsInput.StartsAt.Equal(startsAt) || commands.detailsInput.StartsAt.Nanosecond() != startsAt.Nanosecond() {
+		t.Errorf("start = %s, want exact stored instant %s", commands.detailsInput.StartsAt.Format(time.RFC3339), startsAt.Format(time.RFC3339))
+	}
+}
 
-func TestUpdateDetailsPlayingKeepsStoredStartDespiteForgedFields(t *testing.T) {
+func TestUpdateDetailsPlayingRejectsForgedStartFields(t *testing.T) {
 	startsAt := time.Date(2027, 5, 1, 12, 0, 0, 0, time.UTC)
 	queries := fakeGameRequestQueries{request: requestquery.Request{
 		ID: "request-1", CreatorID: "host-1", Status: gamerequest.StatusPlaying, StartsAt: startsAt,
@@ -786,12 +803,28 @@ func TestUpdateDetailsPlayingKeepsStoredStartDespiteForgedFields(t *testing.T) {
 		"max_players": {"5"}, "start_date": {"2099-01-01"}, "start_time": {"00:00"},
 		"timezone": {"Pacific/Kiritimati"}, "description": {"playing update"},
 	})
-	if commands.detailsCalls != 1 || !commands.detailsInput.StartsAt.Equal(startsAt) {
-		t.Fatalf("playing start = %v, calls = %d; want stored %v", commands.detailsInput.StartsAt, commands.detailsCalls, startsAt)
+	if response.Code != http.StatusUnprocessableEntity || commands.detailsCalls != 0 {
+		t.Fatalf("response/calls = %d/%d, want validation error and no update", response.Code, commands.detailsCalls)
 	}
-	if commands.detailsInput.MaxPlayers == nil || *commands.detailsInput.MaxPlayers != 5 ||
-		commands.detailsInput.Description != "playing update" || response.Code != http.StatusSeeOther {
-		t.Errorf("playing update input/response = %#v, %d", commands.detailsInput, response.Code)
+	if !queries.request.StartsAt.Equal(startsAt) {
+		t.Errorf("stored start = %s, want unchanged %s", queries.request.StartsAt, startsAt)
+	}
+}
+
+func TestUpdateDetailsPlayingAcceptsCapacityAndDescriptionWithoutStartFields(t *testing.T) {
+	startsAt := time.Date(2027, 5, 1, 12, 0, 0, 0, time.UTC)
+	queries := fakeGameRequestQueries{request: requestquery.Request{
+		ID: "request-1", CreatorID: "host-1", Status: gamerequest.StatusPlaying, StartsAt: startsAt,
+	}}
+	commands := &fakeGameRequestCommands{}
+	response := postDetails(t, commands, queries, "host-1", url.Values{
+		"max_players": {"5"}, "description": {"playing update"},
+	})
+	if response.Code != http.StatusSeeOther || commands.detailsCalls != 1 ||
+		!commands.detailsInput.StartsAt.Equal(startsAt) ||
+		commands.detailsInput.MaxPlayers == nil || *commands.detailsInput.MaxPlayers != 5 ||
+		commands.detailsInput.Description != "playing update" {
+		t.Errorf("response/input = %d/%#v, want valid playing edit", response.Code, commands.detailsInput)
 	}
 }
 

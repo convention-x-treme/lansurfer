@@ -255,9 +255,17 @@ document.addEventListener("htmx:afterRequest", () => {
   refreshGameRequests();
 });
 
-// Detail refreshes preserve dirty or rejected Host edits while refreshing the
-// rest of the request. Untouched editors follow the server's current state.
-const requestDetailsDrafts = new WeakMap<HTMLElement, { form: HTMLFormElement; focused: HTMLElement | null }>();
+// Detail refreshes keep only locally dirty or rejected field state. The server
+// always owns the refreshed form structure.
+type RequestDetailFieldDraft = {
+  name: string;
+  value: string;
+  rejected: boolean;
+  focused: boolean;
+  error: string;
+};
+
+const requestDetailsDrafts = new WeakMap<HTMLElement, RequestDetailFieldDraft[]>();
 
 document.addEventListener("htmx:beforeSwap", (event) => {
   const target = (event as CustomEvent<{ target: HTMLElement }>).detail.target;
@@ -267,26 +275,69 @@ document.addEventListener("htmx:beforeSwap", (event) => {
   const fields = form.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>(
     "input[name='max_players'], input[name='start_date'], input[name='start_time'], textarea[name='description']",
   );
-  const dirty = [...fields].some((field) => field.value !== field.defaultValue);
-  if (!dirty && !form.querySelector(".field-error")) return;
   const active = document.activeElement;
-  requestDetailsDrafts.set(target, {
-    form,
-    focused: active instanceof HTMLElement && form.contains(active) ? active : null,
-  });
+  const drafts: RequestDetailFieldDraft[] = [];
+  for (const field of fields) {
+    const errorID = field.name === "max_players" ? "capacity-error"
+      : field.name === "description" ? "description-error"
+      : "start-error";
+    const error = form.querySelector<HTMLElement>(`#${errorID}`);
+    const rejected = field.getAttribute("aria-invalid") === "true" ||
+      (field.name.startsWith("start_") && error !== null);
+    const dirty = field.value !== field.defaultValue;
+    if (dirty || rejected) {
+      drafts.push({
+        name: field.name,
+        value: field.value,
+        rejected,
+        focused: active === field,
+        error: rejected ? error?.textContent?.trim() ?? "" : "",
+      });
+    }
+  }
+  if (drafts.length) requestDetailsDrafts.set(target, drafts);
 });
 
 document.addEventListener("htmx:afterSwap", (event) => {
   const target = (event as CustomEvent<{ target: HTMLElement }>).detail.target;
-  const draft = requestDetailsDrafts.get(target);
-  if (!draft) return;
+  const drafts = requestDetailsDrafts.get(target);
+  if (!drafts) return;
   requestDetailsDrafts.delete(target);
   const editor = document.querySelector<HTMLFormElement>("#game-request-detail form[action$='/details']");
   if (!editor) return;
-  editor.replaceWith(draft.form);
-  draft.focused?.focus({ preventScroll: true });
+  let focus: HTMLElement | null = null;
+  for (const draft of drafts) {
+    const field = editor.querySelector<HTMLInputElement | HTMLTextAreaElement>(
+      `[name="${draft.name}"]`,
+    );
+    if (!field) continue;
+    field.value = draft.value;
+    if (draft.rejected) {
+      field.setAttribute("aria-invalid", "true");
+      const errorID = draft.name === "max_players" ? "capacity-error"
+        : draft.name === "description" ? "description-error"
+        : "start-error";
+      let error = editor.querySelector<HTMLElement>(`#${errorID}`);
+      if (!error && draft.error) {
+        error = document.createElement("p");
+        error.id = errorID;
+        error.className = "field-error";
+        if (draft.name.startsWith("start_")) {
+          const fieldset = editor.querySelector("fieldset");
+          fieldset?.insertBefore(error, fieldset.children[1] ?? null);
+        } else {
+          field.insertAdjacentElement("afterend", error);
+        }
+      }
+      if (error && draft.error) {
+        error.textContent = draft.error;
+        field.setAttribute("aria-describedby", errorID);
+      }
+    }
+    if (draft.focused) focus = field;
+  }
+  focus?.focus({ preventScroll: true });
 });
-
 // Without an event the current view is refreshed as a whole, which is what a
 // page needs after it was disconnected from the stream for a while. A deferred
 // refresh drops the event, and with it only the highlight on a new row; the
