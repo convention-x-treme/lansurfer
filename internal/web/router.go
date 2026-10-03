@@ -84,9 +84,10 @@ type RouterDependencies struct {
 	Chat              handler.GameRequestChat
 	Realtime          handler.GameRequestEvents
 	// RealtimeChat gates chat signals on the realtime stream; nil drops them.
-	RealtimeChat       handler.ChatAccess
-	SessionInformation handler.GameRequestSessionInformation
-	Subscriptions      handler.SubscriptionManager
+	RealtimeChat               handler.ChatAccess
+	SessionInformation         handler.GameRequestSessionInformation
+	RealtimeSessionInformation handler.SessionInformationAccess
+	Subscriptions              handler.SubscriptionManager
 	// PushDevices is the same concrete *notification.SubscriptionService as
 	// Subscriptions, exposed through the handler.PushDeviceRemover interface
 	// Logout needs. Two fields (rather than widening either handler
@@ -161,7 +162,7 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 			dependencies.DiscordLifecycle, dependencies.DiscordStatus, navigation, brand, dependencies.SecureCookies,
 		)
 	}
-	realtimeHandler := handler.NewRealtime(dependencies.Realtime, dependencies.RealtimeChat)
+	realtimeHandler := handler.NewRealtime(dependencies.Realtime, dependencies.RealtimeChat, dependencies.RealtimeSessionInformation)
 	notificationSettingsHandler := handler.NewNotificationSettings(
 		dependencies.Subscriptions, dependencies.VAPIDPublicKey,
 		dependencies.WebPushConfigured, brand, dependencies.SecureCookies, navigation,

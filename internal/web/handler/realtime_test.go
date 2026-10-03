@@ -146,7 +146,7 @@ func TestRealtimeChatSignalsOnlyReachParticipants(t *testing.T) {
 		events <- gamerequest.Event{Type: gamerequest.EventChatMessage, RequestID: "request-1"}
 		events <- gamerequest.Event{Type: gamerequest.EventStarted, RequestID: "request-1"}
 		close(events)
-		request := httptest.NewRequest("GET", "/events/game-requests?chatRequestId=request-1", nil)
+		request := httptest.NewRequest("GET", "/events/game-requests?detailRequestId=request-1", nil)
 		request = request.WithContext(webmiddleware.ContextWithUser(request.Context(), user.User{ID: userID}))
 		response := httptest.NewRecorder()
 		NewRealtime(
@@ -177,7 +177,7 @@ func TestRealtimeSkipsChatAuthorizationForUnwatchedRequest(t *testing.T) {
 	events <- gamerequest.Event{Type: gamerequest.EventChatMessage, RequestID: "request-2"}
 	close(events)
 	access := &countingChatAccess{}
-	request := httptest.NewRequest("GET", "/events/game-requests?chatRequestId=request-1", nil)
+	request := httptest.NewRequest("GET", "/events/game-requests?detailRequestId=request-1", nil)
 	request = request.WithContext(webmiddleware.ContextWithUser(request.Context(), user.User{ID: "member"}))
 	response := httptest.NewRecorder()
 
@@ -189,4 +189,29 @@ func TestRealtimeSkipsChatAuthorizationForUnwatchedRequest(t *testing.T) {
 	if strings.Contains(response.Body.String(), "game-request-chat") {
 		t.Fatal("unwatched chat signal was delivered")
 	}
+}
+func TestRealtimeSessionInformationSignalsOnlyReachParticipants(t *testing.T) {
+	for _, allowed := range []bool{true, false} {
+		events := make(chan gamerequest.Event, 1)
+		events <- gamerequest.Event{Type: gamerequest.EventSessionInformationChanged, RequestID: "request-1"}
+		close(events)
+		access := sessionRealtimeAccess{allowed: allowed}
+		request := httptest.NewRequest("GET", "/events/game-requests?detailRequestId=request-1", nil)
+		request = request.WithContext(webmiddleware.ContextWithUser(request.Context(), user.User{ID: "viewer"}))
+		response := httptest.NewRecorder()
+		NewRealtime(&stubGameRequestEvents{events: events}, nil, access).GameRequests(response, request)
+		got := strings.Contains(response.Body.String(), "event: game-request-session-information")
+		if got != allowed {
+			t.Fatalf("allowed=%v, delivered=%v", allowed, got)
+		}
+	}
+}
+
+type sessionRealtimeAccess struct {
+	allowed bool
+	calls   int
+}
+
+func (a sessionRealtimeAccess) CanSessionInformation(context.Context, string, string) (bool, error) {
+	return a.allowed, nil
 }

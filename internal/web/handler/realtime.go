@@ -22,13 +22,22 @@ type ChatAccess interface {
 	CanChat(ctx context.Context, requestID, userID string) (bool, error)
 }
 
-type Realtime struct {
-	events GameRequestEvents
-	chat   ChatAccess
+type SessionInformationAccess interface {
+	CanSessionInformation(ctx context.Context, requestID, userID string) (bool, error)
 }
 
-func NewRealtime(events GameRequestEvents, chat ChatAccess) *Realtime {
-	return &Realtime{events: events, chat: chat}
+type Realtime struct {
+	events             GameRequestEvents
+	chat               ChatAccess
+	sessionInformation SessionInformationAccess
+}
+
+func NewRealtime(events GameRequestEvents, chat ChatAccess, session ...SessionInformationAccess) *Realtime {
+	h := &Realtime{events: events, chat: chat}
+	if len(session) > 0 {
+		h.sessionInformation = session[0]
+	}
+	return h
 }
 
 func (h *Realtime) GameRequests(w http.ResponseWriter, r *http.Request) {
@@ -75,22 +84,31 @@ func (h *Realtime) GameRequests(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			name := "game-request"
-			if event.Type == gamerequest.EventChatMessage {
-				// Only detail-page streams can show chat. Filter by their selected
-				// request before querying current membership.
-				if event.RequestID != r.URL.Query().Get("chatRequestId") {
+			if event.Type == gamerequest.EventChatMessage || event.Type == gamerequest.EventSessionInformationChanged {
+				if event.RequestID != r.URL.Query().Get("detailRequestId") {
 					continue
 				}
-				// Chat signals carry no content. Any failure to prove access drops
-				// the signal, and access is checked for every matching event.
 				viewer, _ := webmiddleware.CurrentUser(r.Context())
-				if h.chat == nil || viewer.ID == "" {
+				if viewer.ID == "" {
 					continue
 				}
-				if allowed, err := h.chat.CanChat(r.Context(), event.RequestID, viewer.ID); err != nil || !allowed {
-					continue
+				if event.Type == gamerequest.EventChatMessage {
+					if h.chat == nil {
+						continue
+					}
+					if allowed, err := h.chat.CanChat(r.Context(), event.RequestID, viewer.ID); err != nil || !allowed {
+						continue
+					}
+					name = "game-request-chat"
+				} else {
+					if h.sessionInformation == nil {
+						continue
+					}
+					if allowed, err := h.sessionInformation.CanSessionInformation(r.Context(), event.RequestID, viewer.ID); err != nil || !allowed {
+						continue
+					}
+					name = "game-request-session-information"
 				}
-				name = "game-request-chat"
 			}
 			payload, err := json.Marshal(event)
 			if err != nil {

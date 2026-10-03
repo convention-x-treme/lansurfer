@@ -243,7 +243,7 @@ function liveNotice(variant: "info" | "warning" | "error", message: string): HTM
 }
 
 type GameRequestEvent = {
-  type: "GameRequestCreated" | "GameRequestJoined" | "GameRequestLeft" | "GameRequestStarted" | "GameRequestClosed" | "GameRequestCancelled" | "GameRequestUpdated";
+  type: "GameRequestCreated" | "GameRequestJoined" | "GameRequestLeft" | "GameRequestStarted" | "GameRequestClosed" | "GameRequestCancelled" | "GameRequestUpdated" | "GameRequestSessionInformationChanged";
   requestId: string;
   gameId?: string;
 };
@@ -413,7 +413,7 @@ if (realtime?.dataset.realtimeUrl) {
     const detail = document.querySelector<HTMLElement>("[data-game-request-detail]");
     const requestID = detail?.dataset.gameRequestId;
     const realtimeURL = new URL(baseRealtimeURL, window.location.href);
-    if (requestID) realtimeURL.searchParams.set("chatRequestId", requestID);
+    if (requestID) realtimeURL.searchParams.set("detailRequestId", requestID);
     events = new EventSource(realtimeURL);
     events.addEventListener("open", () => document.querySelector("[data-live-connection-alert]")?.remove());
     events.addEventListener("game-request", (message) => {
@@ -433,6 +433,18 @@ if (realtime?.dataset.realtimeUrl) {
         }
       } catch {
         // A malformed signal is ignored; the next message refreshes the log.
+      }
+    });
+    events.addEventListener("game-request-session-information", (message) => {
+      try {
+        const { requestId } = JSON.parse(message.data) as GameRequestEvent;
+        const section = document.querySelector<HTMLElement>("#session-information");
+        const detail = document.querySelector<HTMLElement>("[data-game-request-detail]");
+        if (section && detail?.dataset.gameRequestId === requestId && section.dataset.refreshUrl) {
+          void htmx.ajax("get", section.dataset.refreshUrl, { target: "#session-information", swap: "outerHTML" });
+        }
+      } catch {
+        // Ignore malformed signal.
       }
     });
     events.addEventListener("error", () => {
