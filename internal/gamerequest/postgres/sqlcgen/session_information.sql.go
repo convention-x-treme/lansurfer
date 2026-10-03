@@ -125,7 +125,7 @@ const readGameRequestSessionInformation = `-- name: ReadGameRequestSessionInform
 SELECT gr.id::text AS request_id, gr.status,
        EXISTS (SELECT 1 FROM game_request_members m WHERE m.game_request_id = gr.id AND m.user_id = $1::uuid) AS is_member,
        gr.creator_id = $1::uuid AS can_edit,
-       e.id::text AS entry_id, e.key, e.value, e.sequence, e.created_at, e.updated_at
+       CASE WHEN e.id IS NULL THEN ''::text ELSE e.id::text END AS entry_id, e.key, e.value, e.sequence, e.created_at, e.updated_at
 FROM game_requests gr
 LEFT JOIN game_request_session_entries e
   ON e.game_request_id = gr.id
