@@ -3,6 +3,7 @@
 package postgres
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -10,6 +11,18 @@ import (
 
 	"github.com/convention-x-treme/lansurfer/internal/gamerequest"
 )
+
+func TestGameRequestSessionInformationReadReturnsDatabaseErrors(t *testing.T) {
+	f := newPlayingFixture(t)
+	req := f.create(t, "cancelled read")
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	_, err := f.requests.SessionInformation(ctx, req.ID, f.host)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled read error = %v, want context.Canceled", err)
+	}
+}
 
 func TestGameRequestSessionInformationReadAccess(t *testing.T) {
 	f := newPlayingFixture(t)

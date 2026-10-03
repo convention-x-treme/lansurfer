@@ -7,7 +7,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/convention-x-treme/lansurfer/internal/game"
 	"github.com/convention-x-treme/lansurfer/internal/gamerequest"
+	requestquery "github.com/convention-x-treme/lansurfer/internal/query/gamerequest"
 	"github.com/convention-x-treme/lansurfer/internal/user"
 	"github.com/convention-x-treme/lansurfer/internal/web/branding"
 	"github.com/go-chi/chi/v5"
@@ -49,6 +51,51 @@ func TestSessionInformationFragmentRequiresCurrentRead(t *testing.T) {
 	r.ServeHTTP(w, req)
 	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "Join this Game Request to see session information.") {
 		t.Fatalf("response = %d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestSessionInformationFragmentIgnoresStaleEditID(t *testing.T) {
+	fake := &sessionInformationFake{
+		result: gamerequest.SessionInformation{
+			CanEdit: true,
+			Entries: []gamerequest.SessionInformationEntry{{ID: "current-entry", Key: "Server", Value: "address"}},
+		},
+	}
+	h := NewGameRequests(&fakeGameRequestCommands{}, fakeGameRequestQueries{}, &fakeGameResolver{}, &fakeGameRequestDiscovery{}, nil, branding.Default(), fake)
+	r := chi.NewRouter()
+	r.Get("/{requestID}/session-information", h.SessionInformation)
+	req := withCurrentUser(httptest.NewRequest(http.MethodGet, "/request-1/session-information?session_edit=deleted-entry", nil), user.User{ID: "host-1"})
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK || strings.Contains(w.Body.String(), "data-session-information-form") ||
+		!strings.Contains(w.Body.String(), "Server") {
+		t.Fatalf("stale editor response = %d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestDetailRefreshIgnoresStaleSessionEditID(t *testing.T) {
+	fake := &sessionInformationFake{
+		result: gamerequest.SessionInformation{
+			CanEdit: true,
+			Entries: []gamerequest.SessionInformationEntry{{ID: "current-entry", Key: "Server", Value: "address"}},
+		},
+	}
+	queries := fakeGameRequestQueries{request: requestquery.Request{
+		ID: "request-1", Game: game.GamePresentation{Name: "Warcraft III"},
+		CreatorID: "host-1", Status: gamerequest.StatusOpen,
+	}}
+	h := NewGameRequests(&fakeGameRequestCommands{}, queries, &fakeGameResolver{}, &fakeGameRequestDiscovery{}, nil, branding.Default(), fake)
+	r := chi.NewRouter()
+	r.Get("/{requestID}/refresh", h.RefreshView)
+	req := withCurrentUser(httptest.NewRequest(http.MethodGet, "/request-1/refresh?session_edit=deleted-entry", nil), user.User{ID: "host-1"})
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `id="game-request-detail"`) ||
+		strings.Contains(w.Body.String(), "data-session-information-form") ||
+		!strings.Contains(w.Body.String(), "Server") {
+		t.Fatalf("stale detail refresh = %d %s", w.Code, w.Body.String())
 	}
 }
 

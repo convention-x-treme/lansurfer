@@ -48,7 +48,6 @@ func (h *GameRequests) sessionView(r *http.Request, mode string) (pages.SessionI
 				return view, nil
 			}
 		}
-		return view, gamerequest.ErrSessionInformationEntryNotFound
 	}
 	return view, nil
 }

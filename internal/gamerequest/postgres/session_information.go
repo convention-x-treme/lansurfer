@@ -17,11 +17,11 @@ func (s *Store) SessionInformation(ctx context.Context, requestID, userID string
 		return gamerequest.SessionInformation{}, gamerequest.ErrNotFound
 	}
 	rows, err := s.queries.ReadGameRequestSessionInformation(ctx, sqlcgen.ReadGameRequestSessionInformationParams{GameRequestID: rid, ViewerID: uid})
-	if len(rows) == 0 {
-		return gamerequest.SessionInformation{}, gamerequest.ErrNotFound
-	}
 	if err != nil {
 		return gamerequest.SessionInformation{}, fmt.Errorf("read session information: %w", err)
+	}
+	if len(rows) == 0 {
+		return gamerequest.SessionInformation{}, gamerequest.ErrNotFound
 	}
 	row := rows[0]
 	if !isActive(row.Status) {
