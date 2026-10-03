@@ -295,6 +295,17 @@ func TestGameRequestSessionInformationUpdateDeleteAndOrdering(t *testing.T) {
     // Repeating delete on removed entry => ErrSessionInformationEntryNotFound.
 }
 
+func TestGameRequestSessionInformationHostMutationsWorkWhilePlaying(t *testing.T) {
+    // Start an active request.
+    // Host create, update, and delete each succeed while status is Playing.
+}
+
+func TestGameRequestSessionInformationRejectsNonHostAndTerminalMutations(t *testing.T) {
+    // Joined participant and outsider cannot create/update/delete: ErrNotCreator.
+    // Host mutations on Closed and Cancelled requests return ErrNotActive.
+    // No rejected mutation changes stored entries.
+}
+
 func TestGameRequestSessionInformationCreatesNoActivity(t *testing.T) {
     // Count game_request_activity before create/update/delete.
     // Count is unchanged after all three session-info mutations.
@@ -647,11 +658,12 @@ git commit -m "feat(web): stream participant session information updates"
 In `web/tests/live-updates.spec.ts`, add:
 
 ```ts
-test("a session-information signal refreshes only the section and preserves a dirty inline draft", async ({ page, request }) => {
+test("session-information and general detail refreshes preserve a valid dirty inline draft", async ({ page, request }) => {
   // Create a request as Host, open Add information, type unsaved key/value.
   // Publish GameRequestSessionInformationChanged for this request.
-  // Assert the section refreshed and both dirty values/focus remain.
-  // Assert the rest of #game-request-detail was not replaced by this dedicated event.
+  // Assert only the section refreshes and both dirty values/focus remain.
+  // Then publish GameRequestJoined for the same request.
+  // Assert the full detail refresh also keeps the same dirty values/focus while the request remains active.
 });
 
 test("a terminal detail refresh discards a session-information draft", async ({ page }) => {
@@ -694,7 +706,7 @@ Run:
 
 ```bash
 task frontend:build
-npx playwright test web/tests/live-updates.spec.ts --grep 'session-information'
+npx playwright test web/tests/live-updates.spec.ts --grep 'session-information|general detail refreshes preserve'
 ```
 
 Expected: PASS.
