@@ -1,0 +1,52 @@
+package pages
+
+import (
+	"github.com/convention-x-treme/lansurfer/internal/gamerequest"
+	"github.com/convention-x-treme/lansurfer/internal/web/components"
+)
+
+type SessionInformationForm struct { Mode, EntryID, Key, Value, Error, ErrorField string }
+type SessionInformationView struct { RequestID string; Entries []gamerequest.SessionInformationEntry; CanEdit, JoinRequired, Visible bool; Form *SessionInformationForm }
+
+templ GameRequestSessionInformation(view SessionInformationView) {
+	if view.Visible {
+		<section id="session-information" class="detail-card" data-session-information data-refresh-url={ "/game-requests/" + view.RequestID + "/session-information" } aria-labelledby="session-information-title">
+			<h2 id="session-information-title" class="text-[1.0625rem] font-semibold">Session information</h2>
+			if view.JoinRequired {
+				<p class="mt-2 text-sm text-base-content/70">Join this Game Request to see session information.</p>
+			}
+			if !view.JoinRequired {
+				<ul class="mt-2 grid">
+					for _, entry := range view.Entries {
+						<li class="member-row"><strong>{ entry.Key }</strong><span class="flex-1 break-all">{ entry.Value }</span>
+							if view.CanEdit {
+								<div class="flex gap-1">
+									<a class="btn btn-quiet btn-xs" href={ "/game-requests/" + view.RequestID + "?session_edit=" + entry.ID } hx-get={ "/game-requests/" + view.RequestID + "/session-information?session_edit=" + entry.ID } hx-target="#session-information" hx-swap="outerHTML">Edit</a>
+									<form method="post" action={ "/game-requests/" + view.RequestID + "/session-information/" + entry.ID + "/delete" } data-confirm="Delete this session information?">
+										@components.CSRFInput()
+										<button class="btn btn-quiet btn-xs" type="submit">Delete</button>
+									</form>
+								</div>
+							}
+						</li>
+					}
+				</ul>
+				if view.Form != nil {
+					<form class="mt-3 grid gap-2" data-session-information-form data-session-mode={ view.Form.Mode } data-session-entry-id={ view.Form.EntryID } method="post" action={ sessionFormAction(view) } hx-post={ sessionFormAction(view) } hx-target="#session-information" hx-swap="outerHTML">
+						@components.CSRFInput()
+						<label>Key<input class="input input-bordered w-full" name="key" maxlength="40" value={ view.Form.Key } required/></label>
+						<label>Value<input class="input input-bordered w-full" name="value" maxlength="300" value={ view.Form.Value } required/></label>
+						if view.Form.Error != "" {
+							<p role="alert" class="text-sm text-error">{ view.Form.Error }</p>
+						}
+						<div class="flex gap-2"><button class="btn btn-primary" type="submit">Save</button><a class="btn btn-quiet" href={ "/game-requests/" + view.RequestID } hx-get={ "/game-requests/" + view.RequestID + "/session-information" } hx-target="#session-information" hx-swap="outerHTML">Cancel</a></div>
+					</form>
+				} else if view.CanEdit {
+					<a class="btn btn-quiet btn-sm mt-3" href={ "/game-requests/" + view.RequestID + "?session_add=1" } hx-get={ "/game-requests/" + view.RequestID + "/session-information?session_add=1" } hx-target="#session-information" hx-swap="outerHTML">Add</a>
+				}
+			}
+		</section>
+	}
+}
+
+func sessionFormAction(view SessionInformationView) string { if view.Form != nil && view.Form.Mode == "edit" { return "/game-requests/" + view.RequestID + "/session-information/" + view.Form.EntryID }; return "/game-requests/" + view.RequestID + "/session-information" }

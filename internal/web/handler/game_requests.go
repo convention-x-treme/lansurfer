@@ -93,20 +93,22 @@ func (h *GameRequests) browsePicker(ctx context.Context, userID, search string) 
 const gameCatalogUnavailableMessage = "This game is no longer available from the game catalog. Choose another game."
 
 type GameRequests struct {
-	commands   GameRequestCommands
-	queries    GameRequestQueries
-	resolver   GameResolver
-	discovery  GameRequestDiscovery
-	navigation *Navigation
-	brand      branding.Brand
-	now        func() time.Time
+	commands           GameRequestCommands
+	queries            GameRequestQueries
+	resolver           GameResolver
+	discovery          GameRequestDiscovery
+	sessionInformation GameRequestSessionInformation
+	navigation         *Navigation
+	brand              branding.Brand
+	now                func() time.Time
 }
 
-func NewGameRequests(commands GameRequestCommands, queries GameRequestQueries, resolver GameResolver, discovery GameRequestDiscovery, navigation *Navigation, brand branding.Brand) *GameRequests {
-	return &GameRequests{
-		commands: commands, queries: queries, resolver: resolver,
-		discovery: discovery, navigation: navigation, brand: brand, now: time.Now,
+func NewGameRequests(commands GameRequestCommands, queries GameRequestQueries, resolver GameResolver, discovery GameRequestDiscovery, navigation *Navigation, brand branding.Brand, session ...GameRequestSessionInformation) *GameRequests {
+	h := &GameRequests{commands: commands, queries: queries, resolver: resolver, discovery: discovery, navigation: navigation, brand: brand, now: time.Now}
+	if len(session) > 0 {
+		h.sessionInformation = session[0]
 	}
+	return h
 }
 
 func (h *GameRequests) List(w http.ResponseWriter, r *http.Request) {
@@ -395,7 +397,7 @@ func (h *GameRequests) View(w http.ResponseWriter, r *http.Request) {
 		webmiddleware.LogError(r, "record Game Request view", err)
 	}
 	message := detailEditorMessage(request, account.ID, r.URL.Query().Get("edit") == "1")
-	render(w, r, http.StatusOK, pages.GameRequestDetail(h.brand, h.navigationFor(r), request, account.ID, message, notice(r)))
+	render(w, r, http.StatusOK, pages.GameRequestDetail(h.brand, h.navigationFor(r), request, account.ID, message, notice(r), h.sessionView(r, sessionModeFromQuery(r))))
 }
 
 func (h *GameRequests) RefreshView(w http.ResponseWriter, r *http.Request) {
@@ -411,7 +413,7 @@ func (h *GameRequests) RefreshView(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	message := detailEditorMessage(request, account.ID, r.URL.Query().Get("edit") == "1")
-	render(w, r, http.StatusOK, pages.GameRequestDetailContent(request, account.ID, true, message))
+	render(w, r, http.StatusOK, pages.GameRequestDetailContentWithSession(request, account.ID, true, message, h.sessionView(r, sessionModeFromQuery(r))))
 }
 func detailEditorMessage(request requestquery.Request, viewerID string, editing bool) pages.GameRequestDetailMessage {
 	if !editing || request.CreatorID != viewerID ||
@@ -491,7 +493,7 @@ func (h *GameRequests) renderChangeError(w http.ResponseWriter, r *http.Request,
 		h.renderError(w, r)
 		return
 	}
-	render(w, r, status, pages.GameRequestDetail(h.brand, h.navigationFor(r), request, viewerID, pages.GameRequestDetailMessage{Text: gameRequestMessage(cause)}, components.Notice{}))
+	render(w, r, status, pages.GameRequestDetail(h.brand, h.navigationFor(r), request, viewerID, pages.GameRequestDetailMessage{Text: gameRequestMessage(cause)}, components.Notice{}, h.sessionView(r, "")))
 }
 
 // UpdateDetails changes the Host-editable request fields in one command. The
@@ -577,7 +579,7 @@ func (h *GameRequests) UpdateDetails(w http.ResponseWriter, r *http.Request) {
 		(request.Status == gamerequest.StatusOpen || request.Status == gamerequest.StatusPlaying)
 	message.Form = form
 	message.InitializeStart = false
-	render(w, r, status, pages.GameRequestDetail(h.brand, h.navigationFor(r), request, account.ID, message, components.Notice{}))
+	render(w, r, status, pages.GameRequestDetail(h.brand, h.navigationFor(r), request, account.ID, message, components.Notice{}, h.sessionView(r, "")))
 }
 func parseCapacity(value string) (*int32, error) {
 	value = strings.TrimSpace(value)

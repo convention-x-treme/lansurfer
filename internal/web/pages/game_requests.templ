@@ -569,7 +569,7 @@ func (m GameRequestDetailMessage) forField(field string) bool {
 
 func (m GameRequestDetailMessage) pageLevel() bool { return m.Text != "" && m.Field == "" }
 
-templ GameRequestDetail(brand branding.Brand, navigation components.NavigationState, request requestquery.Request, viewerID string, message GameRequestDetailMessage, notice components.Notice) {
+templ GameRequestDetail(brand branding.Brand, navigation components.NavigationState, request requestquery.Request, viewerID string, message GameRequestDetailMessage, notice components.Notice, session SessionInformationView) {
 	@components.Layout(brand, request.Game.Name, navigation) {
 		<header class="app-topbar">
 			<div class="flex flex-wrap items-center gap-x-4 gap-y-1">
@@ -585,7 +585,7 @@ templ GameRequestDetail(brand branding.Brand, navigation components.NavigationSt
 			if message.pageLevel() {
 				<div role="alert" class="alert alert-error mb-4"><span>{ message.Text }</span></div>
 			}
-			@GameRequestDetailContent(request, viewerID, false, message)
+			@GameRequestDetailContentWithSession(request, viewerID, false, message, session)
 		</div>
 	}
 }
@@ -597,6 +597,10 @@ templ DetailStamp(oob bool) {
 }
 
 templ GameRequestDetailContent(request requestquery.Request, viewerID string, refresh bool, message GameRequestDetailMessage) {
+	@GameRequestDetailContentWithSession(request, viewerID, refresh, message, SessionInformationView{})
+}
+
+templ GameRequestDetailContentWithSession(request requestquery.Request, viewerID string, refresh bool, message GameRequestDetailMessage, session SessionInformationView) {
 	if refresh {
 		@DetailStamp(true)
 	}
@@ -675,6 +679,7 @@ templ GameRequestDetailContent(request requestquery.Request, viewerID string, re
 					}
 				</ul>
 			</section>
+			@GameRequestSessionInformation(session)
 			if chatOpen(request, viewerID) {
 				@collapsible("main-chat", "Lobby chat", "flex-1", true, true) {
 					<ol id="chat-log" class="chat-log" role="log" aria-live="polite" hx-get={ "/game-requests/" + request.ID + "/chat" } hx-trigger="load" hx-swap="outerHTML"></ol>
