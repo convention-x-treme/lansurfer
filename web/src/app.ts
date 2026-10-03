@@ -369,6 +369,62 @@ document.addEventListener("htmx:afterSwap", (event) => {
   }
   focus?.focus({ preventScroll: true });
 });
+type SessionInformationDraft = {
+  mode: string;
+  entryID: string;
+  key: string;
+  value: string;
+  keyRejected: boolean;
+  valueRejected: boolean;
+  error: string;
+  focused: "key" | "value" | "";
+};
+const sessionInformationDrafts = new WeakMap<HTMLElement, SessionInformationDraft>();
+
+document.addEventListener("htmx:beforeSwap", (event) => {
+  const target = (event as CustomEvent<{ target: HTMLElement }>).detail.target;
+  if (target.id !== "session-information" && target.id !== "game-request-detail") return;
+  const section = target.id === "session-information" ? target : target.querySelector<HTMLElement>("#session-information");
+  const form = section?.querySelector<HTMLFormElement>("[data-session-information-form]");
+  if (!form || !section) return;
+  const key = form.querySelector<HTMLInputElement>("[name='key']");
+  const value = form.querySelector<HTMLInputElement>("[name='value']");
+  if (!key || !value) return;
+  const active = document.activeElement;
+  const draft: SessionInformationDraft = {
+    mode: form.dataset.sessionMode ?? "",
+    entryID: form.dataset.sessionEntryId ?? "",
+    key: key.value,
+    value: value.value,
+    keyRejected: key.getAttribute("aria-invalid") === "true",
+    valueRejected: value.getAttribute("aria-invalid") === "true",
+    error: form.querySelector<HTMLElement>("[role='alert']")?.textContent?.trim() ?? "",
+    focused: active === key ? "key" : active === value ? "value" : "",
+  };
+  if (draft.key !== key.defaultValue || draft.value !== value.defaultValue || draft.keyRejected || draft.valueRejected) {
+    sessionInformationDrafts.set(target, draft);
+  }
+});
+
+document.addEventListener("htmx:afterSwap", (event) => {
+  const target = (event as CustomEvent<{ target: HTMLElement }>).detail.target;
+  const draft = sessionInformationDrafts.get(target);
+  if (!draft) return;
+  sessionInformationDrafts.delete(target);
+  const section = document.querySelector<HTMLElement>("#session-information");
+  const form = section?.querySelector<HTMLFormElement>("[data-session-information-form]");
+  if (!form || form.dataset.sessionMode !== draft.mode || (form.dataset.sessionEntryId ?? "") !== draft.entryID) return;
+  const key = form.querySelector<HTMLInputElement>("[name='key']");
+  const value = form.querySelector<HTMLInputElement>("[name='value']");
+  if (!key || !value) return;
+  key.value = draft.key;
+  value.value = draft.value;
+  if (draft.keyRejected) key.setAttribute("aria-invalid", "true");
+  if (draft.valueRejected) value.setAttribute("aria-invalid", "true");
+  const error = form.querySelector<HTMLElement>("[role='alert']");
+  if (error && draft.error) error.textContent = draft.error;
+  (draft.focused === "key" ? key : draft.focused === "value" ? value : null)?.focus({ preventScroll: true });
+});
 // Without an event the current view is refreshed as a whole, which is what a
 // page needs after it was disconnected from the stream for a while. A deferred
 // refresh drops the event, and with it only the highlight on a new row; the
@@ -396,7 +452,12 @@ function refreshGameRequests(event?: GameRequestEvent): void {
   const detailID = detail?.dataset.gameRequestId;
   const detailRefreshURL = detail?.dataset.refreshUrl;
   if (detailID && detailRefreshURL && (event === undefined || detailID === event.requestId)) {
-    void htmx.ajax("get", detailRefreshURL, {
+    const refreshURL = new URL(detailRefreshURL, window.location.href);
+    for (const key of ["edit", "session_add", "session_edit"]) {
+      const value = new URL(window.location.href).searchParams.get(key);
+      if (value !== null) refreshURL.searchParams.set(key, value);
+    }
+    void htmx.ajax("get", refreshURL.toString(), {
       target: "#game-request-detail",
       swap: "outerHTML",
     });

@@ -18,6 +18,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -51,18 +52,21 @@ func main() {
 	mux := http.NewServeMux()
 	mux.Handle("/__test__/", state.controlPlane())
 	mux.Handle("/", web.NewRouter(web.RouterDependencies{
-		Ready:             func(context.Context) error { return nil },
-		Authentication:    state,
-		Sessions:          state,
-		Identities:        state,
-		Discovery:         state,
-		GameRequests:      state,
-		Chat:              state,
-		RequestQueries:    state,
-		NavigationQueries: state,
-		NavigationCatalog: state,
-		Realtime:          state,
-		Logger:            slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn})),
+		Ready:                      func(context.Context) error { return nil },
+		Authentication:             state,
+		Sessions:                   state,
+		Identities:                 state,
+		Discovery:                  state,
+		GameRequests:               state,
+		Chat:                       state,
+		SessionInformation:         state,
+		RequestQueries:             state,
+		NavigationQueries:          state,
+		NavigationCatalog:          state,
+		Realtime:                   state,
+		RealtimeChat:               state,
+		RealtimeSessionInformation: state,
+		Logger:                     slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn})),
 	}))
 
 	server := &http.Server{Addr: *address, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
@@ -74,10 +78,12 @@ func main() {
 }
 
 type fixtureRequest struct {
-	request  requestquery.Request
-	members  map[string]bool
-	followed bool
-	messages []gamerequest.Message
+	request            requestquery.Request
+	members            map[string]bool
+	followed           bool
+	messages           []gamerequest.Message
+	sessionInformation []gamerequest.SessionInformationEntry
+	nextSessionEntry   int64
 }
 
 type fixture struct {
@@ -604,3 +610,119 @@ func gameName(gameID string) string {
 // ListByUser serves the account page; the fixture player has no linked
 // identities worth showing.
 func (*fixture) ListByUser(context.Context, string) ([]auth.Identity, error) { return nil, nil }
+func (f *fixture) SessionInformation(_ context.Context, requestID, userID string) (gamerequest.SessionInformation, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	entry, ok := f.requests[requestID]
+	if !ok {
+		return gamerequest.SessionInformation{}, gamerequest.ErrNotFound
+	}
+	if !isActiveStatus(entry.request.Status) {
+		return gamerequest.SessionInformation{}, gamerequest.ErrNotActive
+	}
+	if entry.request.CreatorID != userID && !entry.members[userID] {
+		return gamerequest.SessionInformation{}, gamerequest.ErrNotMember
+	}
+	return gamerequest.SessionInformation{Entries: slices.Clone(entry.sessionInformation), CanEdit: entry.request.CreatorID == userID}, nil
+}
+
+func (f *fixture) CanSessionInformation(ctx context.Context, requestID, userID string) (bool, error) {
+	_, err := f.SessionInformation(ctx, requestID, userID)
+	if errors.Is(err, gamerequest.ErrNotFound) || errors.Is(err, gamerequest.ErrNotActive) || errors.Is(err, gamerequest.ErrNotMember) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
+func (f *fixture) CreateSessionInformationEntry(_ context.Context, requestID, userID string, input gamerequest.SessionInformationInput) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	entry, ok := f.requests[requestID]
+	if !ok {
+		return gamerequest.ErrNotFound
+	}
+	if entry.request.CreatorID != userID {
+		return gamerequest.ErrNotCreator
+	}
+	if !isActiveStatus(entry.request.Status) {
+		return gamerequest.ErrNotActive
+	}
+	if len(entry.sessionInformation) >= 12 {
+		return gamerequest.ErrSessionInformationLimit
+	}
+	for _, current := range entry.sessionInformation {
+		if strings.EqualFold(current.Key, input.Key) {
+			return gamerequest.ErrSessionInformationKeyExists
+		}
+	}
+	entry.nextSessionEntry++
+	now := time.Now()
+	entry.sessionInformation = append(entry.sessionInformation, gamerequest.SessionInformationEntry{ID: strconv.FormatInt(entry.nextSessionEntry, 10), RequestID: requestID, Key: input.Key, Value: input.Value, Sequence: entry.nextSessionEntry, CreatedAt: now, UpdatedAt: now})
+	f.broker.Publish(gamerequest.Event{Type: gamerequest.EventSessionInformationChanged, RequestID: requestID})
+	return nil
+}
+
+func (f *fixture) UpdateSessionInformationEntry(_ context.Context, requestID, entryID, userID string, input gamerequest.SessionInformationInput) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	entry, ok := f.requests[requestID]
+	if !ok {
+		return gamerequest.ErrNotFound
+	}
+	if entry.request.CreatorID != userID {
+		return gamerequest.ErrNotCreator
+	}
+	if !isActiveStatus(entry.request.Status) {
+		return gamerequest.ErrNotActive
+	}
+	for i, current := range entry.sessionInformation {
+		if current.ID != entryID {
+			continue
+		}
+		if current.Key == input.Key && current.Value == input.Value {
+			return nil
+		}
+		for _, other := range entry.sessionInformation {
+			if other.ID != entryID && strings.EqualFold(other.Key, input.Key) {
+				return gamerequest.ErrSessionInformationKeyExists
+			}
+		}
+		current.Key, current.Value, current.UpdatedAt = input.Key, input.Value, time.Now()
+		entry.sessionInformation[i] = current
+		f.broker.Publish(gamerequest.Event{Type: gamerequest.EventSessionInformationChanged, RequestID: requestID})
+		return nil
+	}
+	return gamerequest.ErrSessionInformationEntryNotFound
+}
+
+func (f *fixture) DeleteSessionInformationEntry(_ context.Context, requestID, entryID, userID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	entry, ok := f.requests[requestID]
+	if !ok {
+		return gamerequest.ErrNotFound
+	}
+	if entry.request.CreatorID != userID {
+		return gamerequest.ErrNotCreator
+	}
+	if !isActiveStatus(entry.request.Status) {
+		return gamerequest.ErrNotActive
+	}
+	for i, current := range entry.sessionInformation {
+		if current.ID == entryID {
+			entry.sessionInformation = append(entry.sessionInformation[:i], entry.sessionInformation[i+1:]...)
+			f.broker.Publish(gamerequest.Event{Type: gamerequest.EventSessionInformationChanged, RequestID: requestID})
+			return nil
+		}
+	}
+	return gamerequest.ErrSessionInformationEntryNotFound
+}
+func (f *fixture) CanChat(_ context.Context, requestID, userID string) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	entry, ok := f.requests[requestID]
+	if !ok { return false, gamerequest.ErrNotFound }
+	if !isActiveStatus(entry.request.Status) { return false, gamerequest.ErrChatClosed }
+	if entry.request.CreatorID == userID || entry.members[userID] { return true, nil }
+	return false, gamerequest.ErrNotMember
+}

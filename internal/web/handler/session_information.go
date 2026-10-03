@@ -55,7 +55,14 @@ func (h *GameRequests) sessionView(r *http.Request, mode string) pages.SessionIn
 }
 
 func (h *GameRequests) SessionInformation(w http.ResponseWriter, r *http.Request) {
-	render(w, r, http.StatusOK, pages.GameRequestSessionInformation(h.sessionView(r, sessionModeFromQuery(r))))
+	mode := sessionModeFromQuery(r)
+	view := h.sessionView(r, mode)
+	if r.Header.Get("HX-Request") == "true" {
+		target := "/game-requests/" + view.RequestID
+		if mode == "add" { target += "?session_add=1" } else if mode != "" { target += "?session_edit=" + mode }
+		w.Header().Set("HX-Replace-Url", target)
+	}
+	render(w, r, http.StatusOK, pages.GameRequestSessionInformation(view))
 }
 func (h *GameRequests) CreateSessionInformation(w http.ResponseWriter, r *http.Request) {
 	h.mutateSessionInformation(w, r, "")

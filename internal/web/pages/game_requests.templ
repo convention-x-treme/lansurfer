@@ -601,10 +601,11 @@ templ GameRequestDetailContent(request requestquery.Request, viewerID string, re
 }
 
 templ GameRequestDetailContentWithSession(request requestquery.Request, viewerID string, refresh bool, message GameRequestDetailMessage, session SessionInformationView) {
+
 	if refresh {
 		@DetailStamp(true)
 	}
-	<div id="game-request-detail" data-game-request-detail data-game-request-id={ request.ID } data-refresh-url={ detailRefreshURL(request.ID, message.Editing) } class="detail-shell">
+	<div id="game-request-detail" data-game-request-detail data-game-request-id={ request.ID } data-refresh-url={ detailRefreshURLWithSession(request.ID, message.Editing, session) } class="detail-shell">
 		<div class="detail-main">
 			<article class={ detailHeroClass(request) }>
 				<div class="flex flex-wrap items-start gap-4">
@@ -815,10 +816,16 @@ templ GameRequestActionError(message string) {
 }
 
 func detailRefreshURL(requestID string, editing bool) string {
+	return detailRefreshURLWithSession(requestID, editing, SessionInformationView{})
+}
+
+func detailRefreshURLWithSession(requestID string, editing bool, session SessionInformationView) string {
 	target := "/game-requests/" + requestID + "/refresh"
-	if editing {
-		return target + "?edit=1"
-	}
+	values := url.Values{}
+	if editing { values.Set("edit","1") }
+	if session.Form != nil && session.Form.Mode=="add" { values.Set("session_add","1") }
+	if session.Form != nil && session.Form.Mode=="edit" { values.Set("session_edit",session.Form.EntryID) }
+	if len(values)>0 { return target+"?"+values.Encode() }
 	return target
 }
 

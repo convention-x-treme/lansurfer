@@ -48,9 +48,9 @@ func GameRequestSessionInformation(view SessionInformationView) templ.Component 
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var2 string
-			templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.ResolveAttributeValue("/game-requests/" + view.RequestID + "/session-information")
+			templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.ResolveAttributeValue(sessionInfoRefreshURL(view))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/session_information.templ`, Line: 13, Col: 159}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/pages/session_information.templ`, Line: 13, Col: 127}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var2)
 			if templ_7745c5c3_Err != nil {
@@ -344,6 +344,20 @@ func GameRequestSessionInformation(view SessionInformationView) templ.Component 
 		}
 		return nil
 	})
+}
+
+func sessionInfoRefreshURL(view SessionInformationView) string {
+	url := "/game-requests/" + view.RequestID + "/session-information"
+	if view.Form == nil {
+		return url
+	}
+	if view.Form.Mode == "add" {
+		return url + "?session_add=1"
+	}
+	if view.Form.Mode == "edit" {
+		return url + "?session_edit=" + view.Form.EntryID
+	}
+	return url
 }
 
 func sessionFormAction(view SessionInformationView) string {

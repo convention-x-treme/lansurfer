@@ -350,3 +350,42 @@ test("a live detail refresh preserves an unsent chat draft", async ({ page, requ
   await expect.poll(async () => (await htmxCounters(page)).after).toBeGreaterThan(0);
   await expect(draft).toHaveValue("I am still typing");
 });
+
+test("session-information and general detail refreshes preserve an active inline draft", async ({ page, request }) => {
+  await page.goto("/game-requests/new?game_id=game-1");
+  await page.getByRole("button", { name: "Create Game Request" }).click();
+  await page.waitForURL(/\/game-requests\/[0-9a-f-]+/);
+  await waitForRealtime(page, request, 1);
+
+  await page.getByRole("link", { name: "Add", exact: true }).click();
+  const key = page.getByRole("textbox", { name: "Key" });
+  const value = page.getByRole("textbox", { name: "Value" });
+  await key.fill("Lobby");
+  await value.fill("CXT-WC3-04");
+  await value.focus();
+  const requestID = await page.locator("[data-game-request-detail]").getAttribute("data-game-request-id");
+  await request.post(`/__test__/publish?type=GameRequestSessionInformationChanged&request=${requestID}`);
+  await expect(key).toHaveValue("Lobby");
+  await expect(value).toHaveValue("CXT-WC3-04");
+  await expect(value).toBeFocused();
+
+  await request.post(`/__test__/publish?type=GameRequestJoined&request=${requestID}`);
+  await expect(key).toHaveValue("Lobby");
+  await expect(value).toHaveValue("CXT-WC3-04");
+  await expect(value).toBeFocused();
+});
+
+test("session-information terminal detail refresh discards draft", async ({ page, request }) => {
+  await page.goto("/game-requests/new?game_id=game-1");
+  await page.getByRole("button", { name: "Create Game Request" }).click();
+  await page.waitForURL(/\/game-requests\/[0-9a-f-]+/);
+  await waitForRealtime(page, request, 1);
+  await page.getByRole("link", { name: "Add", exact: true }).click();
+  await page.getByRole("textbox", { name: "Key" }).fill("Draft");
+  page.once("dialog", dialog => dialog.accept());
+  await page.getByRole("button", { name: "Cancel Game Request" }).click();
+  await expect(page.locator("#session-information")).toHaveCount(0);
+  await request.post("/__test__/publish?type=GameRequestCancelled");
+  await expect(page.locator("[data-game-request-detail]")).toContainText("Cancelled");
+  await expect(page.locator("#session-information")).toHaveCount(0);
+});

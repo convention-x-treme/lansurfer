@@ -10,7 +10,7 @@ type SessionInformationView struct { RequestID string; Entries []gamerequest.Ses
 
 templ GameRequestSessionInformation(view SessionInformationView) {
 	if view.Visible {
-		<section id="session-information" class="detail-card" data-session-information data-refresh-url={ "/game-requests/" + view.RequestID + "/session-information" } aria-labelledby="session-information-title">
+		<section id="session-information" class="detail-card" data-session-information data-refresh-url={ sessionInfoRefreshURL(view) } aria-labelledby="session-information-title">
 			<h2 id="session-information-title" class="text-[1.0625rem] font-semibold">Session information</h2>
 			if view.JoinRequired {
 				<p class="mt-2 text-sm text-base-content/70">Join this Game Request to see session information.</p>
@@ -47,6 +47,14 @@ templ GameRequestSessionInformation(view SessionInformationView) {
 			}
 		</section>
 	}
+}
+
+func sessionInfoRefreshURL(view SessionInformationView) string {
+	url := "/game-requests/" + view.RequestID + "/session-information"
+	if view.Form == nil { return url }
+	if view.Form.Mode == "add" { return url + "?session_add=1" }
+	if view.Form.Mode == "edit" { return url + "?session_edit=" + view.Form.EntryID }
+	return url
 }
 
 func sessionFormAction(view SessionInformationView) string { if view.Form != nil && view.Form.Mode == "edit" { return "/game-requests/" + view.RequestID + "/session-information/" + view.Form.EntryID }; return "/game-requests/" + view.RequestID + "/session-information" }
