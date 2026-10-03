@@ -38,7 +38,10 @@ import (
 	"github.com/convention-x-treme/lansurfer/internal/web"
 )
 
-const viewerID = "11111111-1111-1111-1111-111111111111"
+const (
+	viewerID      = "11111111-1111-1111-1111-111111111111"
+	otherViewerID = "22222222-2222-2222-2222-222222222222"
+)
 
 func main() {
 	address := flag.String("address", "127.0.0.1:8123", "listen address")
@@ -98,18 +101,20 @@ type fixture struct {
 
 func newFixture() *fixture {
 	state := &fixture{requests: map[string]*fixtureRequest{}, broker: sse.NewBroker()}
-	state.seed("Warcraft III", 4, 3)
-	state.seed("Quake III Arena", 0, 5)
-	state.seed("Age of Empires II", 4, 4)
+	state.seed("Warcraft III", 4, 3, gamerequest.StatusOpen)
+	state.seed("Quake III Arena", 0, 5, gamerequest.StatusOpen)
+	// A request somebody else already started that still has one free place:
+	// the viewer is a participant candidate here, never its Host.
+	state.seed("Age of Empires II", 4, 3, gamerequest.StatusPlaying)
 	return state
 }
 
-func (f *fixture) seed(gameName string, maxPlayers int32, members int64) {
+func (f *fixture) seed(gameName string, maxPlayers int32, members int64, status gamerequest.Status) {
 	f.next++
 	id := fmt.Sprintf("00000000-0000-0000-0000-00000000000%d", f.next)
 	request := requestquery.Request{
 		ID: id, Game: game.GamePresentation{Name: gameName}, CreatorID: "creator-" + id, CreatorGameNick: "Host",
-		StartsAt: time.Now().Add(time.Hour), Status: gamerequest.StatusOpen,
+		StartsAt: time.Now().Add(time.Hour), Status: status,
 		MemberCount: members, CreatedAt: time.Now().Add(-time.Hour),
 		Members:  []requestquery.Member{{ID: "creator-" + id, GameNick: "Host", JoinedAt: time.Now().Add(-time.Hour)}},
 		Activity: []requestquery.Activity{{Kind: gamerequest.ActivityCreated, ActorID: "creator-" + id, ActorGameNick: "Host", OccurredAt: time.Now().Add(-time.Hour)}},
@@ -124,9 +129,8 @@ func (f *fixture) seed(gameName string, maxPlayers int32, members int64) {
 
 // --- authentication -------------------------------------------------------
 //
-// Any session cookie resolves to the same player. The fixture never sees a
-// credential, and the product's own authentication middleware, CSRF middleware,
-// and session cookie handling run unchanged.
+// Browser tests use two fixed players when they need to verify another
+// viewer's read model; all product authentication middleware still runs.
 
 func (*fixture) Available() bool { return true }
 
@@ -144,7 +148,10 @@ func (*fixture) Complete(context.Context, auth.OAuthCompletion) (auth.OAuthResul
 
 func (*fixture) Logout(context.Context, string) error { return nil }
 
-func (*fixture) Authenticate(context.Context, string) (user.User, error) {
+func (*fixture) Authenticate(_ context.Context, session string) (user.User, error) {
+	if session == "browser-test-other" {
+		return user.User{ID: otherViewerID, GameNick: "Grace Player", Role: user.RoleUser}, nil
+	}
 	return user.User{ID: viewerID, GameNick: "Ada Player", Role: user.RoleUser}, nil
 }
 
@@ -193,10 +200,10 @@ func (f *fixture) Join(_ context.Context, requestID, userID string) error {
 	if !ok {
 		return gamerequest.ErrNotFound
 	}
-	if entry.request.Status != gamerequest.StatusOpen {
-		return gamerequest.ErrNotOpen
+	if !isActiveStatus(entry.request.Status) {
+		return gamerequest.ErrNotActive
 	}
-	if entry.members[userID] {
+	if entry.members[userID] || entry.request.CreatorID == userID {
 		return gamerequest.ErrAlreadyMember
 	}
 	if entry.request.MaxPlayers != nil && entry.request.MemberCount >= int64(*entry.request.MaxPlayers) {
@@ -222,8 +229,11 @@ func (f *fixture) Leave(_ context.Context, requestID, userID string) error {
 	if !ok {
 		return gamerequest.ErrNotFound
 	}
-	if entry.request.Status != gamerequest.StatusOpen {
-		return gamerequest.ErrNotOpen
+	if !isActiveStatus(entry.request.Status) {
+		return gamerequest.ErrNotActive
+	}
+	if entry.request.CreatorID == userID {
+		return gamerequest.ErrCreatorCannotLeave
 	}
 	if !entry.members[userID] {
 		return gamerequest.ErrNotMember
@@ -246,6 +256,63 @@ func (f *fixture) Close(_ context.Context, requestID, userID string) error {
 
 func (f *fixture) Cancel(_ context.Context, requestID, userID string) error {
 	return f.transition(requestID, userID, gamerequest.StatusOpen, gamerequest.StatusCancelled, gamerequest.ActivityCancelled, gamerequest.EventCancelled)
+}
+
+// UpdateDetails mirrors the store's Host and active-request rules. PostgreSQL
+// row locking is not emulated; the integration tests own that.
+func (f *fixture) UpdateDetails(_ context.Context, requestID, userID string, input gamerequest.UpdateDetailsInput) error {
+	if err := f.beforeMutation("details"); err != nil {
+		return err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	entry, ok := f.requests[requestID]
+	if !ok {
+		return gamerequest.ErrNotFound
+	}
+	if entry.request.CreatorID != userID {
+		return gamerequest.ErrNotCreator
+	}
+	if !isActiveStatus(entry.request.Status) {
+		return gamerequest.ErrNotActive
+	}
+	previousMaxPlayers := entry.request.MaxPlayers
+	previousStartsAt := entry.request.StartsAt
+	capacityChanged := !sameCapacity(previousMaxPlayers, input.MaxPlayers)
+	startsChanged := !previousStartsAt.Equal(input.StartsAt)
+	descriptionChanged := entry.request.Description != input.Description
+	if entry.request.Status == gamerequest.StatusPlaying && startsChanged {
+		return gamerequest.ErrInvalidStartsAt
+	}
+	if capacityChanged && input.MaxPlayers != nil && entry.request.MemberCount > int64(*input.MaxPlayers) {
+		return gamerequest.ErrCapacityBelowMembers
+	}
+	if !capacityChanged && !startsChanged && !descriptionChanged {
+		return nil
+	}
+	entry.request.MaxPlayers = input.MaxPlayers
+	entry.request.StartsAt = input.StartsAt
+	entry.request.Description = input.Description
+	activity := requestquery.Activity{
+		Kind: gamerequest.ActivityUpdated, ActorID: userID, ActorGameNick: "Ada Player", OccurredAt: time.Now(),
+		DescriptionChanged: descriptionChanged,
+	}
+	if capacityChanged {
+		activity.PreviousMaxPlayers = previousMaxPlayers
+		activity.NewMaxPlayers = input.MaxPlayers
+	}
+	if startsChanged {
+		activity.PreviousStartsAt = &previousStartsAt
+		newStartsAt := input.StartsAt
+		activity.NewStartsAt = &newStartsAt
+	}
+	entry.request.Activity = append([]requestquery.Activity{activity}, entry.request.Activity...)
+	f.broker.Publish(gamerequest.Event{Type: gamerequest.EventUpdated, RequestID: requestID})
+	return nil
+}
+
+func sameCapacity(previous, next *int32) bool {
+	return previous == nil && next == nil || previous != nil && next != nil && *previous == *next
 }
 
 // transition moves a request from one status to the next. Start and Cancel
@@ -294,7 +361,7 @@ func (f *fixture) beforeMutation(kind string) error {
 
 // --- game request queries -------------------------------------------------
 
-func (f *fixture) ListActive(_ context.Context, _ string, filter requestquery.Filter) ([]requestquery.Request, error) {
+func (f *fixture) ListActive(_ context.Context, viewerID string, filter requestquery.Filter) ([]requestquery.Request, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	result := make([]requestquery.Request, 0, len(f.order))
@@ -307,36 +374,35 @@ func (f *fixture) ListActive(_ context.Context, _ string, filter requestquery.Fi
 		if filter.Search != "" && !strings.Contains(strings.ToLower(entry.request.Game.Name), strings.ToLower(filter.Search)) {
 			continue
 		}
-		switch filter.Scope {
-		case requestquery.ScopeMyGames:
-			if !entry.followed {
-				continue
-			}
-		case requestquery.ScopeJoined:
-			if !entry.request.ViewerJoined {
-				continue
-			}
-		case requestquery.ScopeMine:
-			if entry.request.CreatorID != viewerID {
-				continue
-			}
+		if filter.Scope == requestquery.ScopeMyGames && !entry.followed {
+			continue
+		}
+		if filter.Scope == requestquery.ScopeJoined && !entry.members[viewerID] {
+			continue
+		}
+		if filter.Scope == requestquery.ScopeMine && entry.request.CreatorID != viewerID {
+			continue
 		}
 		if filter.OpenPlacesOnly && entry.request.MaxPlayers != nil && entry.request.MemberCount >= int64(*entry.request.MaxPlayers) {
 			continue
 		}
-		result = append(result, entry.request)
+		request := entry.request
+		request.ViewerJoined = entry.members[viewerID]
+		result = append(result, request)
 	}
 	return result, nil
 }
 
-func (f *fixture) ByID(_ context.Context, id, _ string) (requestquery.Request, error) {
+func (f *fixture) ByID(_ context.Context, id, viewerID string) (requestquery.Request, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	entry, ok := f.requests[id]
 	if !ok {
 		return requestquery.Request{}, gamerequest.ErrNotFound
 	}
-	return entry.request, nil
+	request := entry.request
+	request.ViewerJoined = entry.members[viewerID]
+	return request, nil
 }
 
 // CountActive is the whole installation's active total (`open` or `playing`),

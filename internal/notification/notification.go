@@ -10,9 +10,9 @@ import (
 	"time"
 )
 
-// ActivityKind mirrors gamerequest.ActivityKind's six durable kinds. It is
-// redeclared here rather than imported so this module never depends on
-// gamerequest's package, only on the read-only activity rows it discovers.
+// ActivityKind mirrors gamerequest.ActivityKind's durable kinds. It is
+// redeclared here rather than imported so this module depends only on activity
+// rows, not the Game Request module.
 type ActivityKind string
 
 const (
@@ -22,6 +22,7 @@ const (
 	ActivityStarted   ActivityKind = "started"
 	ActivityClosed    ActivityKind = "closed"
 	ActivityCancelled ActivityKind = "cancelled"
+	ActivityUpdated   ActivityKind = "request_updated"
 )
 
 // Activity is a read-only snapshot of one live game_request_activity row.

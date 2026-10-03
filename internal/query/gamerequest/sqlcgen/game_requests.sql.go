@@ -315,7 +315,9 @@ func (q *Queries) ListActiveGameRequests(ctx context.Context, arg ListActiveGame
 }
 
 const listGameRequestActivity = `-- name: ListGameRequestActivity :many
-SELECT a.kind, a.occurred_at, a.actor_id::text AS actor_id, u.game_nick AS actor_game_nick
+SELECT a.kind, a.occurred_at, a.actor_id::text AS actor_id, u.game_nick AS actor_game_nick,
+       a.previous_max_players, a.new_max_players,
+       a.previous_starts_at, a.new_starts_at, a.description_changed
 FROM game_request_activity a
 JOIN users u ON u.id = a.actor_id
 WHERE a.game_request_id = $1::uuid
@@ -323,10 +325,15 @@ ORDER BY a.sequence DESC
 `
 
 type ListGameRequestActivityRow struct {
-	Kind          string
-	OccurredAt    pgtype.Timestamptz
-	ActorID       string
-	ActorGameNick pgtype.Text
+	Kind               string
+	OccurredAt         pgtype.Timestamptz
+	ActorID            string
+	ActorGameNick      pgtype.Text
+	PreviousMaxPlayers pgtype.Int4
+	NewMaxPlayers      pgtype.Int4
+	PreviousStartsAt   pgtype.Timestamptz
+	NewStartsAt        pgtype.Timestamptz
+	DescriptionChanged bool
 }
 
 func (q *Queries) ListGameRequestActivity(ctx context.Context, gameRequestID pgtype.UUID) ([]ListGameRequestActivityRow, error) {
@@ -343,6 +350,11 @@ func (q *Queries) ListGameRequestActivity(ctx context.Context, gameRequestID pgt
 			&i.OccurredAt,
 			&i.ActorID,
 			&i.ActorGameNick,
+			&i.PreviousMaxPlayers,
+			&i.NewMaxPlayers,
+			&i.PreviousStartsAt,
+			&i.NewStartsAt,
+			&i.DescriptionChanged,
 		); err != nil {
 			return nil, err
 		}

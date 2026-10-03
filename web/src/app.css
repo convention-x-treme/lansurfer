@@ -624,6 +624,12 @@
     background: color-mix(in srgb, var(--color-base-content) 5%, transparent);
   }
 
+  .activity-content,
+  .activity-detail {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
   .detail-card-accent {
     border-color: color-mix(in srgb, var(--color-warning) 40%, var(--border-raised));
   }

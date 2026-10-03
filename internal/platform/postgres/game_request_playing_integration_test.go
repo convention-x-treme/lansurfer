@@ -81,13 +81,13 @@ func TestGameRequestPlayingLifecycleGuardsEveryTransition(t *testing.T) {
 	if err := fixture.requests.Start(t.Context(), guest.ID, fixture.host); err != nil {
 		t.Fatalf("start with a participant: %v", err)
 	}
-	// Issue #101 keeps participation frozen while a round is playing: the
-	// boundary stays open-only even though the request is still active.
-	if err := fixture.requests.Join(t.Context(), guest.ID, fixture.outsider); !errors.Is(err, gamerequest.ErrNotOpen) {
-		t.Fatalf("join while playing error = %v, want ErrNotOpen", err)
+	// Participation stays open while a round is playing: the request is still
+	// active, so Join and Leave follow the same rules as before the start.
+	if err := fixture.requests.Join(t.Context(), guest.ID, fixture.outsider); err != nil {
+		t.Fatalf("join while playing: %v", err)
 	}
-	if err := fixture.requests.Leave(t.Context(), guest.ID, fixture.guest); !errors.Is(err, gamerequest.ErrNotOpen) {
-		t.Fatalf("leave while playing error = %v, want ErrNotOpen", err)
+	if err := fixture.requests.Leave(t.Context(), guest.ID, fixture.guest); err != nil {
+		t.Fatalf("leave while playing: %v", err)
 	}
 
 	nonHost := fixture.create(t, "Only the host starts")

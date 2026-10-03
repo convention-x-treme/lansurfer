@@ -95,7 +95,7 @@ func TestGameRequestDetailRefreshCarriesStampAndNewestActivityFirst(t *testing.T
 	}
 
 	var refreshed bytes.Buffer
-	if err := GameRequestDetailContent(request, "user-9", true).Render(context.Background(), &refreshed); err != nil {
+	if err := GameRequestDetailContent(request, "user-9", true, GameRequestDetailMessage{}).Render(context.Background(), &refreshed); err != nil {
 		t.Fatalf("render refreshed detail: %v", err)
 	}
 	body := refreshed.String()
@@ -113,7 +113,7 @@ func TestGameRequestDetailRefreshCarriesStampAndNewestActivityFirst(t *testing.T
 	}
 
 	var initial bytes.Buffer
-	if err := GameRequestDetailContent(request, "user-9", false).Render(context.Background(), &initial); err != nil {
+	if err := GameRequestDetailContent(request, "user-9", false, GameRequestDetailMessage{}).Render(context.Background(), &initial); err != nil {
 		t.Fatalf("render initial detail: %v", err)
 	}
 	if strings.Contains(initial.String(), `hx-swap-oob`) {
@@ -137,7 +137,7 @@ func TestDetailActivityKeepsHistoryAfterLeave(t *testing.T) {
 	}
 
 	var rendered bytes.Buffer
-	if err := GameRequestDetailContent(request, "host-1", false).Render(context.Background(), &rendered); err != nil {
+	if err := GameRequestDetailContent(request, "host-1", false, GameRequestDetailMessage{}).Render(context.Background(), &rendered); err != nil {
 		t.Fatalf("render detail: %v", err)
 	}
 	body := rendered.String()
@@ -367,7 +367,7 @@ func TestGameRequestDetailContentRendersCoverOnceAndDescribesTheGame(t *testing.
 		CreatorID: "host-1", Status: gamerequest.StatusOpen, MemberCount: 1,
 	}
 	var rendered bytes.Buffer
-	if err := GameRequestDetailContent(request, "host-1", false).Render(context.Background(), &rendered); err != nil {
+	if err := GameRequestDetailContent(request, "host-1", false, GameRequestDetailMessage{}).Render(context.Background(), &rendered); err != nil {
 		t.Fatalf("render detail: %v", err)
 	}
 	body := rendered.String()
@@ -395,7 +395,7 @@ func TestGameRequestDetailOffersFollowOnlyWhileNotFollowing(t *testing.T) {
 		CreatorID: "host-1", Status: gamerequest.StatusOpen, MemberCount: 1,
 	}
 	var rendered bytes.Buffer
-	if err := GameRequestDetailContent(request, "viewer-1", false).Render(context.Background(), &rendered); err != nil {
+	if err := GameRequestDetailContent(request, "viewer-1", false, GameRequestDetailMessage{}).Render(context.Background(), &rendered); err != nil {
 		t.Fatalf("render detail: %v", err)
 	}
 	body := rendered.String()
@@ -405,7 +405,7 @@ func TestGameRequestDetailOffersFollowOnlyWhileNotFollowing(t *testing.T) {
 
 	request.ViewerSubscribed = true
 	rendered.Reset()
-	if err := GameRequestDetailContent(request, "viewer-1", false).Render(context.Background(), &rendered); err != nil {
+	if err := GameRequestDetailContent(request, "viewer-1", false, GameRequestDetailMessage{}).Render(context.Background(), &rendered); err != nil {
 		t.Fatalf("render detail: %v", err)
 	}
 	body = rendered.String()
@@ -423,7 +423,7 @@ func TestGameRequestDetailContentMarksLastPlace(t *testing.T) {
 		CreatorID: "host-1", Status: gamerequest.StatusOpen, MemberCount: 3, MaxPlayers: &limit,
 	}
 	var rendered bytes.Buffer
-	if err := GameRequestDetailContent(request, "host-1", false).Render(context.Background(), &rendered); err != nil {
+	if err := GameRequestDetailContent(request, "host-1", false, GameRequestDetailMessage{}).Render(context.Background(), &rendered); err != nil {
 		t.Fatalf("render detail: %v", err)
 	}
 	body := rendered.String()
@@ -435,7 +435,7 @@ func TestGameRequestDetailContentMarksLastPlace(t *testing.T) {
 
 	request.MemberCount = 1
 	rendered.Reset()
-	if err := GameRequestDetailContent(request, "host-1", false).Render(context.Background(), &rendered); err != nil {
+	if err := GameRequestDetailContent(request, "host-1", false, GameRequestDetailMessage{}).Render(context.Background(), &rendered); err != nil {
 		t.Fatalf("render detail: %v", err)
 	}
 	if body := rendered.String(); strings.Contains(body, "detail-hero-last") || strings.Contains(body, "Last place") {
@@ -640,8 +640,8 @@ func TestComposerPickSearchIsLive(t *testing.T) {
 	}
 }
 
-// Max players is a plain numeric field: 0 (or empty) is an open round, and
-// the field itself states both the bound and what 0 means, so a player
+// Max players is a plain numeric field: 0 (or empty) is an open round, a
+// finite maximum starts at 2, and the field itself states both bounds and what 0 means, so a player
 // never has to submit to find out.
 func TestGameRequestMaxPlayersIsABoundedNumericField(t *testing.T) {
 	var rendered bytes.Buffer
@@ -652,7 +652,7 @@ func TestGameRequestMaxPlayersIsABoundedNumericField(t *testing.T) {
 	for _, want := range []string{
 		`for="max-players"`,
 		`type="number" name="max_players" min="0" max="999"`,
-		"Up to 999 players, or 0 for an open round.",
+		"0 for an open round, or 2 to 999 players.",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("max players field missing %q: %s", want, body)
@@ -669,7 +669,7 @@ func TestGameRequestMaxPlayersIsABoundedNumericField(t *testing.T) {
 // to a control by eye.
 func TestComposerFieldErrorsAreAttachedToTheirField(t *testing.T) {
 	form := GameRequestForm{MaxPlayers: "1000", StartPreset: "now"}
-	message := ComposerMessage{Text: "Maximum players must be a whole number from 0 to 999. 0 means no limit.", Field: "max_players"}
+	message := ComposerMessage{Text: "Maximum players must be 0 for unlimited or a whole number from 2 to 999.", Field: "max_players"}
 
 	var rendered bytes.Buffer
 	if err := GameRequestDetailsFields(form, message).Render(context.Background(), &rendered); err != nil {
@@ -799,7 +799,7 @@ func renderLifecycleDetail(t *testing.T, status gamerequest.Status, viewerID str
 		Members: []requestquery.Member{{ID: "host-1", GameNick: "Otter"}},
 	}
 	var rendered bytes.Buffer
-	if err := GameRequestDetailContent(request, viewerID, false).Render(context.Background(), &rendered); err != nil {
+	if err := GameRequestDetailContent(request, viewerID, false, GameRequestDetailMessage{}).Render(context.Background(), &rendered); err != nil {
 		t.Fatalf("render detail: %v", err)
 	}
 	return rendered.String()
@@ -807,20 +807,20 @@ func renderLifecycleDetail(t *testing.T, status gamerequest.Status, viewerID str
 
 func TestDetailHostActionsFollowTheLifecycle(t *testing.T) {
 	open := renderLifecycleDetail(t, gamerequest.StatusOpen, "host-1")
-	for _, want := range []string{"Start game", "Cancel Game Request", `action="/game-requests/request-1/start"`, "data-confirm="} {
+	for _, want := range []string{"Start game", "Edit", "Cancel Game Request", "Visible to the Host only.", `action="/game-requests/request-1/start"`, `data-confirm="Start this game?`} {
 		if !strings.Contains(open, want) {
 			t.Errorf("open Host detail lacks %q", want)
 		}
 	}
-	if strings.Contains(open, "/close") {
-		t.Error("open Host detail offers Close")
+	openActions := open[strings.Index(open, `action="/game-requests/request-1/start"`):]
+	if !(strings.Index(openActions, "Start game") < strings.Index(openActions, `href="/game-requests/request-1?edit=1"`) &&
+		strings.Index(openActions, `href="/game-requests/request-1?edit=1"`) < strings.Index(openActions, "Cancel Game Request") &&
+		strings.Index(openActions, "Cancel Game Request") < strings.Index(openActions, "Visible to the Host only.")) {
+		t.Errorf("open Host action order is wrong: %s", openActions)
 	}
-	start := open[strings.Index(open, `action="/game-requests/request-1/start"`):]
-	start = start[:strings.Index(start, "</form>")]
-	for _, want := range []string{"Playing", "no longer be cancelled", "Close it when"} {
-		if !strings.Contains(start, want) {
-			t.Errorf("Start confirmation lacks %q: %s", want, start)
-		}
+	editLink := open[strings.Index(open, `href="/game-requests/request-1?edit=1"`):]
+	if strings.Contains(editLink[:strings.Index(editLink, ">Edit</a>")], "data-confirm") {
+		t.Error("Edit unexpectedly asks for confirmation")
 	}
 
 	playing := renderLifecycleDetail(t, gamerequest.StatusPlaying, "host-1")
@@ -832,55 +832,362 @@ func TestDetailHostActionsFollowTheLifecycle(t *testing.T) {
 			t.Errorf("playing Host detail contains %q", unwanted)
 		}
 	}
-	if !strings.Contains(playing, "status-chip-playing") || !strings.Contains(playing, "detail-hero-playing") {
-		t.Error("playing detail lacks Playing chip/hero accent")
+	playingActions := playing[strings.Index(playing, `action="/game-requests/request-1/close"`):]
+	if !(strings.Index(playingActions, "Close game") < strings.Index(playingActions, `href="/game-requests/request-1?edit=1"`) &&
+		strings.Index(playingActions, `href="/game-requests/request-1?edit=1"`) < strings.Index(playingActions, "Visible to the Host only.")) {
+		t.Errorf("playing Host action order is wrong: %s", playingActions)
+	}
+	if !strings.Contains(playingActions, `data-confirm="Close this game?`) {
+		t.Error("Close game confirmation changed")
 	}
 }
 
-func TestDetailPlayingHidesJoinAndLeaveForOtherViewers(t *testing.T) {
-	body := renderLifecycleDetail(t, gamerequest.StatusPlaying, "user-2")
-	for _, unwanted := range []string{">Join<", "Join</button>", "Leave</button>", "/join", "/leave"} {
-		if strings.Contains(body, unwanted) {
-			t.Errorf("playing detail contains %q", unwanted)
-		}
-	}
-	if !strings.Contains(body, "Playing") {
-		t.Error("playing detail does not state Playing")
-	}
-}
-
-func TestPlayingRowStaysActiveAndSaysPlaying(t *testing.T) {
-	maxPlayers := int32(2)
-	request := requestquery.Request{
-		ID: "request-1", Game: game.GamePresentation{Name: "Warcraft III"}, CreatorID: "host-1",
-		CreatorGameNick: "Otter", Status: gamerequest.StatusPlaying, MaxPlayers: &maxPlayers, MemberCount: 2,
-	}
+func renderRow(t *testing.T, request requestquery.Request, viewerID string) string {
+	t.Helper()
 	var rendered bytes.Buffer
-	if err := GameRequestRow(request, "user-2", "").Render(context.Background(), &rendered); err != nil {
+	if err := GameRequestRow(request, viewerID, "").Render(context.Background(), &rendered); err != nil {
 		t.Fatalf("render row: %v", err)
 	}
-	body := rendered.String()
+	return rendered.String()
+}
+
+func renderDetail(t *testing.T, request requestquery.Request, viewerID string) string {
+	t.Helper()
+	var rendered bytes.Buffer
+	if err := GameRequestDetailContent(request, viewerID, false, GameRequestDetailMessage{}).Render(context.Background(), &rendered); err != nil {
+		t.Fatalf("render detail: %v", err)
+	}
+	return rendered.String()
+}
+
+// Open and playing are both active: the viewer's membership action depends on
+// membership and capacity, never on which of the two the request is in.
+func TestActiveRequestsOfferJoinLeaveAndFullByMembershipAndCapacity(t *testing.T) {
+	limit := int32(3)
+	cases := []struct {
+		name    string
+		request requestquery.Request
+		viewer  string
+		want    []string
+		unwant  []string
+	}{
+		{"joined viewer leaves", requestquery.Request{ViewerJoined: true, MemberCount: 2, MaxPlayers: &limit}, "user-2",
+			[]string{"/game-requests/request-1/leave", "Leave"}, []string{"/join", "Join</button>"}},
+		{"viewer with room joins", requestquery.Request{MemberCount: 1, MaxPlayers: &limit}, "user-2",
+			[]string{"/game-requests/request-1/join", "Join</button>"}, []string{"/leave", "Leave</button>"}},
+		{"viewer on a full request gets no action", requestquery.Request{MemberCount: 3, MaxPlayers: &limit}, "user-2",
+			nil, []string{"/join", "/leave", "Join</button>", "Leave</button>"}},
+		{"unlimited request is joinable", requestquery.Request{MemberCount: 12}, "user-2",
+			[]string{"/game-requests/request-1/join"}, []string{"/leave"}},
+		{"last finite place is called out", requestquery.Request{MemberCount: 2, MaxPlayers: &limit}, "user-2",
+			[]string{"Last place", "/game-requests/request-1/join"}, []string{"/leave"}},
+		{"Host never gets Join or Leave", requestquery.Request{ViewerJoined: true, MemberCount: 1, MaxPlayers: &limit}, "host-1",
+			nil, []string{"/join", "/leave", "Join</button>", "Leave</button>"}},
+	}
+	for _, status := range []gamerequest.Status{gamerequest.StatusOpen, gamerequest.StatusPlaying} {
+		for _, tc := range cases {
+			request := tc.request
+			request.ID, request.CreatorID, request.Status = "request-1", "host-1", status
+			request.Game = game.GamePresentation{Name: "Warcraft III"}
+			for surface, body := range map[string]string{
+				"row":    renderRow(t, request, tc.viewer),
+				"detail": renderDetail(t, request, tc.viewer),
+			} {
+				for _, want := range tc.want {
+					if !strings.Contains(body, want) {
+						t.Errorf("%s %s %s lacks %q", status, surface, tc.name, want)
+					}
+				}
+				for _, unwanted := range tc.unwant {
+					if strings.Contains(body, unwanted) {
+						t.Errorf("%s %s %s contains %q", status, surface, tc.name, unwanted)
+					}
+				}
+			}
+		}
+	}
+}
+
+func TestInactiveRequestsStayStatic(t *testing.T) {
+	for status, label := range map[gamerequest.Status]string{gamerequest.StatusClosed: "Closed", gamerequest.StatusCancelled: "Cancelled"} {
+		limit := int32(4)
+		request := requestquery.Request{
+			ID: "request-1", Game: game.GamePresentation{Name: "Warcraft III"}, CreatorID: "host-1",
+			Status: status, MemberCount: 3, MaxPlayers: &limit,
+		}
+		row := renderRow(t, request, "user-2")
+		if !strings.Contains(row, `<span class="action-static">`+label+`</span>`) {
+			t.Errorf("%s row action is not static %q: %s", status, label, row)
+		}
+		for surface, body := range map[string]string{"row": row, "detail": renderDetail(t, request, "user-2")} {
+			for _, unwanted := range []string{"/join", "/leave", "Last place"} {
+				if strings.Contains(body, unwanted) {
+					t.Errorf("%s %s contains %q", status, surface, unwanted)
+				}
+			}
+		}
+	}
+}
+
+func TestPlayingRowKeepsPlayingIdentity(t *testing.T) {
+	limit := int32(4)
+	body := renderRow(t, requestquery.Request{
+		ID: "request-1", Game: game.GamePresentation{Name: "Warcraft III"}, CreatorID: "host-1",
+		CreatorGameNick: "Otter", Status: gamerequest.StatusPlaying, MaxPlayers: &limit, MemberCount: 2,
+	}, "user-2")
 	if !strings.Contains(body, "is playing") || strings.Contains(body, "is looking for") {
 		t.Errorf("row connector wrong: %s", body)
-	}
-	if !strings.Contains(body, `<span class="action-static">Playing</span>`) {
-		t.Errorf("row action wrong: %s", body)
 	}
 	if strings.Contains(body, "request-row-closed") || !strings.Contains(body, "request-row-playing") {
 		t.Errorf("row class wrong: %s", body)
 	}
-	if strings.Contains(body, "Join") || strings.Contains(body, "Leave") {
-		t.Errorf("playing row offers membership action: %s", body)
+	if strings.Contains(body, "count-muted") {
+		t.Errorf("a playing request with free places has a muted counter: %s", body)
 	}
 }
 
-func TestActivityLabelsForStartedAndClosed(t *testing.T) {
-	for kind, want := range map[gamerequest.ActivityKind]string{
-		gamerequest.ActivityStarted: "Otter started the game",
-		gamerequest.ActivityClosed:  "Otter closed the request",
-	} {
-		if got := activityLabel(requestquery.Activity{Kind: kind, ActorGameNick: "Otter"}); got != want {
-			t.Errorf("activityLabel(%s) = %q, want %q", kind, got, want)
+func TestPlayingDetailKeepsPlayingIdentityAndLastPlace(t *testing.T) {
+	limit := int32(3)
+	body := renderDetail(t, requestquery.Request{
+		ID: "request-1", Game: game.GamePresentation{Name: "Warcraft III"}, CreatorID: "host-1",
+		Status: gamerequest.StatusPlaying, MaxPlayers: &limit, MemberCount: 2,
+	}, "user-2")
+	for _, want := range []string{"status-chip-playing", "detail-hero-playing", "Last place open", `<span class="status-chip status-chip-last">Last place</span>`, "count-last"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("playing detail lacks %q: %s", want, body)
 		}
+	}
+	if strings.Contains(body, "count-muted") {
+		t.Errorf("a playing request with a free place has a muted counter: %s", body)
+	}
+}
+
+func TestUpdatedActivityLabelsChangedDimensions(t *testing.T) {
+	four, six := int32(4), int32(6)
+	before, after := time.Date(2027, 5, 1, 17, 0, 0, 0, time.UTC), time.Date(2027, 5, 1, 18, 0, 0, 0, time.UTC)
+	for name, tc := range map[string]struct {
+		entry requestquery.Activity
+		want  string
+	}{
+		"capacity": {
+			entry: requestquery.Activity{Kind: gamerequest.ActivityUpdated, ActorGameNick: "Alex", PreviousMaxPlayers: &four, NewMaxPlayers: &six},
+			want:  "Alex changed capacity from 4 to 6",
+		},
+		"description": {
+			entry: requestquery.Activity{Kind: gamerequest.ActivityUpdated, ActorGameNick: "Alex", DescriptionChanged: true},
+			want:  "Alex updated the description",
+		},
+		"multiple dimensions": {
+			entry: requestquery.Activity{Kind: gamerequest.ActivityUpdated, ActorGameNick: "Alex", PreviousMaxPlayers: &four, NewMaxPlayers: &six, PreviousStartsAt: &before, NewStartsAt: &after, DescriptionChanged: true},
+			want:  "Alex updated capacity, planned start, and description",
+		},
+	} {
+		if got := activityLabel(tc.entry); got != tc.want {
+			t.Errorf("%s: activityLabel = %q, want %q", name, got, tc.want)
+		}
+	}
+}
+
+func TestUpdatedActivityRendersPlannedStartTimesAsLocalizableInstants(t *testing.T) {
+	before, after := time.Date(2027, 5, 1, 17, 0, 0, 0, time.UTC), time.Date(2027, 5, 1, 18, 0, 0, 0, time.UTC)
+	four, six := int32(4), int32(6)
+	for _, tc := range []struct {
+		name  string
+		entry requestquery.Activity
+		label string
+	}{
+		{"start only", requestquery.Activity{Kind: gamerequest.ActivityUpdated, ActorGameNick: "Alex", PreviousStartsAt: &before, NewStartsAt: &after}, "Alex changed the planned start"},
+		{"capacity and start", requestquery.Activity{Kind: gamerequest.ActivityUpdated, ActorGameNick: "Alex", PreviousMaxPlayers: &four, NewMaxPlayers: &six, PreviousStartsAt: &before, NewStartsAt: &after}, "Alex updated capacity and planned start"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			request := capacityRequest(gamerequest.StatusOpen, nil)
+			tc.entry.OccurredAt = time.Date(2027, 5, 1, 16, 0, 0, 0, time.UTC)
+			request.Activity = []requestquery.Activity{tc.entry}
+			body := renderCapacityDetail(t, request, "user-2", GameRequestDetailMessage{})
+			rowStart := strings.Index(body, `<li class="activity-row">`)
+			if rowStart < 0 {
+				t.Fatalf("activity row missing: %s", body)
+			}
+			rowEnd := strings.Index(body[rowStart:], `</li>`)
+			if rowEnd < 0 {
+				t.Fatalf("activity row is not closed: %s", body[rowStart:])
+			}
+			row := body[rowStart : rowStart+rowEnd]
+			contentStart := strings.Index(row, `<div class="activity-content`)
+			if contentStart < 0 {
+				t.Fatalf("activity content missing: %s", row)
+			}
+			contentEnd := strings.Index(row[contentStart:], `</div>`)
+			if contentEnd < 0 {
+				t.Fatalf("activity content is not closed: %s", row[contentStart:])
+			}
+			content := row[contentStart : contentStart+contentEnd]
+			for _, want := range []string{tc.label, `datetime="2027-05-01T17:00:00Z"`, `datetime="2027-05-01T18:00:00Z"`, `data-local-time="absolute"`} {
+				if !strings.Contains(content, want) {
+					t.Errorf("activity content lacks %q: %s", want, content)
+				}
+			}
+			detailStart := strings.Index(content, `<p class="activity-detail`)
+			if detailStart < 0 {
+				t.Fatalf("activity detail paragraph missing: %s", content)
+			}
+			detailEnd := strings.Index(content[detailStart:], `</p>`)
+			if detailEnd < 0 {
+				t.Fatalf("activity detail paragraph is not closed: %s", content[detailStart:])
+			}
+			detail := content[detailStart : detailStart+detailEnd]
+			if strings.Count(detail, `data-local-time="absolute"`) != 2 ||
+				!strings.Contains(row[:contentStart], `datetime="2027-05-01T16:00:00Z"`) ||
+				strings.Contains(row[:contentStart], `data-local-time="absolute"`) ||
+				strings.Contains(row[contentStart+contentEnd:], `data-local-time="absolute"`) {
+				t.Errorf("activity times do not match intended hierarchy: %s", row)
+			}
+		})
+	}
+}
+
+func TestCreateAndOpenEditShareFieldCopy(t *testing.T) {
+	create := renderComposerFields(t, GameRequestForm{MaxPlayers: "4", StartPreset: "now"}, ComposerMessage{})
+	request := capacityRequest(gamerequest.StatusOpen, nil)
+	editor := renderCapacityDetail(t, request, "host-1", GameRequestDetailMessage{Editing: true, Form: GameRequestForm{MaxPlayers: "4", StartPreset: "custom", Description: "draft"}})
+	editorStart := strings.Index(editor, `action="/game-requests/request-1/details"`)
+	editor = editor[editorStart:]
+	editor = editor[:strings.Index(editor, "</form>")]
+	for name, body := range map[string]string{"create": create, "edit": editor} {
+		if !strings.Contains(body, "Max players") || !strings.Contains(body, "0 for an open round, or 2 to 999 players.") || !strings.Contains(body, "Description") || !strings.Contains(body, "(optional)") {
+			t.Errorf("%s field copy differs: %s", name, body)
+		}
+		if strings.Contains(body, "Maximum players") || strings.Contains(body, "0 means unlimited; finite limits start at 2.") {
+			t.Errorf("%s retained old field copy: %s", name, body)
+		}
+	}
+}
+
+func TestOpenEditorOffersStartChoicesAndPrefillsStoredCustomStart(t *testing.T) {
+	request := capacityRequest(gamerequest.StatusOpen, nil)
+	request.StartsAt = time.Date(2027, 5, 1, 18, 30, 0, 0, time.UTC)
+	body := renderCapacityDetail(t, request, "host-1", GameRequestDetailMessage{Editing: true, InitializeStart: true, Form: GameRequestForm{StartPreset: "custom", StartDate: "2027-05-01", StartTime: "18:30", Timezone: "UTC"}})
+	editorStart := strings.Index(body, `action="/game-requests/request-1/details"`)
+	editor := body[editorStart:]
+	editor = editor[:strings.Index(editor, "</form>")]
+	for _, value := range []string{`value="now"`, `value="15"`, `value="30"`, `value="60"`, `value="custom"`, `name="start_date" value="2027-05-01"`, `name="start_time" value="18:30"`, `name="timezone" value="UTC"`, `data-start-options`, `data-custom-start`} {
+		if !strings.Contains(editor, value) {
+			t.Errorf("open editor lacks %q: %s", value, editor)
+		}
+	}
+	if !strings.Contains(editor, `value="custom" checked`) {
+		t.Errorf("custom start not selected: %s", editor)
+	}
+}
+
+func renderComposerFields(t *testing.T, form GameRequestForm, message ComposerMessage) string {
+	t.Helper()
+	var rendered bytes.Buffer
+	if err := GameRequestDetailsFields(form, message).Render(context.Background(), &rendered); err != nil {
+		t.Fatalf("render composer fields: %v", err)
+	}
+	return rendered.String()
+}
+
+func TestHostEditActionAndEditorFollowOwnershipAndStatus(t *testing.T) {
+	limit := int32(4)
+	for name, tc := range map[string]struct {
+		status gamerequest.Status
+		viewer string
+		show   bool
+	}{
+		"open Host":      {gamerequest.StatusOpen, "host-1", true},
+		"playing Host":   {gamerequest.StatusPlaying, "host-1", true},
+		"participant":    {gamerequest.StatusOpen, "user-2", false},
+		"closed Host":    {gamerequest.StatusClosed, "host-1", false},
+		"cancelled Host": {gamerequest.StatusCancelled, "host-1", false},
+	} {
+		body := renderCapacityDetail(t, capacityRequest(tc.status, &limit), tc.viewer, GameRequestDetailMessage{})
+		if got := strings.Contains(body, `href="/game-requests/request-1?edit=1"`); got != tc.show {
+			t.Errorf("%s edit action = %v, want %v", name, got, tc.show)
+		}
+		if strings.Contains(body, `action="/game-requests/request-1/details"`) {
+			t.Errorf("%s sees an editor without choosing Edit", name)
+		}
+	}
+}
+
+func TestRequestEditorKeepsCapacityUXAndReadOnlyGame(t *testing.T) {
+	limit := int32(4)
+	request := capacityRequest(gamerequest.StatusOpen, &limit)
+	message := GameRequestDetailMessage{
+		Editing: true, InitializeStart: true,
+		Form: GameRequestForm{MaxPlayers: "1", StartDate: "2027-05-01", StartTime: "18:30", Timezone: "UTC", Description: "keep raw"},
+		Text: "Maximum players must be 0 for unlimited or a whole number from 2 to 999.", Field: "max_players", Value: "1",
+	}
+	body := renderCapacityDetail(t, request, "host-1", message)
+	editorStart := strings.Index(body, `action="/game-requests/request-1/details"`)
+	if editorStart < 0 {
+		t.Fatalf("Host editor missing: %s", body)
+	}
+	editor := body[editorStart:]
+	editor = editor[:strings.Index(editor, "</form>")]
+	for _, want := range []string{
+		`name="max_players"`, `min="0"`, `max="999"`, `step="1"`, `type="number"`,
+		`value="1"`, "0 for an open round, or 2 to 999 players.", `id="max-players-error"`,
+		`name="start_date"`, `name="start_time"`, `name="timezone"`, `data-start-options`, `data-local-start`,
+		`name="description"`, "keep raw", `data-description-count`, ">Save</button>", ">Cancel</a>",
+	} {
+		if !strings.Contains(editor, want) {
+			t.Errorf("editor lacks %q: %s", want, editor)
+		}
+	}
+	for _, forbidden := range []string{`name="game_id"`, `name="provider"`, `name="external_id"`, `data-confirm`} {
+		if strings.Contains(editor, forbidden) {
+			t.Errorf("editor contains %q: %s", forbidden, editor)
+		}
+	}
+}
+
+func TestPlayingEditorCannotEditPlannedStart(t *testing.T) {
+	limit := int32(4)
+	request := capacityRequest(gamerequest.StatusPlaying, &limit)
+	request.StartsAt = time.Date(2027, 5, 1, 18, 30, 0, 0, time.UTC)
+	body := renderCapacityDetail(t, request, "host-1", GameRequestDetailMessage{Editing: true})
+	start := strings.Index(body, `action="/game-requests/request-1/details"`)
+	if start < 0 {
+		t.Fatalf("Host editor missing: %s", body)
+	}
+	editor := body[start:]
+	editor = editor[:strings.Index(editor, "</form>")]
+	if strings.Contains(editor, `name="start_date"`) || strings.Contains(editor, `name="start_time"`) ||
+		strings.Contains(editor, `name="timezone"`) || strings.Contains(editor, `name="start_preset"`) ||
+		!strings.Contains(editor, "Start") || !strings.Contains(editor, `datetime="2027-05-01T18:30:00Z"`) {
+		t.Errorf("playing start is not read-only: %s", editor)
+	}
+}
+
+func TestFullActiveRowSaysFullInsteadOfJoin(t *testing.T) {
+	limit := int32(3)
+	for _, status := range []gamerequest.Status{gamerequest.StatusOpen, gamerequest.StatusPlaying} {
+		body := renderRow(t, requestquery.Request{
+			ID: "request-1", Game: game.GamePresentation{Name: "Warcraft III"}, CreatorID: "host-1",
+			Status: status, MaxPlayers: &limit, MemberCount: 3,
+		}, "user-2")
+		if !strings.Contains(body, `<span class="action-static">Full</span>`) {
+			t.Errorf("%s full row lacks the Full action: %s", status, body)
+		}
+	}
+}
+
+func renderCapacityDetail(t *testing.T, request requestquery.Request, viewerID string, message GameRequestDetailMessage) string {
+	t.Helper()
+	var rendered bytes.Buffer
+	if err := GameRequestDetailContent(request, viewerID, false, message).Render(context.Background(), &rendered); err != nil {
+		t.Fatalf("render detail: %v", err)
+	}
+	return rendered.String()
+}
+
+func capacityRequest(status gamerequest.Status, limit *int32) requestquery.Request {
+	return requestquery.Request{
+		ID: "request-1", Game: game.GamePresentation{Name: "Warcraft III"}, CreatorID: "host-1",
+		Status: status, MemberCount: 2, MaxPlayers: limit,
+		Members: []requestquery.Member{{ID: "host-1", GameNick: "Otter"}, {ID: "user-2", GameNick: "Alex"}},
 	}
 }

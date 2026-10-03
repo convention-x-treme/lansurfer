@@ -35,6 +35,7 @@ type GameRequestCommands interface {
 	Start(context.Context, string, string) error
 	Close(context.Context, string, string) error
 	Cancel(context.Context, string, string) error
+	UpdateDetails(context.Context, string, string, gamerequest.UpdateDetailsInput) error
 	RecordView(context.Context, string, string) error
 }
 
@@ -390,14 +391,11 @@ func (h *GameRequests) View(w http.ResponseWriter, r *http.Request) {
 		h.renderError(w, r)
 		return
 	}
-	// Recorded before the navigation is built, so the request the viewer is
-	// reading is already the newest entry in their own "Recently viewed" list
-	// rather than appearing one navigation later. A failure here costs the
-	// viewer a history entry, never the page they asked for.
 	if err := h.commands.RecordView(r.Context(), request.ID, account.ID); err != nil {
 		webmiddleware.LogError(r, "record Game Request view", err)
 	}
-	render(w, r, http.StatusOK, pages.GameRequestDetail(h.brand, h.navigationFor(r), request, account.ID, "", notice(r)))
+	message := detailEditorMessage(request, account.ID, r.URL.Query().Get("edit") == "1")
+	render(w, r, http.StatusOK, pages.GameRequestDetail(h.brand, h.navigationFor(r), request, account.ID, message, notice(r)))
 }
 
 func (h *GameRequests) RefreshView(w http.ResponseWriter, r *http.Request) {
@@ -412,7 +410,18 @@ func (h *GameRequests) RefreshView(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "refresh game request", http.StatusInternalServerError)
 		return
 	}
-	render(w, r, http.StatusOK, pages.GameRequestDetailContent(request, account.ID, true))
+	message := detailEditorMessage(request, account.ID, r.URL.Query().Get("edit") == "1")
+	render(w, r, http.StatusOK, pages.GameRequestDetailContent(request, account.ID, true, message))
+}
+func detailEditorMessage(request requestquery.Request, viewerID string, editing bool) pages.GameRequestDetailMessage {
+	if !editing || request.CreatorID != viewerID ||
+		(request.Status != gamerequest.StatusOpen && request.Status != gamerequest.StatusPlaying) {
+		return pages.GameRequestDetailMessage{}
+	}
+	return pages.GameRequestDetailMessage{
+		Editing: true, InitializeStart: request.Status == gamerequest.StatusOpen,
+		Form: requestDetailsForm(request),
+	}
 }
 
 func (h *GameRequests) Join(w http.ResponseWriter, r *http.Request) {
@@ -482,7 +491,147 @@ func (h *GameRequests) renderChangeError(w http.ResponseWriter, r *http.Request,
 		h.renderError(w, r)
 		return
 	}
-	render(w, r, status, pages.GameRequestDetail(h.brand, h.navigationFor(r), request, viewerID, gameRequestMessage(cause), components.Notice{}))
+	render(w, r, status, pages.GameRequestDetail(h.brand, h.navigationFor(r), request, viewerID, pages.GameRequestDetailMessage{Text: gameRequestMessage(cause)}, components.Notice{}))
+}
+
+// UpdateDetails changes the Host-editable request fields in one command. The
+// current start remains authoritative for playing requests, even if a client
+// submits forged date/time fields.
+func (h *GameRequests) UpdateDetails(w http.ResponseWriter, r *http.Request) {
+	account, _ := webmiddleware.CurrentUser(r.Context())
+	requestID := chi.URLParam(r, "requestID")
+	if err := r.ParseForm(); err != nil {
+		webmiddleware.LogError(r, "parse Game Request details", err)
+		h.renderError(w, r)
+		return
+	}
+	form := requestDetailsFormFromValues(r)
+	request, err := h.queries.ByID(r.Context(), requestID, account.ID)
+	if errors.Is(err, gamerequest.ErrNotFound) {
+		http.Error(w, "game request not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		webmiddleware.LogError(r, "load Game Request before details update", err)
+		h.renderError(w, r)
+		return
+	}
+
+	if request.Status == gamerequest.StatusOpen && form.StartPreset == "" {
+		form.StartPreset = "custom"
+	}
+	maxPlayers, err := parseCapacity(form.MaxPlayers)
+	startsAt := request.StartsAt
+	if err == nil {
+		if request.Status == gamerequest.StatusPlaying &&
+			(form.StartPreset != "" || form.StartDate != "" || form.StartTime != "" || form.Timezone != "") {
+			err = gamerequest.ErrInvalidStartsAt
+		} else if request.Status == gamerequest.StatusOpen {
+			startsAt, err = parseGameRequestStart(form, h.now())
+			if err == nil && form.StartPreset == "custom" {
+				location := time.UTC
+				if form.Timezone != "" {
+					location, err = time.LoadLocation(form.Timezone)
+					if err != nil {
+						err = gamerequest.ErrInvalidStartsAt
+					}
+				}
+				submitted := form.StartDate + "T" + form.StartTime
+				if err == nil && request.StartsAt.In(location).Format(gameRequestTimeLayout) == submitted {
+					startsAt = request.StartsAt
+				}
+			}
+		}
+	}
+	description := form.Description
+	if err == nil {
+		description, err = gamerequest.ValidateCreateInput(maxPlayers, startsAt, form.Description)
+	}
+	if err == nil {
+		err = h.commands.UpdateDetails(r.Context(), requestID, account.ID, gamerequest.UpdateDetailsInput{
+			MaxPlayers: maxPlayers, StartsAt: startsAt, Description: description,
+		})
+	}
+	if err == nil {
+		h.redirect(w, r, "/game-requests/"+requestID)
+		return
+	}
+	status := gameRequestErrorStatus(err)
+	if status == http.StatusInternalServerError {
+		webmiddleware.LogError(r, "change Game Request details", err)
+		h.renderError(w, r)
+		return
+	}
+	request, queryErr := h.queries.ByID(r.Context(), requestID, account.ID)
+	if errors.Is(queryErr, gamerequest.ErrNotFound) {
+		http.Error(w, "game request not found", http.StatusNotFound)
+		return
+	}
+	if queryErr != nil {
+		webmiddleware.LogError(r, "reload Game Request after details error", queryErr)
+		h.renderError(w, r)
+		return
+	}
+	message := updateDetailsMessage(err, form)
+	message.Editing = request.CreatorID == account.ID &&
+		(request.Status == gamerequest.StatusOpen || request.Status == gamerequest.StatusPlaying)
+	message.Form = form
+	message.InitializeStart = false
+	render(w, r, status, pages.GameRequestDetail(h.brand, h.navigationFor(r), request, account.ID, message, components.Notice{}))
+}
+func parseCapacity(value string) (*int32, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil, nil
+	}
+	parsed, err := strconv.ParseInt(value, 10, 32)
+	if err != nil || parsed < 0 || parsed == 1 || parsed > maxPlayersLimit {
+		return nil, gamerequest.ErrInvalidMaxPlayers
+	}
+	if parsed == 0 {
+		return nil, nil
+	}
+	maximum := int32(parsed)
+	return &maximum, nil
+}
+
+func requestDetailsForm(request requestquery.Request) pages.GameRequestForm {
+	maxPlayers := "0"
+	if request.MaxPlayers != nil {
+		maxPlayers = strconv.Itoa(int(*request.MaxPlayers))
+	}
+	startsAt := request.StartsAt.UTC()
+	return pages.GameRequestForm{
+		MaxPlayers: maxPlayers, StartPreset: "custom", StartDate: startsAt.Format("2006-01-02"),
+		StartTime: startsAt.Format("15:04"), Timezone: "UTC", Description: request.Description,
+	}
+}
+
+func requestDetailsFormFromValues(r *http.Request) pages.GameRequestForm {
+	return pages.GameRequestForm{
+		MaxPlayers: r.FormValue("max_players"), StartPreset: strings.TrimSpace(r.FormValue("start_preset")),
+		StartDate: r.FormValue("start_date"), StartTime: r.FormValue("start_time"), Timezone: r.FormValue("timezone"),
+		Description: r.FormValue("description"),
+	}
+}
+
+func updateDetailsMessage(err error, form pages.GameRequestForm) pages.GameRequestDetailMessage {
+	switch {
+	case errors.Is(err, gamerequest.ErrInvalidMaxPlayers):
+		return pages.GameRequestDetailMessage{Text: gameRequestMessage(err), Field: "max_players", Value: form.MaxPlayers}
+	case errors.Is(err, gamerequest.ErrCapacityBelowMembers):
+		return pages.GameRequestDetailMessage{Text: "Maximum players cannot be lower than the current player count.", Field: "max_players", Value: form.MaxPlayers}
+	case errors.Is(err, gamerequest.ErrInvalidStartsAt):
+		return pages.GameRequestDetailMessage{Text: gameRequestMessage(err), Field: "start"}
+	case errors.Is(err, gamerequest.ErrInvalidDescription):
+		return pages.GameRequestDetailMessage{Text: gameRequestMessage(err), Field: "description"}
+	case errors.Is(err, gamerequest.ErrNotActive):
+		return pages.GameRequestDetailMessage{Text: "This Game Request is no longer active."}
+	case errors.Is(err, gamerequest.ErrNotCreator):
+		return pages.GameRequestDetailMessage{Text: "Only the Host can edit this Game Request."}
+	default:
+		return pages.GameRequestDetailMessage{Text: gameRequestMessage(err)}
+	}
 }
 
 func (h *GameRequests) parseCreateForm(r *http.Request) (pages.GameRequestForm, *int32, time.Time, error) {
@@ -499,8 +648,9 @@ func (h *GameRequests) parseCreateForm(r *http.Request) (pages.GameRequestForm, 
 	}
 	// 0 and an empty field both mean "no limit", which the domain spells as
 	// a nil maximum. maxPlayersLimit is the composer's own input bound, not
-	// a domain rule: the domain accepts any positive maximum, and rounds
-	// created before this bound existed keep theirs.
+	// a domain rule: the domain only requires a finite maximum to be at least
+	// 2, and rounds created before this bound existed keep theirs. A 1 passes
+	// this parse and is rejected by the domain with the same field error.
 	var maxPlayers *int32
 	if form.MaxPlayers != "" {
 		value, err := strconv.ParseInt(form.MaxPlayers, 10, 32)
@@ -512,28 +662,37 @@ func (h *GameRequests) parseCreateForm(r *http.Request) (pages.GameRequestForm, 
 			maxPlayers = &parsed
 		}
 	}
-	startsAt := h.now().UTC()
-	var startErr error
+	startsAt, err := parseGameRequestStart(form, h.now())
+	if err != nil {
+		return form, maxPlayers, time.Time{}, err
+	}
+	return form, maxPlayers, startsAt, nil
+}
+
+func parseGameRequestStart(form pages.GameRequestForm, now time.Time) (time.Time, error) {
+	var startsAt time.Time
+	var err error
 	switch form.StartPreset {
 	case "", "now":
+		startsAt = now.UTC()
 		if form.StartPreset == "" && form.StartsAt != "" {
-			startsAt, startErr = parseBrowserTime(form.StartsAt, form.Timezone)
+			startsAt, err = parseBrowserTime(form.StartsAt, form.Timezone)
 		}
 	case "15", "30", "60":
 		minutes, _ := strconv.Atoi(form.StartPreset)
-		startsAt = h.now().Add(time.Duration(minutes) * time.Minute).UTC()
+		startsAt = now.Add(time.Duration(minutes) * time.Minute).UTC()
 	case "custom":
 		if form.StartDate == "" || form.StartTime == "" {
-			return form, maxPlayers, time.Time{}, gamerequest.ErrInvalidStartsAt
+			return time.Time{}, gamerequest.ErrInvalidStartsAt
 		}
-		startsAt, startErr = parseBrowserTime(form.StartDate+"T"+form.StartTime, form.Timezone)
+		startsAt, err = parseBrowserTime(form.StartDate+"T"+form.StartTime, form.Timezone)
 	default:
-		return form, maxPlayers, time.Time{}, gamerequest.ErrInvalidStartsAt
+		return time.Time{}, gamerequest.ErrInvalidStartsAt
 	}
-	if startErr != nil {
-		return form, maxPlayers, time.Time{}, gamerequest.ErrInvalidStartsAt
+	if err != nil {
+		return time.Time{}, gamerequest.ErrInvalidStartsAt
 	}
-	return form, maxPlayers, startsAt, nil
+	return startsAt, nil
 }
 
 // parseBrowserTime reads a browser-local date/time in the viewer's IANA zone,
@@ -580,7 +739,8 @@ func gameRequestErrorStatus(err error) int {
 		return http.StatusForbidden
 	case errors.Is(err, gamerequest.ErrFull), errors.Is(err, gamerequest.ErrAlreadyMember),
 		errors.Is(err, gamerequest.ErrNotMember), errors.Is(err, gamerequest.ErrCreatorCannotLeave),
-		errors.Is(err, gamerequest.ErrNotOpen), errors.Is(err, gamerequest.ErrNotPlaying):
+		errors.Is(err, gamerequest.ErrNotOpen), errors.Is(err, gamerequest.ErrNotPlaying),
+		errors.Is(err, gamerequest.ErrNotActive), errors.Is(err, gamerequest.ErrCapacityBelowMembers):
 		return http.StatusConflict
 	case errors.Is(err, gamerequest.ErrGameUnavailable),
 		errors.Is(err, gamerequest.ErrInvalidMaxPlayers), errors.Is(err, gamerequest.ErrInvalidStartsAt),
@@ -616,9 +776,9 @@ func gameRequestMessage(err error) string {
 	case errors.Is(err, gamerequest.ErrGameUnavailable):
 		return "Choose an active game from the list."
 	case errors.Is(err, gamerequest.ErrInvalidMaxPlayers):
-		return "Maximum players must be a whole number from 0 to 999. 0 means no limit."
+		return "Maximum players must be 0 for unlimited or a whole number from 2 to 999."
 	case errors.Is(err, gamerequest.ErrInvalidStartsAt):
-		return "Enter a valid scheduled start time, or leave it blank to start now."
+		return "Enter a valid planned start date and time."
 	case errors.Is(err, gamerequest.ErrInvalidDescription):
 		return "Description must be 1000 characters or fewer."
 	case errors.Is(err, gamerequest.ErrFull):

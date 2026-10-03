@@ -70,8 +70,8 @@ func (s *Store) Join(ctx context.Context, requestID, userID string) error {
 		return gamerequest.ErrNotFound
 	}
 	return s.withLockedRequest(ctx, databaseRequestID, func(queries *sqlcgen.Queries, locked sqlcgen.LockGameRequestRow) error {
-		if locked.Status != string(gamerequest.StatusOpen) {
-			return gamerequest.ErrNotOpen
+		if !isActive(locked.Status) {
+			return gamerequest.ErrNotActive
 		}
 		exists, err := queries.GameRequestMemberExists(ctx, sqlcgen.GameRequestMemberExistsParams{
 			GameRequestID: databaseRequestID, UserID: databaseUserID,
@@ -109,8 +109,8 @@ func (s *Store) Leave(ctx context.Context, requestID, userID string) error {
 		return gamerequest.ErrNotFound
 	}
 	return s.withLockedRequest(ctx, databaseRequestID, func(queries *sqlcgen.Queries, locked sqlcgen.LockGameRequestRow) error {
-		if locked.Status != string(gamerequest.StatusOpen) {
-			return gamerequest.ErrNotOpen
+		if !isActive(locked.Status) {
+			return gamerequest.ErrNotActive
 		}
 		if locked.CreatorID == userID {
 			return gamerequest.ErrCreatorCannotLeave
@@ -205,6 +205,84 @@ func (s *Store) SetStatus(ctx context.Context, requestID, userID string, status 
 		}
 		return recordActivity(ctx, queries, databaseRequestID, databaseUserID, activity)
 	})
+}
+
+// UpdateDetails applies all editable request details under the same row lock as
+// membership changes. It reports whether a real change committed.
+func (s *Store) UpdateDetails(ctx context.Context, requestID, userID string, input gamerequest.UpdateDetailsInput) (bool, error) {
+	databaseRequestID, databaseUserID, err := parseIDs(requestID, userID)
+	if err != nil {
+		return false, gamerequest.ErrNotFound
+	}
+	changed := false
+	err = s.withLockedRequest(ctx, databaseRequestID, func(queries *sqlcgen.Queries, locked sqlcgen.LockGameRequestRow) error {
+		if locked.CreatorID != userID {
+			return gamerequest.ErrNotCreator
+		}
+		if !isActive(locked.Status) {
+			return gamerequest.ErrNotActive
+		}
+
+		requestedMax := nullableInt4(input.MaxPlayers)
+		startsAt := pgtype.Timestamptz{Time: input.StartsAt, Valid: true}
+		if locked.Status == string(gamerequest.StatusPlaying) && !input.StartsAt.Equal(locked.StartsAt.Time) {
+			return gamerequest.ErrInvalidStartsAt
+		}
+
+		capacityChanged := requestedMax != locked.MaxPlayers
+		startChanged := !input.StartsAt.Equal(locked.StartsAt.Time)
+		descriptionChanged := input.Description != locked.Description
+		if !capacityChanged && !startChanged && !descriptionChanged {
+			return nil
+		}
+		if capacityChanged && requestedMax.Valid {
+			count, err := queries.CountGameRequestMembers(ctx, databaseRequestID)
+			if err != nil {
+				return fmt.Errorf("count game request members: %w", err)
+			}
+			if count > int64(requestedMax.Int32) {
+				return gamerequest.ErrCapacityBelowMembers
+			}
+		}
+
+		updated, err := queries.UpdateGameRequestDetails(ctx, sqlcgen.UpdateGameRequestDetailsParams{
+			ID: databaseRequestID, CreatorID: databaseUserID,
+			MaxPlayers: requestedMax, StartsAt: startsAt, Description: input.Description,
+		})
+		if err != nil {
+			return fmt.Errorf("update game request details: %w", err)
+		}
+		if updated != 1 {
+			return errors.New("update game request details: no row matched")
+		}
+
+		previousMax, newMax := pgtype.Int4{}, pgtype.Int4{}
+		previousStart, newStart := pgtype.Timestamptz{}, pgtype.Timestamptz{}
+		if capacityChanged {
+			previousMax, newMax = locked.MaxPlayers, requestedMax
+		}
+		if startChanged {
+			previousStart = locked.StartsAt
+			newStart = startsAt
+		}
+		if err := queries.RecordRequestUpdatedActivity(ctx, sqlcgen.RecordRequestUpdatedActivityParams{
+			GameRequestID: databaseRequestID, ActorID: databaseUserID,
+			PreviousMaxPlayers: previousMax, NewMaxPlayers: newMax,
+			PreviousStartsAt: previousStart, NewStartsAt: newStart,
+			DescriptionChanged: descriptionChanged,
+		}); err != nil {
+			return fmt.Errorf("record game request details activity: %w", err)
+		}
+		changed = true
+		return nil
+	})
+	return changed && err == nil, err
+}
+
+// isActive is the one definition of "participation is allowed": a request that
+// is open or playing. Join, Leave and capacity edits all route through it.
+func isActive(status string) bool {
+	return status == string(gamerequest.StatusOpen) || status == string(gamerequest.StatusPlaying)
 }
 
 // recordActivity keeps the durable record inside the caller's transaction, so a

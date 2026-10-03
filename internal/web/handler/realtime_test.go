@@ -36,6 +36,23 @@ func TestRealtimeStreamsGameRequestEvents(t *testing.T) {
 	}
 }
 
+// Request detail updates keep using the existing event stream.
+func TestRealtimeStreamsRequestUpdates(t *testing.T) {
+	events := make(chan gamerequest.Event, 1)
+	events <- gamerequest.Event{Type: gamerequest.EventUpdated, RequestID: "request-7"}
+	close(events)
+	source := &stubGameRequestEvents{events: events}
+	response := httptest.NewRecorder()
+
+	NewRealtime(source).GameRequests(response, httptest.NewRequest("GET", "/events/game-requests", nil))
+
+	for _, want := range []string{"event: game-request", `"type":"GameRequestUpdated"`, `"requestId":"request-7"`} {
+		if !strings.Contains(response.Body.String(), want) {
+			t.Errorf("stream does not contain %q: %q", want, response.Body.String())
+		}
+	}
+}
+
 func TestRealtimeUnsubscribesWhenClientDisconnects(t *testing.T) {
 	events := make(chan gamerequest.Event)
 	source := &stubGameRequestEvents{events: events}
