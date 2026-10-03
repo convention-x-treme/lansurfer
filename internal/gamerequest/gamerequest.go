@@ -42,13 +42,36 @@ const (
 type EventType string
 
 const (
-	EventCreated   EventType = "GameRequestCreated"
-	EventJoined    EventType = "GameRequestJoined"
-	EventLeft      EventType = "GameRequestLeft"
-	EventStarted   EventType = "GameRequestStarted"
-	EventClosed    EventType = "GameRequestClosed"
-	EventCancelled EventType = "GameRequestCancelled"
-	EventUpdated   EventType = "GameRequestUpdated"
+	EventCreated                   EventType = "GameRequestCreated"
+	EventJoined                    EventType = "GameRequestJoined"
+	EventLeft                      EventType = "GameRequestLeft"
+	EventStarted                   EventType = "GameRequestStarted"
+	EventClosed                    EventType = "GameRequestClosed"
+	EventCancelled                 EventType = "GameRequestCancelled"
+	EventUpdated                   EventType = "GameRequestUpdated"
+	EventSessionInformationChanged EventType = "GameRequestSessionInformationChanged"
+)
+
+// SessionInformationEntry is one request-local key/value entry.
+type SessionInformationEntry struct {
+	ID, RequestID, Key, Value string
+	Sequence                  int64
+	CreatedAt, UpdatedAt      time.Time
+}
+
+type SessionInformation struct {
+	Entries []SessionInformationEntry
+	CanEdit bool
+}
+
+type SessionInformationInput struct{ Key, Value string }
+
+var (
+	ErrInvalidSessionInformationKey    = errors.New("invalid session information key")
+	ErrInvalidSessionInformationValue  = errors.New("invalid session information value")
+	ErrSessionInformationKeyExists     = errors.New("session information key already exists")
+	ErrSessionInformationLimit         = errors.New("session information limit reached")
+	ErrSessionInformationEntryNotFound = errors.New("session information entry not found")
 )
 
 type Event struct {
@@ -102,6 +125,11 @@ type Repository interface {
 	// ChatAccess returns nil when userID may read the request's chat, else
 	// ErrNotFound, ErrNotMember, or ErrChatClosed.
 	ChatAccess(ctx context.Context, requestID, userID string) error
+	SessionInformation(context.Context, string, string) (SessionInformation, error)
+	SessionInformationAccess(context.Context, string, string) error
+	CreateSessionInformationEntry(context.Context, string, string, SessionInformationInput) error
+	UpdateSessionInformationEntry(context.Context, string, string, string, SessionInformationInput) (bool, error)
+	DeleteSessionInformationEntry(context.Context, string, string, string) error
 	UpdateDetails(context.Context, string, string, UpdateDetailsInput) (bool, error)
 }
 

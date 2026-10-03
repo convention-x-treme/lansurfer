@@ -218,14 +218,36 @@ func TestUpdateDetailsValidatesAndTrimsInput(t *testing.T) {
 }
 
 type recordingRepository struct {
-	created        GameRequest
-	joinErr        error
-	status         Status
-	statusErr      error
-	detailsInput   UpdateDetailsInput
-	detailsChanged bool
-	detailsErr     error
-	detailsCalls   int
+	created          GameRequest
+	joinErr          error
+	status           Status
+	statusErr        error
+	detailsInput     UpdateDetailsInput
+	detailsChanged   bool
+	detailsErr       error
+	detailsCalls     int
+	sessionInput     SessionInformationInput
+	sessionChanged   bool
+	sessionErr       error
+	sessionAccessErr error
+}
+
+func (r *recordingRepository) SessionInformation(context.Context, string, string) (SessionInformation, error) {
+	return SessionInformation{}, r.sessionErr
+}
+func (r *recordingRepository) SessionInformationAccess(context.Context, string, string) error {
+	return r.sessionAccessErr
+}
+func (r *recordingRepository) CreateSessionInformationEntry(_ context.Context, _, _ string, input SessionInformationInput) error {
+	r.sessionInput = input
+	return r.sessionErr
+}
+func (r *recordingRepository) UpdateSessionInformationEntry(_ context.Context, _, _, _ string, input SessionInformationInput) (bool, error) {
+	r.sessionInput = input
+	return r.sessionChanged, r.sessionErr
+}
+func (r *recordingRepository) DeleteSessionInformationEntry(context.Context, string, string, string) error {
+	return r.sessionErr
 }
 
 func (r *recordingRepository) UpdateDetails(_ context.Context, _, _ string, input UpdateDetailsInput) (bool, error) {
