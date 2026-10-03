@@ -10,6 +10,261 @@ test.beforeEach(async ({ request }) => {
   await resetFixture(request);
 });
 
+// Detail refreshes retain edits and validation messages in the shared Host editor.
+for (const scenario of ["draft", "validation error", "tab return"] as const) {
+  test(`a detail refresh preserves the request edit ${scenario}`, async ({ page, request }) => {
+    await page.goto("/game-requests/new?game_id=game-1");
+    await page.locator("input[name='max_players']").fill("4");
+    await page.getByRole("button", { name: "Create Game Request" }).click();
+    await page.waitForURL(/\/game-requests\/[0-9a-f-]+(?:\?.*)?$/);
+    await page.getByRole("link", { name: "Edit" }).click();
+    await page.waitForURL(/\?edit=1$/);
+    const capacity = page.getByLabel("Max players");
+    const value = scenario === "validation error" ? "1" : "6";
+    await capacity.fill(value);
+    if (scenario === "validation error") {
+      await page.getByRole("button", { name: "Save" }).click();
+      await expect(page.locator("#max-players-error")).toBeVisible();
+    }
+    await page.waitForLoadState("load");
+    await capacity.focus();
+    await waitForRealtime(page, request, 1);
+    await instrumentHtmx(page);
+
+    if (scenario === "tab return") {
+      await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+    } else {
+      const id = await page.locator("#game-request-detail").getAttribute("data-game-request-id");
+      await request.post(`/__test__/publish?type=GameRequestJoined&request=${id}`);
+    }
+
+    await expect.poll(async () => (await htmxCounters(page)).after).toBeGreaterThan(0);
+    await expect(capacity).toHaveValue(value);
+    await expect(capacity).toBeFocused();
+    if (scenario === "validation error") {
+      await expect(page.locator("#max-players-error")).toBeVisible();
+      await expect(capacity).toHaveAttribute("aria-invalid", "true");
+    }
+  });
+}
+
+for (const scenario of ["description draft", "capacity draft"] as const) {
+  test(`a detail refresh keeps only the dirty field for ${scenario}`, async ({ page }) => {
+    await page.goto("/game-requests/new?game_id=game-1");
+    await page.locator("input[name='max_players']").fill("4");
+    await page.getByRole("button", { name: "Create Game Request" }).click();
+    await page.waitForURL(/\/game-requests\/[0-9a-f-]+(?:\?.*)?$/);
+    await page.getByRole("link", { name: "Edit" }).click();
+    await page.waitForURL(/\?edit=1$/);
+    await waitForRealtime(page, page.request, 1);
+    await instrumentHtmx(page);
+
+    const detail = page.locator("#game-request-detail");
+    const id = await detail.getAttribute("data-game-request-id");
+    const csrf = await detail.locator("input[name='csrf_token']").first().inputValue();
+    const capacity = page.getByLabel("Max players");
+    const description = page.getByLabel("Description");
+    if (scenario === "description draft") await description.fill("A😀B");
+    else await capacity.fill("6");
+
+    const serverUpdate = await page.request.post(`/game-requests/${id}/details`, {
+      form: {
+        max_players: scenario === "description draft" ? "6" : "4",
+        start_date: await page.locator("input[name='start_date']").inputValue(),
+        start_time: await page.locator("input[name='start_time']").inputValue(),
+        timezone: await page.locator("input[name='timezone']").inputValue(),
+        description: scenario === "description draft" ? "" : "Server description",
+        csrf_token: csrf,
+      },
+    });
+    expect(serverUpdate.ok()).toBe(true);
+    await expect.poll(async () => (await htmxCounters(page)).after).toBeGreaterThan(0);
+
+    if (scenario === "description draft") {
+      await expect(description).toHaveValue("A😀B");
+      await expect(description.locator("xpath=..").locator("[data-description-count]")).toHaveText("3 / 1000");
+      await description.fill("A😀BC");
+      await expect(description.locator("xpath=..").locator("[data-description-count]")).toHaveText("4 / 1000");
+      await expect(capacity).toHaveValue("6");
+    } else {
+      await expect(capacity).toHaveValue("6");
+      await expect(description).toHaveValue("Server description");
+    }
+    await page.getByRole("button", { name: "Save" }).click();
+    await page.waitForURL(/\/game-requests\/[0-9a-f-]+(?:\?.*)?$/);
+    await expect(page.locator("#game-request-detail")).toContainText("1/6");
+    await expect(page.locator("#game-request-detail")).toContainText(
+      scenario === "description draft" ? "A😀BC" : "Server description",
+    );
+  });
+}
+
+test("a detail refresh preserves dirty custom start date and time", async ({ page, request }) => {
+  await page.goto("/game-requests/new?game_id=game-1");
+  await page.getByLabel("Max players").fill("4");
+  await page.getByRole("button", { name: "Create Game Request" }).click();
+  await page.waitForURL(/\/game-requests\/[0-9a-f-]+(?:\?.*)?$/);
+  await page.getByRole("link", { name: "Edit" }).click();
+  await page.waitForURL(/\?edit=1$/);
+  await page.getByText("Pick date & time").click();
+  const date = page.locator("input[name='start_date']");
+  const time = page.locator("input[name='start_time']");
+  await date.fill("2099-05-02");
+  await time.fill("20:15");
+  await waitForRealtime(page, request, 1);
+  await instrumentHtmx(page);
+  const id = await page.locator("#game-request-detail").getAttribute("data-game-request-id");
+  await request.post(`/__test__/publish?type=GameRequestJoined&request=${id}`);
+  await expect.poll(async () => (await htmxCounters(page)).after).toBeGreaterThan(0);
+  await expect(page.locator("input[name='start_preset'][value='custom']")).toBeChecked();
+  await expect(date).toHaveValue("2099-05-02");
+  await expect(time).toHaveValue("20:15");
+  const expectedStart = await page.evaluate(() => {
+    const [year, month, day] = (document.querySelector<HTMLInputElement>("input[name='start_date']")!.value).split("-").map(Number);
+    const [hour, minute] = (document.querySelector<HTMLInputElement>("input[name='start_time']")!.value).split(":").map(Number);
+    return new Date(year, month - 1, day, hour, minute).toISOString().replace(".000Z", "Z");
+  });
+  await page.getByRole("button", { name: "Save" }).click();
+  await page.waitForURL(/\/game-requests\/[0-9a-f-]+(?:\?.*)?$/);
+  await expect(page.locator("#game-request-detail time[data-local-time='start']")).toHaveAttribute("datetime", expectedStart);
+});
+
+test.describe("Berlin custom-start refresh", () => {
+  test.use({ timezoneId: "Europe/Berlin" });
+
+  test("preserves a dirty time that matches the raw UTC default", async ({ page, request }) => {
+    await page.goto("/game-requests/new?game_id=game-1");
+    await page.getByLabel("Max players").fill("4");
+    await page.getByRole("button", { name: "Create Game Request" }).click();
+    await page.waitForURL(/\/game-requests\/[0-9a-f-]+(?:\?.*)?$/);
+    await page.getByRole("link", { name: "Edit" }).click();
+    await page.waitForURL(/\?edit=1$/);
+    await page.getByText("Pick date & time").click();
+    await page.locator("input[name='start_date']").fill("2099-05-02");
+    await page.locator("input[name='start_time']").fill("20:30");
+    await page.getByRole("button", { name: "Save" }).click();
+    await page.waitForURL(/\/game-requests\/[0-9a-f-]+(?:\?.*)?$/);
+
+    await page.getByRole("link", { name: "Edit" }).click();
+    await page.waitForURL(/\?edit=1$/);
+    const time = page.locator("input[name='start_time']");
+    await expect(time).toHaveValue("20:30");
+    await time.fill("18:30");
+    await waitForRealtime(page, request, 1);
+    await instrumentHtmx(page);
+    const id = await page.locator("#game-request-detail").getAttribute("data-game-request-id");
+    await request.post(`/__test__/publish?type=GameRequestJoined&request=${id}`);
+    await expect.poll(async () => (await htmxCounters(page)).after).toBeGreaterThan(0);
+    await expect(time).toHaveValue("18:30");
+    await page.getByRole("button", { name: "Save" }).click();
+    await page.waitForURL(/\/game-requests\/[0-9a-f-]+(?:\?.*)?$/);
+    await expect(page.locator("#game-request-detail time[data-local-time='start']")).toHaveAttribute(
+      "datetime",
+      "2099-05-02T16:30:00Z",
+    );
+  });
+});
+test("number inputs inserted by a detail refresh clamp immediately", async ({ page, request }) => {
+  await page.goto("/game-requests/new?game_id=game-1");
+  await page.getByLabel("Max players").fill("4");
+  await page.getByRole("button", { name: "Create Game Request" }).click();
+  await page.waitForURL(/\/game-requests\/[0-9a-f-]+(?:\?.*)?$/);
+  await page.getByRole("link", { name: "Edit" }).click();
+  await page.waitForURL(/\?edit=1$/);
+  await waitForRealtime(page, request, 1);
+  await instrumentHtmx(page);
+  const id = await page.locator("#game-request-detail").getAttribute("data-game-request-id");
+  await request.post(`/__test__/publish?type=GameRequestJoined&request=${id}`);
+  await expect.poll(async () => (await htmxCounters(page)).after).toBeGreaterThan(0);
+  const capacity = page.getByLabel("Max players");
+  await capacity.fill("1000");
+  await expect(capacity).toHaveValue("999");
+});
+
+
+test("a detail refresh preserves a selected relative start shortcut", async ({ page, request }) => {
+  await page.goto("/game-requests/new?game_id=game-1");
+  await page.getByLabel("Max players").fill("4");
+  await page.getByRole("button", { name: "Create Game Request" }).click();
+  await page.waitForURL(/\/game-requests\/[0-9a-f-]+(?:\?.*)?$/);
+  await page.getByRole("link", { name: "Edit" }).click();
+  await page.waitForURL(/\?edit=1$/);
+  await page.locator("label.start-choice").filter({ hasText: "in 15 min" }).click();
+  await waitForRealtime(page, request, 1);
+  await instrumentHtmx(page);
+  const id = await page.locator("#game-request-detail").getAttribute("data-game-request-id");
+  await request.post(`/__test__/publish?type=GameRequestJoined&request=${id}`);
+  await expect.poll(async () => (await htmxCounters(page)).after).toBeGreaterThan(0);
+  await expect(page.locator("input[name='start_preset'][value='15']")).toBeChecked();
+  await expect(page.locator("[data-custom-start]")).toBeHidden();
+  await page.getByRole("button", { name: "Save" }).click();
+  await page.waitForURL(/\/game-requests\/[0-9a-f-]+(?:\?.*)?$/);
+  const start = new Date((await page.locator("time[data-local-time='start']").getAttribute("datetime"))!);
+  expect(start.getTime()).toBeGreaterThan(Date.now() + 14 * 60_000);
+  expect(start.getTime()).toBeLessThan(Date.now() + 16 * 60_000);
+});
+test("a Playing refresh does not restore removed planned-start controls", async ({ page }) => {
+  await page.goto("/game-requests/new?game_id=game-1");
+  await page.locator("input[name='max_players']").fill("4");
+  await page.getByRole("button", { name: "Create Game Request" }).click();
+  await page.waitForURL(/\/game-requests\/[0-9a-f-]+(?:\?.*)?$/);
+  await page.getByRole("link", { name: "Edit" }).click();
+  await page.waitForURL(/\?edit=1$/);
+  await waitForRealtime(page, page.request, 1);
+  await instrumentHtmx(page);
+
+  const detail = page.locator("#game-request-detail");
+  const id = await detail.getAttribute("data-game-request-id");
+  const csrf = await detail.locator("input[name='csrf_token']").first().inputValue();
+  await page.getByLabel("Description").fill("Local description");
+  const started = await page.request.post(`/game-requests/${id}/start`, { form: { csrf_token: csrf } });
+  expect(started.ok()).toBe(true);
+  await expect.poll(async () => (await htmxCounters(page)).after).toBeGreaterThan(0);
+
+  await expect(page.getByText("Playing", { exact: true }).first()).toBeVisible();
+  await expect(page.locator("form[action$='/details'] input[name='start_date'], form[action$='/details'] input[name='start_time']")).toHaveCount(0);
+  await expect(page.getByLabel("Max players")).toHaveValue("4");
+  await expect(page.getByLabel("Description")).toHaveValue("Local description");
+});
+
+test("a detail refresh updates an untouched request editor and removes a draft when cancelled", async ({ page, request }) => {
+  await page.goto("/game-requests/new?game_id=game-1");
+  await page.locator("input[name='max_players']").fill("4");
+  await page.getByRole("button", { name: "Create Game Request" }).click();
+  await page.waitForURL(/\/game-requests\/[0-9a-f-]+(?:\?.*)?$/);
+  await page.getByRole("link", { name: "Edit" }).click();
+  await page.waitForURL(/\?edit=1$/);
+  await instrumentHtmx(page);
+  const capacity = page.getByLabel("Max players");
+
+  const detail = page.locator("#game-request-detail");
+  const id = await detail.getAttribute("data-game-request-id");
+  const csrf = await detail.locator("input[name='csrf_token']").first().inputValue();
+  const startDate = await page.locator("input[name='start_date']").inputValue();
+  const startTime = await page.locator("input[name='start_time']").inputValue();
+  const timezone = await page.locator("input[name='timezone']").inputValue();
+  const description = await page.locator("textarea[name='description']").inputValue();
+  const changed = await page.request.post(`/game-requests/${id}/details`, {
+    form: {
+      max_players: "5", start_date: startDate, start_time: startTime,
+      timezone, description, csrf_token: csrf,
+    },
+  });
+  expect(changed.ok()).toBe(true);
+  expect(new URL(changed.url()).pathname).toBe(`/game-requests/${id}`);
+  await expect.poll(async () => (await htmxCounters(page)).after).toBeGreaterThan(0);
+
+  await expect(capacity).toHaveValue("5");
+
+  await capacity.fill("6");
+  const cancelled = await page.request.post(`/game-requests/${id}/cancel`, {
+    form: { csrf_token: csrf },
+  });
+  expect(cancelled.ok()).toBe(true);
+  await expect(capacity).toHaveCount(0);
+  await expect(page.getByText("Cancelled", { exact: true }).first()).toBeVisible();
+});
+
 test("a live update refreshes the list without disturbing the page", async ({ page, request }) => {
   await page.goto("/game-requests");
   await waitForRealtime(page, request, 1);
@@ -78,4 +333,20 @@ test("a live update arriving during a mutation leaves htmx balanced", async ({ p
 
   await expect(page.locator("#game-request-list")).toBeVisible();
   await request.post("/__test__/mode?delay=0");
+});
+
+test("a live detail refresh preserves an unsent chat draft", async ({ page, request }) => {
+  await page.goto("/game-requests/new?game_id=game-1");
+  await page.getByRole("button", { name: "Create Game Request" }).click();
+  await page.waitForURL(/\/game-requests\/[0-9a-f-]+/);
+  await waitForRealtime(page, request, 1);
+  await instrumentHtmx(page);
+
+  const draft = page.getByRole("textbox", { name: "Message the lobby" });
+  await draft.fill("I am still typing");
+  const requestID = await page.locator("[data-game-request-detail]").getAttribute("data-game-request-id");
+  await request.post(`/__test__/publish?type=GameRequestJoined&request=${requestID}`);
+
+  await expect.poll(async () => (await htmxCounters(page)).after).toBeGreaterThan(0);
+  await expect(draft).toHaveValue("I am still typing");
 });

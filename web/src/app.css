@@ -685,6 +685,11 @@
     transform: rotate(180deg);
   }
 
+  .activity-content,
+  .activity-detail {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
   .detail-card-accent {
     border-color: color-mix(in srgb, var(--color-warning) 40%, var(--border-raised));
   }

@@ -315,22 +315,30 @@ func (q *Queries) ListGameRequestMessages(ctx context.Context, gameRequestID pgt
 }
 
 const lockGameRequest = `-- name: LockGameRequest :one
-SELECT creator_id::text, max_players, status
+SELECT creator_id::text, max_players, status, starts_at, description
 FROM game_requests
 WHERE id = $1::uuid
 FOR UPDATE
 `
 
 type LockGameRequestRow struct {
-	CreatorID  string
-	MaxPlayers pgtype.Int4
-	Status     string
+	CreatorID   string
+	MaxPlayers  pgtype.Int4
+	Status      string
+	StartsAt    pgtype.Timestamptz
+	Description string
 }
 
 func (q *Queries) LockGameRequest(ctx context.Context, id pgtype.UUID) (LockGameRequestRow, error) {
 	row := q.db.QueryRow(ctx, lockGameRequest, id)
 	var i LockGameRequestRow
-	err := row.Scan(&i.CreatorID, &i.MaxPlayers, &i.Status)
+	err := row.Scan(
+		&i.CreatorID,
+		&i.MaxPlayers,
+		&i.Status,
+		&i.StartsAt,
+		&i.Description,
+	)
 	return i, err
 }
 
@@ -366,6 +374,47 @@ type RecordGameRequestViewParams struct {
 // lists distinct requests newest-first.
 func (q *Queries) RecordGameRequestView(ctx context.Context, arg RecordGameRequestViewParams) error {
 	_, err := q.db.Exec(ctx, recordGameRequestView, arg.UserID, arg.GameRequestID)
+	return err
+}
+
+const recordRequestUpdatedActivity = `-- name: RecordRequestUpdatedActivity :exec
+INSERT INTO game_request_activity (
+    game_request_id, actor_id, kind, previous_max_players, new_max_players,
+    previous_starts_at, new_starts_at, description_changed
+)
+VALUES (
+    $1::uuid,
+    $2::uuid,
+    'request_updated',
+    $3::integer,
+    $4::integer,
+    $5::timestamptz,
+    $6::timestamptz,
+    $7
+)
+`
+
+type RecordRequestUpdatedActivityParams struct {
+	GameRequestID      pgtype.UUID
+	ActorID            pgtype.UUID
+	PreviousMaxPlayers pgtype.Int4
+	NewMaxPlayers      pgtype.Int4
+	PreviousStartsAt   pgtype.Timestamptz
+	NewStartsAt        pgtype.Timestamptz
+	DescriptionChanged bool
+}
+
+// RecordRequestUpdatedActivity stores only dimensions that actually changed.
+func (q *Queries) RecordRequestUpdatedActivity(ctx context.Context, arg RecordRequestUpdatedActivityParams) error {
+	_, err := q.db.Exec(ctx, recordRequestUpdatedActivity,
+		arg.GameRequestID,
+		arg.ActorID,
+		arg.PreviousMaxPlayers,
+		arg.NewMaxPlayers,
+		arg.PreviousStartsAt,
+		arg.NewStartsAt,
+		arg.DescriptionChanged,
+	)
 	return err
 }
 
@@ -406,6 +455,45 @@ type StartGameRequestParams struct {
 // silently rewrite a request out of a state it no longer holds.
 func (q *Queries) StartGameRequest(ctx context.Context, arg StartGameRequestParams) (int64, error) {
 	result, err := q.db.Exec(ctx, startGameRequest, arg.ID, arg.CreatorID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const updateGameRequestDetails = `-- name: UpdateGameRequestDetails :execrows
+UPDATE game_requests
+SET max_players = $1::integer,
+    starts_at = $2,
+    description = $3,
+    updated_at = now()
+WHERE id = $4::uuid
+  AND creator_id = $5::uuid
+  AND status IN ('open', 'playing')
+  AND (
+      max_players IS DISTINCT FROM $1::integer
+      OR starts_at IS DISTINCT FROM $2
+      OR description IS DISTINCT FROM $3
+  )
+`
+
+type UpdateGameRequestDetailsParams struct {
+	MaxPlayers  pgtype.Int4
+	StartsAt    pgtype.Timestamptz
+	Description string
+	ID          pgtype.UUID
+	CreatorID   pgtype.UUID
+}
+
+// UpdateGameRequestDetails refuses a semantic no-op.
+func (q *Queries) UpdateGameRequestDetails(ctx context.Context, arg UpdateGameRequestDetailsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateGameRequestDetails,
+		arg.MaxPlayers,
+		arg.StartsAt,
+		arg.Description,
+		arg.ID,
+		arg.CreatorID,
+	)
 	if err != nil {
 		return 0, err
 	}

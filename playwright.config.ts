@@ -1,10 +1,9 @@
 import { defineConfig, devices } from "@playwright/test";
 
-// Browser tests cover interaction hardening only: the rapid-click,
-// stream-lifecycle, abort-recovery and SSE-versus-swap behavior that lives in
-// web/src/app.ts and cannot be reached from a Go test. They are deliberately
-// not a general end-to-end suite; product behavior belongs in the Go unit and
-// PostgreSQL integration tests, which are faster and more precise.
+// Browser tests verify the Host edit flow, playing participation, and client
+// behavior that Go tests cannot observe: rapid clicks, stream lifecycle,
+// recovery, and SSE-versus-swap handling. Domain and persistence rules remain
+// covered by Go unit and PostgreSQL integration tests.
 //
 // The fixture server runs LANsurfer's real router, templates, assets and SSE
 // handler against in-memory stores, so no database is required.

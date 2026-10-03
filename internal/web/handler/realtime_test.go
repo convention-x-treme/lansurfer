@@ -37,6 +37,23 @@ func TestRealtimeStreamsGameRequestEvents(t *testing.T) {
 	}
 }
 
+// Request detail updates keep using the existing event stream.
+func TestRealtimeStreamsRequestUpdates(t *testing.T) {
+	events := make(chan gamerequest.Event, 1)
+	events <- gamerequest.Event{Type: gamerequest.EventUpdated, RequestID: "request-7"}
+	close(events)
+	source := &stubGameRequestEvents{events: events}
+	response := httptest.NewRecorder()
+
+	NewRealtime(source, nil).GameRequests(response, httptest.NewRequest("GET", "/events/game-requests", nil))
+
+	for _, want := range []string{"event: game-request", `"type":"GameRequestUpdated"`, `"requestId":"request-7"`} {
+		if !strings.Contains(response.Body.String(), want) {
+			t.Errorf("stream does not contain %q: %q", want, response.Body.String())
+		}
+	}
+}
+
 func TestRealtimeUnsubscribesWhenClientDisconnects(t *testing.T) {
 	events := make(chan gamerequest.Event)
 	source := &stubGameRequestEvents{events: events}
@@ -129,10 +146,13 @@ func TestRealtimeChatSignalsOnlyReachParticipants(t *testing.T) {
 		events <- gamerequest.Event{Type: gamerequest.EventChatMessage, RequestID: "request-1"}
 		events <- gamerequest.Event{Type: gamerequest.EventStarted, RequestID: "request-1"}
 		close(events)
-		request := httptest.NewRequest("GET", "/events/game-requests", nil)
+		request := httptest.NewRequest("GET", "/events/game-requests?chatRequestId=request-1", nil)
 		request = request.WithContext(webmiddleware.ContextWithUser(request.Context(), user.User{ID: userID}))
 		response := httptest.NewRecorder()
-		NewRealtime(&stubGameRequestEvents{events: events}, stubChatAccess{allowed: map[string]bool{"member": true}}).GameRequests(response, request)
+		NewRealtime(
+			&stubGameRequestEvents{events: events},
+			stubChatAccess{allowed: map[string]bool{"member": true}},
+		).GameRequests(response, request)
 		return response.Body.String()
 	}
 
@@ -142,5 +162,31 @@ func TestRealtimeChatSignalsOnlyReachParticipants(t *testing.T) {
 	body := stream("outsider")
 	if strings.Contains(body, "game-request-chat") || !strings.Contains(body, "GameRequestStarted") {
 		t.Errorf("outsider stream = %q, want lifecycle event only", body)
+	}
+}
+
+type countingChatAccess struct{ calls int }
+
+func (s *countingChatAccess) CanChat(context.Context, string, string) (bool, error) {
+	s.calls++
+	return true, nil
+}
+
+func TestRealtimeSkipsChatAuthorizationForUnwatchedRequest(t *testing.T) {
+	events := make(chan gamerequest.Event, 1)
+	events <- gamerequest.Event{Type: gamerequest.EventChatMessage, RequestID: "request-2"}
+	close(events)
+	access := &countingChatAccess{}
+	request := httptest.NewRequest("GET", "/events/game-requests?chatRequestId=request-1", nil)
+	request = request.WithContext(webmiddleware.ContextWithUser(request.Context(), user.User{ID: "member"}))
+	response := httptest.NewRecorder()
+
+	NewRealtime(&stubGameRequestEvents{events: events}, access).GameRequests(response, request)
+
+	if access.calls != 0 {
+		t.Fatalf("CanChat calls = %d, want 0 for unrelated request", access.calls)
+	}
+	if strings.Contains(response.Body.String(), "game-request-chat") {
+		t.Fatal("unwatched chat signal was delivered")
 	}
 }

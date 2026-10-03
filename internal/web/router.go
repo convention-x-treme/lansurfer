@@ -279,6 +279,7 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 					requests.Get("/{requestID}/chat", chatHandler.Log)
 					requests.Post("/{requestID}/chat", chatHandler.Post)
 				}
+				requests.Post("/{requestID}/details", gameRequestsHandler.UpdateDetails)
 			})
 		}
 		if dependencies.Realtime != nil {

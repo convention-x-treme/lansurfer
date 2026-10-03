@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/convention-x-treme/lansurfer/internal/gamerequest"
 	"github.com/convention-x-treme/lansurfer/internal/notification"
 	notificationpostgres "github.com/convention-x-treme/lansurfer/internal/notification/postgres"
 	"github.com/convention-x-treme/lansurfer/internal/platform/crypto"
@@ -515,5 +516,62 @@ func TestDiscordSendReplacementNeverRoutesOldWorkToNewGeneration(t *testing.T) {
 	current, err := store.GetDiscordMessageSync(t.Context(), newGeneration.ID, request.ID)
 	if err != nil || current.MessageID != "new-message" || current.AppliedVersion != fresh[0].Activity.Sequence {
 		t.Fatalf("new sync = %+v, %v", current, err)
+	}
+}
+
+// A request update edits the synchronized Discord message from one current snapshot.
+func TestDiscordSendEditsSameMessageWithRequestDetails(t *testing.T) {
+	_, store, fixture, key := discordSendSetup(t)
+	destination := discordSendConnect(t, store, key, "private-token")
+	calls := make(chan discordSendHTTPCall, 4)
+	client := discordSendTestClient(t, func(w http.ResponseWriter, request *http.Request) {
+		discordSendReply(w, request, calls, "message-42")
+	})
+	transport := notification.NewDiscordSendTransport(store, key, "https://lan.example", "Friday Club", client)
+	maximum := int32(4)
+	startAt := time.Now().Add(time.Hour)
+	request, err := fixture.requests.Create(t.Context(), fixture.host.ID, fixture.gameID, &maximum, startAt, "Current description")
+	if err != nil {
+		t.Fatal(err)
+	}
+	discordSendMaterialize(t, store, transport)
+	newTestWorker(store, []notification.Transport{transport}).Tick(t.Context())
+	created := discordSendNextCall(t, calls)
+	discordSendAssertCall(t, created, http.MethodPost, "private-token", "", request.ID)
+	if created.field("Players") != "1/4 players (3 free)" {
+		t.Fatalf("created players = %q", created.field("Players"))
+	}
+	createdSync, err := store.GetDiscordMessageSync(t.Context(), destination.ID, request.ID)
+	if err != nil || createdSync.MessageID != "message-42" {
+		t.Fatalf("created sync = %+v, %v", createdSync, err)
+	}
+
+	newMaximum := int32(6)
+	newStart := startAt.Add(30 * time.Minute)
+	input := gamerequest.UpdateDetailsInput{
+		MaxPlayers: &newMaximum, StartsAt: newStart, Description: "Updated description",
+	}
+	if err := fixture.requests.UpdateDetails(t.Context(), request.ID, fixture.host.ID, input); err != nil {
+		t.Fatal(err)
+	}
+	newTestWorker(store, []notification.Transport{transport}).Tick(t.Context())
+	edited := discordSendNextCall(t, calls)
+	discordSendAssertCall(t, edited, http.MethodPatch, "private-token", "message-42", request.ID)
+	if edited.field("Players") != "1/6 players (5 free)" ||
+		edited.field("Start") != "<t:"+fmt.Sprint(newStart.Unix())+":F>" ||
+		edited.payload.Embeds[0].Description != "Updated description" ||
+		edited.field("Status") != "open" {
+		t.Fatalf("request update rendered stale snapshot: players=%q start=%q description=%q",
+			edited.field("Players"), edited.field("Start"), edited.payload.Embeds[0].Description)
+	}
+
+	sync, err := store.GetDiscordMessageSync(t.Context(), destination.ID, request.ID)
+	if err != nil || sync.MessageID != "message-42" || sync.AppliedVersion <= createdSync.AppliedVersion {
+		t.Fatalf("sync after request update = %+v, previous = %+v, %v", sync, createdSync, err)
+	}
+	select {
+	case extra := <-calls:
+		t.Fatalf("unexpected extra Discord call: %s", extra.method)
+	default:
 	}
 }

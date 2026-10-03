@@ -76,9 +76,13 @@ func (h *Realtime) GameRequests(w http.ResponseWriter, r *http.Request) {
 			}
 			name := "game-request"
 			if event.Type == gamerequest.EventChatMessage {
-				// Chat signals go only to current participants, checked now so
-				// that leaving cuts delivery on the very next message. Any
-				// failure to prove access drops the signal.
+				// Only detail-page streams can show chat. Filter by their selected
+				// request before querying current membership.
+				if event.RequestID != r.URL.Query().Get("chatRequestId") {
+					continue
+				}
+				// Chat signals carry no content. Any failure to prove access drops
+				// the signal, and access is checked for every matching event.
 				viewer, _ := webmiddleware.CurrentUser(r.Context())
 				if h.chat == nil || viewer.ID == "" {
 					continue

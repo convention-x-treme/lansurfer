@@ -1697,13 +1697,15 @@ type routerDiscovery struct {
 }
 
 type routerGameRequests struct {
-	created   gamerequest.GameRequest
-	joined    string
-	left      string
-	closed    string
-	cancelled string
-	started   string
-	joinError error
+	created      gamerequest.GameRequest
+	joined       string
+	left         string
+	closed       string
+	cancelled    string
+	started      string
+	details      string
+	detailsInput gamerequest.UpdateDetailsInput
+	joinError    error
 }
 
 func (r *routerGameRequests) Create(_ context.Context, creatorID, gameID string, maximum *int32, startsAt time.Time, description string) (gamerequest.GameRequest, error) {
@@ -1725,6 +1727,11 @@ func (r *routerGameRequests) Leave(_ context.Context, requestID, userID string) 
 	return nil
 }
 func (*routerGameRequests) RecordView(context.Context, string, string) error { return nil }
+func (r *routerGameRequests) UpdateDetails(_ context.Context, requestID, userID string, input gamerequest.UpdateDetailsInput) error {
+	r.details = requestID + "/" + userID
+	r.detailsInput = input
+	return nil
+}
 
 func (r *routerGameRequests) Close(_ context.Context, requestID, userID string) error {
 	r.closed = requestID + "/" + userID
@@ -1860,6 +1867,40 @@ func TestStartRouteIsAuthenticatedAndCSRFProtected(t *testing.T) {
 	}
 	if response := post(true, true); response.Code != http.StatusSeeOther || commands.started != "request-1/user-1" {
 		t.Errorf("start: status = %d, started = %q", response.Code, commands.started)
+	}
+}
+
+func TestDetailsRouteIsAuthenticatedAndCSRFProtected(t *testing.T) {
+	commands := &routerGameRequests{}
+	queries := &routerGameRequestQueries{items: []requestquery.Request{{
+		ID: "request-1", CreatorID: "user-1", Status: gamerequest.StatusOpen,
+		StartsAt: time.Date(2099, 1, 1, 12, 0, 0, 0, time.UTC),
+	}}}
+	router := gameRequestTestRouter(commands, queries, nil)
+
+	post := func(authenticated, csrf bool) *httptest.ResponseRecorder {
+		request := httptest.NewRequest(http.MethodPost, "/game-requests/request-1/details", strings.NewReader("max_players=6&start_date=2099-01-01&start_time=12%3A00&timezone=UTC"))
+		request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		if authenticated {
+			request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+		}
+		if csrf {
+			addCSRF(request)
+		}
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, request)
+		return response
+	}
+
+	if response := post(true, false); response.Code != http.StatusForbidden || commands.details != "" {
+		t.Errorf("without CSRF: status = %d, details = %q", response.Code, commands.details)
+	}
+	if post(false, true); commands.details != "" {
+		t.Errorf("anonymous update reached the command: %q", commands.details)
+	}
+	if response := post(true, true); response.Code != http.StatusSeeOther || commands.details != "request-1/user-1" ||
+		commands.detailsInput.MaxPlayers == nil || *commands.detailsInput.MaxPlayers != 6 {
+		t.Errorf("details update: status = %d, details = %q, input = %#v", response.Code, commands.details, commands.detailsInput)
 	}
 }
 

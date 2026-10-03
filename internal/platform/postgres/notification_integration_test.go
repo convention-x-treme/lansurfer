@@ -14,6 +14,7 @@ import (
 	gamerequestpostgres "github.com/convention-x-treme/lansurfer/internal/gamerequest/postgres"
 	"github.com/convention-x-treme/lansurfer/internal/notification"
 	notificationpostgres "github.com/convention-x-treme/lansurfer/internal/notification/postgres"
+	gamerequestquery "github.com/convention-x-treme/lansurfer/internal/query/gamerequest"
 	"github.com/convention-x-treme/lansurfer/internal/user"
 	userpostgres "github.com/convention-x-treme/lansurfer/internal/user/postgres"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -1167,5 +1168,95 @@ func TestNotificationStartedActivityMaterializesWork(t *testing.T) {
 	var count int
 	if err := pool.QueryRow(t.Context(), "SELECT count(*) FROM notification_work WHERE kind = 'started' AND game_request_id = $1", request.ID).Scan(&count); err != nil || count != 1 {
 		t.Fatalf("started notification_work rows = %d, %v, want 1", count, err)
+	}
+}
+
+// A Host capacity change is real notification work that reaches Discord's
+// synchronized message and nothing personal: it materializes one Discord
+// delivery and zero Web Push deliveries even though a participant has Web Push
+// enabled and would receive a joined/started notification.
+func TestNotificationRequestUpdatedMaterializesDiscordOnly(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+	fixture := newNotificationFixture(t, pool)
+	store := notificationpostgres.NewStore(pool)
+	key := make([]byte, 32)
+	discordSendConnect(t, store, key, "private-token")
+	users := user.NewService(userpostgres.NewStore(pool))
+	subscriptions, err := notification.NewSubscriptionService(store, store, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := subscriptions.Enable(t.Context(), fixture.guest.ID, "guest-device", "Device", "https://push.example/guest", "browser-key", "browser-auth"); err != nil {
+		t.Fatal(err)
+	}
+	queries := gamerequestquery.NewStore(pool)
+	followers := game.NewSubscriptionService(gamepostgres.NewStore(pool))
+	push := notification.NewWebPushTransport(store, store, store, followers, queries, pushSummaryReader{queries}, pushNickReader{users}, "https://lan.example", "Camp Nova", key, &fakePushSender{})
+	discord := notification.NewDiscordSendTransport(store, key, "https://lan.example", "Camp Nova", nil)
+
+	maximum := int32(4)
+	request, err := fixture.requests.Create(t.Context(), fixture.host.ID, fixture.gameID, &maximum, time.Now().Add(time.Hour), "Capacity")
+	if err != nil {
+		t.Fatalf("create game request: %v", err)
+	}
+	if err := fixture.requests.Join(t.Context(), request.ID, fixture.guest.ID); err != nil {
+		t.Fatalf("join: %v", err)
+	}
+	if err := store.InitializeBaseline(t.Context()); err != nil {
+		t.Fatalf("InitializeBaseline() error = %v", err)
+	}
+
+	// A multi-field update synchronizes one current snapshot without personal Web Push.
+	newMaximum := int32(6)
+	input := gamerequest.UpdateDetailsInput{
+		MaxPlayers: &newMaximum, StartsAt: request.StartsAt.Add(time.Hour), Description: "Updated details",
+	}
+	if err := fixture.requests.UpdateDetails(t.Context(), request.ID, fixture.host.ID, input); err != nil {
+		t.Fatalf("UpdateDetails() error = %v", err)
+	}
+	activities, err := store.DiscoverActivity(t.Context(), 10)
+	if err != nil || len(activities) != 1 || activities[0].Kind != notification.ActivityUpdated || activities[0].GameRequestID != request.ID {
+		t.Fatalf("DiscoverActivity() = %#v, %v, want exactly one request_updated activity for %s", activities, err, request.ID)
+	}
+	pushTargets, err := push.Targets(t.Context(), activities[0])
+	if err != nil || len(pushTargets) != 0 {
+		t.Fatalf("Web Push targets = %#v, %v, want none", pushTargets, err)
+	}
+	discordTargets, err := discord.Targets(t.Context(), activities[0])
+	if err != nil || len(discordTargets) != 1 {
+		t.Fatalf("Discord targets = %#v, %v, want exactly one", discordTargets, err)
+	}
+	if err := store.MaterializeWork(t.Context(), activities[0], append(pushTargets, discordTargets...)); err != nil {
+		t.Fatalf("MaterializeWork() error = %v", err)
+	}
+
+	var works int
+	if err := pool.QueryRow(t.Context(), "SELECT count(*) FROM notification_work WHERE kind = 'request_updated' AND game_request_id = $1 AND NOT baseline", request.ID).Scan(&works); err != nil || works != 1 {
+		t.Fatalf("request_updated notification_work rows = %d, %v, want 1", works, err)
+	}
+	var discordRows, pushRows int
+	if err := pool.QueryRow(t.Context(), `
+		SELECT count(*) FILTER (WHERE d.transport = 'discord'), count(*) FILTER (WHERE d.transport = 'webpush')
+		FROM notification_delivery d JOIN notification_work w ON w.id = d.work_id
+		WHERE w.kind = 'request_updated' AND w.game_request_id = $1`, request.ID).Scan(&discordRows, &pushRows); err != nil {
+		t.Fatal(err)
+	}
+	if discordRows != 1 || pushRows != 0 {
+		t.Fatalf("request_updated deliveries: discord = %d, webpush = %d, want 1 and 0", discordRows, pushRows)
+	}
+
+	// The same participant and the same Web Push setup do get a start push.
+	if err := fixture.requests.Start(t.Context(), request.ID, fixture.host.ID); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	started, err := store.DiscoverActivity(t.Context(), 10)
+	if err != nil || len(started) != 1 || started[0].Kind != notification.ActivityStarted {
+		t.Fatalf("DiscoverActivity() after start = %#v, %v", started, err)
+	}
+	if targets, err := push.Targets(t.Context(), started[0]); err != nil || len(targets) != 1 {
+		t.Fatalf("Web Push targets for start = %#v, %v, want the participant's device (control)", targets, err)
 	}
 }
