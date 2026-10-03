@@ -266,6 +266,8 @@ The implementation follows the participant-authorized realtime pattern establish
 
 For a matching detail-page request, the realtime handler checks current session-information access per signal. It sends the signal only when the viewer is currently authorized for that active request.
 
+Because #104 currently scopes the detail stream with the chat-specific `chatRequestId` query parameter, #102 should make that scope neutral (for example `detailRequestId`) and use the same selected request for both chat and session-information signals. Do not add parallel chat/session query parameters for the same detail page.
+
 The dedicated HTTP read endpoint still performs its own authorization. SSE filtering is defense in depth and metadata minimization, not the authorization boundary for values.
 
 Leaving therefore stops future session-information signals as well as future value reads.
