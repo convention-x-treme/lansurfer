@@ -62,6 +62,35 @@ func (q *Queries) CancelGameRequest(ctx context.Context, arg CancelGameRequestPa
 	return result.RowsAffected(), nil
 }
 
+const chatAccess = `-- name: ChatAccess :one
+SELECT gr.status,
+       EXISTS (
+           SELECT 1 FROM game_request_members m
+           WHERE m.game_request_id = gr.id AND m.user_id = $1::uuid
+       ) AS is_member
+FROM game_requests gr
+WHERE gr.id = $2::uuid
+`
+
+type ChatAccessParams struct {
+	UserID        pgtype.UUID
+	GameRequestID pgtype.UUID
+}
+
+type ChatAccessRow struct {
+	Status   string
+	IsMember bool
+}
+
+// Chat is a plain chronological stream scoped to one request. Authorization is
+// decided by the caller from ChatAccess (or the locked request row for posting).
+func (q *Queries) ChatAccess(ctx context.Context, arg ChatAccessParams) (ChatAccessRow, error) {
+	row := q.db.QueryRow(ctx, chatAccess, arg.UserID, arg.GameRequestID)
+	var i ChatAccessRow
+	err := row.Scan(&i.Status, &i.IsMember)
+	return i, err
+}
+
 const closeGameRequest = `-- name: CloseGameRequest :execrows
 UPDATE game_requests
 SET status = 'closed', updated_at = now()
@@ -92,6 +121,27 @@ func (q *Queries) CountGameRequestMembers(ctx context.Context, gameRequestID pgt
 	var count int64
 	err := row.Scan(&count)
 	return count, err
+}
+
+const countRecentGameRequestMessages = `-- name: CountRecentGameRequestMessages :one
+SELECT count(*)::bigint
+FROM game_request_messages
+WHERE game_request_id = $1::uuid
+  AND author_id = $2::uuid
+  AND created_at > clock_timestamp() - make_interval(secs => $3::float8)
+`
+
+type CountRecentGameRequestMessagesParams struct {
+	GameRequestID pgtype.UUID
+	AuthorID      pgtype.UUID
+	WindowSeconds float64
+}
+
+func (q *Queries) CountRecentGameRequestMessages(ctx context.Context, arg CountRecentGameRequestMessagesParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countRecentGameRequestMessages, arg.GameRequestID, arg.AuthorID, arg.WindowSeconds)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
 }
 
 const createGameRequest = `-- name: CreateGameRequest :one
@@ -150,6 +200,48 @@ func (q *Queries) CreateGameRequest(ctx context.Context, arg CreateGameRequestPa
 	return i, err
 }
 
+const createGameRequestMessage = `-- name: CreateGameRequestMessage :one
+WITH inserted AS (
+    INSERT INTO game_request_messages (game_request_id, author_id, body)
+    VALUES ($1::uuid, $2::uuid, $3)
+    RETURNING id, game_request_id, author_id, body, created_at
+)
+SELECT inserted.id::text AS id, inserted.game_request_id::text AS game_request_id,
+       inserted.author_id::text AS author_id, COALESCE(u.game_nick, '')::text AS author_game_nick,
+       inserted.body, inserted.created_at
+FROM inserted
+JOIN users u ON u.id = inserted.author_id
+`
+
+type CreateGameRequestMessageParams struct {
+	GameRequestID pgtype.UUID
+	AuthorID      pgtype.UUID
+	Body          string
+}
+
+type CreateGameRequestMessageRow struct {
+	ID             string
+	GameRequestID  string
+	AuthorID       string
+	AuthorGameNick string
+	Body           string
+	CreatedAt      pgtype.Timestamptz
+}
+
+func (q *Queries) CreateGameRequestMessage(ctx context.Context, arg CreateGameRequestMessageParams) (CreateGameRequestMessageRow, error) {
+	row := q.db.QueryRow(ctx, createGameRequestMessage, arg.GameRequestID, arg.AuthorID, arg.Body)
+	var i CreateGameRequestMessageRow
+	err := row.Scan(
+		&i.ID,
+		&i.GameRequestID,
+		&i.AuthorID,
+		&i.AuthorGameNick,
+		&i.Body,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const gameRequestMemberExists = `-- name: GameRequestMemberExists :one
 SELECT EXISTS (
     SELECT 1 FROM game_request_members
@@ -168,6 +260,58 @@ func (q *Queries) GameRequestMemberExists(ctx context.Context, arg GameRequestMe
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
+}
+
+const listGameRequestMessages = `-- name: ListGameRequestMessages :many
+SELECT id, game_request_id, author_id, author_game_nick, body, created_at
+FROM (
+    SELECT m.id::text AS id, m.game_request_id::text AS game_request_id,
+           m.author_id::text AS author_id, COALESCE(u.game_nick, '')::text AS author_game_nick,
+           m.body, m.created_at, m.id AS sort_id
+    FROM game_request_messages m
+    JOIN users u ON u.id = m.author_id
+    WHERE m.game_request_id = $1::uuid
+    ORDER BY m.created_at DESC, m.id DESC
+    LIMIT 200
+) latest
+ORDER BY created_at, sort_id
+`
+
+type ListGameRequestMessagesRow struct {
+	ID             string
+	GameRequestID  string
+	AuthorID       string
+	AuthorGameNick string
+	Body           string
+	CreatedAt      pgtype.Timestamptz
+}
+
+// Newest 200, returned oldest first.
+func (q *Queries) ListGameRequestMessages(ctx context.Context, gameRequestID pgtype.UUID) ([]ListGameRequestMessagesRow, error) {
+	rows, err := q.db.Query(ctx, listGameRequestMessages, gameRequestID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListGameRequestMessagesRow
+	for rows.Next() {
+		var i ListGameRequestMessagesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.GameRequestID,
+			&i.AuthorID,
+			&i.AuthorGameNick,
+			&i.Body,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const lockGameRequest = `-- name: LockGameRequest :one

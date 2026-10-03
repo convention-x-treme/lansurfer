@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"time"
@@ -16,12 +17,18 @@ type GameRequestEvents interface {
 	Subscribers() int
 }
 
-type Realtime struct {
-	events GameRequestEvents
+// ChatAccess answers whether a user may currently read a request's chat.
+type ChatAccess interface {
+	CanChat(ctx context.Context, requestID, userID string) (bool, error)
 }
 
-func NewRealtime(events GameRequestEvents) *Realtime {
-	return &Realtime{events: events}
+type Realtime struct {
+	events GameRequestEvents
+	chat   ChatAccess
+}
+
+func NewRealtime(events GameRequestEvents, chat ChatAccess) *Realtime {
+	return &Realtime{events: events, chat: chat}
 }
 
 func (h *Realtime) GameRequests(w http.ResponseWriter, r *http.Request) {
@@ -67,11 +74,29 @@ func (h *Realtime) GameRequests(w http.ResponseWriter, r *http.Request) {
 				reason = "server-shutdown"
 				return
 			}
+			name := "game-request"
+			if event.Type == gamerequest.EventChatMessage {
+				// Only detail-page streams can show chat. Filter by their selected
+				// request before querying current membership.
+				if event.RequestID != r.URL.Query().Get("chatRequestId") {
+					continue
+				}
+				// Chat signals carry no content. Any failure to prove access drops
+				// the signal, and access is checked for every matching event.
+				viewer, _ := webmiddleware.CurrentUser(r.Context())
+				if h.chat == nil || viewer.ID == "" {
+					continue
+				}
+				if allowed, err := h.chat.CanChat(r.Context(), event.RequestID, viewer.ID); err != nil || !allowed {
+					continue
+				}
+				name = "game-request-chat"
+			}
 			payload, err := json.Marshal(event)
 			if err != nil {
 				continue
 			}
-			if _, err := w.Write(append([]byte("event: game-request\ndata: "), append(payload, '\n', '\n')...)); err != nil {
+			if _, err := w.Write(append([]byte("event: "+name+"\ndata: "), append(payload, '\n', '\n')...)); err != nil {
 				reason = "write-failed"
 				return
 			}

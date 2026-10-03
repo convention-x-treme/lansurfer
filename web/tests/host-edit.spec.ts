@@ -138,7 +138,7 @@ test("planned-start activity stays inside a narrow rail", async ({ page }) => {
       await expect(detail.locator("time[data-local-time='absolute']")).toHaveCount(2);
       const layout = await row.evaluate((element) => {
         const content = element.querySelector(".activity-content")!;
-        const card = element.closest("section")!;
+        const card = element.closest(".detail-card")!;
         const bounds = (item: Element) => {
           const rect = item.getBoundingClientRect();
           return { left: rect.left, right: rect.right, scroll: item.scrollWidth, client: item.clientWidth };

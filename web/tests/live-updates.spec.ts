@@ -334,3 +334,19 @@ test("a live update arriving during a mutation leaves htmx balanced", async ({ p
   await expect(page.locator("#game-request-list")).toBeVisible();
   await request.post("/__test__/mode?delay=0");
 });
+
+test("a live detail refresh preserves an unsent chat draft", async ({ page, request }) => {
+  await page.goto("/game-requests/new?game_id=game-1");
+  await page.getByRole("button", { name: "Create Game Request" }).click();
+  await page.waitForURL(/\/game-requests\/[0-9a-f-]+/);
+  await waitForRealtime(page, request, 1);
+  await instrumentHtmx(page);
+
+  const draft = page.getByRole("textbox", { name: "Message the lobby" });
+  await draft.fill("I am still typing");
+  const requestID = await page.locator("[data-game-request-detail]").getAttribute("data-game-request-id");
+  await request.post(`/__test__/publish?type=GameRequestJoined&request=${requestID}`);
+
+  await expect.poll(async () => (await htmxCounters(page)).after).toBeGreaterThan(0);
+  await expect(draft).toHaveValue("I am still typing");
+});

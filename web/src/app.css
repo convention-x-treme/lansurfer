@@ -624,12 +624,72 @@
     background: color-mix(in srgb, var(--color-base-content) 5%, transparent);
   }
 
+  /* Request-local chat log; the Activity card stays separate. */
+  /* Straight rule between the messages and what writes to them. */
+  .chat-compose {
+    display: flex;
+    flex-direction: column;
+    gap: 0.625rem;
+    border-top: 1px solid var(--border-raised);
+    padding-top: 0.875rem;
+  }
+
+  .chat-log > :first-child {
+    margin-top: auto;
+  }
+
+  /* A main-column card titles itself like the Players card beside it. */
+  .detail-main .detail-card-summary {
+    font-size: 1.0625rem;
+    color: var(--color-base-content);
+  }
+
+  .chat-log {
+    display: flex;
+    max-height: 28rem;
+    min-height: 8rem;
+    flex: 1;
+    flex-direction: column;
+    gap: 0.75rem;
+    overflow-y: auto;
+    overflow-wrap: anywhere;
+  }
+
+
+  /* <details> lays its content out in an internal slot, so the card's flex
+     column cannot gap the children directly; the body carries it instead. */
+  details.detail-card {
+    display: block;
+  }
+
+  .detail-card-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.875rem;
+    padding-top: 0.875rem;
+  }
+
+  .detail-card-summary {
+    display: flex;
+    cursor: pointer;
+    list-style: none;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .detail-card-summary::-webkit-details-marker {
+    display: none;
+  }
+
+  details[open] > .detail-card-summary > i {
+    transform: rotate(180deg);
+  }
+
   .activity-content,
   .activity-detail {
     min-width: 0;
     overflow-wrap: anywhere;
   }
-
   .detail-card-accent {
     border-color: color-mix(in srgb, var(--color-warning) 40%, var(--border-raised));
   }
@@ -2234,6 +2294,17 @@
 
 /* Supporting actions. Harbour gives them a body, so they read as a real choice
    instead of the outline that everything used to share. */
+/* Quick replies are shortcuts, not calls to action: outlined and light so the
+   message field stays the focus. Unlayered, like the other .btn variants. */
+.btn.chat-chip {
+  border: 1px solid var(--border-raised);
+  font-weight: 500;
+}
+
+.btn.chat-chip:hover {
+  background: var(--surface-quiet);
+}
+
 .btn-quiet {
   --btn-color: var(--surface-quiet);
   --btn-fg: var(--ink-quiet);
