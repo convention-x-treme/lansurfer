@@ -721,8 +721,14 @@ func (f *fixture) CanChat(_ context.Context, requestID, userID string) (bool, er
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	entry, ok := f.requests[requestID]
-	if !ok { return false, gamerequest.ErrNotFound }
-	if !isActiveStatus(entry.request.Status) { return false, gamerequest.ErrChatClosed }
-	if entry.request.CreatorID == userID || entry.members[userID] { return true, nil }
+	if !ok {
+		return false, gamerequest.ErrNotFound
+	}
+	if !isActiveStatus(entry.request.Status) {
+		return false, gamerequest.ErrChatClosed
+	}
+	if entry.request.CreatorID == userID || entry.members[userID] {
+		return true, nil
+	}
 	return false, gamerequest.ErrNotMember
 }

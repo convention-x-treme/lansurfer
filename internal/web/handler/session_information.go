@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/convention-x-treme/lansurfer/internal/gamerequest"
+	"github.com/convention-x-treme/lansurfer/internal/web/components"
 	webmiddleware "github.com/convention-x-treme/lansurfer/internal/web/middleware"
 	"github.com/convention-x-treme/lansurfer/internal/web/pages"
 	"github.com/go-chi/chi/v5"
@@ -19,27 +20,24 @@ type GameRequestSessionInformation interface {
 	CanSessionInformation(context.Context, string, string) (bool, error)
 }
 
-func (h *GameRequests) sessionView(r *http.Request, mode string) pages.SessionInformationView {
+func (h *GameRequests) sessionView(r *http.Request, mode string) (pages.SessionInformationView, error) {
 	view := pages.SessionInformationView{RequestID: chi.URLParam(r, "requestID")}
 	if h.sessionInformation == nil {
-		return view
+		return view, nil
 	}
 	account, _ := webmiddleware.CurrentUser(r.Context())
 	info, err := h.sessionInformation.SessionInformation(r.Context(), view.RequestID, account.ID)
 	if errors.Is(err, gamerequest.ErrNotMember) {
-		view.Visible = true
-		view.JoinRequired = true
-		return view
+		view.Visible, view.JoinRequired = true, true
+		return view, nil
 	}
 	if errors.Is(err, gamerequest.ErrNotActive) {
-		return view
+		return view, nil
 	}
 	if err != nil {
-		return view
+		return view, err
 	}
-	view.Visible = true
-	view.CanEdit = info.CanEdit
-	view.Entries = info.Entries
+	view.Visible, view.CanEdit, view.Entries = true, info.CanEdit, info.Entries
 	if info.CanEdit && mode == "add" {
 		view.Form = &pages.SessionInformationForm{Mode: "add"}
 	}
@@ -47,19 +45,28 @@ func (h *GameRequests) sessionView(r *http.Request, mode string) pages.SessionIn
 		for _, entry := range info.Entries {
 			if entry.ID == mode {
 				view.Form = &pages.SessionInformationForm{Mode: "edit", EntryID: entry.ID, Key: entry.Key, Value: entry.Value}
-				break
+				return view, nil
 			}
 		}
+		return view, gamerequest.ErrSessionInformationEntryNotFound
 	}
-	return view
+	return view, nil
 }
 
 func (h *GameRequests) SessionInformation(w http.ResponseWriter, r *http.Request) {
 	mode := sessionModeFromQuery(r)
-	view := h.sessionView(r, mode)
+	view, err := h.sessionView(r, mode)
+	if err != nil {
+		h.sessionFailure(w, r, err)
+		return
+	}
 	if r.Header.Get("HX-Request") == "true" {
 		target := "/game-requests/" + view.RequestID
-		if mode == "add" { target += "?session_add=1" } else if mode != "" { target += "?session_edit=" + mode }
+		if mode == "add" {
+			target += "?session_add=1"
+		} else if mode != "" {
+			target += "?session_edit=" + mode
+		}
 		w.Header().Set("HX-Replace-Url", target)
 	}
 	render(w, r, http.StatusOK, pages.GameRequestSessionInformation(view))
@@ -89,7 +96,7 @@ func (h *GameRequests) mutateSessionInformation(w http.ResponseWriter, r *http.R
 		err = h.sessionInformation.UpdateSessionInformationEntry(r.Context(), chi.URLParam(r, "requestID"), entryID, account.ID, input)
 	}
 	if err != nil {
-		h.sessionFailure(w, r, err)
+		h.sessionMutationFailure(w, r, entryID, input, err)
 		return
 	}
 	h.sessionSuccess(w, r)
@@ -111,6 +118,47 @@ func (h *GameRequests) sessionFailure(w http.ResponseWriter, r *http.Request, er
 	}
 	http.Error(w, gameRequestMessage(err), status)
 }
+
+func (h *GameRequests) sessionMutationFailure(w http.ResponseWriter, r *http.Request, entryID string, input gamerequest.SessionInformationInput, err error) {
+	status := gameRequestErrorStatus(err)
+	if status == http.StatusInternalServerError {
+		h.sessionFailure(w, r, err)
+		return
+	}
+	mode := "add"
+	if entryID != "" {
+		mode = entryID
+	}
+	view, viewErr := h.sessionView(r, mode)
+	if viewErr != nil {
+		h.sessionFailure(w, r, viewErr)
+		return
+	}
+	if view.Form == nil {
+		h.sessionFailure(w, r, err)
+		return
+	}
+	view.Form.Key, view.Form.Value = input.Key, input.Value
+	view.Form.Error = gameRequestMessage(err)
+	switch {
+	case errors.Is(err, gamerequest.ErrInvalidSessionInformationKey):
+		view.Form.ErrorField = "key"
+	case errors.Is(err, gamerequest.ErrInvalidSessionInformationValue):
+		view.Form.ErrorField = "value"
+	}
+	if r.Header.Get("HX-Request") == "true" {
+		render(w, r, http.StatusOK, pages.GameRequestSessionInformation(view))
+		return
+	}
+	account, _ := webmiddleware.CurrentUser(r.Context())
+	request, queryErr := h.queries.ByID(r.Context(), view.RequestID, account.ID)
+	if queryErr != nil {
+		h.sessionFailure(w, r, queryErr)
+		return
+	}
+	render(w, r, status, pages.GameRequestDetail(h.brand, h.navigationFor(r), request, account.ID, pages.GameRequestDetailMessage{}, components.Notice{}, view))
+}
+
 func sessionModeFromQuery(r *http.Request) string {
 	if r.URL.Query().Get("session_add") == "1" {
 		return "add"

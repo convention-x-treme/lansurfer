@@ -28,6 +28,9 @@ Use these terms consistently. Do not invent synonyms for domain concepts unless 
 - **Notification work / delivery**: durable processing state for external notification transports. It is separate from Game Request activity.
 - **Recently viewed**: local/browser presentation history. It is not Game Request activity or notification state.
 
+- **Session information**: request-local generic key/value coordination data. While a Game Request is active, the Host and currently joined players can read it; only the Host can change it.
+- **Secret session information**: scheduled #103 presentation-privacy extension. It has the same participant audience and is not implemented by #102.
+
 ## Integrations and presentation
 
 - **Discord authentication**: Discord used as a login identity provider.

@@ -397,7 +397,13 @@ func (h *GameRequests) View(w http.ResponseWriter, r *http.Request) {
 		webmiddleware.LogError(r, "record Game Request view", err)
 	}
 	message := detailEditorMessage(request, account.ID, r.URL.Query().Get("edit") == "1")
-	render(w, r, http.StatusOK, pages.GameRequestDetail(h.brand, h.navigationFor(r), request, account.ID, message, notice(r), h.sessionView(r, sessionModeFromQuery(r))))
+	session, sessionErr := h.sessionView(r, sessionModeFromQuery(r))
+	if sessionErr != nil {
+		webmiddleware.LogError(r, "load session information", sessionErr)
+		h.renderError(w, r)
+		return
+	}
+	render(w, r, http.StatusOK, pages.GameRequestDetail(h.brand, h.navigationFor(r), request, account.ID, message, notice(r), session))
 }
 
 func (h *GameRequests) RefreshView(w http.ResponseWriter, r *http.Request) {
@@ -413,7 +419,13 @@ func (h *GameRequests) RefreshView(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	message := detailEditorMessage(request, account.ID, r.URL.Query().Get("edit") == "1")
-	render(w, r, http.StatusOK, pages.GameRequestDetailContentWithSession(request, account.ID, true, message, h.sessionView(r, sessionModeFromQuery(r))))
+	session, sessionErr := h.sessionView(r, sessionModeFromQuery(r))
+	if sessionErr != nil {
+		webmiddleware.LogError(r, "refresh session information", sessionErr)
+		http.Error(w, "refresh session information", http.StatusInternalServerError)
+		return
+	}
+	render(w, r, http.StatusOK, pages.GameRequestDetailContentWithSession(request, account.ID, true, message, session))
 }
 func detailEditorMessage(request requestquery.Request, viewerID string, editing bool) pages.GameRequestDetailMessage {
 	if !editing || request.CreatorID != viewerID ||
@@ -493,7 +505,13 @@ func (h *GameRequests) renderChangeError(w http.ResponseWriter, r *http.Request,
 		h.renderError(w, r)
 		return
 	}
-	render(w, r, status, pages.GameRequestDetail(h.brand, h.navigationFor(r), request, viewerID, pages.GameRequestDetailMessage{Text: gameRequestMessage(cause)}, components.Notice{}, h.sessionView(r, "")))
+	session, sessionErr := h.sessionView(r, "")
+	if sessionErr != nil {
+		webmiddleware.LogError(r, "reload session information after request error", sessionErr)
+		h.renderError(w, r)
+		return
+	}
+	render(w, r, status, pages.GameRequestDetail(h.brand, h.navigationFor(r), request, viewerID, pages.GameRequestDetailMessage{Text: gameRequestMessage(cause)}, components.Notice{}, session))
 }
 
 // UpdateDetails changes the Host-editable request fields in one command. The
@@ -579,7 +597,13 @@ func (h *GameRequests) UpdateDetails(w http.ResponseWriter, r *http.Request) {
 		(request.Status == gamerequest.StatusOpen || request.Status == gamerequest.StatusPlaying)
 	message.Form = form
 	message.InitializeStart = false
-	render(w, r, status, pages.GameRequestDetail(h.brand, h.navigationFor(r), request, account.ID, message, components.Notice{}, h.sessionView(r, "")))
+	session, sessionErr := h.sessionView(r, "")
+	if sessionErr != nil {
+		webmiddleware.LogError(r, "reload session information after details error", sessionErr)
+		h.renderError(w, r)
+		return
+	}
+	render(w, r, status, pages.GameRequestDetail(h.brand, h.navigationFor(r), request, account.ID, message, components.Notice{}, session))
 }
 func parseCapacity(value string) (*int32, error) {
 	value = strings.TrimSpace(value)
@@ -735,7 +759,7 @@ func (h *GameRequests) navigationFor(r *http.Request) components.NavigationState
 
 func gameRequestErrorStatus(err error) int {
 	switch {
-	case errors.Is(err, gamerequest.ErrNotFound):
+	case errors.Is(err, gamerequest.ErrNotFound), errors.Is(err, gamerequest.ErrSessionInformationEntryNotFound):
 		return http.StatusNotFound
 	case errors.Is(err, gamerequest.ErrNotCreator):
 		return http.StatusForbidden
@@ -743,9 +767,11 @@ func gameRequestErrorStatus(err error) int {
 		errors.Is(err, gamerequest.ErrNotMember), errors.Is(err, gamerequest.ErrCreatorCannotLeave),
 		errors.Is(err, gamerequest.ErrNotOpen), errors.Is(err, gamerequest.ErrNotPlaying),
 		errors.Is(err, gamerequest.ErrChatClosed), errors.Is(err, gamerequest.ErrNotActive),
-		errors.Is(err, gamerequest.ErrCapacityBelowMembers):
+		errors.Is(err, gamerequest.ErrCapacityBelowMembers), errors.Is(err, gamerequest.ErrSessionInformationKeyExists),
+		errors.Is(err, gamerequest.ErrSessionInformationLimit):
 		return http.StatusConflict
-	case errors.Is(err, gamerequest.ErrInvalidMessage):
+	case errors.Is(err, gamerequest.ErrInvalidMessage), errors.Is(err, gamerequest.ErrInvalidSessionInformationKey),
+		errors.Is(err, gamerequest.ErrInvalidSessionInformationValue):
 		return http.StatusUnprocessableEntity
 	case errors.Is(err, gamerequest.ErrChatRateLimited):
 		return http.StatusTooManyRequests
@@ -804,6 +830,16 @@ func gameRequestMessage(err error) string {
 		return "This Game Request is not currently playing."
 	case errors.Is(err, gamerequest.ErrInvalidMessage):
 		return "Messages must be 1 to 1000 characters."
+	case errors.Is(err, gamerequest.ErrInvalidSessionInformationKey):
+		return "Key must contain 1 to 40 characters and no line breaks."
+	case errors.Is(err, gamerequest.ErrInvalidSessionInformationValue):
+		return "Value must contain 1 to 300 characters and no line breaks."
+	case errors.Is(err, gamerequest.ErrSessionInformationKeyExists):
+		return "A session information entry already uses this key."
+	case errors.Is(err, gamerequest.ErrSessionInformationLimit):
+		return "This Game Request already has the maximum number of session information entries."
+	case errors.Is(err, gamerequest.ErrSessionInformationEntryNotFound):
+		return "Session information entry not found."
 	case errors.Is(err, gamerequest.ErrChatRateLimited):
 		return "You are sending messages too fast. Wait a moment and try again."
 	case errors.Is(err, gamerequest.ErrChatClosed):

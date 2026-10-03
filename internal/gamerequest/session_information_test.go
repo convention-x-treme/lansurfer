@@ -15,9 +15,19 @@ func TestSessionInformationInputValidation(t *testing.T) {
 	if repository.sessionInput != (SessionInformationInput{Key: "Server", Value: "10.0.0.1"}) {
 		t.Fatalf("input = %#v", repository.sessionInput)
 	}
-	for _, input := range []SessionInformationInput{{Key: " ", Value: "value"}, {Key: "key", Value: " "}, {Key: "key\nx", Value: "value"}, {Key: "key", Value: "value\rx"}, {Key: strings.Repeat("ä", 41), Value: "value"}, {Key: "key", Value: strings.Repeat("界", 301)}} {
-		if err := service.CreateSessionInformationEntry(t.Context(), "request-1", "host-1", input); err == nil {
-			t.Errorf("CreateSessionInformationEntry(%#v) succeeded", input)
+	for _, test := range []struct {
+		input SessionInformationInput
+		want  error
+	}{
+		{SessionInformationInput{Key: " ", Value: "value"}, ErrInvalidSessionInformationKey},
+		{SessionInformationInput{Key: "key", Value: " "}, ErrInvalidSessionInformationValue},
+		{SessionInformationInput{Key: "key\nx", Value: "value"}, ErrInvalidSessionInformationKey},
+		{SessionInformationInput{Key: "key", Value: "value\rx"}, ErrInvalidSessionInformationValue},
+		{SessionInformationInput{Key: strings.Repeat("ä", 41), Value: "value"}, ErrInvalidSessionInformationKey},
+		{SessionInformationInput{Key: "key", Value: strings.Repeat("界", 301)}, ErrInvalidSessionInformationValue},
+	} {
+		if err := service.CreateSessionInformationEntry(t.Context(), "request-1", "host-1", test.input); !errors.Is(err, test.want) {
+			t.Errorf("CreateSessionInformationEntry(%#v) error = %v, want %v", test.input, err, test.want)
 		}
 	}
 	for _, input := range []SessionInformationInput{{Key: strings.Repeat("ä", 40), Value: "v"}, {Key: "k", Value: strings.Repeat("界", 300)}} {
