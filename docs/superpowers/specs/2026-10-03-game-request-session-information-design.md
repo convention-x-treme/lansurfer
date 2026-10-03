@@ -300,7 +300,9 @@ Controls provide:
 
 Reveal automatically returns to the masked state after 20 seconds. Manual Hide cancels the current reveal immediately. A fragment/full-detail refresh renders the secret masked again.
 
-If clipboard access fails, the UI reports the failure without automatically revealing the value; the user can choose Reveal explicitly.
+Copy must work in LANsurfer's ordinary browser deployment contexts without requiring the value to become visibly revealed. Prefer the modern Clipboard API when available; where the browser does not expose it (for example an insecure HTTP context), a user-gesture fallback may copy through a transient non-visible form control. The fallback must not leave an extra plaintext control in the DOM after the copy attempt.
+
+If all clipboard mechanisms fail, the UI reports the failure without automatically revealing the value; the user can choose Reveal explicitly.
 
 Each secret's reveal state is local presentation state only and is never persisted or sent to the server.
 
@@ -486,3 +488,11 @@ Builds on merged #102 and adds:
 - final product/architecture/terminology wording for the presentation-privacy threat model.
 
 This split keeps #102 reviewable and gives #103's privacy-sensitive behavior its own review while avoiding a later model rewrite.
+
+## 13. Working-artifact lifecycle
+
+This file is a temporary feature-branch design artifact under `docs/superpowers/`, not a repository-wide source of truth.
+
+Before #102 is merged, harvest the approved shared behavior into `PRODUCT.md`, `TERMINOLOGY.md`, and issues #102/#103 as appropriate, and harvest the implemented #102 technical invariants into `ARCHITECTURE.md`. Before #103 is merged, harvest its implemented technical invariants there as well.
+
+Remove this working spec from the final merged tree once its still-relevant decisions are represented by those canonical sources, following `docs/superpowers/README.md`.
