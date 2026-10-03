@@ -270,6 +270,7 @@ document.addEventListener("htmx:afterRequest", () => {
 type RequestDetailFieldDraft = {
   name: string;
   value: string;
+  baseline?: string;
   rejected: boolean;
   focused: boolean;
   error: string;
@@ -298,6 +299,7 @@ document.addEventListener("htmx:beforeSwap", (event) => {
       drafts.push({
         name: field.name,
         value: field.value,
+        baseline: field.name === "start_date" || field.name === "start_time" ? field.defaultValue : undefined,
         rejected,
         focused: active === field,
         error: rejected ? error?.textContent?.trim() ?? "" : "",
@@ -336,6 +338,7 @@ document.addEventListener("htmx:afterSwap", (event) => {
     }
     const field = editor.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[name="${draft.name}"]`);
     if (!field) continue;
+    if (draft.baseline !== undefined && field instanceof HTMLInputElement) field.defaultValue = draft.baseline;
     field.value = draft.value;
     if (field instanceof HTMLTextAreaElement) updateDescriptionCount(field);
     if (draft.rejected) {

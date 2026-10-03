@@ -128,6 +128,42 @@ test("a detail refresh preserves dirty custom start date and time", async ({ pag
   await page.waitForURL(/\/game-requests\/[0-9a-f-]+(?:\?.*)?$/);
   await expect(page.locator("#game-request-detail time[data-local-time='start']")).toHaveAttribute("datetime", expectedStart);
 });
+
+test.describe("Berlin custom-start refresh", () => {
+  test.use({ timezoneId: "Europe/Berlin" });
+
+  test("preserves a dirty time that matches the raw UTC default", async ({ page, request }) => {
+    await page.goto("/game-requests/new?game_id=game-1");
+    await page.getByLabel("Max players").fill("4");
+    await page.getByRole("button", { name: "Create Game Request" }).click();
+    await page.waitForURL(/\/game-requests\/[0-9a-f-]+(?:\?.*)?$/);
+    await page.getByRole("link", { name: "Edit" }).click();
+    await page.waitForURL(/\?edit=1$/);
+    await page.getByText("Pick date & time").click();
+    await page.locator("input[name='start_date']").fill("2099-05-02");
+    await page.locator("input[name='start_time']").fill("20:30");
+    await page.getByRole("button", { name: "Save" }).click();
+    await page.waitForURL(/\/game-requests\/[0-9a-f-]+(?:\?.*)?$/);
+
+    await page.getByRole("link", { name: "Edit" }).click();
+    await page.waitForURL(/\?edit=1$/);
+    const time = page.locator("input[name='start_time']");
+    await expect(time).toHaveValue("20:30");
+    await time.fill("18:30");
+    await waitForRealtime(page, request, 1);
+    await instrumentHtmx(page);
+    const id = await page.locator("#game-request-detail").getAttribute("data-game-request-id");
+    await request.post(`/__test__/publish?type=GameRequestJoined&request=${id}`);
+    await expect.poll(async () => (await htmxCounters(page)).after).toBeGreaterThan(0);
+    await expect(time).toHaveValue("18:30");
+    await page.getByRole("button", { name: "Save" }).click();
+    await page.waitForURL(/\/game-requests\/[0-9a-f-]+(?:\?.*)?$/);
+    await expect(page.locator("#game-request-detail time[data-local-time='start']")).toHaveAttribute(
+      "datetime",
+      "2099-05-02T16:30:00Z",
+    );
+  });
+});
 test("number inputs inserted by a detail refresh clamp immediately", async ({ page, request }) => {
   await page.goto("/game-requests/new?game_id=game-1");
   await page.getByLabel("Max players").fill("4");
