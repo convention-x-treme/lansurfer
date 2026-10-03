@@ -109,10 +109,14 @@ function localizeStartEditor(form: HTMLFormElement): void {
   const dateInput = form.elements.namedItem("start_date");
   const timeInput = form.elements.namedItem("start_time");
   if (Number.isNaN(startsAt.getTime()) || !(dateInput instanceof HTMLInputElement) || !(timeInput instanceof HTMLInputElement)) return;
-  dateInput.value = `${startsAt.getFullYear()}-${String(startsAt.getMonth() + 1).padStart(2, "0")}-${String(startsAt.getDate()).padStart(2, "0")}`;
-  timeInput.value = `${String(startsAt.getHours()).padStart(2, "0")}:${String(startsAt.getMinutes()).padStart(2, "0")}`;
-  dateInput.defaultValue = dateInput.value;
-  timeInput.defaultValue = timeInput.value;
+  if (dateInput.value === dateInput.defaultValue) {
+    dateInput.value = `${startsAt.getFullYear()}-${String(startsAt.getMonth() + 1).padStart(2, "0")}-${String(startsAt.getDate()).padStart(2, "0")}`;
+    dateInput.defaultValue = dateInput.value;
+  }
+  if (timeInput.value === timeInput.defaultValue) {
+    timeInput.value = `${String(startsAt.getHours()).padStart(2, "0")}:${String(startsAt.getMinutes()).padStart(2, "0")}`;
+    timeInput.defaultValue = timeInput.value;
+  }
 }
 
 function localize(root: ParentNode): void {
@@ -180,15 +184,15 @@ document.querySelectorAll<HTMLButtonElement>("[data-theme-toggle]").forEach((but
 // would sit there looking accepted until the form is sent. Correcting it
 // as it is typed says the bound immediately; the server still validates
 // the same range for anything that reaches it without this script.
-document.querySelectorAll<HTMLInputElement>("input[type=number][max]").forEach((field) => {
-  field.addEventListener("input", () => {
-    const value = Number(field.value);
-    if (field.value === "" || !Number.isFinite(value)) return;
-    const maximum = Number(field.max);
-    const minimum = field.min === "" ? -Infinity : Number(field.min);
-    if (value > maximum) field.value = field.max;
-    else if (value < minimum) field.value = field.min;
-  });
+document.addEventListener("input", (event) => {
+  const field = event.target;
+  if (!(field instanceof HTMLInputElement) || !field.matches("input[type=number][max]")) return;
+  const value = Number(field.value);
+  if (field.value === "" || !Number.isFinite(value)) return;
+  const maximum = Number(field.max);
+  const minimum = field.min === "" ? -Infinity : Number(field.min);
+  if (value > maximum) field.value = field.max;
+  else if (value < minimum) field.value = field.min;
 });
 
 function setGameRequestSearchBusy(event: Event, busy: boolean): void {
