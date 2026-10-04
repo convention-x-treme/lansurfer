@@ -410,13 +410,16 @@ for (const dirtyField of ["key", "value"] as const) {
       const response = await fetch(`/game-requests/${requestID}/session-information/${entryID}`, {
         method: "POST",
         headers: { "HX-Request": "true", "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({ key, value, csrf_token: csrf }),
+        body: new URLSearchParams({ key, value, csrf_token: csrf, is_secret: "true" }),
       });
       return response.status;
     }, { requestID, entryID, key: serverKey, value: serverValue, csrf });
     expect(result).toBe(200);
     await expect(key).toHaveValue(dirtyField === "key" ? localValue : "Server changed");
     await expect(value).toHaveValue(dirtyField === "value" ? localValue : "Fresh value");
+    const secret = page.getByRole("checkbox", { name: "Secret value" });
+    await expect(secret).toBeChecked();
+    await expect(value).toHaveAttribute("type", "password");
   });
 }
 
@@ -545,7 +548,7 @@ test("session-information tiles reflow and inline editor saves locally", async (
   await expect(page.locator("#session-information")).toContainText("Saved value");
 });
 
-test("secret session information copies while masked and resets on refresh", async ({ page, request }) => {
+test("secret copy stays masked and reveal resets on fragment and full-detail refresh", async ({ page, request }) => {
   await page.addInitScript(() => {
     Object.defineProperty(Navigator.prototype, "clipboard", {
       configurable: true,
@@ -593,7 +596,10 @@ test("secret session information copies while masked and resets on refresh", asy
   await expect(value).toHaveText("••••••••");
   await tile.getByRole("button", { name: "Reveal" }).click();
   await expect(value).toHaveText("shoulder-secret");
+  const previousDetail = await page.locator("#game-request-detail").elementHandle();
+  expect(previousDetail).not.toBeNull();
   await request.post(`/__test__/publish?type=GameRequestJoined&request=${requestID}`);
+  await expect.poll(() => previousDetail!.evaluate((element) => element.isConnected)).toBe(false);
   const refreshedValue = page.locator("#session-information [data-secret-value]");
   await expect(refreshedValue).toHaveText("••••••••");
   await page.locator("#session-information").getByRole("button", { name: "Reveal" }).click();
@@ -659,9 +665,11 @@ test("session-information refresh preserves a dirty secret toggle field", async 
   await waitForRealtime(page, request, 1);
   await page.getByRole("link", { name: "Add", exact: true }).click();
   const toggle = page.getByRole("checkbox", { name: "Secret value" });
+  await toggle.focus();
   await toggle.check();
   const requestID = await page.locator("[data-game-request-detail]").getAttribute("data-game-request-id");
   await request.post(`/__test__/publish?type=GameRequestSessionInformationChanged&request=${requestID}`);
+  await expect(toggle).toBeFocused();
   await expect(toggle).toBeChecked();
   await expect(page.getByRole("textbox", { name: "Value" })).toHaveAttribute("type", "password");
 });

@@ -381,7 +381,7 @@ type SessionInformationDraft = {
   keyRejected: boolean;
   valueRejected: boolean;
   error: string;
-  focused: "key" | "value" | "";
+  focused: "key" | "value" | "secret" | "";
 };
 const sessionInformationDrafts = new WeakMap<HTMLElement, SessionInformationDraft>();
 
@@ -410,7 +410,7 @@ document.addEventListener("htmx:beforeSwap", (event) => {
     keyRejected,
     valueRejected,
     error: form.querySelector<HTMLElement>("[role='alert']")?.textContent?.trim() ?? "",
-    focused: active === key ? "key" : active === value ? "value" : "",
+    focused: active === key ? "key" : active === value ? "value" : active === secret ? "secret" : "",
   };
   if (draft.keyDirty || draft.valueDirty || draft.secretDirty) sessionInformationDrafts.set(target, draft);
 });
@@ -452,7 +452,7 @@ document.addEventListener("htmx:afterSwap", (event) => {
     }
     error.textContent = draft.error;
   }
-  (draft.focused === "key" ? key : draft.focused === "value" ? value : null)?.focus({ preventScroll: true });
+  (draft.focused === "key" ? key : draft.focused === "value" ? value : draft.focused === "secret" ? secret : null)?.focus({ preventScroll: true });
 });
 // Without an event the current view is refreshed as a whole, which is what a
 // page needs after it was disconnected from the stream for a while. A deferred
