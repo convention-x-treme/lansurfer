@@ -38,3 +38,20 @@ func TestGameRequestSessionInformationAudienceAndForm(t *testing.T) {
 		})
 	}
 }
+
+func TestSessionInformationFormUsesServerUnicodeLimitsAndMarksRejectedField(t *testing.T) {
+	view := SessionInformationView{
+		Visible: true, CanEdit: true, RequestID: "request-1",
+		Form: &SessionInformationForm{Mode: "add", Key: strings.Repeat("😀", 40), Value: strings.Repeat("😀", 300), Error: "Key must contain 1 to 40 characters and no line breaks.", ErrorField: "key"},
+	}
+	var out bytes.Buffer
+	if err := GameRequestSessionInformation(view).Render(context.Background(), &out); err != nil {
+		t.Fatal(err)
+	}
+	html := out.String()
+	if strings.Contains(html, "maxlength=") || !strings.Contains(html, `aria-invalid="true"`) ||
+		!strings.Contains(html, `aria-describedby="session-information-error"`) ||
+		!strings.Contains(html, `id="session-information-error"`) {
+		t.Fatalf("session information form markup = %s", html)
+	}
+}

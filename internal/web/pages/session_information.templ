@@ -22,7 +22,7 @@ templ GameRequestSessionInformation(view SessionInformationView) {
 							if view.CanEdit {
 								<div class="flex gap-1">
 									<a class="btn btn-quiet btn-xs" href={ "/game-requests/" + view.RequestID + "?session_edit=" + entry.ID } hx-get={ "/game-requests/" + view.RequestID + "/session-information?session_edit=" + entry.ID } hx-target="#session-information" hx-swap="outerHTML">Edit</a>
-									<form method="post" action={ "/game-requests/" + view.RequestID + "/session-information/" + entry.ID + "/delete" } data-confirm="Delete this session information?">
+									<form method="post" action={ "/game-requests/" + view.RequestID + "/session-information/" + entry.ID + "/delete" } hx-post={ "/game-requests/" + view.RequestID + "/session-information/" + entry.ID + "/delete" } hx-target="#session-information" hx-swap="outerHTML" data-confirm="Delete this session information?">
 										@components.CSRFInput()
 										<button class="btn btn-quiet btn-xs" type="submit">Delete</button>
 									</form>
@@ -34,11 +34,9 @@ templ GameRequestSessionInformation(view SessionInformationView) {
 				if view.Form != nil {
 					<form class="mt-3 grid gap-2" data-session-information-form data-session-mode={ view.Form.Mode } data-session-entry-id={ view.Form.EntryID } method="post" action={ sessionFormAction(view) } hx-post={ sessionFormAction(view) } hx-target="#session-information" hx-swap="outerHTML">
 						@components.CSRFInput()
-						<label>Key<input class="input input-bordered w-full" name="key" maxlength="40" value={ view.Form.Key } required/></label>
-						<label>Value<input class="input input-bordered w-full" name="value" maxlength="300" value={ view.Form.Value } required/></label>
-						if view.Form.Error != "" {
-							<p role="alert" class="text-sm text-error">{ view.Form.Error }</p>
-						}
+						<label>Key<input class="input input-bordered w-full" name="key" value={ view.Form.Key } required aria-invalid={ sessionInformationInvalid(view.Form.ErrorField, "key") } aria-describedby="session-information-error"/></label>
+						<label>Value<input class="input input-bordered w-full" name="value" value={ view.Form.Value } required aria-invalid={ sessionInformationInvalid(view.Form.ErrorField, "value") } aria-describedby="session-information-error"/></label>
+						<p id="session-information-error" role="alert" class="text-sm text-error">{ view.Form.Error }</p>
 						<div class="flex gap-2"><button class="btn btn-primary" type="submit">Save</button><a class="btn btn-quiet" href={ "/game-requests/" + view.RequestID } hx-get={ "/game-requests/" + view.RequestID + "/session-information" } hx-target="#session-information" hx-swap="outerHTML">Cancel</a></div>
 					</form>
 				} else if view.CanEdit {
@@ -58,3 +56,4 @@ func sessionInfoRefreshURL(view SessionInformationView) string {
 }
 
 func sessionFormAction(view SessionInformationView) string { if view.Form != nil && view.Form.Mode == "edit" { return "/game-requests/" + view.RequestID + "/session-information/" + view.Form.EntryID }; return "/game-requests/" + view.RequestID + "/session-information" }
+func sessionInformationInvalid(errorField, field string) string { if errorField == field { return "true" }; return "false" }

@@ -374,6 +374,8 @@ type SessionInformationDraft = {
   entryID: string;
   key: string;
   value: string;
+  keyDirty: boolean;
+  valueDirty: boolean;
   keyRejected: boolean;
   valueRejected: boolean;
   error: string;
@@ -391,19 +393,21 @@ document.addEventListener("htmx:beforeSwap", (event) => {
   const value = form.querySelector<HTMLInputElement>("[name='value']");
   if (!key || !value) return;
   const active = document.activeElement;
+  const keyRejected = key.getAttribute("aria-invalid") === "true";
+  const valueRejected = value.getAttribute("aria-invalid") === "true";
   const draft: SessionInformationDraft = {
     mode: form.dataset.sessionMode ?? "",
     entryID: form.dataset.sessionEntryId ?? "",
     key: key.value,
     value: value.value,
-    keyRejected: key.getAttribute("aria-invalid") === "true",
-    valueRejected: value.getAttribute("aria-invalid") === "true",
+    keyDirty: key.value !== key.defaultValue || keyRejected,
+    valueDirty: value.value !== value.defaultValue || valueRejected,
+    keyRejected,
+    valueRejected,
     error: form.querySelector<HTMLElement>("[role='alert']")?.textContent?.trim() ?? "",
     focused: active === key ? "key" : active === value ? "value" : "",
   };
-  if (draft.key !== key.defaultValue || draft.value !== value.defaultValue || draft.keyRejected || draft.valueRejected) {
-    sessionInformationDrafts.set(target, draft);
-  }
+  if (draft.keyDirty || draft.valueDirty) sessionInformationDrafts.set(target, draft);
 });
 
 document.addEventListener("htmx:afterSwap", (event) => {
@@ -417,12 +421,27 @@ document.addEventListener("htmx:afterSwap", (event) => {
   const key = form.querySelector<HTMLInputElement>("[name='key']");
   const value = form.querySelector<HTMLInputElement>("[name='value']");
   if (!key || !value) return;
-  key.value = draft.key;
-  value.value = draft.value;
-  if (draft.keyRejected) key.setAttribute("aria-invalid", "true");
-  if (draft.valueRejected) value.setAttribute("aria-invalid", "true");
-  const error = form.querySelector<HTMLElement>("[role='alert']");
-  if (error && draft.error) error.textContent = draft.error;
+  if (draft.keyDirty) key.value = draft.key;
+  if (draft.valueDirty) value.value = draft.value;
+  if (draft.keyRejected) {
+    key.setAttribute("aria-invalid", "true");
+    key.setAttribute("aria-describedby", "session-information-error");
+  }
+  if (draft.valueRejected) {
+    value.setAttribute("aria-invalid", "true");
+    value.setAttribute("aria-describedby", "session-information-error");
+  }
+  if (draft.error) {
+    let error = form.querySelector<HTMLElement>("#session-information-error");
+    if (!error) {
+      error = document.createElement("p");
+      error.id = "session-information-error";
+      error.setAttribute("role", "alert");
+      error.className = "text-sm text-error";
+      form.insertBefore(error, form.querySelector("div"));
+    }
+    error.textContent = draft.error;
+  }
   (draft.focused === "key" ? key : draft.focused === "value" ? value : null)?.focus({ preventScroll: true });
 });
 // Without an event the current view is refreshed as a whole, which is what a

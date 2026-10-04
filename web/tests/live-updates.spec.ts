@@ -1,3 +1,4 @@
+
 import { expect, test } from "@playwright/test";
 import { htmxCounters, instrumentHtmx, resetFixture, waitForRealtime } from "./helpers";
 
@@ -373,6 +374,90 @@ test("session-information and general detail refreshes preserve an active inline
   await expect(key).toHaveValue("Lobby");
   await expect(value).toHaveValue("CXT-WC3-04");
   await expect(value).toBeFocused();
+});
+
+for (const dirtyField of ["key", "value"] as const) {
+  test(`session-information refresh preserves only a dirty ${dirtyField} field`, async ({ page, request }) => {
+    await page.goto("/game-requests/new?game_id=game-1");
+    await page.getByRole("button", { name: "Create Game Request" }).click();
+    await page.waitForURL(/\/game-requests\/[0-9a-f-]+/);
+    await waitForRealtime(page, request, 1);
+    await page.getByRole("link", { name: "Add", exact: true }).click();
+    await page.getByRole("textbox", { name: "Key" }).fill("Lobby");
+    await page.getByRole("textbox", { name: "Value" }).fill("old value");
+    await page.getByRole("button", { name: "Save" }).click();
+    await expect(page.locator("#session-information")).toContainText("old value");
+
+    const edit = page.locator("#session-information").getByRole("link", { name: "Edit" });
+    const editURL = await edit.getAttribute("href");
+    const entryID = new URL(editURL!, "http://localhost").searchParams.get("session_edit")!;
+    await edit.click();
+    const key = page.getByRole("textbox", { name: "Key" });
+    const value = page.getByRole("textbox", { name: "Value" });
+    const localValue = dirtyField === "key" ? "Local key" : "Local value";
+    await (dirtyField === "key" ? key : value).fill(localValue);
+    const csrf = await page.locator("#session-information input[name='csrf_token']").first().inputValue();
+    const requestID = await page.locator("[data-game-request-detail]").getAttribute("data-game-request-id");
+    const serverKey = dirtyField === "key" ? "Lobby" : "Server changed";
+    const serverValue = dirtyField === "key" ? "Fresh value" : "old value";
+    const result = await page.evaluate(async ({ requestID, entryID, key, value, csrf }) => {
+      const response = await fetch(`/game-requests/${requestID}/session-information/${entryID}`, {
+        method: "POST",
+        headers: { "HX-Request": "true", "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ key, value, csrf_token: csrf }),
+      });
+      return response.status;
+    }, { requestID, entryID, key: serverKey, value: serverValue, csrf });
+    expect(result).toBe(200);
+    await expect(key).toHaveValue(dirtyField === "key" ? localValue : "Server changed");
+    await expect(value).toHaveValue(dirtyField === "value" ? localValue : "Fresh value");
+  });
+}
+
+test("session-information validation survives live refreshes but not terminal state", async ({ page, request }) => {
+  await page.goto("/game-requests/new?game_id=game-1");
+  await page.getByRole("button", { name: "Create Game Request" }).click();
+  await page.waitForURL(/\/game-requests\/[0-9a-f-]+/);
+  await waitForRealtime(page, request, 1);
+  await page.getByRole("link", { name: "Add", exact: true }).click();
+  const rejectedKey = "K".repeat(41);
+  const key = page.getByRole("textbox", { name: "Key" });
+  const value = page.getByRole("textbox", { name: "Value" });
+  await key.fill(rejectedKey);
+  await value.fill("secret");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.locator("#session-information-error")).toBeVisible();
+
+  const requestID = await page.locator("[data-game-request-detail]").getAttribute("data-game-request-id");
+  await request.post(`/__test__/publish?type=GameRequestSessionInformationChanged&request=${requestID}`);
+  await expect(key).toHaveValue(rejectedKey);
+  await expect(page.locator("#session-information-error")).toContainText("Key must contain");
+  await request.post(`/__test__/publish?type=GameRequestJoined&request=${requestID}`);
+  await expect(key).toHaveValue(rejectedKey);
+  await expect(page.locator("#session-information-error")).toContainText("Key must contain");
+
+  page.once("dialog", dialog => dialog.accept());
+  await page.getByRole("button", { name: "Cancel Game Request" }).click();
+  await expect(page.locator("#session-information")).toHaveCount(0);
+  await request.post(`/__test__/publish?type=GameRequestCancelled&request=${requestID}`);
+  await expect(page.locator("#session-information")).toHaveCount(0);
+});
+
+test("session-information Delete removes the entry inline", async ({ page, request }) => {
+  await page.goto("/game-requests/new?game_id=game-1");
+  await page.getByRole("button", { name: "Create Game Request" }).click();
+  await page.waitForURL(/\/game-requests\/[0-9a-f-]+/);
+  await waitForRealtime(page, request, 1);
+  await page.getByRole("link", { name: "Add", exact: true }).click();
+  await page.getByRole("textbox", { name: "Key" }).fill("Lobby");
+  await page.getByRole("textbox", { name: "Value" }).fill("temporary");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.locator("#session-information")).toContainText("temporary");
+  const currentURL = page.url();
+  page.once("dialog", dialog => dialog.accept());
+  await page.locator("#session-information").getByRole("button", { name: "Delete" }).click();
+  await expect(page.locator("#session-information")).not.toContainText("temporary");
+  await expect(page).toHaveURL(currentURL);
 });
 
 test("session-information terminal detail refresh discards draft", async ({ page, request }) => {
