@@ -243,7 +243,7 @@ function liveNotice(variant: "info" | "warning" | "error", message: string): HTM
 }
 
 type GameRequestEvent = {
-  type: "GameRequestCreated" | "GameRequestJoined" | "GameRequestLeft" | "GameRequestStarted" | "GameRequestClosed" | "GameRequestCancelled" | "GameRequestUpdated";
+  type: "GameRequestCreated" | "GameRequestJoined" | "GameRequestLeft" | "GameRequestStarted" | "GameRequestClosed" | "GameRequestCancelled" | "GameRequestUpdated" | "GameRequestSessionInformationChanged";
   requestId: string;
   gameId?: string;
 };
@@ -369,6 +369,81 @@ document.addEventListener("htmx:afterSwap", (event) => {
   }
   focus?.focus({ preventScroll: true });
 });
+type SessionInformationDraft = {
+  mode: string;
+  entryID: string;
+  key: string;
+  value: string;
+  keyDirty: boolean;
+  valueDirty: boolean;
+  keyRejected: boolean;
+  valueRejected: boolean;
+  error: string;
+  focused: "key" | "value" | "";
+};
+const sessionInformationDrafts = new WeakMap<HTMLElement, SessionInformationDraft>();
+
+document.addEventListener("htmx:beforeSwap", (event) => {
+  const target = (event as CustomEvent<{ target: HTMLElement }>).detail.target;
+  if (target.id !== "session-information" && target.id !== "game-request-detail") return;
+  const section = target.id === "session-information" ? target : target.querySelector<HTMLElement>("#session-information");
+  const form = section?.querySelector<HTMLFormElement>("[data-session-information-form]");
+  if (!form || !section) return;
+  const key = form.querySelector<HTMLInputElement>("[name='key']");
+  const value = form.querySelector<HTMLInputElement>("[name='value']");
+  if (!key || !value) return;
+  const active = document.activeElement;
+  const keyRejected = key.getAttribute("aria-invalid") === "true";
+  const valueRejected = value.getAttribute("aria-invalid") === "true";
+  const draft: SessionInformationDraft = {
+    mode: form.dataset.sessionMode ?? "",
+    entryID: form.dataset.sessionEntryId ?? "",
+    key: key.value,
+    value: value.value,
+    keyDirty: key.value !== key.defaultValue || keyRejected,
+    valueDirty: value.value !== value.defaultValue || valueRejected,
+    keyRejected,
+    valueRejected,
+    error: form.querySelector<HTMLElement>("[role='alert']")?.textContent?.trim() ?? "",
+    focused: active === key ? "key" : active === value ? "value" : "",
+  };
+  if (draft.keyDirty || draft.valueDirty) sessionInformationDrafts.set(target, draft);
+});
+
+document.addEventListener("htmx:afterSwap", (event) => {
+  const target = (event as CustomEvent<{ target: HTMLElement }>).detail.target;
+  const draft = sessionInformationDrafts.get(target);
+  if (!draft) return;
+  sessionInformationDrafts.delete(target);
+  const section = document.querySelector<HTMLElement>("#session-information");
+  const form = section?.querySelector<HTMLFormElement>("[data-session-information-form]");
+  if (!form || form.dataset.sessionMode !== draft.mode || (form.dataset.sessionEntryId ?? "") !== draft.entryID) return;
+  const key = form.querySelector<HTMLInputElement>("[name='key']");
+  const value = form.querySelector<HTMLInputElement>("[name='value']");
+  if (!key || !value) return;
+  if (draft.keyDirty) key.value = draft.key;
+  if (draft.valueDirty) value.value = draft.value;
+  if (draft.keyRejected) {
+    key.setAttribute("aria-invalid", "true");
+    key.setAttribute("aria-describedby", "session-information-error");
+  }
+  if (draft.valueRejected) {
+    value.setAttribute("aria-invalid", "true");
+    value.setAttribute("aria-describedby", "session-information-error");
+  }
+  if (draft.error) {
+    let error = form.querySelector<HTMLElement>("#session-information-error");
+    if (!error) {
+      error = document.createElement("p");
+      error.id = "session-information-error";
+      error.setAttribute("role", "alert");
+      error.className = "text-sm text-error";
+      form.insertBefore(error, form.querySelector("div"));
+    }
+    error.textContent = draft.error;
+  }
+  (draft.focused === "key" ? key : draft.focused === "value" ? value : null)?.focus({ preventScroll: true });
+});
 // Without an event the current view is refreshed as a whole, which is what a
 // page needs after it was disconnected from the stream for a while. A deferred
 // refresh drops the event, and with it only the highlight on a new row; the
@@ -396,7 +471,12 @@ function refreshGameRequests(event?: GameRequestEvent): void {
   const detailID = detail?.dataset.gameRequestId;
   const detailRefreshURL = detail?.dataset.refreshUrl;
   if (detailID && detailRefreshURL && (event === undefined || detailID === event.requestId)) {
-    void htmx.ajax("get", detailRefreshURL, {
+    const refreshURL = new URL(detailRefreshURL, window.location.href);
+    for (const key of ["edit", "session_add", "session_edit"]) {
+      const value = new URL(window.location.href).searchParams.get(key);
+      if (value !== null) refreshURL.searchParams.set(key, value);
+    }
+    void htmx.ajax("get", refreshURL.toString(), {
       target: "#game-request-detail",
       swap: "outerHTML",
     });
@@ -413,7 +493,7 @@ if (realtime?.dataset.realtimeUrl) {
     const detail = document.querySelector<HTMLElement>("[data-game-request-detail]");
     const requestID = detail?.dataset.gameRequestId;
     const realtimeURL = new URL(baseRealtimeURL, window.location.href);
-    if (requestID) realtimeURL.searchParams.set("chatRequestId", requestID);
+    if (requestID) realtimeURL.searchParams.set("detailRequestId", requestID);
     events = new EventSource(realtimeURL);
     events.addEventListener("open", () => document.querySelector("[data-live-connection-alert]")?.remove());
     events.addEventListener("game-request", (message) => {
@@ -433,6 +513,18 @@ if (realtime?.dataset.realtimeUrl) {
         }
       } catch {
         // A malformed signal is ignored; the next message refreshes the log.
+      }
+    });
+    events.addEventListener("game-request-session-information", (message) => {
+      try {
+        const { requestId } = JSON.parse(message.data) as GameRequestEvent;
+        const section = document.querySelector<HTMLElement>("#session-information");
+        const detail = document.querySelector<HTMLElement>("[data-game-request-detail]");
+        if (section && detail?.dataset.gameRequestId === requestId && section.dataset.refreshUrl) {
+          void htmx.ajax("get", section.dataset.refreshUrl, { target: "#session-information", swap: "outerHTML" });
+        }
+      } catch {
+        // Ignore malformed signal.
       }
     });
     events.addEventListener("error", () => {

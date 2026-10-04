@@ -102,7 +102,7 @@ The stable 1.0 release scope includes:
 - independent generic OIDC and Discord authentication with explicit account linking
 - an authoritative local Game catalog plus an optional synchronized IGDB discovery provider
 - request discovery by Game name/aliases, followed/My Games and open capacity, a compact request-based Trending view, and durable request-local activity history
-- Game Request coordination from forming through active play and completion, including dynamic participation/capacity while playing, structured session information with participant-only secret values, and lightweight request-local participant chat
+- Game Request coordination from forming through active play and completion, including dynamic participation/capacity while playing, ordinary participant-only structured session information, and lightweight request-local participant chat
 - fixed LANsurfer branding with only the minimum instance identity needed for a recognizable deployment, plus an installable PWA/service-worker shell
 - durable Web Push and one instance-level Discord delivery integration without a persistent inbox
 - production release artifacts, operational documentation, and a tested upgrade path from a populated earlier `main` revision to 1.0
@@ -341,11 +341,13 @@ Stable 1.0 coordination continues while a request is `playing`:
 
 - players may join or leave while capacity permits; the Host remains a member and cannot leave;
 - the Host may change the maximum player count while `open` or `playing`, but never below current participation (see [Capacity](#capacity));
-- generic key/value session information may be maintained by the Host;
-- session-information values may be marked secret and are then available only to the Host and currently joined participants;
+- the Host maintains generic key/value session information; only the Host and currently joined players read it while the request is `open` or `playing`;
+- terminal requests do not expose session information; leaving removes future read access;
+- session-information CRUD is not activity or notification behavior;
 - the Host and currently joined participants may use a lightweight request-local private chat while the request is active.
 
-Session secrets never appear in public/discovery views, logs, metrics, notification payloads, or unrelated diagnostics. Request-local chat is not a general messaging subsystem: there are no direct messages, global rooms, threads, reactions, attachments, read receipts, typing indicators, or presence in the stable 1.0 scope.
+Secret presentation remains a separate #103 extension. It adds masking/copy/reveal controls without changing the participant-only audience.
+Request-local chat is not a general messaging subsystem: there are no direct messages, global rooms, threads, reactions, attachments, read receipts, typing indicators, or presence in the stable 1.0 scope.
 
 The primary UI should show Game, player count/capacity, start time, short description, and the Join action without forcing the player through a detail page. While a request is `playing`, the list and detail page keep the same Join, Leave, and Full states as an `open` one.
 
@@ -517,7 +519,7 @@ Operators can reliably install, configure, back up, restore, and upgrade LANsurf
 3. discover local/provider Games and instance-wide Game Requests without joining or selecting an Event/Clan/context
 4. create and join capacity-safe Game Requests from desktop and mobile browsers
 5. use My Games/open-capacity discovery, 6-hour request-based Trending, and durable request-local activity
-6. start and continue a Game Request as an active playing session, including dynamic participation, session coordination, participant-only secret session values, and lightweight request-local chat
+6. start and continue a Game Request as an active playing session, including dynamic participation, ordinary participant-only session information, and lightweight request-local chat; #103 adds secret presentation privacy
 7. receive only the durable notifications they have enabled and are eligible to receive
 8. continue core workflows when optional external providers are unavailable
 

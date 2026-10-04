@@ -569,7 +569,7 @@ func (m GameRequestDetailMessage) forField(field string) bool {
 
 func (m GameRequestDetailMessage) pageLevel() bool { return m.Text != "" && m.Field == "" }
 
-templ GameRequestDetail(brand branding.Brand, navigation components.NavigationState, request requestquery.Request, viewerID string, message GameRequestDetailMessage, notice components.Notice) {
+templ GameRequestDetail(brand branding.Brand, navigation components.NavigationState, request requestquery.Request, viewerID string, message GameRequestDetailMessage, notice components.Notice, session SessionInformationView) {
 	@components.Layout(brand, request.Game.Name, navigation) {
 		<header class="app-topbar">
 			<div class="flex flex-wrap items-center gap-x-4 gap-y-1">
@@ -585,7 +585,7 @@ templ GameRequestDetail(brand branding.Brand, navigation components.NavigationSt
 			if message.pageLevel() {
 				<div role="alert" class="alert alert-error mb-4"><span>{ message.Text }</span></div>
 			}
-			@GameRequestDetailContent(request, viewerID, false, message)
+			@GameRequestDetailContentWithSession(request, viewerID, false, message, session)
 		</div>
 	}
 }
@@ -597,10 +597,15 @@ templ DetailStamp(oob bool) {
 }
 
 templ GameRequestDetailContent(request requestquery.Request, viewerID string, refresh bool, message GameRequestDetailMessage) {
+	@GameRequestDetailContentWithSession(request, viewerID, refresh, message, SessionInformationView{})
+}
+
+templ GameRequestDetailContentWithSession(request requestquery.Request, viewerID string, refresh bool, message GameRequestDetailMessage, session SessionInformationView) {
+
 	if refresh {
 		@DetailStamp(true)
 	}
-	<div id="game-request-detail" data-game-request-detail data-game-request-id={ request.ID } data-refresh-url={ detailRefreshURL(request.ID, message.Editing) } class="detail-shell">
+	<div id="game-request-detail" data-game-request-detail data-game-request-id={ request.ID } data-refresh-url={ detailRefreshURLWithSession(request.ID, message.Editing, session) } class="detail-shell">
 		<div class="detail-main">
 			<article class={ detailHeroClass(request) }>
 				<div class="flex flex-wrap items-start gap-4">
@@ -639,12 +644,17 @@ templ GameRequestDetailContent(request requestquery.Request, viewerID string, re
 						</button>
 					</div>
 				</div>
-				<div class="mt-4 border-t border-base-300 pt-4">
-					<p class="section-label data-text">Description</p>
-					if request.Description == "" {
-						<p class="mt-2 text-base-content/65">No description.</p>
-					} else {
-						<p class="mt-2 whitespace-pre-wrap leading-relaxed text-base-content/80">{ request.Description }</p>
+				<div class={ detailCoordinationClass(request, session) }>
+					<div class={ detailCoordinationDescriptionClass(request, session) }>
+						<h2 id="detail-description-title" class="section-label data-text">Description</h2>
+						if request.Description == "" {
+							<p class="mt-2 text-sm text-base-content/65">No description.</p>
+						} else {
+							<p class="mt-2 whitespace-pre-wrap break-words leading-relaxed text-base-content/80">{ request.Description }</p>
+						}
+					</div>
+					if requestActive(request) {
+						@GameRequestSessionInformation(session)
 					}
 				</div>
 			</article>
@@ -810,10 +820,16 @@ templ GameRequestActionError(message string) {
 }
 
 func detailRefreshURL(requestID string, editing bool) string {
+	return detailRefreshURLWithSession(requestID, editing, SessionInformationView{})
+}
+
+func detailRefreshURLWithSession(requestID string, editing bool, session SessionInformationView) string {
 	target := "/game-requests/" + requestID + "/refresh"
-	if editing {
-		return target + "?edit=1"
-	}
+	values := url.Values{}
+	if editing { values.Set("edit","1") }
+	if session.Form != nil && session.Form.Mode=="add" { values.Set("session_add","1") }
+	if session.Form != nil && session.Form.Mode=="edit" { values.Set("session_edit",session.Form.EntryID) }
+	if len(values)>0 { return target+"?"+values.Encode() }
 	return target
 }
 
@@ -939,6 +955,19 @@ func detailHeroClass(request requestquery.Request) string {
 	return "detail-hero"
 }
 
+func detailCoordinationClass(request requestquery.Request, session SessionInformationView) string {
+	if !requestActive(request) || !session.Visible {
+		return "detail-coordination detail-coordination-single"
+	}
+	return "detail-coordination"
+}
+
+func detailCoordinationDescriptionClass(request requestquery.Request, session SessionInformationView) string {
+	if !requestActive(request) || !session.Visible {
+		return "detail-coordination-description detail-description-wide"
+	}
+	return "detail-coordination-description"
+}
 func detailStatusChipClass(request requestquery.Request) string {
 	switch request.Status {
 	case gamerequest.StatusCancelled:

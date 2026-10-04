@@ -84,8 +84,10 @@ type RouterDependencies struct {
 	Chat              handler.GameRequestChat
 	Realtime          handler.GameRequestEvents
 	// RealtimeChat gates chat signals on the realtime stream; nil drops them.
-	RealtimeChat  handler.ChatAccess
-	Subscriptions handler.SubscriptionManager
+	RealtimeChat               handler.ChatAccess
+	SessionInformation         handler.GameRequestSessionInformation
+	RealtimeSessionInformation handler.SessionInformationAccess
+	Subscriptions              handler.SubscriptionManager
 	// PushDevices is the same concrete *notification.SubscriptionService as
 	// Subscriptions, exposed through the handler.PushDeviceRemover interface
 	// Logout needs. Two fields (rather than widening either handler
@@ -152,7 +154,7 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 		resolvedInstanceName, dependencies.BaseURL, SecureContextStatus(dependencies.BaseURL),
 	)
 	gamesHandler := handler.NewGames(dependencies.Discovery, navigation, brand)
-	gameRequestsHandler := handler.NewGameRequests(dependencies.GameRequests, dependencies.RequestQueries, dependencies.GameResolver, dependencies.Discovery, navigation, brand)
+	gameRequestsHandler := handler.NewGameRequests(dependencies.GameRequests, dependencies.RequestQueries, dependencies.GameResolver, dependencies.Discovery, navigation, brand, dependencies.SessionInformation)
 	var discordDeliveryHandler *handler.DiscordDelivery
 	if discordDeliveryConfigured {
 		discordDeliveryHandler = handler.NewDiscordDelivery(
@@ -160,7 +162,7 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 			dependencies.DiscordLifecycle, dependencies.DiscordStatus, navigation, brand, dependencies.SecureCookies,
 		)
 	}
-	realtimeHandler := handler.NewRealtime(dependencies.Realtime, dependencies.RealtimeChat)
+	realtimeHandler := handler.NewRealtime(dependencies.Realtime, dependencies.RealtimeChat, dependencies.RealtimeSessionInformation)
 	notificationSettingsHandler := handler.NewNotificationSettings(
 		dependencies.Subscriptions, dependencies.VAPIDPublicKey,
 		dependencies.WebPushConfigured, brand, dependencies.SecureCookies, navigation,
@@ -278,6 +280,12 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 					chatHandler := handler.NewChat(dependencies.Chat)
 					requests.Get("/{requestID}/chat", chatHandler.Log)
 					requests.Post("/{requestID}/chat", chatHandler.Post)
+				}
+				if dependencies.SessionInformation != nil {
+					requests.Get("/{requestID}/session-information", gameRequestsHandler.SessionInformation)
+					requests.Post("/{requestID}/session-information", gameRequestsHandler.CreateSessionInformation)
+					requests.Post("/{requestID}/session-information/{entryID}", gameRequestsHandler.UpdateSessionInformation)
+					requests.Post("/{requestID}/session-information/{entryID}/delete", gameRequestsHandler.DeleteSessionInformation)
 				}
 				requests.Post("/{requestID}/details", gameRequestsHandler.UpdateDetails)
 			})

@@ -1,3 +1,4 @@
+
 import { expect, test } from "@playwright/test";
 import { htmxCounters, instrumentHtmx, resetFixture, waitForRealtime } from "./helpers";
 
@@ -349,4 +350,223 @@ test("a live detail refresh preserves an unsent chat draft", async ({ page, requ
 
   await expect.poll(async () => (await htmxCounters(page)).after).toBeGreaterThan(0);
   await expect(draft).toHaveValue("I am still typing");
+});
+
+test("session-information and general detail refreshes preserve an active inline draft", async ({ page, request }) => {
+  await page.goto("/game-requests/new?game_id=game-1");
+  await page.getByRole("button", { name: "Create Game Request" }).click();
+  await page.waitForURL(/\/game-requests\/[0-9a-f-]+/);
+  await waitForRealtime(page, request, 1);
+
+  await page.getByRole("link", { name: "Add", exact: true }).click();
+  const key = page.getByRole("textbox", { name: "Key" });
+  const value = page.getByRole("textbox", { name: "Value" });
+  await key.fill("Lobby");
+  await value.fill("CXT-WC3-04");
+  await value.focus();
+  const requestID = await page.locator("[data-game-request-detail]").getAttribute("data-game-request-id");
+  await request.post(`/__test__/publish?type=GameRequestSessionInformationChanged&request=${requestID}`);
+  await expect(key).toHaveValue("Lobby");
+  await expect(value).toHaveValue("CXT-WC3-04");
+  await expect(value).toBeFocused();
+
+  await request.post(`/__test__/publish?type=GameRequestJoined&request=${requestID}`);
+  await expect(key).toHaveValue("Lobby");
+  await expect(value).toHaveValue("CXT-WC3-04");
+  await expect(value).toBeFocused();
+});
+
+for (const dirtyField of ["key", "value"] as const) {
+  test(`session-information refresh preserves only a dirty ${dirtyField} field`, async ({ page, request }) => {
+    await page.goto("/game-requests/new?game_id=game-1");
+    await page.getByRole("button", { name: "Create Game Request" }).click();
+    await page.waitForURL(/\/game-requests\/[0-9a-f-]+/);
+    await waitForRealtime(page, request, 1);
+    await page.getByRole("link", { name: "Add", exact: true }).click();
+    await page.getByRole("textbox", { name: "Key" }).fill("Lobby");
+    await page.getByRole("textbox", { name: "Value" }).fill("old value");
+    await page.getByRole("button", { name: "Save" }).click();
+    await expect(page.locator("#session-information")).toContainText("old value");
+
+    const edit = page.locator("#session-information").getByRole("link", { name: "Edit Lobby" });
+    const editURL = await edit.getAttribute("href");
+    const entryID = new URL(editURL!, "http://localhost").searchParams.get("session_edit")!;
+    await edit.click();
+    const key = page.getByRole("textbox", { name: "Key" });
+    const value = page.getByRole("textbox", { name: "Value" });
+    const localValue = dirtyField === "key" ? "Local key" : "Local value";
+    await (dirtyField === "key" ? key : value).fill(localValue);
+    const csrf = await page.locator("#session-information input[name='csrf_token']").first().inputValue();
+    const requestID = await page.locator("[data-game-request-detail]").getAttribute("data-game-request-id");
+    const serverKey = dirtyField === "key" ? "Lobby" : "Server changed";
+    const serverValue = dirtyField === "key" ? "Fresh value" : "old value";
+    const result = await page.evaluate(async ({ requestID, entryID, key, value, csrf }) => {
+      const response = await fetch(`/game-requests/${requestID}/session-information/${entryID}`, {
+        method: "POST",
+        headers: { "HX-Request": "true", "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ key, value, csrf_token: csrf }),
+      });
+      return response.status;
+    }, { requestID, entryID, key: serverKey, value: serverValue, csrf });
+    expect(result).toBe(200);
+    await expect(key).toHaveValue(dirtyField === "key" ? localValue : "Server changed");
+    await expect(value).toHaveValue(dirtyField === "value" ? localValue : "Fresh value");
+  });
+}
+
+test("session-information validation survives live refreshes but not terminal state", async ({ page, request }) => {
+  await page.goto("/game-requests/new?game_id=game-1");
+  await page.getByRole("button", { name: "Create Game Request" }).click();
+  await page.waitForURL(/\/game-requests\/[0-9a-f-]+/);
+  await waitForRealtime(page, request, 1);
+  await page.getByRole("link", { name: "Add", exact: true }).click();
+  const rejectedKey = "K".repeat(41);
+  const key = page.getByRole("textbox", { name: "Key" });
+  const value = page.getByRole("textbox", { name: "Value" });
+  await key.fill(rejectedKey);
+  await value.fill("secret");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.locator("#session-information-error")).toBeVisible();
+
+  const requestID = await page.locator("[data-game-request-detail]").getAttribute("data-game-request-id");
+  await request.post(`/__test__/publish?type=GameRequestSessionInformationChanged&request=${requestID}`);
+  await expect(key).toHaveValue(rejectedKey);
+  await expect(page.locator("#session-information-error")).toContainText("Key must contain");
+  await request.post(`/__test__/publish?type=GameRequestJoined&request=${requestID}`);
+  await expect(key).toHaveValue(rejectedKey);
+  await expect(page.locator("#session-information-error")).toContainText("Key must contain");
+
+  page.once("dialog", dialog => dialog.accept());
+  await page.getByRole("button", { name: "Cancel Game Request" }).click();
+  await expect(page.locator("#session-information")).toHaveCount(0);
+  await request.post(`/__test__/publish?type=GameRequestCancelled&request=${requestID}`);
+  await expect(page.locator("#session-information")).toHaveCount(0);
+});
+
+test("session-information Delete removes the entry inline", async ({ page, request }) => {
+  await page.goto("/game-requests/new?game_id=game-1");
+  await page.getByRole("button", { name: "Create Game Request" }).click();
+  await page.waitForURL(/\/game-requests\/[0-9a-f-]+/);
+  await waitForRealtime(page, request, 1);
+  await page.getByRole("link", { name: "Add", exact: true }).click();
+  await page.getByRole("textbox", { name: "Key" }).fill("Lobby");
+  await page.getByRole("textbox", { name: "Value" }).fill("temporary");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.locator("#session-information")).toContainText("temporary");
+  const currentURL = page.url();
+  page.once("dialog", dialog => dialog.accept());
+  await page.locator("#session-information").getByRole("button", { name: "Delete Lobby" }).click();
+  await expect(page.locator("#session-information")).not.toContainText("temporary");
+  await expect(page).toHaveURL(currentURL);
+});
+
+test("session-information terminal detail refresh discards draft", async ({ page, request }) => {
+  await page.goto("/game-requests/new?game_id=game-1");
+  await page.getByRole("button", { name: "Create Game Request" }).click();
+  await page.waitForURL(/\/game-requests\/[0-9a-f-]+/);
+  await waitForRealtime(page, request, 1);
+  await page.getByRole("link", { name: "Add", exact: true }).click();
+  await page.getByRole("textbox", { name: "Key" }).fill("Draft");
+  page.once("dialog", dialog => dialog.accept());
+  await page.getByRole("button", { name: "Cancel Game Request" }).click();
+  await expect(page.locator("#session-information")).toHaveCount(0);
+  await request.post("/__test__/publish?type=GameRequestCancelled");
+  await expect(page.locator("[data-game-request-detail]")).toContainText("Cancelled");
+  await expect(page.locator("#session-information")).toHaveCount(0);
+});
+
+test("session-information tiles reflow and inline editor saves locally", async ({ page }) => {
+  await page.goto("/game-requests/new?game_id=game-1");
+  await page.getByRole("button", { name: "Create Game Request" }).click();
+  await page.waitForURL(/\/game-requests\/[0-9a-f-]+/);
+  await page.getByRole("link", { name: "Add", exact: true }).click();
+
+  for (const [keyText, valueText] of [
+    ["Server", "10.20.30.40:27015"],
+    ["Lobby", "CXT-WC3-04"],
+    ["Session", "Bal"],
+    ["Meeting", "Row B / Seat 12"],
+    ["Long value", "A".repeat(90)],
+  ]) {
+    await page.getByRole("textbox", { name: "Key" }).fill(keyText);
+    await page.getByRole("textbox", { name: "Value" }).fill(valueText);
+    await page.getByRole("button", { name: "Save" }).click();
+    await expect(page.locator("#session-information")).toContainText(valueText);
+    if (keyText !== "Long value") await page.getByRole("link", { name: "Add", exact: true }).click();
+  }
+
+  const tiles = page.locator(".session-information-tile");
+  await expect(tiles).toHaveCount(5);
+  await expect(tiles.nth(0)).toContainText("Server");
+  await expect(tiles.nth(4)).toContainText("Long value");
+  const requestID = await page.locator("[data-game-request-detail]").getAttribute("data-game-request-id");
+  for (const width of [1440, 900, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto(`/game-requests/${requestID}`);
+    const layout = await page.locator(".detail-coordination").evaluate((element) => {
+      const description = element.querySelector<HTMLElement>(".detail-coordination-description")!;
+      const session = element.querySelector<HTMLElement>("#session-information")!;
+      return {
+        description: description.getBoundingClientRect().toJSON(),
+        session: session.getBoundingClientRect().toJSON(),
+        document: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      };
+    });
+    expect(layout.document).toBeLessThanOrEqual(1);
+    if (width === 390) expect(layout.session.y).toBeGreaterThan(layout.description.y);
+    else expect(layout.session.width).toBeGreaterThan(layout.description.width);
+  }
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/game-requests/${requestID}`);
+  await expect(page.locator("#session-information").getByRole("link", { name: "Edit Server" })).toBeVisible();
+  await expect(page.locator("#session-information").getByRole("button", { name: "Delete Server" })).toBeVisible();
+  await page.locator("#session-information").getByRole("link", { name: "Edit Server" }).click();
+  await expect(page.locator("#session-information .session-information-form")).toHaveCount(1);
+  const editorWidth = await page.locator("#session-information").evaluate((section) => {
+    const sectionRect = section.getBoundingClientRect();
+    const editorRect = section.querySelector<HTMLFormElement>("form.session-information-form")!.getBoundingClientRect();
+    return { section: sectionRect.width, editor: editorRect.width, offset: editorRect.left - sectionRect.left };
+  });
+  expect(editorWidth.editor).toBeGreaterThanOrEqual(editorWidth.section - 1);
+  expect(editorWidth.offset).toBeLessThanOrEqual(1);
+  await expect(page.locator("#session-information form.session-information-form")).toBeVisible();
+  await page.getByRole("textbox", { name: "Value" }).fill("Saved value");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.locator("#session-information")).toContainText("Saved value");
+});
+
+test("session-information outsider sees join hint without entry data", async ({ page, browser }) => {
+  await page.goto("/game-requests/new?game_id=game-1");
+  await page.getByRole("button", { name: "Create Game Request" }).click();
+  await page.waitForURL(/\/game-requests\/[0-9a-f-]+/);
+  await page.getByRole("link", { name: "Add", exact: true }).click();
+  await page.getByRole("textbox", { name: "Key" }).fill("Private key");
+  await page.getByRole("textbox", { name: "Value" }).fill("private value");
+  await page.getByRole("button", { name: "Save" }).click();
+  const requestID = await page.locator("[data-game-request-detail]").getAttribute("data-game-request-id");
+
+  const outsider = await browser.newContext({
+    baseURL: "http://127.0.0.1:8123",
+    storageState: {
+      cookies: [{
+        name: "lansurfer_session",
+        value: "browser-test-other",
+        domain: "127.0.0.1",
+        path: "/",
+        expires: -1,
+        httpOnly: true,
+        secure: false,
+        sameSite: "Lax",
+      }],
+      origins: [],
+    },
+  });
+  const outsiderPage = await outsider.newPage();
+  await outsiderPage.goto(`/game-requests/${requestID}`);
+  const sessionInformation = outsiderPage.locator("#session-information");
+  await expect(sessionInformation).toContainText("Join this Game Request to see session information.");
+  await expect(sessionInformation).not.toContainText("Private key");
+  await expect(sessionInformation).not.toContainText("private value");
+  await outsider.close();
 });
