@@ -496,13 +496,16 @@ test("session-information tiles reflow and inline editor saves locally", async (
   ]) {
     await page.getByRole("textbox", { name: "Key" }).fill(keyText);
     await page.getByRole("textbox", { name: "Value" }).fill(valueText);
+    if (keyText === "Meeting") await page.getByRole("checkbox", { name: "Secret value" }).check();
     await page.getByRole("button", { name: "Save" }).click();
-    await expect(page.locator("#session-information")).toContainText(valueText);
+    if (keyText === "Meeting") await expect(page.locator("#session-information")).toContainText("Secret");
+    else await expect(page.locator("#session-information")).toContainText(valueText);
     if (keyText !== "Long value") await page.getByRole("link", { name: "Add", exact: true }).click();
   }
 
   const tiles = page.locator(".session-information-tile");
   await expect(tiles).toHaveCount(5);
+  await expect(tiles.nth(3)).toContainText("Secret");
   await expect(tiles.nth(0)).toContainText("Server");
   await expect(tiles.nth(4)).toContainText("Long value");
   const requestID = await page.locator("[data-game-request-detail]").getAttribute("data-game-request-id");
@@ -543,6 +546,12 @@ test("session-information tiles reflow and inline editor saves locally", async (
 });
 
 test("secret session information copies while masked and resets on refresh", async ({ page, request }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(Navigator.prototype, "clipboard", {
+      configurable: true,
+      get: () => ({ writeText: (text: string) => { window.__copiedSecret = text; return Promise.resolve(); } }),
+    });
+  });
   await page.goto("/game-requests/new?game_id=game-1");
   await page.getByRole("button", { name: "Create Game Request" }).click();
   await page.waitForURL(/\/game-requests\/[0-9a-f-]+/);
@@ -557,18 +566,15 @@ test("secret session information copies while masked and resets on refresh", asy
   const value = tile.locator("[data-secret-value]");
   await expect(tile).toContainText("Secret");
   await expect(value).toHaveText("••••••••");
-  await page.evaluate(() => {
-    Object.defineProperty(navigator, "clipboard", { value: { writeText: (text: string) => { window.__copiedSecret = text; return Promise.resolve(); } } });
-  });
   await tile.getByRole("button", { name: "Copy" }).click();
   await expect.poll(() => page.evaluate(() => window.__copiedSecret)).toBe("shoulder-secret");
-  await expect(value).toHaveText("••••••••");
 
   await tile.getByRole("button", { name: "Reveal" }).click();
   await expect(value).toHaveText("shoulder-secret");
   await tile.getByRole("button", { name: "Hide" }).click();
   await expect(value).toHaveText("••••••••");
 
+  await page.clock.install();
   await tile.getByRole("button", { name: "Reveal" }).click();
   await expect(value).toHaveText("shoulder-secret");
   const requestID = await page.locator("[data-game-request-detail]").getAttribute("data-game-request-id");
@@ -576,8 +582,13 @@ test("secret session information copies while masked and resets on refresh", asy
   await expect(value).toHaveText("••••••••");
   await tile.getByRole("button", { name: "Reveal" }).click();
   await expect(value).toHaveText("shoulder-secret");
+  await request.post(`/__test__/publish?type=GameRequestJoined&request=${requestID}`);
+  const refreshedValue = page.locator("#session-information [data-secret-value]");
+  await expect(refreshedValue).toHaveText("••••••••");
+  await page.locator("#session-information").getByRole("button", { name: "Reveal" }).click();
+  await expect(refreshedValue).toHaveText("shoulder-secret");
   await page.clock.fastForward(20_000);
-  await expect(value).toHaveText("••••••••");
+  await expect(refreshedValue).toHaveText("••••••••");
 });
 
 test("secret session edit masks value and permits toggling presentation", async ({ page }) => {
@@ -595,6 +606,21 @@ test("secret session edit masks value and permits toggling presentation", async 
   await expect(value).toHaveValue("shoulder-secret");
   await page.getByRole("checkbox", { name: "Secret value" }).uncheck();
   await expect(value).toHaveAttribute("type", "text");
+});
+
+
+test("session-information refresh preserves a dirty secret toggle field", async ({ page, request }) => {
+  await page.goto("/game-requests/new?game_id=game-1");
+  await page.getByRole("button", { name: "Create Game Request" }).click();
+  await page.waitForURL(/\/game-requests\/[0-9a-f-]+/);
+  await waitForRealtime(page, request, 1);
+  await page.getByRole("link", { name: "Add", exact: true }).click();
+  const toggle = page.getByRole("checkbox", { name: "Secret value" });
+  await toggle.check();
+  const requestID = await page.locator("[data-game-request-detail]").getAttribute("data-game-request-id");
+  await request.post(`/__test__/publish?type=GameRequestSessionInformationChanged&request=${requestID}`);
+  await expect(toggle).toBeChecked();
+  await expect(page.getByRole("textbox", { name: "Value" })).toHaveAttribute("type", "password");
 });
 
 test("session-information outsider sees join hint without entry data", async ({ page, browser }) => {

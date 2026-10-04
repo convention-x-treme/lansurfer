@@ -374,6 +374,8 @@ type SessionInformationDraft = {
   entryID: string;
   key: string;
   value: string;
+  secret: boolean;
+  secretDirty: boolean;
   keyDirty: boolean;
   valueDirty: boolean;
   keyRejected: boolean;
@@ -391,7 +393,8 @@ document.addEventListener("htmx:beforeSwap", (event) => {
   if (!form || !section) return;
   const key = form.querySelector<HTMLInputElement>("[name='key']");
   const value = form.querySelector<HTMLInputElement>("[name='value']");
-  if (!key || !value) return;
+  const secret = form.querySelector<HTMLInputElement>("[name='is_secret']");
+  if (!key || !value || !secret) return;
   const active = document.activeElement;
   const keyRejected = key.getAttribute("aria-invalid") === "true";
   const valueRejected = value.getAttribute("aria-invalid") === "true";
@@ -400,6 +403,8 @@ document.addEventListener("htmx:beforeSwap", (event) => {
     entryID: form.dataset.sessionEntryId ?? "",
     key: key.value,
     value: value.value,
+    secret: secret.checked,
+    secretDirty: secret.checked !== secret.defaultChecked,
     keyDirty: key.value !== key.defaultValue || keyRejected,
     valueDirty: value.value !== value.defaultValue || valueRejected,
     keyRejected,
@@ -407,7 +412,7 @@ document.addEventListener("htmx:beforeSwap", (event) => {
     error: form.querySelector<HTMLElement>("[role='alert']")?.textContent?.trim() ?? "",
     focused: active === key ? "key" : active === value ? "value" : "",
   };
-  if (draft.keyDirty || draft.valueDirty) sessionInformationDrafts.set(target, draft);
+  if (draft.keyDirty || draft.valueDirty || draft.secretDirty) sessionInformationDrafts.set(target, draft);
 });
 
 document.addEventListener("htmx:afterSwap", (event) => {
@@ -420,9 +425,14 @@ document.addEventListener("htmx:afterSwap", (event) => {
   if (!form || form.dataset.sessionMode !== draft.mode || (form.dataset.sessionEntryId ?? "") !== draft.entryID) return;
   const key = form.querySelector<HTMLInputElement>("[name='key']");
   const value = form.querySelector<HTMLInputElement>("[name='value']");
-  if (!key || !value) return;
+  const secret = form.querySelector<HTMLInputElement>("[name='is_secret']");
+  if (!key || !value || !secret) return;
   if (draft.keyDirty) key.value = draft.key;
   if (draft.valueDirty) value.value = draft.value;
+  if (draft.secretDirty) {
+    secret.checked = draft.secret;
+    value.type = draft.secret ? "password" : "text";
+  }
   if (draft.keyRejected) {
     key.setAttribute("aria-invalid", "true");
     key.setAttribute("aria-describedby", "session-information-error");
@@ -621,7 +631,7 @@ function hideSecret(tile: HTMLElement): void {
 
 document.addEventListener("click", (event) => {
   if (!(event.target instanceof Element)) return;
-  const tile = event.target.closest<HTMLElement>("[data-secret='true']");
+  const tile = event.target.closest<HTMLElement>(".session-information-tile");
   if (!tile) return;
   const value = tile.querySelector<HTMLElement>("[data-secret-value]");
   const button = event.target.closest<HTMLButtonElement>("[data-secret-reveal]");
@@ -642,12 +652,6 @@ document.addEventListener("click", (event) => {
   }
 });
 
-document.addEventListener("htmx:beforeSwap", (event) => {
-  const target = event.target;
-  if (target instanceof HTMLElement && (target.matches("[data-session-information]") || target.querySelector("[data-session-information]"))) {
-    target.querySelectorAll<HTMLElement>("[data-secret='true']").forEach(hideSecret);
-  }
-});
 
 document.addEventListener("change", (event) => {
   const toggle = event.target;
