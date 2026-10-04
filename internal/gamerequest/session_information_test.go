@@ -30,7 +30,12 @@ func TestSessionInformationInputValidation(t *testing.T) {
 			t.Errorf("CreateSessionInformationEntry(%#v) error = %v, want %v", test.input, err, test.want)
 		}
 	}
-	for _, input := range []SessionInformationInput{{Key: strings.Repeat("ä", 40), Value: "v"}, {Key: "k", Value: strings.Repeat("界", 300)}} {
+	for _, input := range []SessionInformationInput{
+		{Key: strings.Repeat("ä", 40), Value: "v"},
+		{Key: strings.Repeat("😀", 40), Value: "v"},
+		{Key: "k", Value: strings.Repeat("界", 300)},
+		{Key: "k", Value: strings.Repeat("😀", 300)},
+	} {
 		if err := service.CreateSessionInformationEntry(t.Context(), "request-1", "host-1", input); err != nil {
 			t.Errorf("CreateSessionInformationEntry(%#v): %v", input, err)
 		}

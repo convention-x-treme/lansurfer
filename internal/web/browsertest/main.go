@@ -29,6 +29,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/convention-x-treme/lansurfer/internal/auth"
 	"github.com/convention-x-treme/lansurfer/internal/game"
@@ -646,6 +647,13 @@ func (f *fixture) CreateSessionInformationEntry(_ context.Context, requestID, us
 	}
 	if !isActiveStatus(entry.request.Status) {
 		return gamerequest.ErrNotActive
+	}
+	input.Key, input.Value = strings.TrimSpace(input.Key), strings.TrimSpace(input.Value)
+	if input.Key == "" || utf8.RuneCountInString(input.Key) > 40 || strings.ContainsAny(input.Key, "\r\n") {
+		return gamerequest.ErrInvalidSessionInformationKey
+	}
+	if input.Value == "" || utf8.RuneCountInString(input.Value) > 300 || strings.ContainsAny(input.Value, "\r\n") {
+		return gamerequest.ErrInvalidSessionInformationValue
 	}
 	if len(entry.sessionInformation) >= 12 {
 		return gamerequest.ErrSessionInformationLimit

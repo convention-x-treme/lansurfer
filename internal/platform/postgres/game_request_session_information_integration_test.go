@@ -73,6 +73,9 @@ func TestGameRequestSessionInformationCreateValidationAndDatabaseConstraints(t *
 	if err := f.requests.CreateSessionInformationEntry(t.Context(), first.ID, f.host, gamerequest.SessionInformationInput{Key: " Server ", Value: "  host "}); err != nil {
 		t.Fatal(err)
 	}
+	if err := f.requests.CreateSessionInformationEntry(t.Context(), first.ID, f.host, gamerequest.SessionInformationInput{Key: strings.Repeat("😀", 40), Value: strings.Repeat("😀", 300)}); err != nil {
+		t.Fatalf("create Unicode boundary entry: %v", err)
+	}
 	if err := f.requests.CreateSessionInformationEntry(t.Context(), first.ID, f.host, gamerequest.SessionInformationInput{Key: "server", Value: "duplicate"}); !errors.Is(err, gamerequest.ErrSessionInformationKeyExists) {
 		t.Fatalf("duplicate = %v", err)
 	}
@@ -148,5 +151,129 @@ func TestGameRequestSessionInformationLimitSerializesConcurrentCreates(t *testin
 	}
 	if successes != 1 || limits != 1 {
 		t.Fatalf("successes/limits = %d/%d", successes, limits)
+	}
+}
+
+func TestGameRequestSessionInformationHostScopeLifecycleAndCascade(t *testing.T) {
+	f := newPlayingFixture(t)
+	ctx := t.Context()
+	req := f.create(t, "host scope")
+	other := f.create(t, "other request")
+	if err := f.requests.Join(ctx, req.ID, f.guest); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.requests.CreateSessionInformationEntry(ctx, req.ID, f.host, gamerequest.SessionInformationInput{Key: "Lobby", Value: "secret"}); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := f.requests.SessionInformation(ctx, req.ID, f.host)
+	if err != nil || len(rows.Entries) != 1 {
+		t.Fatalf("entries = %+v, %v", rows, err)
+	}
+	entryID := rows.Entries[0].ID
+	input := gamerequest.SessionInformationInput{Key: "Lobby", Value: "changed"}
+	for _, err := range []error{
+		f.requests.CreateSessionInformationEntry(ctx, req.ID, f.guest, input),
+		func() error { return f.requests.UpdateSessionInformationEntry(ctx, req.ID, entryID, f.guest, input) }(),
+		f.requests.DeleteSessionInformationEntry(ctx, req.ID, entryID, f.guest),
+	} {
+		if !errors.Is(err, gamerequest.ErrNotCreator) {
+			t.Fatalf("participant mutation error = %v, want ErrNotCreator", err)
+		}
+	}
+	if err := f.requests.UpdateSessionInformationEntry(ctx, other.ID, entryID, f.host, input); !errors.Is(err, gamerequest.ErrSessionInformationEntryNotFound) {
+		t.Fatalf("cross-request update = %v, want entry not found", err)
+	}
+	if err := f.requests.DeleteSessionInformationEntry(ctx, other.ID, entryID, f.host); !errors.Is(err, gamerequest.ErrSessionInformationEntryNotFound) {
+		t.Fatalf("cross-request delete = %v, want entry not found", err)
+	}
+	var activitiesBefore, activitiesAfter int
+	if err := f.pool.QueryRow(ctx, `SELECT count(*) FROM game_request_activity WHERE game_request_id=$1`, req.ID).Scan(&activitiesBefore); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.requests.CreateSessionInformationEntry(ctx, req.ID, f.host, gamerequest.SessionInformationInput{Key: "Activity", Value: "before"}); err != nil {
+		t.Fatal(err)
+	}
+	rows, err = f.requests.SessionInformation(ctx, req.ID, f.host)
+	if err != nil || len(rows.Entries) != 2 {
+		t.Fatalf("entries before activity check = %+v, %v", rows, err)
+	}
+	activityEntryID := rows.Entries[1].ID
+	if err := f.requests.UpdateSessionInformationEntry(ctx, req.ID, activityEntryID, f.host, gamerequest.SessionInformationInput{Key: "Activity", Value: "after"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.requests.DeleteSessionInformationEntry(ctx, req.ID, activityEntryID, f.host); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.pool.QueryRow(ctx, `SELECT count(*) FROM game_request_activity WHERE game_request_id=$1`, req.ID).Scan(&activitiesAfter); err != nil {
+		t.Fatal(err)
+	}
+	if activitiesAfter != activitiesBefore {
+		t.Fatalf("session-information activity count = %d, before %d", activitiesAfter, activitiesBefore)
+	}
+	if err := f.requests.CreateSessionInformationEntry(ctx, req.ID, f.host, gamerequest.SessionInformationInput{Key: "Cascade", Value: "value"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.pool.Exec(ctx, `DELETE FROM game_requests WHERE id=$1`, req.ID); err != nil {
+		t.Fatal(err)
+	}
+	var remaining int
+	if err := f.pool.QueryRow(ctx, `SELECT count(*) FROM game_request_session_entries WHERE game_request_id=$1`, req.ID).Scan(&remaining); err != nil || remaining != 0 {
+		t.Fatalf("session-information rows after request delete = %d, %v", remaining, err)
+	}
+}
+
+func TestGameRequestSessionInformationMutationSerializesWithClose(t *testing.T) {
+	f := newPlayingFixture(t)
+	req := f.create(t, "close race")
+	if err := f.requests.CreateSessionInformationEntry(t.Context(), req.ID, f.host, gamerequest.SessionInformationInput{Key: "Lobby", Value: "before"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.requests.Start(t.Context(), req.ID, f.host); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := f.requests.SessionInformation(t.Context(), req.ID, f.host)
+	if err != nil || len(rows.Entries) != 1 {
+		t.Fatalf("entries = %+v, %v", rows, err)
+	}
+	entryID := rows.Entries[0].ID
+	if err := f.requests.UpdateSessionInformationEntry(t.Context(), req.ID, entryID, f.host, gamerequest.SessionInformationInput{Key: "Lobby", Value: "playing"}); err != nil {
+		t.Fatalf("update while playing: %v", err)
+	}
+	if err := f.requests.CreateSessionInformationEntry(t.Context(), req.ID, f.host, gamerequest.SessionInformationInput{Key: "Temporary", Value: "playing"}); err != nil {
+		t.Fatalf("create while playing: %v", err)
+	}
+	rows, err = f.requests.SessionInformation(t.Context(), req.ID, f.host)
+	if err != nil || len(rows.Entries) != 2 {
+		t.Fatalf("entries while playing = %+v, %v", rows, err)
+	}
+	if err := f.requests.DeleteSessionInformationEntry(t.Context(), req.ID, rows.Entries[1].ID, f.host); err != nil {
+		t.Fatalf("delete while playing: %v", err)
+	}
+	results := runConcurrently(func() error {
+		return f.requests.UpdateSessionInformationEntry(t.Context(), req.ID, entryID, f.host, gamerequest.SessionInformationInput{Key: "Lobby", Value: "after"})
+	}, func() error {
+		return f.requests.Close(t.Context(), req.ID, f.host)
+	})
+	if results[1] != nil {
+		t.Fatalf("close error = %v", results[1])
+	}
+	if results[0] != nil && !errors.Is(results[0], gamerequest.ErrNotActive) {
+		t.Fatalf("concurrent update error = %v, want success or ErrNotActive", results[0])
+	}
+	if state := f.state(t, req.ID); state.status != string(gamerequest.StatusClosed) {
+		t.Fatalf("status after close race = %q", state.status)
+	}
+	for _, mutate := range []func() error{
+		func() error {
+			return f.requests.CreateSessionInformationEntry(t.Context(), req.ID, f.host, gamerequest.SessionInformationInput{Key: "Late", Value: "value"})
+		},
+		func() error {
+			return f.requests.UpdateSessionInformationEntry(t.Context(), req.ID, entryID, f.host, gamerequest.SessionInformationInput{Key: "Lobby", Value: "late"})
+		},
+		func() error { return f.requests.DeleteSessionInformationEntry(t.Context(), req.ID, entryID, f.host) },
+	} {
+		if err := mutate(); !errors.Is(err, gamerequest.ErrNotActive) {
+			t.Fatalf("terminal mutation error = %v, want ErrNotActive", err)
+		}
 	}
 }
