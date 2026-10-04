@@ -388,7 +388,7 @@ for (const dirtyField of ["key", "value"] as const) {
     await page.getByRole("button", { name: "Save" }).click();
     await expect(page.locator("#session-information")).toContainText("old value");
 
-    const edit = page.locator("#session-information").getByRole("link", { name: "Edit" });
+    const edit = page.locator("#session-information").getByRole("link", { name: "Edit Lobby" });
     const editURL = await edit.getAttribute("href");
     const entryID = new URL(editURL!, "http://localhost").searchParams.get("session_edit")!;
     await edit.click();
@@ -455,7 +455,7 @@ test("session-information Delete removes the entry inline", async ({ page, reque
   await expect(page.locator("#session-information")).toContainText("temporary");
   const currentURL = page.url();
   page.once("dialog", dialog => dialog.accept());
-  await page.locator("#session-information").getByRole("button", { name: "Delete" }).click();
+  await page.locator("#session-information").getByRole("button", { name: "Delete Lobby" }).click();
   await expect(page.locator("#session-information")).not.toContainText("temporary");
   await expect(page).toHaveURL(currentURL);
 });
@@ -519,7 +519,9 @@ test("session-information tiles reflow and inline editor saves locally", async (
 
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`/game-requests/${requestID}`);
-  await page.locator("#session-information").getByRole("link", { name: "Edit" }).first().click();
+  await expect(page.locator("#session-information").getByRole("link", { name: "Edit Server" })).toBeVisible();
+  await expect(page.locator("#session-information").getByRole("button", { name: "Delete Server" })).toBeVisible();
+  await page.locator("#session-information").getByRole("link", { name: "Edit Server" }).click();
   await expect(page.locator("#session-information .session-information-form")).toHaveCount(1);
   const editorWidth = await page.locator("#session-information").evaluate((section) => {
     const sectionRect = section.getBoundingClientRect();

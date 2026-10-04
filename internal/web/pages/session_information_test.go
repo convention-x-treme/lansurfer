@@ -17,7 +17,7 @@ func TestGameRequestSessionInformationAudienceAndForm(t *testing.T) {
 		want, notWant []string
 	}{
 		{"participant", SessionInformationView{Visible: true, RequestID: "request-1", Entries: []gamerequest.SessionInformationEntry{entry}}, []string{"Server", "address"}, []string{"Add", "Edit", "Delete"}},
-		{"host", SessionInformationView{Visible: true, CanEdit: true, RequestID: "request-1", Entries: []gamerequest.SessionInformationEntry{entry}}, []string{"Add", "Edit"}, nil},
+		{"host", SessionInformationView{Visible: true, CanEdit: true, RequestID: "request-1", Entries: []gamerequest.SessionInformationEntry{entry}}, []string{"Add", "Edit Server", "Delete Server"}, nil},
 		{"outsider", SessionInformationView{Visible: true, JoinRequired: true, RequestID: "request-1", Entries: []gamerequest.SessionInformationEntry{entry}}, []string{"Join this Game Request to see session information."}, []string{"Server", "address"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -56,6 +56,8 @@ func TestSessionInformationUsesCompactContentTilesAndInlineEditor(t *testing.T) 
 		`class="session-information-tile"`,
 		`class="session-information-form"`,
 		`class="session-information-actions"`,
+		`aria-label="Edit Server"`,
+		`aria-label="Delete Server"`,
 		`name="key"`,
 		`name="value"`,
 		"Save",
