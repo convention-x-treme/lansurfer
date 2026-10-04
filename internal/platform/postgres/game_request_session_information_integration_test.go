@@ -37,10 +37,14 @@ func TestGameRequestSessionInformationReadAccess(t *testing.T) {
 	if err := f.requests.Join(t.Context(), req.ID, f.guest); err != nil {
 		t.Fatal(err)
 	}
+	var guestEntryID string
 	for _, user := range []string{f.host, f.guest} {
 		got, err := f.requests.SessionInformation(t.Context(), req.ID, user)
 		if err != nil || len(got.Entries) != 1 || got.Entries[0].Value != input.Value || !got.Entries[0].IsSecret {
 			t.Fatalf("read = %+v, %v", got, err)
+		}
+		if user == f.guest {
+			guestEntryID = got.Entries[0].ID
 		}
 	}
 	if err := f.requests.Leave(t.Context(), req.ID, f.guest); err != nil {
@@ -52,10 +56,14 @@ func TestGameRequestSessionInformationReadAccess(t *testing.T) {
 	if err := f.requests.Join(t.Context(), req.ID, f.guest); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.requests.Start(t.Context(), req.ID, f.host); err != nil {
+	got, err := f.requests.SessionInformation(t.Context(), req.ID, f.guest)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.requests.SessionInformation(t.Context(), req.ID, f.guest); err != nil {
+	if len(got.Entries) != 1 || got.Entries[0].ID != guestEntryID || got.Entries[0].Value != input.Value || !got.Entries[0].IsSecret {
+		t.Fatalf("after rejoin = %+v, want secret entry %s with value %q", got, guestEntryID, input.Value)
+	}
+	if err := f.requests.Start(t.Context(), req.ID, f.host); err != nil {
 		t.Fatal(err)
 	}
 	if err := f.requests.Close(t.Context(), req.ID, f.host); err != nil {
