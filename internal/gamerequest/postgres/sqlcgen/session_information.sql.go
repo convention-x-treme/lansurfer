@@ -23,15 +23,16 @@ func (q *Queries) CountGameRequestSessionEntries(ctx context.Context, gameReques
 }
 
 const createGameRequestSessionEntry = `-- name: CreateGameRequestSessionEntry :one
-INSERT INTO game_request_session_entries (game_request_id, key, value)
-VALUES ($1::uuid, $2, $3)
-RETURNING id::text, game_request_id::text, key, value, sequence, created_at, updated_at
+INSERT INTO game_request_session_entries (game_request_id, key, value, is_secret)
+VALUES ($1::uuid, $2, $3, $4)
+RETURNING id::text, game_request_id::text, key, value, is_secret, sequence, created_at, updated_at
 `
 
 type CreateGameRequestSessionEntryParams struct {
 	GameRequestID pgtype.UUID
 	Key           string
 	Value         string
+	IsSecret      bool
 }
 
 type CreateGameRequestSessionEntryRow struct {
@@ -39,19 +40,26 @@ type CreateGameRequestSessionEntryRow struct {
 	GameRequestID string
 	Key           string
 	Value         string
+	IsSecret      bool
 	Sequence      pgtype.Int8
 	CreatedAt     pgtype.Timestamptz
 	UpdatedAt     pgtype.Timestamptz
 }
 
 func (q *Queries) CreateGameRequestSessionEntry(ctx context.Context, arg CreateGameRequestSessionEntryParams) (CreateGameRequestSessionEntryRow, error) {
-	row := q.db.QueryRow(ctx, createGameRequestSessionEntry, arg.GameRequestID, arg.Key, arg.Value)
+	row := q.db.QueryRow(ctx, createGameRequestSessionEntry,
+		arg.GameRequestID,
+		arg.Key,
+		arg.Value,
+		arg.IsSecret,
+	)
 	var i CreateGameRequestSessionEntryRow
 	err := row.Scan(
 		&i.ID,
 		&i.GameRequestID,
 		&i.Key,
 		&i.Value,
+		&i.IsSecret,
 		&i.Sequence,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -99,7 +107,7 @@ func (q *Queries) GameRequestSessionInformationAccess(ctx context.Context, arg G
 }
 
 const getGameRequestSessionEntry = `-- name: GetGameRequestSessionEntry :one
-SELECT id::text, key, value FROM game_request_session_entries
+SELECT id::text, key, value, is_secret FROM game_request_session_entries
 WHERE game_request_id = $1::uuid AND id = $2::uuid
 `
 
@@ -109,15 +117,21 @@ type GetGameRequestSessionEntryParams struct {
 }
 
 type GetGameRequestSessionEntryRow struct {
-	ID    string
-	Key   string
-	Value string
+	ID       string
+	Key      string
+	Value    string
+	IsSecret bool
 }
 
 func (q *Queries) GetGameRequestSessionEntry(ctx context.Context, arg GetGameRequestSessionEntryParams) (GetGameRequestSessionEntryRow, error) {
 	row := q.db.QueryRow(ctx, getGameRequestSessionEntry, arg.GameRequestID, arg.ID)
 	var i GetGameRequestSessionEntryRow
-	err := row.Scan(&i.ID, &i.Key, &i.Value)
+	err := row.Scan(
+		&i.ID,
+		&i.Key,
+		&i.Value,
+		&i.IsSecret,
+	)
 	return i, err
 }
 
@@ -125,7 +139,7 @@ const readGameRequestSessionInformation = `-- name: ReadGameRequestSessionInform
 SELECT gr.id::text AS request_id, gr.status,
        EXISTS (SELECT 1 FROM game_request_members m WHERE m.game_request_id = gr.id AND m.user_id = $1::uuid) AS is_member,
        gr.creator_id = $1::uuid AS can_edit,
-       CASE WHEN e.id IS NULL THEN ''::text ELSE e.id::text END AS entry_id, e.key, e.value, e.sequence, e.created_at, e.updated_at
+       CASE WHEN e.id IS NULL THEN ''::text ELSE e.id::text END AS entry_id, e.key, e.value, e.is_secret, e.sequence, e.created_at, e.updated_at
 FROM game_requests gr
 LEFT JOIN game_request_session_entries e
   ON e.game_request_id = gr.id
@@ -148,6 +162,7 @@ type ReadGameRequestSessionInformationRow struct {
 	EntryID   string
 	Key       pgtype.Text
 	Value     pgtype.Text
+	IsSecret  pgtype.Bool
 	Sequence  pgtype.Int8
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
@@ -170,6 +185,7 @@ func (q *Queries) ReadGameRequestSessionInformation(ctx context.Context, arg Rea
 			&i.EntryID,
 			&i.Key,
 			&i.Value,
+			&i.IsSecret,
 			&i.Sequence,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -185,14 +201,15 @@ func (q *Queries) ReadGameRequestSessionInformation(ctx context.Context, arg Rea
 }
 
 const updateGameRequestSessionEntry = `-- name: UpdateGameRequestSessionEntry :execrows
-UPDATE game_request_session_entries SET key = $1, value = $2, updated_at = now()
-WHERE game_request_id = $3::uuid AND id = $4::uuid
-  AND (key IS DISTINCT FROM $1 OR value IS DISTINCT FROM $2)
+UPDATE game_request_session_entries SET key = $1, value = $2, is_secret = $3, updated_at = now()
+WHERE game_request_id = $4::uuid AND id = $5::uuid
+  AND (key IS DISTINCT FROM $1 OR value IS DISTINCT FROM $2 OR is_secret IS DISTINCT FROM $3)
 `
 
 type UpdateGameRequestSessionEntryParams struct {
 	Key           string
 	Value         string
+	IsSecret      bool
 	GameRequestID pgtype.UUID
 	ID            pgtype.UUID
 }
@@ -201,6 +218,7 @@ func (q *Queries) UpdateGameRequestSessionEntry(ctx context.Context, arg UpdateG
 	result, err := q.db.Exec(ctx, updateGameRequestSessionEntry,
 		arg.Key,
 		arg.Value,
+		arg.IsSecret,
 		arg.GameRequestID,
 		arg.ID,
 	)

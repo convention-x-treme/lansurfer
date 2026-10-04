@@ -27,7 +27,7 @@ func TestGameRequestSessionInformationReadReturnsDatabaseErrors(t *testing.T) {
 func TestGameRequestSessionInformationReadAccess(t *testing.T) {
 	f := newPlayingFixture(t)
 	req := f.create(t, "session info")
-	input := gamerequest.SessionInformationInput{Key: "Server", Value: "10.20.30.40:27015"}
+	input := gamerequest.SessionInformationInput{Key: "Server", Value: "10.20.30.40:27015", IsSecret: true}
 	if err := f.requests.CreateSessionInformationEntry(t.Context(), req.ID, f.host, input); err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +39,7 @@ func TestGameRequestSessionInformationReadAccess(t *testing.T) {
 	}
 	for _, user := range []string{f.host, f.guest} {
 		got, err := f.requests.SessionInformation(t.Context(), req.ID, user)
-		if err != nil || len(got.Entries) != 1 || got.Entries[0].Value != input.Value {
+		if err != nil || len(got.Entries) != 1 || got.Entries[0].Value != input.Value || !got.Entries[0].IsSecret {
 			t.Fatalf("read = %+v, %v", got, err)
 		}
 	}
@@ -107,14 +107,14 @@ func TestGameRequestSessionInformationUpdateDeleteAndOrdering(t *testing.T) {
 		t.Fatalf("entries = %+v, %v", rows, err)
 	}
 	original := rows.Entries[1]
-	if err := f.requests.UpdateSessionInformationEntry(ctx, req.ID, original.ID, f.host, gamerequest.SessionInformationInput{Key: "Room", Value: "changed"}); err != nil {
+	if err := f.requests.UpdateSessionInformationEntry(ctx, req.ID, original.ID, f.host, gamerequest.SessionInformationInput{Key: "Room", Value: "changed", IsSecret: true}); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.requests.UpdateSessionInformationEntry(ctx, req.ID, original.ID, f.host, gamerequest.SessionInformationInput{Key: " Room ", Value: " changed "}); err != nil {
+	if err := f.requests.UpdateSessionInformationEntry(ctx, req.ID, original.ID, f.host, gamerequest.SessionInformationInput{Key: " Room ", Value: " changed ", IsSecret: true}); err != nil {
 		t.Fatal(err)
 	}
 	rows, err = f.requests.SessionInformation(ctx, req.ID, f.host)
-	if err != nil || rows.Entries[1].ID != original.ID || rows.Entries[1].Sequence != original.Sequence || rows.Entries[1].Key != "Room" {
+	if err != nil || rows.Entries[1].ID != original.ID || rows.Entries[1].Sequence != original.Sequence || rows.Entries[1].Key != "Room" || !rows.Entries[1].IsSecret {
 		t.Fatalf("updated entries = %+v, %v", rows, err)
 	}
 	deleted := rows.Entries[0].ID

@@ -35,7 +35,7 @@ func (s *Store) SessionInformation(ctx context.Context, requestID, userID string
 		if entry.EntryID == "" {
 			continue
 		}
-		result.Entries = append(result.Entries, gamerequest.SessionInformationEntry{ID: entry.EntryID, RequestID: entry.RequestID, Key: entry.Key.String, Value: entry.Value.String, Sequence: entry.Sequence.Int64, CreatedAt: entry.CreatedAt.Time, UpdatedAt: entry.UpdatedAt.Time})
+		result.Entries = append(result.Entries, gamerequest.SessionInformationEntry{ID: entry.EntryID, RequestID: entry.RequestID, Key: entry.Key.String, Value: entry.Value.String, IsSecret: entry.IsSecret.Bool, Sequence: entry.Sequence.Int64, CreatedAt: entry.CreatedAt.Time, UpdatedAt: entry.UpdatedAt.Time})
 	}
 	return result, nil
 }
@@ -80,7 +80,7 @@ func (s *Store) CreateSessionInformationEntry(ctx context.Context, requestID, us
 		if count >= 12 {
 			return gamerequest.ErrSessionInformationLimit
 		}
-		_, err = q.CreateGameRequestSessionEntry(ctx, sqlcgen.CreateGameRequestSessionEntryParams{GameRequestID: rid, Key: input.Key, Value: input.Value})
+		_, err = q.CreateGameRequestSessionEntry(ctx, sqlcgen.CreateGameRequestSessionEntryParams{GameRequestID: rid, Key: input.Key, Value: input.Value, IsSecret: input.IsSecret})
 		if isUniqueViolation(err) {
 			return gamerequest.ErrSessionInformationKeyExists
 		}
@@ -119,10 +119,10 @@ func (s *Store) UpdateSessionInformationEntry(ctx context.Context, requestID, en
 		if err != nil {
 			return err
 		}
-		if current.Key == input.Key && current.Value == input.Value {
+		if current.Key == input.Key && current.Value == input.Value && current.IsSecret == input.IsSecret {
 			return nil
 		}
-		n, err := q.UpdateGameRequestSessionEntry(ctx, sqlcgen.UpdateGameRequestSessionEntryParams{GameRequestID: rid, ID: eid, Key: input.Key, Value: input.Value})
+		n, err := q.UpdateGameRequestSessionEntry(ctx, sqlcgen.UpdateGameRequestSessionEntryParams{GameRequestID: rid, ID: eid, Key: input.Key, Value: input.Value, IsSecret: input.IsSecret})
 		if isUniqueViolation(err) {
 			return gamerequest.ErrSessionInformationKeyExists
 		}
