@@ -590,6 +590,116 @@
     gap: 0;
   }
 
+  .detail-coordination {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+    align-items: start;
+    gap: 1.25rem;
+    margin-top: 1rem;
+    border-top: 1px solid var(--border-raised);
+    padding-top: 1rem;
+  }
+
+  .detail-coordination-single {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .detail-coordination-description,
+  .session-information {
+    min-width: 0;
+  }
+
+  .session-information-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+
+  .session-information-tiles {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+  }
+
+  .session-information-tile {
+    display: flex;
+    max-width: 100%;
+    min-width: 0;
+    flex: 0 1 auto;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.25rem 0.5rem;
+    border: 1px solid var(--border-raised);
+    border-radius: var(--radius-field);
+    background: var(--color-base-100);
+    padding: 0.375rem 0.5rem;
+  }
+
+  .session-information-key {
+    overflow-wrap: anywhere;
+    font-size: 0.8125rem;
+    font-weight: 600;
+  }
+
+  .session-information-value {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    font-size: 0.875rem;
+  }
+
+  .session-information-actions {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 0.125rem;
+  }
+
+  .session-information-form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+    align-items: start;
+    gap: 0.625rem 0.75rem;
+    margin-top: 0.75rem;
+  }
+
+  .session-information-form > label {
+    display: grid;
+    min-width: 0;
+    gap: 0.375rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+
+  .session-information-form .input {
+    min-height: 2.75rem;
+    font-weight: 400;
+  }
+
+  .session-information-form > [role="alert"],
+  .session-information-form-actions {
+    grid-column: 1 / -1;
+  }
+
+  .session-information-form-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  @media (max-width: 47.99rem) {
+    .detail-coordination {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 1rem;
+    }
+
+    .session-information-form {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
   /* A last free place borders the hero the way it borders the list row, so the
      detail page a player lands on carries the scarcity the row promised. */
   .detail-hero-last,

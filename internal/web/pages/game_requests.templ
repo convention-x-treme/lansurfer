@@ -644,12 +644,17 @@ templ GameRequestDetailContentWithSession(request requestquery.Request, viewerID
 						</button>
 					</div>
 				</div>
-				<div class="mt-4 border-t border-base-300 pt-4">
-					<p class="section-label data-text">Description</p>
-					if request.Description == "" {
-						<p class="mt-2 text-base-content/65">No description.</p>
-					} else {
-						<p class="mt-2 whitespace-pre-wrap leading-relaxed text-base-content/80">{ request.Description }</p>
+				<div class={ detailCoordinationClass(request, session) }>
+					<div class={ detailCoordinationDescriptionClass(request, session) }>
+						<h2 id="detail-description-title" class="section-label data-text">Description</h2>
+						if request.Description == "" {
+							<p class="mt-2 text-sm text-base-content/65">No description.</p>
+						} else {
+							<p class="mt-2 whitespace-pre-wrap break-words leading-relaxed text-base-content/80">{ request.Description }</p>
+						}
+					</div>
+					if requestActive(request) {
+						@GameRequestSessionInformation(session)
 					}
 				</div>
 			</article>
@@ -680,7 +685,6 @@ templ GameRequestDetailContentWithSession(request requestquery.Request, viewerID
 					}
 				</ul>
 			</section>
-			@GameRequestSessionInformation(session)
 			if chatOpen(request, viewerID) {
 				@collapsible("main-chat", "Lobby chat", "flex-1", true, true) {
 					<ol id="chat-log" class="chat-log" role="log" aria-live="polite" hx-get={ "/game-requests/" + request.ID + "/chat" } hx-trigger="load" hx-swap="outerHTML"></ol>
@@ -951,6 +955,19 @@ func detailHeroClass(request requestquery.Request) string {
 	return "detail-hero"
 }
 
+func detailCoordinationClass(request requestquery.Request, session SessionInformationView) string {
+	if !requestActive(request) || !session.Visible {
+		return "detail-coordination detail-coordination-single"
+	}
+	return "detail-coordination"
+}
+
+func detailCoordinationDescriptionClass(request requestquery.Request, session SessionInformationView) string {
+	if !requestActive(request) || !session.Visible {
+		return "detail-coordination-description detail-description-wide"
+	}
+	return "detail-coordination-description"
+}
 func detailStatusChipClass(request requestquery.Request) string {
 	switch request.Status {
 	case gamerequest.StatusCancelled:

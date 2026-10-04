@@ -385,6 +385,61 @@ func TestGameRequestDetailContentRendersCoverOnceAndDescribesTheGame(t *testing.
 		t.Errorf("the cover should be rendered once, got %d: %s", count, body)
 	}
 }
+func TestGameRequestDetailKeepsDescriptionAndSessionInformationTogether(t *testing.T) {
+	request := requestquery.Request{
+		ID: "request-1", GameID: "game-1",
+		Game:      game.GamePresentation{Name: "Warcraft III"},
+		CreatorID: "host-1", Status: gamerequest.StatusOpen, MemberCount: 1,
+		Description: "Meet at the LAN.",
+	}
+	session := SessionInformationView{
+		Visible: true, CanEdit: true, RequestID: request.ID,
+		Entries: []gamerequest.SessionInformationEntry{{ID: "entry-1", Key: "Lobby", Value: "CXT-WC3-04"}},
+	}
+	var rendered bytes.Buffer
+	if err := GameRequestDetailContentWithSession(request, "host-1", false, GameRequestDetailMessage{}, session).Render(context.Background(), &rendered); err != nil {
+		t.Fatalf("render detail: %v", err)
+	}
+	body := rendered.String()
+	description := strings.Index(body, `class="detail-coordination-description"`)
+	sessionInfo := strings.Index(body, `<div id="session-information" `)
+	players := strings.Index(body, `id="players-title"`)
+	if description < 0 || sessionInfo < description || players < sessionInfo {
+		t.Fatalf("description, session information, and Players must render in order: %s", body)
+	}
+	if strings.Contains(body, `<div id="session-information" class="detail-card`) {
+		t.Fatalf("session information must not render as nested card: %s", body)
+	}
+	for _, want := range []string{"Meet at the LAN.", "CXT-WC3-04", "detail-coordination"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("detail does not contain %q: %s", want, body)
+		}
+	}
+}
+
+func TestTerminalGameRequestOmitsSessionInformation(t *testing.T) {
+	request := requestquery.Request{
+		ID: "request-1", GameID: "game-1",
+		Game:      game.GamePresentation{Name: "Warcraft III"},
+		CreatorID: "host-1", Status: gamerequest.StatusClosed, MemberCount: 1,
+		Description: "The round ended.",
+	}
+	session := SessionInformationView{Visible: true, CanEdit: true, RequestID: request.ID}
+	if requestActive(request) {
+		t.Fatalf("test request should be terminal, status=%q", request.Status)
+	}
+	var rendered bytes.Buffer
+	if err := GameRequestDetailContentWithSession(request, "host-1", false, GameRequestDetailMessage{}, session).Render(context.Background(), &rendered); err != nil {
+		t.Fatalf("render detail: %v", err)
+	}
+	body := rendered.String()
+	if at := strings.Index(body, `<div id="session-information" `); at >= 0 {
+		t.Fatalf("terminal request rendered session information at %d: %s", at, body[at:min(at+120, len(body))])
+	}
+	if !strings.Contains(body, `class="detail-coordination-description detail-description-wide"`) {
+		t.Fatalf("terminal description must expand: %s", body)
+	}
+}
 
 // Following is offered where a player decides they want more of this Game,
 // and only as an offer: unfollowing belongs to the catalog, not to a round.
