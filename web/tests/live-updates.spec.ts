@@ -568,6 +568,10 @@ test("secret session information copies while masked and resets on refresh", asy
   await expect(value).toHaveText("••••••••");
   await tile.getByRole("button", { name: "Copy" }).click();
   await expect.poll(() => page.evaluate(() => window.__copiedSecret)).toBe("shoulder-secret");
+  const notices = page.locator("#live-notices");
+  await expect(notices).toContainText("Secret copied.");
+  await expect(notices).not.toContainText("shoulder-secret");
+  await expect(value).toHaveText("••••••••");
 
   await tile.getByRole("button", { name: "Reveal" }).click();
   await expect(value).toHaveText("shoulder-secret");
@@ -575,6 +579,13 @@ test("secret session information copies while masked and resets on refresh", asy
   await expect(value).toHaveText("••••••••");
 
   await page.clock.install();
+  await tile.getByRole("button", { name: "Reveal" }).click();
+  await page.clock.fastForward(10_000);
+  await tile.getByRole("button", { name: "Copy" }).click();
+  await expect(notices).toContainText("Secret copied.");
+  await expect(value).toHaveText("shoulder-secret");
+  await page.clock.fastForward(10_000);
+  await expect(value).toHaveText("••••••••");
   await tile.getByRole("button", { name: "Reveal" }).click();
   await expect(value).toHaveText("shoulder-secret");
   const requestID = await page.locator("[data-game-request-detail]").getAttribute("data-game-request-id");
@@ -590,6 +601,38 @@ test("secret session information copies while masked and resets on refresh", asy
   await page.clock.fastForward(20_000);
   await expect(refreshedValue).toHaveText("••••••••");
 });
+test("secret copy reports clipboard rejection and unsupported API", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(Navigator.prototype, "clipboard", {
+      configurable: true,
+      get: () => ({ writeText: () => Promise.reject(new Error("permission denied")) }),
+    });
+  });
+  await page.goto("/game-requests/new?game_id=game-1");
+  await page.getByRole("button", { name: "Create Game Request" }).click();
+  await page.waitForURL(/\/game-requests\/[0-9a-f-]+/);
+  await page.getByRole("link", { name: "Add", exact: true }).click();
+  await page.getByRole("textbox", { name: "Key" }).fill("Password");
+  await page.getByRole("textbox", { name: "Value" }).fill("shoulder-secret");
+  await page.getByRole("checkbox", { name: "Secret value" }).check();
+  await page.getByRole("button", { name: "Save" }).click();
+
+  const tile = page.locator(".session-information-tile");
+  const value = tile.locator("[data-secret-value]");
+  await tile.getByRole("button", { name: "Copy" }).click();
+  const notices = page.locator("#live-notices");
+  await expect(notices).toContainText("Could not copy secret. Please try again.");
+  await expect(notices).not.toContainText("shoulder-secret");
+  await expect(value).toHaveText("••••••••");
+
+  await page.evaluate(() => {
+    Object.defineProperty(Navigator.prototype, "clipboard", { configurable: true, get: () => undefined });
+  });
+  await tile.getByRole("button", { name: "Copy" }).click();
+  await expect(notices.locator('[role="alert"]')).toHaveCount(2);
+  await expect(value).toHaveText("••••••••");
+});
+
 
 test("secret session edit masks value and permits toggling presentation", async ({ page }) => {
   await page.goto("/game-requests/new?game_id=game-1");

@@ -344,8 +344,13 @@ Stable 1.0 coordination continues while a request is `playing`:
 - the Host maintains generic key/value session information; only the Host and currently joined players read it while the request is `open` or `playing`;
 - terminal requests do not expose session information; leaving removes future read access;
 - session-information CRUD is not activity or notification behavior;
-- secret entries are hidden by default, clearly marked, copyable while masked, and temporarily revealed for no more than 20 seconds; Hosts may toggle secret presentation while editing;
-- secret values follow the same Host/current-participant audience and server-side authorization as other session information; values are stored as plaintext in PostgreSQL, with no application-level encryption;
+- secret entries are hidden by default, clearly marked, copyable while masked with generic success or failure feedback, and temporarily revealed for no more than 20 seconds; copying never reveals a value or resets its reveal timer;
+- editing a secret pre-fills a password-style field; the Host may toggle secret presentation while editing;
+- secret values use the same Host/current-participant audience and server-side authorization as other session information; leaving removes future access, rejoining an active request restores it, and terminal requests expose no session information;
+- authorized server-rendered HTML may contain plaintext; reveal state stays client-only and resets on fragment or full-detail refresh;
+- secret values remain plaintext in PostgreSQL with no application-level encryption or separate secrets store; they must not appear in public/discovery views, logs, metrics, notification payloads, Discord synchronization, or unrelated diagnostic surfaces;
+- session-information realtime delivery rechecks current participant authorization and carries no entry content; secret values come only from the independently authorized read;
+- secret sharing outside a Game Request, per-entry access lists, secret history/versioning, and key-management UI are out of scope;
 - the Host and currently joined participants may use a lightweight request-local private chat while the request is active.
 
 Secret presentation protects against shoulder-surfing, not database access, server compromise, or an authorized participant inspecting browser tools.

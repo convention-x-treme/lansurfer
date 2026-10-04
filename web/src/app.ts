@@ -648,7 +648,15 @@ document.addEventListener("click", (event) => {
     return;
   }
   if (event.target.closest("[data-secret-copy]") && value) {
-    void navigator.clipboard?.writeText(value.dataset.secretValue ?? "");
+    const clipboard = navigator.clipboard;
+    if (!clipboard?.writeText) {
+      showActionError("Could not copy secret. Please try again.");
+      return;
+    }
+    void clipboard.writeText(value.dataset.secretValue ?? "").then(() => {
+      const notice = liveNotice("info", "Secret copied.");
+      window.setTimeout(() => notice.remove(), 3000);
+    }).catch(() => showActionError("Could not copy secret. Please try again."));
   }
 });
 
