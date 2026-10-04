@@ -665,7 +665,7 @@ func (f *fixture) CreateSessionInformationEntry(_ context.Context, requestID, us
 	}
 	entry.nextSessionEntry++
 	now := time.Now()
-	entry.sessionInformation = append(entry.sessionInformation, gamerequest.SessionInformationEntry{ID: strconv.FormatInt(entry.nextSessionEntry, 10), RequestID: requestID, Key: input.Key, Value: input.Value, Sequence: entry.nextSessionEntry, CreatedAt: now, UpdatedAt: now})
+	entry.sessionInformation = append(entry.sessionInformation, gamerequest.SessionInformationEntry{ID: strconv.FormatInt(entry.nextSessionEntry, 10), RequestID: requestID, Key: input.Key, Value: input.Value, IsSecret: input.IsSecret, Sequence: entry.nextSessionEntry, CreatedAt: now, UpdatedAt: now})
 	f.broker.Publish(gamerequest.Event{Type: gamerequest.EventSessionInformationChanged, RequestID: requestID})
 	return nil
 }
@@ -687,7 +687,7 @@ func (f *fixture) UpdateSessionInformationEntry(_ context.Context, requestID, en
 		if current.ID != entryID {
 			continue
 		}
-		if current.Key == input.Key && current.Value == input.Value {
+		if current.Key == input.Key && current.Value == input.Value && current.IsSecret == input.IsSecret {
 			return nil
 		}
 		for _, other := range entry.sessionInformation {
@@ -695,7 +695,7 @@ func (f *fixture) UpdateSessionInformationEntry(_ context.Context, requestID, en
 				return gamerequest.ErrSessionInformationKeyExists
 			}
 		}
-		current.Key, current.Value, current.UpdatedAt = input.Key, input.Value, time.Now()
+		current.Key, current.Value, current.IsSecret, current.UpdatedAt = input.Key, input.Value, input.IsSecret, time.Now()
 		entry.sessionInformation[i] = current
 		f.broker.Publish(gamerequest.Event{Type: gamerequest.EventSessionInformationChanged, RequestID: requestID})
 		return nil

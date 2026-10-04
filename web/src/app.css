@@ -650,6 +650,28 @@
     font-size: 0.875rem;
   }
 
+  .session-information-secret {
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+    padding: 0.125rem 0.5rem;
+    color: var(--ink-accent);
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+
+  .session-information-secret-value {
+    font-family: var(--font-mono);
+    letter-spacing: 0.08em;
+  }
+
+  .session-information-secret-toggle {
+    display: flex !important;
+    grid-column: 1 / -1;
+    grid-auto-flow: column;
+    justify-content: start;
+    align-items: center;
+  }
+
   .session-information-actions {
     display: inline-flex;
     flex: 0 0 auto;

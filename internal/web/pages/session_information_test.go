@@ -72,6 +72,35 @@ func TestSessionInformationUsesCompactContentTilesAndInlineEditor(t *testing.T) 
 	}
 }
 
+func TestSecretSessionInformationIsMaskedAndEditableAsPassword(t *testing.T) {
+	entry := gamerequest.SessionInformationEntry{ID: "entry-1", Key: "Password", Value: "hunter2", IsSecret: true}
+	view := SessionInformationView{
+		Visible: true, CanEdit: true, RequestID: "request-1", Entries: []gamerequest.SessionInformationEntry{entry},
+		Form: &SessionInformationForm{Mode: "edit", EntryID: entry.ID, Key: entry.Key, Value: entry.Value, IsSecret: entry.IsSecret},
+	}
+	var out bytes.Buffer
+	if err := GameRequestSessionInformation(view).Render(context.Background(), &out); err != nil {
+		t.Fatal(err)
+	}
+	html := out.String()
+	for _, want := range []string{`type="password"`, `name="is_secret"`, `checked`, "Secret", "Copy", `data-secret-value`} {
+		if !strings.Contains(html, want) {
+			t.Errorf("secret session information markup missing %q: %s", want, html)
+		}
+	}
+}
+
+func TestNormalSessionInformationFormLeavesSecretToggleUnchecked(t *testing.T) {
+	view := SessionInformationView{Visible: true, CanEdit: true, Form: &SessionInformationForm{Mode: "add"}}
+	var out bytes.Buffer
+	if err := GameRequestSessionInformation(view).Render(context.Background(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out.String(), `name="is_secret" value="true" checked`) {
+		t.Fatalf("normal entry form checks secret toggle: %s", out.String())
+	}
+}
+
 func TestSessionInformationFormUsesServerUnicodeLimitsAndMarksRejectedField(t *testing.T) {
 	view := SessionInformationView{
 		Visible: true, CanEdit: true, RequestID: "request-1",

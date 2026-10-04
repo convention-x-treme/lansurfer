@@ -5,7 +5,7 @@ import (
 	"github.com/convention-x-treme/lansurfer/internal/web/components"
 )
 
-type SessionInformationForm struct { Mode, EntryID, Key, Value, Error, ErrorField string }
+type SessionInformationForm struct { Mode, EntryID, Key, Value, Error, ErrorField string; IsSecret bool }
 type SessionInformationView struct { RequestID string; Entries []gamerequest.SessionInformationEntry; CanEdit, JoinRequired, Visible bool; Form *SessionInformationForm }
 
 templ GameRequestSessionInformation(view SessionInformationView) {
@@ -23,9 +23,16 @@ templ GameRequestSessionInformation(view SessionInformationView) {
 				if len(view.Entries) > 0 {
 					<ul class="session-information-tiles" aria-label="Session information entries">
 						for _, entry := range view.Entries {
-							<li class="session-information-tile">
+							<li class="session-information-tile" data-secret={ templ.KV("true", entry.IsSecret) }>
 								<strong class="session-information-key">{ entry.Key }</strong>
-								<span class="session-information-value">{ entry.Value }</span>
+								if entry.IsSecret {
+									<span class="session-information-secret">Secret</span>
+									<div class="session-information-value session-information-secret-value" data-secret-value={ entry.Value } data-revealed="false">••••••••</div>
+									<button class="btn btn-quiet btn-xs" type="button" data-secret-copy>Copy</button>
+									<button class="btn btn-quiet btn-xs" type="button" data-secret-reveal aria-pressed="false">Reveal</button>
+								} else {
+									<span class="session-information-value">{ entry.Value }</span>
+								}
 								if view.CanEdit {
 									<div class="session-information-actions">
 										<a class="btn btn-ghost btn-square btn-sm" aria-label={ "Edit " + entry.Key } title={ "Edit " + entry.Key } href={ "/game-requests/" + view.RequestID + "?session_edit=" + entry.ID } hx-get={ "/game-requests/" + view.RequestID + "/session-information?session_edit=" + entry.ID } hx-target="#session-information" hx-swap="outerHTML"><i class="ph ph-pencil-simple" aria-hidden="true"></i></a>
@@ -45,7 +52,8 @@ templ GameRequestSessionInformation(view SessionInformationView) {
 					<form class="session-information-form" data-session-information-form data-session-mode={ view.Form.Mode } data-session-entry-id={ view.Form.EntryID } method="post" action={ sessionFormAction(view) } hx-post={ sessionFormAction(view) } hx-target="#session-information" hx-swap="outerHTML">
 						@components.CSRFInput()
 						<label>Key<input class="input input-bordered w-full" name="key" value={ view.Form.Key } required aria-invalid={ sessionInformationInvalid(view.Form.ErrorField, "key") } aria-describedby="session-information-error"/></label>
-						<label>Value<input class="input input-bordered w-full" name="value" value={ view.Form.Value } required aria-invalid={ sessionInformationInvalid(view.Form.ErrorField, "value") } aria-describedby="session-information-error"/></label>
+						<label>Value<input class="input input-bordered w-full" name="value" type={ sessionValueInputType(view.Form) } value={ view.Form.Value } required aria-invalid={ sessionInformationInvalid(view.Form.ErrorField, "value") } aria-describedby="session-information-error"/></label>
+						<label class="session-information-secret-toggle"><input type="checkbox" name="is_secret" value="true" if view.Form.IsSecret { checked } data-session-secret-toggle/> Secret value</label>
 						<p id="session-information-error" role="alert" class="text-sm text-error">{ view.Form.Error }</p>
 						<div class="session-information-form-actions"><button class="btn btn-primary btn-sm" type="submit">Save</button><a class="btn btn-quiet btn-sm" href={ "/game-requests/" + view.RequestID } hx-get={ "/game-requests/" + view.RequestID + "/session-information" } hx-target="#session-information" hx-swap="outerHTML">Cancel</a></div>
 					</form>
@@ -65,3 +73,7 @@ func sessionInfoRefreshURL(view SessionInformationView) string {
 
 func sessionFormAction(view SessionInformationView) string { if view.Form != nil && view.Form.Mode == "edit" { return "/game-requests/" + view.RequestID + "/session-information/" + view.Form.EntryID }; return "/game-requests/" + view.RequestID + "/session-information" }
 func sessionInformationInvalid(errorField, field string) string { if errorField == field { return "true" }; return "false" }
+func sessionValueInputType(form *SessionInformationForm) string {
+	if form != nil && form.IsSecret { return "password" }
+	return "text"
+}

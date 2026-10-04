@@ -1,4 +1,10 @@
 
+declare global {
+  interface Window {
+    __copiedSecret?: string;
+  }
+}
+
 import { expect, test } from "@playwright/test";
 import { htmxCounters, instrumentHtmx, resetFixture, waitForRealtime } from "./helpers";
 
@@ -536,6 +542,61 @@ test("session-information tiles reflow and inline editor saves locally", async (
   await expect(page.locator("#session-information")).toContainText("Saved value");
 });
 
+test("secret session information copies while masked and resets on refresh", async ({ page, request }) => {
+  await page.goto("/game-requests/new?game_id=game-1");
+  await page.getByRole("button", { name: "Create Game Request" }).click();
+  await page.waitForURL(/\/game-requests\/[0-9a-f-]+/);
+  await waitForRealtime(page, request, 1);
+  await page.getByRole("link", { name: "Add", exact: true }).click();
+  await page.getByRole("textbox", { name: "Key" }).fill("Password");
+  await page.getByRole("textbox", { name: "Value" }).fill("shoulder-secret");
+  await page.getByRole("checkbox", { name: "Secret value" }).check();
+  await page.getByRole("button", { name: "Save" }).click();
+
+  const tile = page.locator(".session-information-tile");
+  const value = tile.locator("[data-secret-value]");
+  await expect(tile).toContainText("Secret");
+  await expect(value).toHaveText("••••••••");
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, "clipboard", { value: { writeText: (text: string) => { window.__copiedSecret = text; return Promise.resolve(); } } });
+  });
+  await tile.getByRole("button", { name: "Copy" }).click();
+  await expect.poll(() => page.evaluate(() => window.__copiedSecret)).toBe("shoulder-secret");
+  await expect(value).toHaveText("••••••••");
+
+  await tile.getByRole("button", { name: "Reveal" }).click();
+  await expect(value).toHaveText("shoulder-secret");
+  await tile.getByRole("button", { name: "Hide" }).click();
+  await expect(value).toHaveText("••••••••");
+
+  await tile.getByRole("button", { name: "Reveal" }).click();
+  await expect(value).toHaveText("shoulder-secret");
+  const requestID = await page.locator("[data-game-request-detail]").getAttribute("data-game-request-id");
+  await request.post(`/__test__/publish?type=GameRequestSessionInformationChanged&request=${requestID}`);
+  await expect(value).toHaveText("••••••••");
+  await tile.getByRole("button", { name: "Reveal" }).click();
+  await expect(value).toHaveText("shoulder-secret");
+  await page.clock.fastForward(20_000);
+  await expect(value).toHaveText("••••••••");
+});
+
+test("secret session edit masks value and permits toggling presentation", async ({ page }) => {
+  await page.goto("/game-requests/new?game_id=game-1");
+  await page.getByRole("button", { name: "Create Game Request" }).click();
+  await page.waitForURL(/\/game-requests\/[0-9a-f-]+/);
+  await page.getByRole("link", { name: "Add", exact: true }).click();
+  await page.getByRole("textbox", { name: "Key" }).fill("Password");
+  await page.getByRole("textbox", { name: "Value" }).fill("shoulder-secret");
+  await page.getByRole("checkbox", { name: "Secret value" }).check();
+  await page.getByRole("button", { name: "Save" }).click();
+  await page.getByRole("link", { name: "Edit Password" }).click();
+  const value = page.getByRole("textbox", { name: "Value" });
+  await expect(value).toHaveAttribute("type", "password");
+  await expect(value).toHaveValue("shoulder-secret");
+  await page.getByRole("checkbox", { name: "Secret value" }).uncheck();
+  await expect(value).toHaveAttribute("type", "text");
+});
+
 test("session-information outsider sees join hint without entry data", async ({ page, browser }) => {
   await page.goto("/game-requests/new?game_id=game-1");
   await page.getByRole("button", { name: "Create Game Request" }).click();
@@ -543,6 +604,7 @@ test("session-information outsider sees join hint without entry data", async ({ 
   await page.getByRole("link", { name: "Add", exact: true }).click();
   await page.getByRole("textbox", { name: "Key" }).fill("Private key");
   await page.getByRole("textbox", { name: "Value" }).fill("private value");
+  await page.getByRole("checkbox", { name: "Secret value" }).check();
   await page.getByRole("button", { name: "Save" }).click();
   const requestID = await page.locator("[data-game-request-detail]").getAttribute("data-game-request-id");
 

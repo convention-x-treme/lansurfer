@@ -44,7 +44,7 @@ func (h *GameRequests) sessionView(r *http.Request, mode string) (pages.SessionI
 	if info.CanEdit && mode != "" && mode != "add" {
 		for _, entry := range info.Entries {
 			if entry.ID == mode {
-				view.Form = &pages.SessionInformationForm{Mode: "edit", EntryID: entry.ID, Key: entry.Key, Value: entry.Value}
+				view.Form = &pages.SessionInformationForm{Mode: "edit", EntryID: entry.ID, Key: entry.Key, Value: entry.Value, IsSecret: entry.IsSecret}
 				return view, nil
 			}
 		}
@@ -87,7 +87,7 @@ func (h *GameRequests) DeleteSessionInformation(w http.ResponseWriter, r *http.R
 }
 func (h *GameRequests) mutateSessionInformation(w http.ResponseWriter, r *http.Request, entryID string) {
 	account, _ := webmiddleware.CurrentUser(r.Context())
-	input := gamerequest.SessionInformationInput{Key: r.FormValue("key"), Value: r.FormValue("value")}
+	input := gamerequest.SessionInformationInput{Key: r.FormValue("key"), Value: r.FormValue("value"), IsSecret: r.FormValue("is_secret") == "true"}
 	var err error
 	if entryID == "" {
 		err = h.sessionInformation.CreateSessionInformationEntry(r.Context(), chi.URLParam(r, "requestID"), account.ID, input)
@@ -137,7 +137,7 @@ func (h *GameRequests) sessionMutationFailure(w http.ResponseWriter, r *http.Req
 		h.sessionFailure(w, r, err)
 		return
 	}
-	view.Form.Key, view.Form.Value = input.Key, input.Value
+	view.Form.Key, view.Form.Value, view.Form.IsSecret = input.Key, input.Value, input.IsSecret
 	view.Form.Error = gameRequestMessage(err)
 	switch {
 	case errors.Is(err, gamerequest.ErrInvalidSessionInformationKey):

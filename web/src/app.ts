@@ -602,6 +602,65 @@ document.addEventListener("click", (event) => {
 // completes at all; it must outlast the server's own request timeout.
 const submitRecoveryDelay = 20000;
 
+
+const secretRevealTimeout = 20_000;
+const secretRevealTimers = new WeakMap<HTMLElement, number>();
+
+function hideSecret(tile: HTMLElement): void {
+  const value = tile.querySelector<HTMLElement>("[data-secret-value]");
+  const button = tile.querySelector<HTMLButtonElement>("[data-secret-reveal]");
+  if (!value || !button) return;
+  const timer = secretRevealTimers.get(tile);
+  if (timer !== undefined) window.clearTimeout(timer);
+  secretRevealTimers.delete(tile);
+  value.textContent = "••••••••";
+  value.dataset.revealed = "false";
+  button.textContent = "Reveal";
+  button.setAttribute("aria-pressed", "false");
+}
+
+document.addEventListener("click", (event) => {
+  if (!(event.target instanceof Element)) return;
+  const tile = event.target.closest<HTMLElement>("[data-secret='true']");
+  if (!tile) return;
+  const value = tile.querySelector<HTMLElement>("[data-secret-value]");
+  const button = event.target.closest<HTMLButtonElement>("[data-secret-reveal]");
+  if (button && value) {
+    if (value.dataset.revealed === "true") {
+      hideSecret(tile);
+    } else {
+      value.textContent = value.dataset.secretValue ?? "";
+      value.dataset.revealed = "true";
+      button.textContent = "Hide";
+      button.setAttribute("aria-pressed", "true");
+      secretRevealTimers.set(tile, window.setTimeout(() => hideSecret(tile), secretRevealTimeout));
+    }
+    return;
+  }
+  if (event.target.closest("[data-secret-copy]") && value) {
+    void navigator.clipboard?.writeText(value.dataset.secretValue ?? "");
+  }
+});
+
+document.addEventListener("htmx:beforeSwap", (event) => {
+  const target = event.target;
+  if (target instanceof HTMLElement && (target.matches("[data-session-information]") || target.querySelector("[data-session-information]"))) {
+    target.querySelectorAll<HTMLElement>("[data-secret='true']").forEach(hideSecret);
+  }
+});
+
+document.addEventListener("change", (event) => {
+  const toggle = event.target;
+  if (!(toggle instanceof HTMLInputElement) || !toggle.matches("[data-session-secret-toggle]")) return;
+  const value = toggle.closest("form")?.querySelector<HTMLInputElement>('input[name="value"]');
+  if (value) value.type = toggle.checked ? "password" : "text";
+});
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    document.querySelectorAll<HTMLElement>("[data-secret='true'][data-revealed='true']").forEach(hideSecret);
+  }
+});
 function releaseSubmitGuard(form: HTMLFormElement): void {
   delete form.dataset.submitting;
   form.querySelectorAll<HTMLButtonElement | HTMLInputElement>("button[type=submit], input[type=submit]").forEach((control) => {
