@@ -1,6 +1,8 @@
 package pages
 
 import (
+	"strconv"
+
 	"github.com/convention-x-treme/lansurfer/internal/gamerequest"
 	"github.com/convention-x-treme/lansurfer/internal/web/components"
 )
@@ -12,7 +14,7 @@ templ GameRequestSessionInformation(view SessionInformationView) {
 	if view.Visible {
 		<div id="session-information" class="session-information" data-session-information data-refresh-url={ sessionInfoRefreshURL(view) }>
 			<div class="session-information-heading">
-				<h2 id="session-information-title" class="text-[1.0625rem] font-semibold">Session information</h2>
+				<h2 id="session-information-title" class="section-label data-text">Session information</h2>
 				if view.CanEdit && view.Form == nil {
 					<a class="btn btn-quiet btn-xs" href={ "/game-requests/" + view.RequestID + "?session_add=1" } hx-get={ "/game-requests/" + view.RequestID + "/session-information?session_add=1" } hx-target="#session-information" hx-swap="outerHTML">Add</a>
 				}
@@ -23,15 +25,18 @@ templ GameRequestSessionInformation(view SessionInformationView) {
 				if len(view.Entries) > 0 {
 					<ul class="session-information-tiles" aria-label="Session information entries">
 						for _, entry := range view.Entries {
-							<li class="session-information-tile" data-secret={ templ.KV("true", entry.IsSecret) }>
+							<li class="session-information-tile" data-secret={ strconv.FormatBool(entry.IsSecret) }>
 								<strong class="session-information-key">{ entry.Key }</strong>
 								if entry.IsSecret {
 									<span class="session-information-secret">Secret</span>
 									<div class="session-information-value session-information-secret-value" data-secret-value={ entry.Value } data-revealed="false">••••••••</div>
-									<button class="btn btn-quiet btn-xs" type="button" data-secret-copy>Copy</button>
-									<button class="btn btn-quiet btn-xs" type="button" data-secret-reveal aria-pressed="false">Reveal</button>
+									<button class="btn btn-ghost btn-square btn-xs" type="button" data-secret-copy aria-label={ "Copy " + entry.Key } title={ "Copy " + entry.Key }><i class="ph ph-copy" aria-hidden="true"></i></button>
+									<button class="btn btn-ghost btn-square btn-xs" type="button" data-secret-reveal aria-label={ "Reveal " + entry.Key } title={ "Reveal " + entry.Key } aria-pressed="false"><i class="ph ph-eye" aria-hidden="true"></i></button>
 								} else {
-									<span class="session-information-value">{ entry.Value }</span>
+									<div class="session-information-value-row">
+										<span class="session-information-value">{ entry.Value }</span>
+										<button class="btn btn-ghost btn-square btn-xs" type="button" data-copy-value={ entry.Value } aria-label={ "Copy " + entry.Key } title={ "Copy " + entry.Key }><i class="ph ph-copy" aria-hidden="true"></i></button>
+									</div>
 								}
 								if view.CanEdit {
 									<div class="session-information-actions">

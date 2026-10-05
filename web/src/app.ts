@@ -616,51 +616,91 @@ const submitRecoveryDelay = 20000;
 const secretRevealTimeout = 20_000;
 const secretRevealTimers = new WeakMap<HTMLElement, number>();
 
+function secretButtonState(tile: HTMLElement, revealed: boolean): void {
+  const button = tile.querySelector<HTMLButtonElement>("[data-secret-reveal]");
+  const icon = button?.querySelector<HTMLElement>("i");
+  if (!button) return;
+  const key = tile.querySelector<HTMLElement>(".session-information-key")?.textContent ?? "secret";
+  const action = revealed ? "Hide" : "Reveal";
+  button.setAttribute("aria-label", `${action} ${key}`);
+  button.title = `${action} ${key}`;
+  button.setAttribute("aria-pressed", String(revealed));
+  icon?.classList.toggle("ph-eye", !revealed);
+  icon?.classList.toggle("ph-eye-slash", revealed);
+}
+
 function hideSecret(tile: HTMLElement): void {
   const value = tile.querySelector<HTMLElement>("[data-secret-value]");
-  const button = tile.querySelector<HTMLButtonElement>("[data-secret-reveal]");
-  if (!value || !button) return;
+  if (!value) return;
   const timer = secretRevealTimers.get(tile);
   if (timer !== undefined) window.clearTimeout(timer);
   secretRevealTimers.delete(tile);
   value.textContent = "••••••••";
   value.dataset.revealed = "false";
-  button.textContent = "Reveal";
-  button.setAttribute("aria-pressed", "false");
+  secretButtonState(tile, false);
+}
+
+function revealSecret(tile: HTMLElement, value: HTMLElement): void {
+  value.textContent = value.dataset.secretValue ?? "";
+  value.dataset.revealed = "true";
+  secretButtonState(tile, true);
+  secretRevealTimers.set(tile, window.setTimeout(() => hideSecret(tile), secretRevealTimeout));
+}
+
+async function copySecret(secret: string): Promise<void> {
+  try {
+    const clipboard = navigator.clipboard;
+    if (clipboard?.writeText) {
+      await clipboard.writeText(secret);
+      return;
+    }
+  } catch {
+    // Use the legacy path when the secure-context API is unavailable or denied.
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.className = "session-information-copy-fallback";
+  textarea.readOnly = true;
+  textarea.value = secret;
+  document.body.append(textarea);
+  textarea.select();
+  let copied = false;
+  try {
+    copied = document.execCommand("copy");
+  } catch {
+    copied = false;
+  } finally {
+    textarea.remove();
+  }
+  if (!copied) throw new Error("secret copy failed");
 }
 
 document.addEventListener("click", (event) => {
   if (!(event.target instanceof Element)) return;
+  const normalCopy = event.target.closest<HTMLButtonElement>("[data-copy-value]");
+  if (normalCopy) {
+    void copySecret(normalCopy.dataset.copyValue ?? "").then(() => {
+      const notice = liveNotice("info", "Value copied.");
+      window.setTimeout(() => notice.remove(), 3000);
+    }).catch(() => showActionError("Could not copy value. Please try again."));
+    return;
+  }
   const tile = event.target.closest<HTMLElement>(".session-information-tile");
   if (!tile) return;
   const value = tile.querySelector<HTMLElement>("[data-secret-value]");
   const button = event.target.closest<HTMLButtonElement>("[data-secret-reveal]");
   if (button && value) {
-    if (value.dataset.revealed === "true") {
-      hideSecret(tile);
-    } else {
-      value.textContent = value.dataset.secretValue ?? "";
-      value.dataset.revealed = "true";
-      button.textContent = "Hide";
-      button.setAttribute("aria-pressed", "true");
-      secretRevealTimers.set(tile, window.setTimeout(() => hideSecret(tile), secretRevealTimeout));
-    }
+    if (value.dataset.revealed === "true") hideSecret(tile);
+    else revealSecret(tile, value);
     return;
   }
   if (event.target.closest("[data-secret-copy]") && value) {
-    const clipboard = navigator.clipboard;
-    if (!clipboard?.writeText) {
-      showActionError("Could not copy secret. Please try again.");
-      return;
-    }
-    void clipboard.writeText(value.dataset.secretValue ?? "").then(() => {
+    void copySecret(value.dataset.secretValue ?? "").then(() => {
       const notice = liveNotice("info", "Secret copied.");
       window.setTimeout(() => notice.remove(), 3000);
     }).catch(() => showActionError("Could not copy secret. Please try again."));
   }
 });
-
-
 document.addEventListener("change", (event) => {
   const toggle = event.target;
   if (!(toggle instanceof HTMLInputElement) || !toggle.matches("[data-session-secret-toggle]")) return;
@@ -670,7 +710,10 @@ document.addEventListener("change", (event) => {
 
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) {
-    document.querySelectorAll<HTMLElement>("[data-secret='true'][data-revealed='true']").forEach(hideSecret);
+    document.querySelectorAll<HTMLElement>("[data-secret='true'] [data-secret-value][data-revealed='true']").forEach((value) => {
+      const tile = value.closest<HTMLElement>(".session-information-tile");
+      if (tile) hideSecret(tile);
+    });
   }
 });
 function releaseSubmitGuard(form: HTMLFormElement): void {

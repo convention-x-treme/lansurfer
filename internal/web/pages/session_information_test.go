@@ -38,6 +38,26 @@ func TestGameRequestSessionInformationAudienceAndForm(t *testing.T) {
 		})
 	}
 }
+func TestNormalSessionInformationCanCopyValue(t *testing.T) {
+	entry := gamerequest.SessionInformationEntry{ID: "entry-1", Key: "Server", Value: "address"}
+	view := SessionInformationView{Visible: true, Entries: []gamerequest.SessionInformationEntry{entry}}
+	var out bytes.Buffer
+	if err := GameRequestSessionInformation(view).Render(context.Background(), &out); err != nil {
+		t.Fatal(err)
+	}
+	html := out.String()
+	for _, want := range []string{
+		`class="session-information-value"`,
+		`aria-label="Copy Server"`,
+		`data-copy-value="address"`,
+		`ph ph-copy`,
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("normal session information missing %q: %s", want, html)
+		}
+	}
+}
+
 func TestSessionInformationUsesCompactContentTilesAndInlineEditor(t *testing.T) {
 	entry := gamerequest.SessionInformationEntry{ID: "entry-1", Key: "Server", Value: strings.Repeat("10.20.30.40:", 4)}
 	view := SessionInformationView{
@@ -83,7 +103,11 @@ func TestSecretSessionInformationIsMaskedAndEditableAsPassword(t *testing.T) {
 		t.Fatal(err)
 	}
 	html := out.String()
-	for _, want := range []string{`type="password"`, `name="is_secret"`, `checked`, "Secret", "Copy", `data-secret-value`} {
+	for _, want := range []string{
+		`type="password"`, `name="is_secret"`, `checked`, "Secret", `data-secret-value`, `data-secret="true"`,
+		`aria-label="Copy Password"`, `aria-label="Reveal Password"`, `aria-pressed="false"`,
+		`<i class="ph ph-copy" aria-hidden="true"></i>`, `<i class="ph ph-eye" aria-hidden="true"></i>`,
+	} {
 		if !strings.Contains(html, want) {
 			t.Errorf("secret session information markup missing %q: %s", want, html)
 		}
