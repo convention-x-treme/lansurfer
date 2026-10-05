@@ -696,7 +696,7 @@ Important baseline controls:
 - encrypted Discord webhook credentials with key rotation/backup guidance
 - Web Push payload data minimization and explicit permission/consent
 
-Do not invent cryptographic constructions. Use established protocol behavior, Go standard-library AES-GCM for approved credential encryption, and the approved Web Push library behind narrow adapters. Secrets and raw session/authentication-flow tokens must never be logged or stored in recoverable plaintext.
+Do not invent cryptographic constructions. Use established protocol behavior, Go standard-library AES-GCM for approved credential encryption, and the approved Web Push library behind narrow adapters. Operator and integration credentials, OAuth/client secrets, authentication/session-flow tokens, VAPID private keys, Discord webhook credentials, and encryption keys must never be logged or stored in recoverable plaintext. Secret Session Information is ordinary authorized application data: values remain plaintext in PostgreSQL and in authorized HTML, with presentation privacy only; this data is not application-level encrypted and must never be logged.
 
 ---
 
