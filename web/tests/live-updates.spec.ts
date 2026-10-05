@@ -515,30 +515,43 @@ test("session-information tiles reflow and inline editor saves locally", async (
   await page.waitForURL(/\/game-requests\/[0-9a-f-]+/);
   await page.getByRole("link", { name: "Add", exact: true }).click();
 
-  for (const [keyText, valueText] of [
-    ["Server", "10.20.30.40:27015"],
-    ["Lobby", "CXT-WC3-04"],
-    ["Session", "Bal"],
-    ["Meeting", "Row B / Seat 12"],
-    ["Long value", "A".repeat(90)],
-  ]) {
+  for (const [keyText, valueText, secret] of [
+    ["Server", "10.20.30.40:27015", false],
+    ["Password", "hunter2", true],
+    ["Lobby", "CXT-WC3-04", false],
+    ["Long secret", "S".repeat(160), true],
+    ["Long value", "A".repeat(90), false],
+  ] as const) {
     await page.getByRole("textbox", { name: "Key" }).fill(keyText);
     await page.getByRole("textbox", { name: "Value" }).fill(valueText);
-    if (keyText === "Meeting") await page.getByRole("checkbox", { name: "Secret value" }).check();
+    if (secret) await page.getByRole("checkbox", { name: "Secret value" }).check();
     await page.getByRole("button", { name: "Save" }).click();
-    if (keyText === "Meeting") await expect(page.locator("#session-information")).toContainText("Secret");
+    if (secret) await expect(page.locator("#session-information")).toContainText("Secret");
     else await expect(page.locator("#session-information")).toContainText(valueText);
     if (keyText !== "Long value") await page.getByRole("link", { name: "Add", exact: true }).click();
   }
 
   const tiles = page.locator(".session-information-tile");
   await expect(tiles).toHaveCount(5);
-  await expect(tiles.nth(3)).toContainText("Secret");
+  const styleSignature = await tiles.evaluateAll((entries) => entries.map((entry) => {
+    const style = getComputedStyle(entry);
+    return [style.borderStyle, style.borderWidth, style.borderRadius, style.backgroundColor, style.padding].join("|");
+  }));
+  expect(new Set(styleSignature).size).toBe(1);
+  const normal = tiles.filter({ hasText: "Server" });
+  const secret = tiles.filter({ hasText: "Password" });
+  await expect(normal.getByRole("button", { name: "Copy Server" })).toBeVisible();
+  await expect(normal.getByRole("button", { name: /Reveal/ })).toHaveCount(0);
+  await expect(secret.getByRole("button", { name: "Copy Password" })).toBeVisible();
+  await expect(secret.getByRole("button", { name: "Reveal Password" })).toBeVisible();
+  for (const keyText of ["Server", "Password"]) {
+    await expect(page.getByRole("link", { name: `Edit ${keyText}` })).toBeVisible();
+    await expect(page.getByRole("button", { name: `Delete ${keyText}` })).toBeVisible();
+  }
+  await expect(tiles.nth(3).locator("[data-secret-value]")).toHaveText("••••••••");
   await expect(tiles.nth(0)).toContainText("Server");
   await expect(tiles.nth(4)).toContainText("Long value");
-  await expect(tiles.nth(0)).toHaveCSS("border-top-width", "0px");
-  await expect(tiles.nth(0)).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
-  await expect(tiles.nth(3)).not.toHaveCSS("border-top-width", "0px");
+
   const requestID = await page.locator("[data-game-request-detail]").getAttribute("data-game-request-id");
   for (const width of [1440, 900, 390]) {
     await page.setViewportSize({ width, height: 900 });

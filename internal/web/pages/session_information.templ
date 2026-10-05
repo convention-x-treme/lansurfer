@@ -26,27 +26,31 @@ templ GameRequestSessionInformation(view SessionInformationView) {
 					<ul class="session-information-tiles" aria-label="Session information entries">
 						for _, entry := range view.Entries {
 							<li class="session-information-tile" data-secret={ strconv.FormatBool(entry.IsSecret) }>
-								<strong class="session-information-key">{ entry.Key }</strong>
-								if entry.IsSecret {
-									<span class="session-information-secret">Secret</span>
-									<div class="session-information-value session-information-secret-value" data-secret-value={ entry.Value } data-revealed="false">••••••••</div>
-									<button class="btn btn-ghost btn-square btn-xs" type="button" data-secret-copy aria-label={ "Copy " + entry.Key } title={ "Copy " + entry.Key }><i class="ph ph-copy" aria-hidden="true"></i></button>
-									<button class="btn btn-ghost btn-square btn-xs" type="button" data-secret-reveal aria-label={ "Reveal " + entry.Key } title={ "Reveal " + entry.Key } aria-pressed="false"><i class="ph ph-eye" aria-hidden="true"></i></button>
-								} else {
-									<div class="session-information-value-row">
+								<div class="session-information-heading">
+									<strong class="session-information-key">{ entry.Key }</strong>
+									if entry.IsSecret {
+										<span class="session-information-secret">Secret</span>
+									}
+								</div>
+								<div class="session-information-value-row">
+									if entry.IsSecret {
+										<span class="session-information-value session-information-secret-value" data-secret-value={ entry.Value } data-revealed="false">••••••••</span>
+										<button class="btn btn-ghost btn-square btn-xs" type="button" data-secret-copy aria-label={ "Copy " + entry.Key } title={ "Copy " + entry.Key }><i class="ph ph-copy" aria-hidden="true"></i></button>
+										<button class="btn btn-ghost btn-square btn-xs" type="button" data-secret-reveal aria-label={ "Reveal " + entry.Key } title={ "Reveal " + entry.Key } aria-pressed="false"><i class="ph ph-eye" aria-hidden="true"></i></button>
+									} else {
 										<span class="session-information-value">{ entry.Value }</span>
 										<button class="btn btn-ghost btn-square btn-xs" type="button" data-copy-value={ entry.Value } aria-label={ "Copy " + entry.Key } title={ "Copy " + entry.Key }><i class="ph ph-copy" aria-hidden="true"></i></button>
-									</div>
-								}
-								if view.CanEdit {
-									<div class="session-information-actions">
-										<a class="btn btn-ghost btn-square btn-sm" aria-label={ "Edit " + entry.Key } title={ "Edit " + entry.Key } href={ "/game-requests/" + view.RequestID + "?session_edit=" + entry.ID } hx-get={ "/game-requests/" + view.RequestID + "/session-information?session_edit=" + entry.ID } hx-target="#session-information" hx-swap="outerHTML"><i class="ph ph-pencil-simple" aria-hidden="true"></i></a>
-										<form method="post" action={ "/game-requests/" + view.RequestID + "/session-information/" + entry.ID + "/delete" } hx-post={ "/game-requests/" + view.RequestID + "/session-information/" + entry.ID + "/delete" } hx-target="#session-information" hx-swap="outerHTML" data-confirm="Delete this session information?">
-											@components.CSRFInput()
-											<button class="btn btn-ghost btn-square btn-sm" aria-label={ "Delete " + entry.Key } title={ "Delete " + entry.Key } type="submit"><i class="ph ph-trash" aria-hidden="true"></i></button>
-										</form>
-									</div>
-								}
+									}
+									if view.CanEdit {
+										<div class="session-information-actions">
+											<a class="btn btn-ghost btn-square btn-xs" aria-label={ "Edit " + entry.Key } title={ "Edit " + entry.Key } href={ "/game-requests/" + view.RequestID + "?session_edit=" + entry.ID } hx-get={ "/game-requests/" + view.RequestID + "/session-information?session_edit=" + entry.ID } hx-target="#session-information" hx-swap="outerHTML"><i class="ph ph-pencil-simple" aria-hidden="true"></i></a>
+											<form method="post" action={ "/game-requests/" + view.RequestID + "/session-information/" + entry.ID + "/delete" } hx-post={ "/game-requests/" + view.RequestID + "/session-information/" + entry.ID + "/delete" } hx-target="#session-information" hx-swap="outerHTML" data-confirm="Delete this session information?">
+												@components.CSRFInput()
+												<button class="btn btn-ghost btn-square btn-xs" aria-label={ "Delete " + entry.Key } title={ "Delete " + entry.Key } type="submit"><i class="ph ph-trash" aria-hidden="true"></i></button>
+											</form>
+										</div>
+									}
+								</div>
 							</li>
 						}
 					</ul>
