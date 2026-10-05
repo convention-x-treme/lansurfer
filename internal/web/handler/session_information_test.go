@@ -116,3 +116,18 @@ func TestSessionInformationMutationUsesScopedIdentifiers(t *testing.T) {
 		t.Fatalf("status = %d", w.Code)
 	}
 }
+
+func TestSessionInformationMutationReadsSecretFlag(t *testing.T) {
+	fake := &sessionInformationFake{}
+	h := NewGameRequests(&fakeGameRequestCommands{}, fakeGameRequestQueries{}, &fakeGameResolver{}, &fakeGameRequestDiscovery{}, nil, branding.Default(), fake)
+	r := chi.NewRouter()
+	r.Post("/{requestID}/session-information", h.CreateSessionInformation)
+	req := withCurrentUser(httptest.NewRequest(http.MethodPost, "/request-1/session-information", strings.NewReader("key=Lobby&value=hidden&is_secret=true")), user.User{ID: "host-1"})
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("HX-Request", "true")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if !fake.input.IsSecret {
+		t.Fatalf("secret flag = false, want true")
+	}
+}

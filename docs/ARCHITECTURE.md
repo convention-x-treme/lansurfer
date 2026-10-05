@@ -333,7 +333,7 @@ Request-local chat lives in `game_request_messages`, owned by `gamerequest` and 
 
 Structured session information is owned by `gamerequest` in `game_request_session_entries`, with UUID child rows, immutable creation-order `sequence`, and case-insensitive per-request keys. Reads return entries only from a single snapshot that confirms current membership and an `open` or `playing` request. The Host alone mutates entries under the same Game Request row lock used by membership and lifecycle writes; the 12-entry limit is checked under that lock. Session-information writes create no activity or notification handoff.
 
-Real mutations publish content-free `GameRequestSessionInformationChanged` signals. SSE event `game-request-session-information` uses the neutral `detailRequestId` scope shared with chat and is delivered only after current participant access is confirmed for each signal. Session entry values are fetched only from the separately authorized fragment endpoint. Secret presentation remains #103 work and is not part of this architecture yet.
+Real mutations publish content-free `GameRequestSessionInformationChanged` signals. SSE event `game-request-session-information` uses the neutral `detailRequestId` scope shared with chat and is delivered only after current participant access is confirmed for each signal. Session entry values are fetched only from the separately authorized fragment endpoint. Secret entries add `is_secret boolean NOT NULL DEFAULT false`; values remain plaintext in PostgreSQL and use the same read authorization. Realtime signals carry no entry content, logs, metrics, notifications, public/list views, and Discord synchronization must not expose secret values. In the UI, secret values are masked by default, copied without reveal, and automatically hidden within 20 seconds. Reveal state stays client-only and resets on fragment refresh.
 
 ### `notification` (notification capability)
 
@@ -696,7 +696,7 @@ Important baseline controls:
 - encrypted Discord webhook credentials with key rotation/backup guidance
 - Web Push payload data minimization and explicit permission/consent
 
-Do not invent cryptographic constructions. Use established protocol behavior, Go standard-library AES-GCM for approved credential encryption, and the approved Web Push library behind narrow adapters. Secrets and raw session/authentication-flow tokens must never be logged or stored in recoverable plaintext.
+Do not invent cryptographic constructions. Use established protocol behavior, Go standard-library AES-GCM for approved credential encryption, and the approved Web Push library behind narrow adapters. Operator and integration credentials, OAuth/client secrets, authentication/session-flow tokens, VAPID private keys, Discord webhook credentials, and encryption keys must never be logged or stored in recoverable plaintext. Secret Session Information is ordinary authorized application data: values remain plaintext in PostgreSQL and in authorized HTML, with presentation privacy only; this data is not application-level encrypted and must never be logged.
 
 ---
 

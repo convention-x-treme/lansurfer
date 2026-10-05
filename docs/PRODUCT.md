@@ -344,9 +344,16 @@ Stable 1.0 coordination continues while a request is `playing`:
 - the Host maintains generic key/value session information; only the Host and currently joined players read it while the request is `open` or `playing`;
 - terminal requests do not expose session information; leaving removes future read access;
 - session-information CRUD is not activity or notification behavior;
+- secret entries are hidden by default, clearly marked, copyable while masked with generic success or failure feedback, and temporarily revealed for no more than 20 seconds; copying never reveals a value or resets its reveal timer;
+- editing a secret pre-fills a password-style field; the Host may toggle secret presentation while editing;
+- secret values use the same Host/current-participant audience and server-side authorization as other session information; leaving removes future access, rejoining an active request restores it, and terminal requests expose no session information;
+- authorized server-rendered HTML may contain plaintext; reveal state stays client-only and resets on fragment or full-detail refresh;
+- secret values remain plaintext in PostgreSQL with no application-level encryption or separate secrets store; they must not appear in public/discovery views, logs, metrics, notification payloads, Discord synchronization, or unrelated diagnostic surfaces;
+- session-information realtime delivery rechecks current participant authorization and carries no entry content; secret values come only from the independently authorized read;
+- secret sharing outside a Game Request, per-entry access lists, secret history/versioning, and key-management UI are out of scope;
 - the Host and currently joined participants may use a lightweight request-local private chat while the request is active.
 
-Secret presentation remains a separate #103 extension. It adds masking/copy/reveal controls without changing the participant-only audience.
+Secret presentation protects against shoulder-surfing, not database access, server compromise, or an authorized participant inspecting browser tools.
 Request-local chat is not a general messaging subsystem: there are no direct messages, global rooms, threads, reactions, attachments, read receipts, typing indicators, or presence in the stable 1.0 scope.
 
 The primary UI should show Game, player count/capacity, start time, short description, and the Join action without forcing the player through a detail page. While a request is `playing`, the list and detail page keep the same Join, Leave, and Full states as an `open` one.

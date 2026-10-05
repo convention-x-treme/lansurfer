@@ -55,6 +55,7 @@ const (
 // SessionInformationEntry is one request-local key/value entry.
 type SessionInformationEntry struct {
 	ID, RequestID, Key, Value string
+	IsSecret                  bool
 	Sequence                  int64
 	CreatedAt, UpdatedAt      time.Time
 }
@@ -64,7 +65,10 @@ type SessionInformation struct {
 	CanEdit bool
 }
 
-type SessionInformationInput struct{ Key, Value string }
+type SessionInformationInput struct {
+	Key, Value string
+	IsSecret   bool
+}
 
 var (
 	ErrInvalidSessionInformationKey    = errors.New("invalid session information key")

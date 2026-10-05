@@ -3474,8 +3474,8 @@ func TestMigrateAndReadyCheck(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get migration version: %v", err)
 	}
-	if version != 27 {
-		t.Errorf("migration version = %d, want 27", version)
+	if version != 28 {
+		t.Errorf("migration version = %d, want 28", version)
 	}
 	if err := migrateFS(t.Context(), pool, migrationFS, logger); err != nil {
 		t.Fatalf("second migrateFS() error = %v", err)

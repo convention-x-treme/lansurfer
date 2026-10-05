@@ -40,6 +40,19 @@ func TestSessionInformationInputValidation(t *testing.T) {
 			t.Errorf("CreateSessionInformationEntry(%#v): %v", input, err)
 		}
 	}
+
+}
+
+func TestSessionInformationPreservesSecretFlag(t *testing.T) {
+	repository := &recordingRepository{}
+	service := NewService(repository, staticGames(true), nil)
+	input := SessionInformationInput{Key: "Password", Value: "hunter2", IsSecret: true}
+	if err := service.CreateSessionInformationEntry(t.Context(), "request-1", "host-1", input); err != nil {
+		t.Fatal(err)
+	}
+	if repository.sessionInput != input {
+		t.Fatalf("input = %#v, want %#v", repository.sessionInput, input)
+	}
 }
 
 func TestSessionInformationEventsOnlyPublishForRealMutations(t *testing.T) {

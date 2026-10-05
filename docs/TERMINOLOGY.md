@@ -29,7 +29,7 @@ Use these terms consistently. Do not invent synonyms for domain concepts unless 
 - **Recently viewed**: local/browser presentation history. It is not Game Request activity or notification state.
 
 - **Session information**: request-local generic key/value coordination data. While a Game Request is active, the Host and currently joined players can read it; only the Host can change it.
-- **Secret session information**: scheduled #103 presentation-privacy extension. It has the same participant audience and is not implemented by #102.
+- **Secret session information**: an entry marked secret for presentation privacy only. It uses the same Host/currently joined participant audience as other session information.
 
 ## Integrations and presentation
 

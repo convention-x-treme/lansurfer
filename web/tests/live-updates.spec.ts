@@ -1,4 +1,10 @@
 
+declare global {
+  interface Window {
+    __copiedSecret?: string;
+  }
+}
+
 import { expect, test } from "@playwright/test";
 import { htmxCounters, instrumentHtmx, resetFixture, waitForRealtime } from "./helpers";
 
@@ -7,8 +13,33 @@ import { htmxCounters, instrumentHtmx, resetFixture, waitForRealtime } from "./h
 // active discovery filters, and the Trending rail is swapped out of band during
 // the same refresh.
 
+
 test.beforeEach(async ({ request }) => {
   await resetFixture(request);
+});
+test("normal session information copy writes its exact value and gives generic feedback", async ({ page }) => {
+  const pageErrors: string[] = [];
+  page.on("pageerror", error => pageErrors.push(error.message));
+  await page.addInitScript(() => {
+    Object.defineProperty(Navigator.prototype, "clipboard", {
+      configurable: true,
+      get: () => ({ writeText: (text: string) => { window.__copiedSecret = text; return Promise.resolve(); } }),
+    });
+  });
+  await page.goto("/game-requests/new?game_id=game-1");
+  await page.getByRole("button", { name: "Create Game Request" }).click();
+  await page.waitForURL(/\/game-requests\/[0-9a-f-]+/);
+  await page.getByRole("link", { name: "Add", exact: true }).click();
+  await page.getByRole("textbox", { name: "Key" }).fill("Server");
+  await page.getByRole("textbox", { name: "Value" }).fill("10.20.30.40:27015");
+  await page.getByRole("button", { name: "Save" }).click();
+  const copy = page.locator("#session-information").getByRole("button", { name: "Copy Server" });
+  await expect(copy.locator("i")).toHaveClass(/ph-copy/);
+  await copy.click();
+  await expect.poll(() => page.evaluate(() => window.__copiedSecret)).toBe("10.20.30.40:27015");
+  await expect(page.locator("#live-notices")).toContainText("Value copied.");
+  await expect(page.locator("#live-notices")).not.toContainText("10.20.30.40:27015");
+  expect(pageErrors).toEqual([]);
 });
 
 // Detail refreshes retain edits and validation messages in the shared Host editor.
@@ -404,13 +435,16 @@ for (const dirtyField of ["key", "value"] as const) {
       const response = await fetch(`/game-requests/${requestID}/session-information/${entryID}`, {
         method: "POST",
         headers: { "HX-Request": "true", "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({ key, value, csrf_token: csrf }),
+        body: new URLSearchParams({ key, value, csrf_token: csrf, is_secret: "true" }),
       });
       return response.status;
     }, { requestID, entryID, key: serverKey, value: serverValue, csrf });
     expect(result).toBe(200);
     await expect(key).toHaveValue(dirtyField === "key" ? localValue : "Server changed");
     await expect(value).toHaveValue(dirtyField === "value" ? localValue : "Fresh value");
+    const secret = page.getByRole("checkbox", { name: "Secret value" });
+    await expect(secret).toBeChecked();
+    await expect(value).toHaveAttribute("type", "password");
   });
 }
 
@@ -481,24 +515,62 @@ test("session-information tiles reflow and inline editor saves locally", async (
   await page.waitForURL(/\/game-requests\/[0-9a-f-]+/);
   await page.getByRole("link", { name: "Add", exact: true }).click();
 
-  for (const [keyText, valueText] of [
-    ["Server", "10.20.30.40:27015"],
-    ["Lobby", "CXT-WC3-04"],
-    ["Session", "Bal"],
-    ["Meeting", "Row B / Seat 12"],
-    ["Long value", "A".repeat(90)],
-  ]) {
+  for (const [keyText, valueText, secret] of [
+    ["Server", "10.20.30.40:27015", false],
+    ["Password", "hunter2", true],
+    ["Lobby", "CXT-WC3-04", false],
+    ["Long secret", "S".repeat(160), true],
+    ["Long value", "A".repeat(90), false],
+  ] as const) {
     await page.getByRole("textbox", { name: "Key" }).fill(keyText);
     await page.getByRole("textbox", { name: "Value" }).fill(valueText);
+    if (secret) await page.getByRole("checkbox", { name: "Secret value" }).check();
     await page.getByRole("button", { name: "Save" }).click();
-    await expect(page.locator("#session-information")).toContainText(valueText);
+    if (secret) await expect(page.locator("#session-information")).toContainText("Secret");
+    else await expect(page.locator("#session-information")).toContainText(valueText);
     if (keyText !== "Long value") await page.getByRole("link", { name: "Add", exact: true }).click();
   }
 
   const tiles = page.locator(".session-information-tile");
   await expect(tiles).toHaveCount(5);
+  const styleSignature = await tiles.evaluateAll((entries) => entries.map((entry) => {
+    const style = getComputedStyle(entry);
+    return [style.borderStyle, style.borderWidth, style.borderRadius, style.backgroundColor, style.padding].join("|");
+  }));
+  expect(new Set(styleSignature).size).toBe(1);
+  await expect(page.locator("#session-information > .session-information-heading")).toBeVisible();
+  await expect(page.locator(".session-information-tile-heading")).toHaveCount(5);
+  const headingLayout = await page.locator("#session-information").evaluate((section) => {
+    const outer = section.querySelector<HTMLElement>(":scope > .session-information-heading")!;
+    const add = outer.querySelector<HTMLElement>("a")!;
+    const title = outer.querySelector<HTMLElement>("h2")!;
+    const tileHeading = section.querySelector<HTMLElement>(".session-information-tile[data-secret='true'] .session-information-tile-heading")!;
+    return {
+      outerDisplay: getComputedStyle(outer).display,
+      addRight: Math.abs(outer.getBoundingClientRect().right - add.getBoundingClientRect().right),
+      titleRight: title.getBoundingClientRect().right,
+      addLeft: add.getBoundingClientRect().left,
+      badgeOffset: tileHeading.querySelector(".session-information-secret")!.getBoundingClientRect().top - tileHeading.getBoundingClientRect().top,
+    };
+  });
+  expect(headingLayout.outerDisplay).toBe("flex");
+  expect(headingLayout.addRight).toBeLessThanOrEqual(1);
+  expect(headingLayout.addLeft).toBeGreaterThan(headingLayout.titleRight);
+  expect(headingLayout.badgeOffset).toBeLessThanOrEqual(1);
+  const normal = tiles.filter({ hasText: "Server" });
+  const secret = tiles.filter({ hasText: "Password" });
+  await expect(normal.getByRole("button", { name: "Copy Server" })).toBeVisible();
+  await expect(normal.getByRole("button", { name: /Reveal/ })).toHaveCount(0);
+  await expect(secret.getByRole("button", { name: "Copy Password" })).toBeVisible();
+  await expect(secret.getByRole("button", { name: "Reveal Password" })).toBeVisible();
+  for (const keyText of ["Server", "Password"]) {
+    await expect(page.getByRole("link", { name: `Edit ${keyText}` })).toBeVisible();
+    await expect(page.getByRole("button", { name: `Delete ${keyText}` })).toBeVisible();
+  }
+  await expect(tiles.nth(3).locator("[data-secret-value]")).toHaveText("••••••••");
   await expect(tiles.nth(0)).toContainText("Server");
   await expect(tiles.nth(4)).toContainText("Long value");
+
   const requestID = await page.locator("[data-game-request-detail]").getAttribute("data-game-request-id");
   for (const width of [1440, 900, 390]) {
     await page.setViewportSize({ width, height: 900 });
@@ -536,6 +608,182 @@ test("session-information tiles reflow and inline editor saves locally", async (
   await expect(page.locator("#session-information")).toContainText("Saved value");
 });
 
+test("secret copy stays masked and reveal resets on fragment and full-detail refresh", async ({ page, request }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(Navigator.prototype, "clipboard", {
+      configurable: true,
+      get: () => ({ writeText: (text: string) => { window.__copiedSecret = text; return Promise.resolve(); } }),
+    });
+  });
+  await page.goto("/game-requests/new?game_id=game-1");
+  await page.getByRole("button", { name: "Create Game Request" }).click();
+  await page.waitForURL(/\/game-requests\/[0-9a-f-]+/);
+  await waitForRealtime(page, request, 1);
+  await page.getByRole("link", { name: "Add", exact: true }).click();
+  await page.getByRole("textbox", { name: "Key" }).fill("Password");
+  await page.getByRole("textbox", { name: "Value" }).fill("shoulder-secret");
+  await page.getByRole("checkbox", { name: "Secret value" }).check();
+  await page.getByRole("button", { name: "Save" }).click();
+
+  const tile = page.locator(".session-information-tile");
+  const value = tile.locator("[data-secret-value]");
+  await expect(tile).toContainText("Secret");
+  await expect(value).toHaveText("••••••••");
+  await tile.getByRole("button", { name: "Copy Password" }).click();
+  await expect.poll(() => page.evaluate(() => window.__copiedSecret)).toBe("shoulder-secret");
+  const notices = page.locator("#live-notices");
+  await expect(notices).toContainText("Secret copied.");
+  await expect(notices).not.toContainText("shoulder-secret");
+  await expect(value).toHaveText("••••••••");
+
+  await tile.getByRole("button", { name: "Reveal Password" }).click();
+  const hide = tile.getByRole("button", { name: "Hide Password" });
+  await expect(hide).toHaveAttribute("aria-pressed", "true");
+  await hide.click();
+  await expect(value).toHaveText("••••••••");
+
+  await page.clock.install();
+  await tile.getByRole("button", { name: "Reveal Password" }).click();
+  await page.clock.fastForward(10_000);
+  await tile.getByRole("button", { name: "Copy Password" }).click();
+  await expect(notices).toContainText("Secret copied.");
+  await expect(value).toHaveText("shoulder-secret");
+  await page.clock.fastForward(10_000);
+  await expect(value).toHaveText("••••••••");
+  await tile.getByRole("button", { name: "Reveal Password" }).click();
+  await expect(value).toHaveText("shoulder-secret");
+  const requestID = await page.locator("[data-game-request-detail]").getAttribute("data-game-request-id");
+  await request.post(`/__test__/publish?type=GameRequestSessionInformationChanged&request=${requestID}`);
+  await expect(value).toHaveText("••••••••");
+  await tile.getByRole("button", { name: "Reveal Password" }).click();
+  await expect(value).toHaveText("shoulder-secret");
+  const previousDetail = await page.locator("#game-request-detail").elementHandle();
+  expect(previousDetail).not.toBeNull();
+  await request.post(`/__test__/publish?type=GameRequestJoined&request=${requestID}`);
+  await expect.poll(() => previousDetail!.evaluate((element) => element.isConnected)).toBe(false);
+  const refreshedValue = page.locator("#session-information [data-secret-value]");
+  await expect(refreshedValue).toHaveText("••••••••");
+  await page.locator("#session-information").getByRole("button", { name: "Reveal Password" }).click();
+  await expect(refreshedValue).toHaveText("shoulder-secret");
+  await page.clock.fastForward(20_000);
+  await expect(refreshedValue).toHaveText("••••••••");
+});
+test("secret copy reports clipboard rejection and unsupported API", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(Navigator.prototype, "clipboard", {
+      configurable: true,
+      get: () => ({ writeText: () => Promise.reject(new Error("permission denied")) }),
+    });
+    document.execCommand = () => false;
+  });
+  await page.goto("/game-requests/new?game_id=game-1");
+  await page.getByRole("button", { name: "Create Game Request" }).click();
+  await page.waitForURL(/\/game-requests\/[0-9a-f-]+/);
+  await page.getByRole("link", { name: "Add", exact: true }).click();
+  await page.getByRole("textbox", { name: "Key" }).fill("Password");
+  await page.getByRole("textbox", { name: "Value" }).fill("shoulder-secret");
+  await page.getByRole("checkbox", { name: "Secret value" }).check();
+  await page.getByRole("button", { name: "Save" }).click();
+
+  const tile = page.locator(".session-information-tile");
+  const value = tile.locator("[data-secret-value]");
+  await tile.getByRole("button", { name: "Copy Password" }).click();
+  const notices = page.locator("#live-notices");
+  await expect(notices).toContainText("Could not copy secret. Please try again.");
+  await expect(notices).not.toContainText("shoulder-secret");
+  await expect(value).toHaveText("••••••••");
+
+  await page.evaluate(() => {
+    Object.defineProperty(Navigator.prototype, "clipboard", { configurable: true, get: () => undefined });
+  });
+  await tile.getByRole("button", { name: "Copy Password" }).click();
+  await expect(notices.locator('[role="alert"]')).toHaveCount(2);
+  await expect(value).toHaveText("••••••••");
+});
+
+
+test("secret session edit masks value and permits toggling presentation", async ({ page }) => {
+  await page.goto("/game-requests/new?game_id=game-1");
+  await page.getByRole("button", { name: "Create Game Request" }).click();
+  await page.waitForURL(/\/game-requests\/[0-9a-f-]+/);
+  await page.getByRole("link", { name: "Add", exact: true }).click();
+  await page.getByRole("textbox", { name: "Key" }).fill("Password");
+  await page.getByRole("textbox", { name: "Value" }).fill("shoulder-secret");
+  await page.getByRole("checkbox", { name: "Secret value" }).check();
+  await page.getByRole("button", { name: "Save" }).click();
+  await page.getByRole("link", { name: "Edit Password" }).click();
+  const value = page.getByRole("textbox", { name: "Value" });
+  await expect(value).toHaveAttribute("type", "password");
+  await expect(value).toHaveValue("shoulder-secret");
+  await page.getByRole("checkbox", { name: "Secret value" }).uncheck();
+  await expect(value).toHaveAttribute("type", "text");
+});
+
+
+for (const refresh of ["session-information fragment", "full detail"] as const) {
+  test(`a rejected edit preserves its dirty secret toggle through ${refresh} refresh`, async ({ page, request }) => {
+    const browserConsole: string[] = [];
+    const pageErrors: string[] = [];
+    page.on("console", message => browserConsole.push(message.text()));
+    page.on("pageerror", error => pageErrors.push(error.message));
+    await page.goto("/game-requests/new?game_id=game-1");
+    await page.getByRole("button", { name: "Create Game Request" }).click();
+    await page.waitForURL(/\/game-requests\/[0-9a-f-]+/);
+    await waitForRealtime(page, request, 1);
+    await page.getByRole("link", { name: "Add", exact: true }).click();
+    await page.getByRole("textbox", { name: "Key" }).fill("Password");
+    await page.getByRole("textbox", { name: "Value" }).fill("hunter2");
+    await page.getByRole("button", { name: "Save" }).click();
+    await expect(page.locator("#session-information")).toContainText("hunter2");
+
+    await page.getByRole("link", { name: "Edit Password" }).click();
+    const key = page.getByRole("textbox", { name: "Key" });
+    const value = page.getByRole("textbox", { name: "Value" });
+    const toggle = page.getByRole("checkbox", { name: "Secret value" });
+    await toggle.check();
+    await key.evaluate((input: HTMLInputElement) => { input.value = "K".repeat(41); });
+    await page.getByRole("button", { name: "Save" }).click();
+    await expect(page.locator("#session-information-error")).toContainText("Key must contain");
+    await expect(toggle).toBeChecked();
+    await expect(value).toHaveAttribute("type", "password");
+    await expect(page.locator("#session-information [data-session-information-form]")).toHaveAttribute("data-server-is-secret", "false");
+
+    const requestID = await page.locator("[data-game-request-detail]").getAttribute("data-game-request-id");
+    if (refresh === "session-information fragment") {
+      await request.post(`/__test__/publish?type=GameRequestSessionInformationChanged&request=${requestID}`);
+    } else {
+      await request.post(`/__test__/publish?type=GameRequestJoined&request=${requestID}`);
+    }
+    await expect(key).toHaveValue("K".repeat(41));
+    await expect(page.locator("#session-information-error")).toContainText("Key must contain");
+    await expect(toggle).toBeChecked();
+    await expect(value).toHaveAttribute("type", "password");
+    await expect(page.locator("#session-information [data-session-information-form]")).toHaveAttribute("data-server-is-secret", "false");
+
+    await key.fill("Password");
+    await page.getByRole("button", { name: "Save" }).click();
+    await expect(page.locator(".session-information-tile[data-secret='true']")).toContainText("Secret");
+    await expect(page.locator(".session-information-tile[data-secret='true'] [data-secret-value]")).toHaveAttribute("data-revealed", "false");
+    expect(browserConsole.filter(message => /session-information/i.test(message))).toEqual([]);
+    expect(pageErrors).toEqual([]);
+  });
+}
+test("session-information refresh preserves a dirty secret toggle field", async ({ page, request }) => {
+  await page.goto("/game-requests/new?game_id=game-1");
+  await page.getByRole("button", { name: "Create Game Request" }).click();
+  await page.waitForURL(/\/game-requests\/[0-9a-f-]+/);
+  await waitForRealtime(page, request, 1);
+  await page.getByRole("link", { name: "Add", exact: true }).click();
+  const toggle = page.getByRole("checkbox", { name: "Secret value" });
+  await toggle.focus();
+  await toggle.check();
+  const requestID = await page.locator("[data-game-request-detail]").getAttribute("data-game-request-id");
+  await request.post(`/__test__/publish?type=GameRequestSessionInformationChanged&request=${requestID}`);
+  await expect(toggle).toBeFocused();
+  await expect(toggle).toBeChecked();
+  await expect(page.getByRole("textbox", { name: "Value" })).toHaveAttribute("type", "password");
+});
+
 test("session-information outsider sees join hint without entry data", async ({ page, browser }) => {
   await page.goto("/game-requests/new?game_id=game-1");
   await page.getByRole("button", { name: "Create Game Request" }).click();
@@ -543,6 +791,7 @@ test("session-information outsider sees join hint without entry data", async ({ 
   await page.getByRole("link", { name: "Add", exact: true }).click();
   await page.getByRole("textbox", { name: "Key" }).fill("Private key");
   await page.getByRole("textbox", { name: "Value" }).fill("private value");
+  await page.getByRole("checkbox", { name: "Secret value" }).check();
   await page.getByRole("button", { name: "Save" }).click();
   const requestID = await page.locator("[data-game-request-detail]").getAttribute("data-game-request-id");
 
@@ -569,4 +818,76 @@ test("session-information outsider sees join hint without entry data", async ({ 
   await expect(sessionInformation).not.toContainText("Private key");
   await expect(sessionInformation).not.toContainText("private value");
   await outsider.close();
+});
+test("secret copy falls back to a temporary textarea when clipboard API is unavailable", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(Navigator.prototype, "clipboard", {
+      configurable: true,
+      get: () => ({ writeText: () => Promise.reject(new Error("permission denied")) }),
+    });
+    document.execCommand = (command) => {
+      if (command !== "copy") return false;
+      const textarea = document.activeElement;
+      window.__copiedSecret = textarea instanceof HTMLTextAreaElement ? textarea.value : "";
+      return textarea instanceof HTMLTextAreaElement;
+    };
+  });
+  await page.goto("/game-requests/new?game_id=game-1");
+  await page.getByRole("button", { name: "Create Game Request" }).click();
+  await page.waitForURL(/\/game-requests\/[0-9a-f-]+/);
+  await page.getByRole("link", { name: "Add", exact: true }).click();
+  await page.getByRole("textbox", { name: "Key" }).fill("Password");
+  await page.getByRole("textbox", { name: "Value" }).fill("shoulder-secret");
+  await page.getByRole("checkbox", { name: "Secret value" }).check();
+  await page.getByRole("button", { name: "Save" }).click();
+
+  const tile = page.locator(".session-information-tile");
+  await tile.getByRole("button", { name: "Copy Password" }).click();
+  await expect.poll(() => page.evaluate(() => window.__copiedSecret)).toBe("shoulder-secret");
+  await expect(tile.locator("[data-secret-value]")).toHaveText("••••••••");
+  await expect(page.locator("#live-notices")).toContainText("Secret copied.");
+  await expect(page.locator("textarea")).toHaveCount(0);
+  await page.evaluate(() => {
+    Object.defineProperty(Navigator.prototype, "clipboard", { configurable: true, get: () => undefined });
+  });
+  await tile.getByRole("button", { name: "Copy Password" }).click();
+  await expect.poll(() => page.evaluate(() => window.__copiedSecret)).toBe("shoulder-secret");
+  await expect(page.locator("#live-notices [role='status']")).toHaveCount(2);
+});
+
+test("secret reveal controls are per entry and remask on visibility change", async ({ page }) => {
+  await page.goto("/game-requests/new?game_id=game-1");
+  await page.getByRole("button", { name: "Create Game Request" }).click();
+  await page.waitForURL(/\/game-requests\/[0-9a-f-]+/);
+  for (const [key, value] of [["Lobby password", "lobby-secret"], ["Voice password", "voice-secret"]]) {
+    await page.getByRole("link", { name: "Add", exact: true }).click();
+    await page.getByRole("textbox", { name: "Key" }).fill(key);
+    await page.getByRole("textbox", { name: "Value" }).fill(value);
+    await page.getByRole("checkbox", { name: "Secret value" }).check();
+    await page.getByRole("button", { name: "Save" }).click();
+  }
+
+  const tiles = page.locator(".session-information-tile");
+  const lobby = tiles.filter({ hasText: "Lobby password" });
+  const voice = tiles.filter({ hasText: "Voice password" });
+  const lobbyValue = lobby.locator("[data-secret-value]");
+  const voiceValue = voice.locator("[data-secret-value]");
+  const revealLobby = lobby.getByRole("button", { name: "Reveal Lobby password" });
+  await expect(revealLobby.locator("i")).toHaveClass(/ph-eye/);
+  await revealLobby.click();
+  const hideLobby = lobby.getByRole("button", { name: "Hide Lobby password" });
+  await expect(hideLobby).toHaveAttribute("aria-pressed", "true");
+  await expect(hideLobby.locator("i")).toHaveClass(/ph-eye-slash/);
+  await expect(lobbyValue).toHaveText("lobby-secret");
+  await expect(voiceValue).toHaveText("••••••••");
+  await voice.getByRole("button", { name: "Reveal Voice password" }).click();
+  await expect(voiceValue).toHaveText("voice-secret");
+  await page.evaluate(() => {
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await expect(lobbyValue).toHaveText("••••••••");
+  await expect(voiceValue).toHaveText("••••••••");
+  await expect(lobby.getByRole("button", { name: "Reveal Lobby password" })).toHaveAttribute("aria-pressed", "false");
+  await expect(voice.getByRole("button", { name: "Reveal Voice password" })).toHaveAttribute("aria-pressed", "false");
 });

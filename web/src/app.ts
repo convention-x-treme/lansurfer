@@ -374,12 +374,14 @@ type SessionInformationDraft = {
   entryID: string;
   key: string;
   value: string;
+  secret: boolean;
+  secretDirty: boolean;
   keyDirty: boolean;
   valueDirty: boolean;
   keyRejected: boolean;
   valueRejected: boolean;
   error: string;
-  focused: "key" | "value" | "";
+  focused: "key" | "value" | "secret" | "";
 };
 const sessionInformationDrafts = new WeakMap<HTMLElement, SessionInformationDraft>();
 
@@ -391,7 +393,8 @@ document.addEventListener("htmx:beforeSwap", (event) => {
   if (!form || !section) return;
   const key = form.querySelector<HTMLInputElement>("[name='key']");
   const value = form.querySelector<HTMLInputElement>("[name='value']");
-  if (!key || !value) return;
+  const secret = form.querySelector<HTMLInputElement>("[name='is_secret']");
+  if (!key || !value || !secret) return;
   const active = document.activeElement;
   const keyRejected = key.getAttribute("aria-invalid") === "true";
   const valueRejected = value.getAttribute("aria-invalid") === "true";
@@ -400,14 +403,16 @@ document.addEventListener("htmx:beforeSwap", (event) => {
     entryID: form.dataset.sessionEntryId ?? "",
     key: key.value,
     value: value.value,
+    secret: secret.checked,
+    secretDirty: secret.checked !== (form.dataset.serverIsSecret === "true"),
     keyDirty: key.value !== key.defaultValue || keyRejected,
     valueDirty: value.value !== value.defaultValue || valueRejected,
     keyRejected,
     valueRejected,
     error: form.querySelector<HTMLElement>("[role='alert']")?.textContent?.trim() ?? "",
-    focused: active === key ? "key" : active === value ? "value" : "",
+    focused: active === key ? "key" : active === value ? "value" : active === secret ? "secret" : "",
   };
-  if (draft.keyDirty || draft.valueDirty) sessionInformationDrafts.set(target, draft);
+  if (draft.keyDirty || draft.valueDirty || draft.secretDirty) sessionInformationDrafts.set(target, draft);
 });
 
 document.addEventListener("htmx:afterSwap", (event) => {
@@ -420,9 +425,14 @@ document.addEventListener("htmx:afterSwap", (event) => {
   if (!form || form.dataset.sessionMode !== draft.mode || (form.dataset.sessionEntryId ?? "") !== draft.entryID) return;
   const key = form.querySelector<HTMLInputElement>("[name='key']");
   const value = form.querySelector<HTMLInputElement>("[name='value']");
-  if (!key || !value) return;
+  const secret = form.querySelector<HTMLInputElement>("[name='is_secret']");
+  if (!key || !value || !secret) return;
   if (draft.keyDirty) key.value = draft.key;
   if (draft.valueDirty) value.value = draft.value;
+  if (draft.secretDirty) {
+    secret.checked = draft.secret;
+    value.type = draft.secret ? "password" : "text";
+  }
   if (draft.keyRejected) {
     key.setAttribute("aria-invalid", "true");
     key.setAttribute("aria-describedby", "session-information-error");
@@ -442,7 +452,7 @@ document.addEventListener("htmx:afterSwap", (event) => {
     }
     error.textContent = draft.error;
   }
-  (draft.focused === "key" ? key : draft.focused === "value" ? value : null)?.focus({ preventScroll: true });
+  (draft.focused === "key" ? key : draft.focused === "value" ? value : draft.focused === "secret" ? secret : null)?.focus({ preventScroll: true });
 });
 // Without an event the current view is refreshed as a whole, which is what a
 // page needs after it was disconnected from the stream for a while. A deferred
@@ -602,6 +612,110 @@ document.addEventListener("click", (event) => {
 // completes at all; it must outlast the server's own request timeout.
 const submitRecoveryDelay = 20000;
 
+
+const secretRevealTimeout = 20_000;
+const secretRevealTimers = new WeakMap<HTMLElement, number>();
+
+function secretButtonState(tile: HTMLElement, revealed: boolean): void {
+  const button = tile.querySelector<HTMLButtonElement>("[data-secret-reveal]");
+  const icon = button?.querySelector<HTMLElement>("i");
+  if (!button) return;
+  const key = tile.querySelector<HTMLElement>(".session-information-key")?.textContent ?? "secret";
+  const action = revealed ? "Hide" : "Reveal";
+  button.setAttribute("aria-label", `${action} ${key}`);
+  button.title = `${action} ${key}`;
+  button.setAttribute("aria-pressed", String(revealed));
+  icon?.classList.toggle("ph-eye", !revealed);
+  icon?.classList.toggle("ph-eye-slash", revealed);
+}
+
+function hideSecret(tile: HTMLElement): void {
+  const value = tile.querySelector<HTMLElement>("[data-secret-value]");
+  if (!value) return;
+  const timer = secretRevealTimers.get(tile);
+  if (timer !== undefined) window.clearTimeout(timer);
+  secretRevealTimers.delete(tile);
+  value.textContent = "••••••••";
+  value.dataset.revealed = "false";
+  secretButtonState(tile, false);
+}
+
+function revealSecret(tile: HTMLElement, value: HTMLElement): void {
+  value.textContent = value.dataset.secretValue ?? "";
+  value.dataset.revealed = "true";
+  secretButtonState(tile, true);
+  secretRevealTimers.set(tile, window.setTimeout(() => hideSecret(tile), secretRevealTimeout));
+}
+
+async function copySecret(secret: string): Promise<void> {
+  try {
+    const clipboard = navigator.clipboard;
+    if (clipboard?.writeText) {
+      await clipboard.writeText(secret);
+      return;
+    }
+  } catch {
+    // Use the legacy path when the secure-context API is unavailable or denied.
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.className = "session-information-copy-fallback";
+  textarea.readOnly = true;
+  textarea.value = secret;
+  document.body.append(textarea);
+  textarea.select();
+  let copied = false;
+  try {
+    copied = document.execCommand("copy");
+  } catch {
+    copied = false;
+  } finally {
+    textarea.remove();
+  }
+  if (!copied) throw new Error("secret copy failed");
+}
+
+document.addEventListener("click", (event) => {
+  if (!(event.target instanceof Element)) return;
+  const normalCopy = event.target.closest<HTMLButtonElement>("[data-copy-value]");
+  if (normalCopy) {
+    void copySecret(normalCopy.dataset.copyValue ?? "").then(() => {
+      const notice = liveNotice("info", "Value copied.");
+      window.setTimeout(() => notice.remove(), 3000);
+    }).catch(() => showActionError("Could not copy value. Please try again."));
+    return;
+  }
+  const tile = event.target.closest<HTMLElement>(".session-information-tile");
+  if (!tile) return;
+  const value = tile.querySelector<HTMLElement>("[data-secret-value]");
+  const button = event.target.closest<HTMLButtonElement>("[data-secret-reveal]");
+  if (button && value) {
+    if (value.dataset.revealed === "true") hideSecret(tile);
+    else revealSecret(tile, value);
+    return;
+  }
+  if (event.target.closest("[data-secret-copy]") && value) {
+    void copySecret(value.dataset.secretValue ?? "").then(() => {
+      const notice = liveNotice("info", "Secret copied.");
+      window.setTimeout(() => notice.remove(), 3000);
+    }).catch(() => showActionError("Could not copy secret. Please try again."));
+  }
+});
+document.addEventListener("change", (event) => {
+  const toggle = event.target;
+  if (!(toggle instanceof HTMLInputElement) || !toggle.matches("[data-session-secret-toggle]")) return;
+  const value = toggle.closest("form")?.querySelector<HTMLInputElement>('input[name="value"]');
+  if (value) value.type = toggle.checked ? "password" : "text";
+});
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    document.querySelectorAll<HTMLElement>("[data-secret='true'] [data-secret-value][data-revealed='true']").forEach((value) => {
+      const tile = value.closest<HTMLElement>(".session-information-tile");
+      if (tile) hideSecret(tile);
+    });
+  }
+});
 function releaseSubmitGuard(form: HTMLFormElement): void {
   delete form.dataset.submitting;
   form.querySelectorAll<HTMLButtonElement | HTMLInputElement>("button[type=submit], input[type=submit]").forEach((control) => {
