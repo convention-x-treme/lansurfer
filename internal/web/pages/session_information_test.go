@@ -96,7 +96,7 @@ func TestSecretSessionInformationIsMaskedAndEditableAsPassword(t *testing.T) {
 	entry := gamerequest.SessionInformationEntry{ID: "entry-1", Key: "Password", Value: "hunter2", IsSecret: true}
 	view := SessionInformationView{
 		Visible: true, CanEdit: true, RequestID: "request-1", Entries: []gamerequest.SessionInformationEntry{entry},
-		Form: &SessionInformationForm{Mode: "edit", EntryID: entry.ID, Key: entry.Key, Value: entry.Value, IsSecret: entry.IsSecret},
+		Form: &SessionInformationForm{Mode: "edit", EntryID: entry.ID, Key: entry.Key, Value: entry.Value, IsSecret: true, ServerIsSecret: false},
 	}
 	var out bytes.Buffer
 	if err := GameRequestSessionInformation(view).Render(context.Background(), &out); err != nil {
@@ -104,7 +104,9 @@ func TestSecretSessionInformationIsMaskedAndEditableAsPassword(t *testing.T) {
 	}
 	html := out.String()
 	for _, want := range []string{
-		`type="password"`, `name="is_secret"`, `checked`, "Secret", `data-secret-value`, `data-secret="true"`,
+		`type="password"`, `name="is_secret"`, `checked`, `data-server-is-secret="false"`, "Secret", `data-secret-value`, `data-secret="true"`,
+		`class="session-information-heading"`,
+		`class="session-information-tile-heading"`,
 		`aria-label="Copy Password"`, `aria-label="Reveal Password"`, `aria-pressed="false"`,
 		`<i class="ph ph-copy" aria-hidden="true"></i>`, `<i class="ph ph-eye" aria-hidden="true"></i>`,
 	} {

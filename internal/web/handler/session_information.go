@@ -44,7 +44,7 @@ func (h *GameRequests) sessionView(r *http.Request, mode string) (pages.SessionI
 	if info.CanEdit && mode != "" && mode != "add" {
 		for _, entry := range info.Entries {
 			if entry.ID == mode {
-				view.Form = &pages.SessionInformationForm{Mode: "edit", EntryID: entry.ID, Key: entry.Key, Value: entry.Value, IsSecret: entry.IsSecret}
+				view.Form = &pages.SessionInformationForm{Mode: "edit", EntryID: entry.ID, Key: entry.Key, Value: entry.Value, IsSecret: entry.IsSecret, ServerIsSecret: entry.IsSecret}
 				return view, nil
 			}
 		}

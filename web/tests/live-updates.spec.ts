@@ -538,6 +538,25 @@ test("session-information tiles reflow and inline editor saves locally", async (
     return [style.borderStyle, style.borderWidth, style.borderRadius, style.backgroundColor, style.padding].join("|");
   }));
   expect(new Set(styleSignature).size).toBe(1);
+  await expect(page.locator("#session-information > .session-information-heading")).toBeVisible();
+  await expect(page.locator(".session-information-tile-heading")).toHaveCount(5);
+  const headingLayout = await page.locator("#session-information").evaluate((section) => {
+    const outer = section.querySelector<HTMLElement>(":scope > .session-information-heading")!;
+    const add = outer.querySelector<HTMLElement>("a")!;
+    const title = outer.querySelector<HTMLElement>("h2")!;
+    const tileHeading = section.querySelector<HTMLElement>(".session-information-tile[data-secret='true'] .session-information-tile-heading")!;
+    return {
+      outerDisplay: getComputedStyle(outer).display,
+      addRight: Math.abs(outer.getBoundingClientRect().right - add.getBoundingClientRect().right),
+      titleRight: title.getBoundingClientRect().right,
+      addLeft: add.getBoundingClientRect().left,
+      badgeOffset: tileHeading.querySelector(".session-information-secret")!.getBoundingClientRect().top - tileHeading.getBoundingClientRect().top,
+    };
+  });
+  expect(headingLayout.outerDisplay).toBe("flex");
+  expect(headingLayout.addRight).toBeLessThanOrEqual(1);
+  expect(headingLayout.addLeft).toBeGreaterThan(headingLayout.titleRight);
+  expect(headingLayout.badgeOffset).toBeLessThanOrEqual(1);
   const normal = tiles.filter({ hasText: "Server" });
   const secret = tiles.filter({ hasText: "Password" });
   await expect(normal.getByRole("button", { name: "Copy Server" })).toBeVisible();
@@ -701,6 +720,54 @@ test("secret session edit masks value and permits toggling presentation", async 
 });
 
 
+for (const refresh of ["session-information fragment", "full detail"] as const) {
+  test(`a rejected edit preserves its dirty secret toggle through ${refresh} refresh`, async ({ page, request }) => {
+    const browserConsole: string[] = [];
+    const pageErrors: string[] = [];
+    page.on("console", message => browserConsole.push(message.text()));
+    page.on("pageerror", error => pageErrors.push(error.message));
+    await page.goto("/game-requests/new?game_id=game-1");
+    await page.getByRole("button", { name: "Create Game Request" }).click();
+    await page.waitForURL(/\/game-requests\/[0-9a-f-]+/);
+    await waitForRealtime(page, request, 1);
+    await page.getByRole("link", { name: "Add", exact: true }).click();
+    await page.getByRole("textbox", { name: "Key" }).fill("Password");
+    await page.getByRole("textbox", { name: "Value" }).fill("hunter2");
+    await page.getByRole("button", { name: "Save" }).click();
+    await expect(page.locator("#session-information")).toContainText("hunter2");
+
+    await page.getByRole("link", { name: "Edit Password" }).click();
+    const key = page.getByRole("textbox", { name: "Key" });
+    const value = page.getByRole("textbox", { name: "Value" });
+    const toggle = page.getByRole("checkbox", { name: "Secret value" });
+    await toggle.check();
+    await key.evaluate((input: HTMLInputElement) => { input.value = "K".repeat(41); });
+    await page.getByRole("button", { name: "Save" }).click();
+    await expect(page.locator("#session-information-error")).toContainText("Key must contain");
+    await expect(toggle).toBeChecked();
+    await expect(value).toHaveAttribute("type", "password");
+    await expect(page.locator("#session-information [data-session-information-form]")).toHaveAttribute("data-server-is-secret", "false");
+
+    const requestID = await page.locator("[data-game-request-detail]").getAttribute("data-game-request-id");
+    if (refresh === "session-information fragment") {
+      await request.post(`/__test__/publish?type=GameRequestSessionInformationChanged&request=${requestID}`);
+    } else {
+      await request.post(`/__test__/publish?type=GameRequestJoined&request=${requestID}`);
+    }
+    await expect(key).toHaveValue("K".repeat(41));
+    await expect(page.locator("#session-information-error")).toContainText("Key must contain");
+    await expect(toggle).toBeChecked();
+    await expect(value).toHaveAttribute("type", "password");
+    await expect(page.locator("#session-information [data-session-information-form]")).toHaveAttribute("data-server-is-secret", "false");
+
+    await key.fill("Password");
+    await page.getByRole("button", { name: "Save" }).click();
+    await expect(page.locator(".session-information-tile[data-secret='true']")).toContainText("Secret");
+    await expect(page.locator(".session-information-tile[data-secret='true'] [data-secret-value]")).toHaveAttribute("data-revealed", "false");
+    expect(browserConsole.filter(message => /session-information/i.test(message))).toEqual([]);
+    expect(pageErrors).toEqual([]);
+  });
+}
 test("session-information refresh preserves a dirty secret toggle field", async ({ page, request }) => {
   await page.goto("/game-requests/new?game_id=game-1");
   await page.getByRole("button", { name: "Create Game Request" }).click();

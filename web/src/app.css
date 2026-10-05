@@ -632,7 +632,7 @@
     color: color-mix(in srgb, var(--color-base-content) 80%, transparent);
   }
 
-  .session-information-heading {
+  .session-information-tile-heading {
     display: inline-flex;
     align-items: center;
     gap: 0.375rem;

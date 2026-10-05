@@ -683,6 +683,13 @@ func (f *fixture) UpdateSessionInformationEntry(_ context.Context, requestID, en
 	if !isActiveStatus(entry.request.Status) {
 		return gamerequest.ErrNotActive
 	}
+	input.Key, input.Value = strings.TrimSpace(input.Key), strings.TrimSpace(input.Value)
+	if input.Key == "" || utf8.RuneCountInString(input.Key) > 40 || strings.ContainsAny(input.Key, "\r\n") {
+		return gamerequest.ErrInvalidSessionInformationKey
+	}
+	if input.Value == "" || utf8.RuneCountInString(input.Value) > 300 || strings.ContainsAny(input.Value, "\r\n") {
+		return gamerequest.ErrInvalidSessionInformationValue
+	}
 	for i, current := range entry.sessionInformation {
 		if current.ID != entryID {
 			continue

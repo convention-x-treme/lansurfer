@@ -404,7 +404,7 @@ document.addEventListener("htmx:beforeSwap", (event) => {
     key: key.value,
     value: value.value,
     secret: secret.checked,
-    secretDirty: secret.checked !== secret.defaultChecked,
+    secretDirty: secret.checked !== (form.dataset.serverIsSecret === "true"),
     keyDirty: key.value !== key.defaultValue || keyRejected,
     valueDirty: value.value !== value.defaultValue || valueRejected,
     keyRejected,
