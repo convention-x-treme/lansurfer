@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/convention-x-treme/lansurfer/internal/gamerequest"
+	gamerequestpostgres "github.com/convention-x-treme/lansurfer/internal/gamerequest/postgres"
 )
 
 func TestGameRequestSessionInformationReadReturnsDatabaseErrors(t *testing.T) {
@@ -131,6 +132,124 @@ func TestGameRequestSessionInformationUpdateDeleteAndOrdering(t *testing.T) {
 	}
 	if err := f.requests.DeleteSessionInformationEntry(ctx, req.ID, deleted, f.host); !errors.Is(err, gamerequest.ErrSessionInformationEntryNotFound) {
 		t.Fatalf("repeated delete = %v", err)
+	}
+}
+
+type sessionInformationEvents struct {
+	events []gamerequest.Event
+}
+
+func (p *sessionInformationEvents) Publish(event gamerequest.Event) {
+	p.events = append(p.events, event)
+}
+
+func TestGameRequestSessionInformationSecretOnlyTransitionsPersist(t *testing.T) {
+	f := newPlayingFixture(t)
+	ctx := t.Context()
+	req := f.create(t, "secret-only transitions")
+	publisher := &sessionInformationEvents{}
+	service := gamerequest.NewService(gamerequestpostgres.NewStore(f.pool), nil, publisher)
+	input := gamerequest.SessionInformationInput{Key: "Password", Value: "hunter2"}
+	if err := service.CreateSessionInformationEntry(ctx, req.ID, f.host, input); err != nil {
+		t.Fatal(err)
+	}
+	publisher.events = nil
+	entry := func() gamerequest.SessionInformationEntry {
+		t.Helper()
+		info, err := service.SessionInformation(ctx, req.ID, f.host)
+		if err != nil || len(info.Entries) != 1 {
+			t.Fatalf("session information = %+v, %v", info, err)
+		}
+		return info.Entries[0]
+	}
+	setOldTimestamp := func() {
+		t.Helper()
+		if _, err := f.pool.Exec(ctx, `UPDATE game_request_session_entries SET updated_at='2000-01-01T00:00:00Z' WHERE game_request_id=$1`, req.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, secret := range []bool{true, false} {
+		setOldTimestamp()
+		before := entry()
+		if err := service.UpdateSessionInformationEntry(ctx, req.ID, before.ID, f.host, gamerequest.SessionInformationInput{Key: " Password ", Value: " hunter2 ", IsSecret: secret}); err != nil {
+			t.Fatal(err)
+		}
+		after := entry()
+		if after.IsSecret != secret || after.Key != "Password" || after.Value != "hunter2" || after.ID != before.ID || after.Sequence != before.Sequence {
+			t.Fatalf("entry after IsSecret=%t: before=%+v after=%+v", secret, before, after)
+		}
+		if !after.UpdatedAt.After(before.UpdatedAt) {
+			t.Fatalf("updated_at did not advance: before=%s after=%s", before.UpdatedAt, after.UpdatedAt)
+		}
+		if len(publisher.events) != 1 || publisher.events[0] != (gamerequest.Event{Type: gamerequest.EventSessionInformationChanged, RequestID: req.ID}) {
+			t.Fatalf("published events = %#v", publisher.events)
+		}
+		publisher.events = nil
+	}
+}
+
+func TestGameRequestSessionInformationNormalizedNoOpTouchesNothing(t *testing.T) {
+	f := newPlayingFixture(t)
+	ctx := t.Context()
+	req := f.create(t, "session information no-op")
+	publisher := &sessionInformationEvents{}
+	service := gamerequest.NewService(gamerequestpostgres.NewStore(f.pool), nil, publisher)
+	if err := service.CreateSessionInformationEntry(ctx, req.ID, f.host, gamerequest.SessionInformationInput{Key: "Password", Value: "hunter2"}); err != nil {
+		t.Fatal(err)
+	}
+	publisher.events = nil
+	if _, err := f.pool.Exec(ctx, `UPDATE game_request_session_entries SET updated_at='2000-01-01T00:00:00Z' WHERE game_request_id=$1`, req.ID); err != nil {
+		t.Fatal(err)
+	}
+	before, err := service.SessionInformation(ctx, req.ID, f.host)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var activitiesBefore, workBefore, deliveriesBefore int
+	if err := f.pool.QueryRow(ctx, `SELECT count(*) FROM game_request_activity WHERE game_request_id=$1`, req.ID).Scan(&activitiesBefore); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.pool.QueryRow(ctx, `SELECT count(*) FROM notification_work WHERE game_request_id=$1`, req.ID).Scan(&workBefore); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.pool.QueryRow(ctx, `SELECT count(*) FROM notification_delivery d JOIN notification_work w ON w.id=d.work_id WHERE w.game_request_id=$1`, req.ID).Scan(&deliveriesBefore); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.UpdateSessionInformationEntry(ctx, req.ID, before.Entries[0].ID, f.host, gamerequest.SessionInformationInput{Key: " Password ", Value: " hunter2 ", IsSecret: false}); err != nil {
+		t.Fatal(err)
+	}
+	after, err := service.SessionInformation(ctx, req.ID, f.host)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after.Entries) != 1 || after.Entries[0].ID != before.Entries[0].ID ||
+		after.Entries[0].Sequence != before.Entries[0].Sequence ||
+		after.Entries[0].Key != before.Entries[0].Key ||
+		after.Entries[0].Value != before.Entries[0].Value ||
+		after.Entries[0].IsSecret != before.Entries[0].IsSecret {
+		t.Fatalf("no-op changed entry: before=%+v after=%+v", before.Entries[0], after.Entries)
+	}
+	if after.Entries[0].UpdatedAt != before.Entries[0].UpdatedAt {
+		t.Fatalf("no-op changed updated_at: before=%s after=%s", before.Entries[0].UpdatedAt, after.Entries[0].UpdatedAt)
+	}
+	if len(publisher.events) != 0 {
+		t.Fatalf("no-op published events: %#v", publisher.events)
+	}
+	var activitiesAfter, workAfter, deliveriesAfter int
+	for _, count := range []struct {
+		query string
+		dest  *int
+	}{
+		{`SELECT count(*) FROM game_request_activity WHERE game_request_id=$1`, &activitiesAfter},
+		{`SELECT count(*) FROM notification_work WHERE game_request_id=$1`, &workAfter},
+		{`SELECT count(*) FROM notification_delivery d JOIN notification_work w ON w.id=d.work_id WHERE w.game_request_id=$1`, &deliveriesAfter},
+	} {
+		if err := f.pool.QueryRow(ctx, count.query, req.ID).Scan(count.dest); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if activitiesAfter != activitiesBefore || workAfter != workBefore || deliveriesAfter != deliveriesBefore {
+		t.Fatalf("no-op persistence changed activity/work/deliveries: %d/%d/%d -> %d/%d/%d", activitiesBefore, workBefore, deliveriesBefore, activitiesAfter, workAfter, deliveriesAfter)
 	}
 }
 
