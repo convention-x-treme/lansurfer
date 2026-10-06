@@ -189,10 +189,7 @@ templ GameCard(item game.DiscoveryItem, followedOnly bool) {
 			}
 		</div>
 		<div class="game-card-body">
-			<div class="flex items-baseline gap-2">
-				<h2 class="game-card-name">{ item.Name }</h2>
-				<span class="data-text game-card-short" aria-hidden="true">{ components.GameAbbreviation(item.Name) }</span>
-			</div>
+			<h2 class="game-card-name">{ item.Name }</h2>
 			if meta := gameCardMeta(item.GamePresentation); meta != "" {
 				<p class="game-card-meta">{ meta }</p>
 			}

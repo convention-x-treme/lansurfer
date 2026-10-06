@@ -972,13 +972,6 @@
     line-height: 1.2;
   }
 
-  .game-card-short {
-    flex: none;
-    font-size: 0.8125rem;
-    font-weight: 700;
-    color: color-mix(in srgb, var(--color-base-content) 65%, transparent);
-  }
-
   /* The summary is variable-length prose on a fluid-width card, so the line
      clamp -- not the server-side rune cap -- is what actually holds every
      card in a row to the same height. */
