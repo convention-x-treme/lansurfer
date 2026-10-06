@@ -193,7 +193,9 @@ templ GameCard(item game.DiscoveryItem, followedOnly bool) {
 				<h2 class="game-card-name">{ item.Name }</h2>
 				<span class="data-text game-card-short" aria-hidden="true">{ components.GameAbbreviation(item.Name) }</span>
 			</div>
-			<p class="game-card-meta">{ gameCardMeta(item.GamePresentation) }</p>
+			if meta := gameCardMeta(item.GamePresentation); meta != "" {
+				<p class="game-card-meta">{ meta }</p>
+			}
 			<div class="game-card-actions">
 				<a class="btn btn-quiet btn-sm" href={ gameRequestAction(item) }><i class="ph ph-users-three" aria-hidden="true"></i>Find Players</a>
 				@GameCardFollowControl(item, followedOnly)
@@ -210,14 +212,14 @@ templ GameCard(item game.DiscoveryItem, followedOnly bool) {
 //
 // Unfollow is a step-back button: quiet at rest because the player can redo
 // it in one click, Coral on hover like every other negative action. The
-// "Following" state itself is named on the cover tag, so the button says
-// only what pressing it does.
+// "Following" state itself is named on the cover tag, so the button is
+// icon-only (named by aria-label) to leave the width to "Find Players".
 templ GameCardFollowControl(item game.DiscoveryItem, followedOnly bool) {
 	if item.Subscribed && item.LocalGameID != "" {
 		<form class="game-card-follow" method="post" action={ "/games/" + item.LocalGameID + "/unfollow" } hx-post={ "/games/" + item.LocalGameID + "/unfollow" } hx-target="closest article" hx-swap="outerHTML" hx-sync="this:drop" hx-disabled-elt="find button">
 			@components.CSRFInput()
 			@followedViewInput(followedOnly)
-			<button class="btn btn-step-back btn-sm" type="submit"><i class="ph ph-heart-break" aria-hidden="true"></i>Unfollow</button>
+			<button class="btn btn-step-back btn-sm btn-square" type="submit" aria-label={ "Unfollow " + item.Name } title="Unfollow"><i class="ph ph-heart-break" aria-hidden="true"></i></button>
 		</form>
 	} else if item.Subscribed {
 		<span class="status-chip status-chip-joined icon-label"><i class="ph-fill ph-heart" aria-hidden="true"></i>Following</span>
@@ -225,13 +227,13 @@ templ GameCardFollowControl(item game.DiscoveryItem, followedOnly bool) {
 		<form class="game-card-follow" method="post" action={ "/games/" + item.LocalGameID + "/follow" } hx-post={ "/games/" + item.LocalGameID + "/follow" } hx-target="closest article" hx-swap="outerHTML" hx-sync="this:drop" hx-disabled-elt="find button">
 			@components.CSRFInput()
 			@followedViewInput(followedOnly)
-			<button class="btn btn-primary btn-sm" type="submit"><i class="ph ph-heart" aria-hidden="true"></i>Follow</button>
+			<button class="btn btn-primary btn-sm btn-square" type="submit" aria-label={ "Follow " + item.Name } title="Follow"><i class="ph ph-heart" aria-hidden="true"></i></button>
 		</form>
 	} else {
 		<form class="game-card-follow" method="post" action={ providerFollowAction(item.Reference) } hx-post={ providerFollowAction(item.Reference) } hx-target="closest article" hx-swap="outerHTML" hx-sync="this:drop" hx-disabled-elt="find button">
 			@components.CSRFInput()
 			@followedViewInput(followedOnly)
-			<button class="btn btn-primary btn-sm" type="submit"><i class="ph ph-heart" aria-hidden="true"></i>Follow</button>
+			<button class="btn btn-primary btn-sm btn-square" type="submit" aria-label={ "Follow " + item.Name } title="Follow"><i class="ph ph-heart" aria-hidden="true"></i></button>
 		</form>
 	}
 }
@@ -321,8 +323,8 @@ const gameCardSummaryLimit = 400
 // Request lists still use to disambiguate same-named Games -- a card drops
 // game type and platforms, because the summary earns that space and the
 // cover already carries the genre. Either half alone still reads, and a
-// Game with neither falls back to the slug, matching what the line showed
-// before any enrichment existed.
+// Game with neither shows no line: the slug is an internal identifier, not
+// player-facing copy.
 func gameCardMeta(p game.GamePresentation) string {
 	parts := make([]string, 0, 2)
 	if p.FirstReleaseDate != nil {
@@ -330,9 +332,6 @@ func gameCardMeta(p game.GamePresentation) string {
 	}
 	if summary := truncateSummary(p.Summary, gameCardSummaryLimit); summary != "" {
 		parts = append(parts, summary)
-	}
-	if len(parts) == 0 {
-		return p.Slug
 	}
 	return strings.Join(parts, " · ")
 }

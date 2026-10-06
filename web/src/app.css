@@ -993,8 +993,8 @@
     overflow-wrap: anywhere;
   }
 
-  /* The follow action is the card's point, so it gets the remaining width and
-     "Find Players" stays the quiet companion beside it. */
+  /* "Find Players" takes the free width; follow/unfollow is a square icon
+     button beside it, so the pair always fits the card. */
   .game-card-actions {
     display: flex;
     margin-top: auto;
@@ -1003,13 +1003,12 @@
     padding-top: 0.625rem;
   }
 
-  .game-card-follow {
+  .game-card-actions > .btn {
     flex: 1;
-    min-width: 0;
   }
 
-  .game-card-follow .btn {
-    width: 100%;
+  .game-card-follow {
+    flex: none;
   }
 
   .game-grid {

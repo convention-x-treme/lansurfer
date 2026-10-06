@@ -185,7 +185,7 @@ func TestGameCardRendersUnifiedPresentationForMaterializedAndProviderItems(t *te
 				t.Errorf("%s card unexpectedly still contains %q: %s", name, unwanted, markup)
 			}
 		}
-		if !strings.Contains(markup, ">Follow<") && !strings.Contains(markup, "Following") {
+		if !strings.Contains(markup, `aria-label="Follow Warcraft III`) && !strings.Contains(markup, "Following") {
 			t.Errorf("%s card does not offer a follow control: %s", name, markup)
 		}
 		// Materialization origin, sync-generation terminology, and Local/IGDB
@@ -224,8 +224,7 @@ func TestGameCardRendersAbbreviationFallbackForLocalGameWithoutCover(t *testing.
 }
 
 // The card's secondary line degrades one field at a time: either half alone
-// still reads, and a Game with neither falls back to the slug exactly as it
-// did before the summary moved in.
+// still reads, and a Game with neither shows nothing (never the slug).
 func TestGameCardMetaCombinesYearAndSummary(t *testing.T) {
 	releaseDate := time.Date(2002, time.July, 3, 0, 0, 0, 0, time.UTC)
 	long := strings.Repeat("a", gameCardSummaryLimit+10)
@@ -239,9 +238,9 @@ func TestGameCardMetaCombinesYearAndSummary(t *testing.T) {
 		},
 		"year only":    {presentation: game.GamePresentation{FirstReleaseDate: &releaseDate}, want: "2002"},
 		"summary only": {presentation: game.GamePresentation{Summary: "Azeroth braces for war."}, want: "Azeroth braces for war."},
-		"neither falls back to the slug": {
+		"neither shows nothing": {
 			presentation: game.GamePresentation{Slug: "warcraft-3", GameType: "Main Game"},
-			want:         "warcraft-3",
+			want:         "",
 		},
 		"collapses provider whitespace": {
 			presentation: game.GamePresentation{Summary: "Azeroth\n\nbraces  for war."},
