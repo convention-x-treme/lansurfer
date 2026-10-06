@@ -697,7 +697,7 @@ test("secret copy reports clipboard rejection and unsupported API", async ({ pag
     Object.defineProperty(Navigator.prototype, "clipboard", { configurable: true, get: () => undefined });
   });
   await tile.getByRole("button", { name: "Copy Password" }).click();
-  await expect(notices.locator('[role="alert"]')).toHaveCount(2);
+  await expect(notices.locator('[role="alert"]', { hasText: "Could not copy secret" })).toHaveCount(2);
   await expect(value).toHaveText("••••••••");
 });
 
