@@ -2588,6 +2588,31 @@
   }
 }
 
+/* Auto-dismiss: the bar's animation is the timer (app.ts removes the toast on
+   its animationend), so removing the toast cancels it. Kept under reduced
+   motion: the countdown is information, and the dismissal depends on it. */
+.alert[data-live-toast] {
+  position: relative;
+  overflow: hidden;
+}
+
+.alert[data-live-toast]::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 0.25rem;
+  background: currentColor;
+  opacity: 0.55;
+  transform-origin: left;
+  animation: live-toast-countdown 10s linear forwards;
+}
+
+@keyframes live-toast-countdown {
+  to {
+    transform: scaleX(0);
+  }
+}
+
 .alert[data-live-toast] .btn-ghost {
   color: inherit;
 }

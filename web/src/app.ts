@@ -216,6 +216,10 @@ document.addEventListener("input", (event) => {
   }
 });
 
+document.addEventListener("animationend", (event) => {
+  if (event.animationName === "live-toast-countdown" && event.target instanceof Element) event.target.closest("[data-live-toast]")?.remove();
+});
+
 // Every live notice is dismissible: an outage can last as long as the event
 // floor's network does, and an undismissable banner just covers the page.
 function liveNotice(variant: "info" | "warning" | "error", message: string): HTMLElement {
