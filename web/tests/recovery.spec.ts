@@ -41,6 +41,22 @@ test("a server error surfaces a dismissible notice instead of freezing", async (
   await expect(row.getByRole("button", { name: "Join" })).toBeEnabled();
 });
 
+// Issue #119: toasts dismiss themselves after 10s, shown by a shrinking bar.
+test("a notice auto-dismisses after 10 seconds with a countdown bar", async ({ page, request }) => {
+  await page.goto("/game-requests");
+  await request.post("/__test__/mode?fail=error");
+  await page.locator("article[data-game-request-id]").first().getByRole("button", { name: "Join" }).click();
+
+  const notice = page.locator("#live-notices [data-live-toast]").first();
+  await expect(notice).toBeVisible();
+  await page.waitForTimeout(2000);
+  const scale = await notice.evaluate((el) => new DOMMatrix(getComputedStyle(el, "::after").transform).a);
+  expect(scale).toBeLessThan(0.9);
+  expect(scale).toBeGreaterThan(0.5);
+  await expect(notice).toBeHidden({ timeout: 10_000 });
+  await expect(page.locator("#live-notices [data-live-toast]")).toHaveCount(0);
+});
+
 // An aborted request is the case hx-sync produces on every debounced keystroke.
 // htmx fires afterRequest for an abort, and app.ts relies on that to release
 // its in-flight counter; if it ever stopped, live refreshes would be deferred
