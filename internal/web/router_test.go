@@ -1103,7 +1103,7 @@ func TestAuthenticatedUserCanBrowseAndFollowGames(t *testing.T) {
 	if response.Code != http.StatusOK || subscriptions.search != "wc3" {
 		t.Fatalf("browse response = %d, search = %q", response.Code, subscriptions.search)
 	}
-	for _, want := range []string{"Warcraft III", ">Follow<", `hx-post="/games/game-1/follow"`, "Followed"} {
+	for _, want := range []string{"Warcraft III", `aria-label="Follow Warcraft III`, `hx-post="/games/game-1/follow"`, "Followed"} {
 		if !strings.Contains(response.Body.String(), want) {
 			t.Errorf("body does not contain %q", want)
 		}
@@ -1201,7 +1201,7 @@ func TestGameCatalogRendersUnmaterializedProviderResultWithFollowAction(t *testi
 		"2002 · Azeroth braces for war.",
 		">RTS<",
 		"/media/igdb/big/co1abc",
-		">Follow<",
+		`aria-label="Follow `,
 		`hx-post="/games/providers/igdb/42/follow"`,
 	} {
 		if !strings.Contains(body, want) {
