@@ -194,7 +194,7 @@ templ GameCard(item game.DiscoveryItem, followedOnly bool) {
 				<p class="game-card-meta">{ meta }</p>
 			}
 			<div class="game-card-actions">
-				<a class="btn btn-quiet btn-sm" href={ gameRequestAction(item) }><i class="ph ph-users-three" aria-hidden="true"></i>Find Players</a>
+				<a class="btn btn-primary btn-sm" href={ gameRequestAction(item) }><i class="ph ph-users-three" aria-hidden="true"></i>Find Players</a>
 				@GameCardFollowControl(item, followedOnly)
 			</div>
 		</div>
@@ -224,13 +224,13 @@ templ GameCardFollowControl(item game.DiscoveryItem, followedOnly bool) {
 		<form class="game-card-follow" method="post" action={ "/games/" + item.LocalGameID + "/follow" } hx-post={ "/games/" + item.LocalGameID + "/follow" } hx-target="closest article" hx-swap="outerHTML" hx-sync="this:drop" hx-disabled-elt="find button">
 			@components.CSRFInput()
 			@followedViewInput(followedOnly)
-			<button class="btn btn-primary btn-sm btn-square" type="submit" aria-label={ "Follow " + item.Name } title="Follow"><i class="ph ph-heart" aria-hidden="true"></i></button>
+			<button class="btn btn-quiet btn-sm btn-square" type="submit" aria-label={ "Follow " + item.Name } title="Follow"><i class="ph ph-heart" aria-hidden="true"></i></button>
 		</form>
 	} else {
 		<form class="game-card-follow" method="post" action={ providerFollowAction(item.Reference) } hx-post={ providerFollowAction(item.Reference) } hx-target="closest article" hx-swap="outerHTML" hx-sync="this:drop" hx-disabled-elt="find button">
 			@components.CSRFInput()
 			@followedViewInput(followedOnly)
-			<button class="btn btn-primary btn-sm btn-square" type="submit" aria-label={ "Follow " + item.Name } title="Follow"><i class="ph ph-heart" aria-hidden="true"></i></button>
+			<button class="btn btn-quiet btn-sm btn-square" type="submit" aria-label={ "Follow " + item.Name } title="Follow"><i class="ph ph-heart" aria-hidden="true"></i></button>
 		</form>
 	}
 }

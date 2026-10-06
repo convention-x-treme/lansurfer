@@ -964,7 +964,6 @@
 
   .game-card-name {
     min-width: 0;
-    flex: 1;
     overflow-wrap: anywhere;
     font-size: 1.0625rem;
     font-weight: 900;
@@ -986,15 +985,18 @@
     overflow-wrap: anywhere;
   }
 
-  /* "Find Players" stays left at its natural width; the icon-only
-     follow/unfollow button sits right, with the free space between. */
+  /* "Find Players" takes all free width on the left; the icon-only
+     follow/unfollow button keeps its square on the right. */
   .game-card-actions {
     display: flex;
     margin-top: auto;
     align-items: center;
-    justify-content: space-between;
     gap: 0.5rem;
     padding-top: 0.625rem;
+  }
+
+  .game-card-actions > a.btn {
+    flex: 1;
   }
 
   .game-grid {
