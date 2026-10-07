@@ -108,14 +108,14 @@ INSERT INTO game_request_views (user_id, game_request_id, viewed_at)
 VALUES (sqlc.arg(user_id)::uuid, sqlc.arg(game_request_id)::uuid, now())
 ON CONFLICT (user_id, game_request_id) DO UPDATE SET viewed_at = now();
 
--- Chat is a plain chronological stream scoped to one request. Authorization is
--- decided by the caller from ChatAccess (or the locked request row for posting).
--- name: ChatAccess :one
-SELECT gr.status,
-       EXISTS (
-           SELECT 1 FROM game_request_members m
-           WHERE m.game_request_id = gr.id AND m.user_id = sqlc.arg(user_id)::uuid
-       ) AS is_member
+
+-- Lobby reads require current membership but are independent of request status.
+-- name: GameRequestLobbyAccess :one
+SELECT EXISTS (
+    SELECT 1 FROM game_request_members m
+    WHERE m.game_request_id = gr.id
+      AND m.user_id = sqlc.arg(user_id)::uuid
+) AS is_member
 FROM game_requests gr
 WHERE gr.id = sqlc.arg(game_request_id)::uuid;
 
@@ -138,17 +138,3 @@ SELECT inserted.id::text AS id, inserted.game_request_id::text AS game_request_i
 FROM inserted
 JOIN users u ON u.id = inserted.author_id;
 
--- Newest 200, returned oldest first.
--- name: ListGameRequestMessages :many
-SELECT id, game_request_id, author_id, author_game_nick, body, created_at
-FROM (
-    SELECT m.id::text AS id, m.game_request_id::text AS game_request_id,
-           m.author_id::text AS author_id, COALESCE(u.game_nick, '')::text AS author_game_nick,
-           m.body, m.created_at, m.id AS sort_id
-    FROM game_request_messages m
-    JOIN users u ON u.id = m.author_id
-    WHERE m.game_request_id = sqlc.arg(game_request_id)::uuid
-    ORDER BY m.created_at DESC, m.id DESC
-    LIMIT 200
-) latest
-ORDER BY created_at, sort_id;

@@ -53,43 +53,24 @@ func (s *Store) PostMessage(ctx context.Context, requestID, userID, body string)
 	return message, err
 }
 
-func (s *Store) Messages(ctx context.Context, requestID, userID string) ([]gamerequest.Message, error) {
-	if err := s.ChatAccess(ctx, requestID, userID); err != nil {
-		return nil, err
-	}
-	databaseRequestID, _, err := parseIDs(requestID, userID)
-	if err != nil {
-		return nil, gamerequest.ErrNotFound
-	}
-	rows, err := s.queries.ListGameRequestMessages(ctx, databaseRequestID)
-	if err != nil {
-		return nil, fmt.Errorf("list game request messages: %w", err)
-	}
-	messages := make([]gamerequest.Message, len(rows))
-	for i, row := range rows {
-		messages[i] = gamerequest.Message{
-			ID: row.ID, RequestID: row.GameRequestID, AuthorID: row.AuthorID,
-			AuthorGameNick: row.AuthorGameNick, Body: row.Body, CreatedAt: row.CreatedAt.Time,
-		}
-	}
-	return messages, nil
-}
-
-func (s *Store) ChatAccess(ctx context.Context, requestID, userID string) error {
+func (s *Store) LobbyAccess(ctx context.Context, requestID, userID string) error {
 	databaseRequestID, databaseUserID, err := parseIDs(requestID, userID)
 	if err != nil {
 		return gamerequest.ErrNotFound
 	}
-	access, err := s.queries.ChatAccess(ctx, sqlcgen.ChatAccessParams{
+	isMember, err := s.queries.GameRequestLobbyAccess(ctx, sqlcgen.GameRequestLobbyAccessParams{
 		GameRequestID: databaseRequestID, UserID: databaseUserID,
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return gamerequest.ErrNotFound
 	}
 	if err != nil {
-		return fmt.Errorf("check game request chat access: %w", err)
+		return fmt.Errorf("check game request lobby access: %w", err)
 	}
-	return chatAllowed(access.IsMember, access.Status)
+	if !isMember {
+		return gamerequest.ErrNotMember
+	}
+	return nil
 }
 
 func chatAllowed(isMember bool, status string) error {

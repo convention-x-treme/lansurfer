@@ -25,6 +25,7 @@ Use these terms consistently. Do not invent synonyms for domain concepts unless 
 - **Full**: an active Game Request whose member count has reached its finite maximum. Joining is refused until a place frees up. A request is never Full while unlimited, and Full is derived, not stored.
 - **Free place(s)**: the places left between the member count and the finite maximum. The **Free places** discovery filter keeps active requests that are unlimited or have at least one free place; `open` and `playing` requests are treated alike.
 - **Game Request activity**: durable request-local history for successful create/join/leave/start/close/cancel/request-update changes. A request update is one Activity entry per successful Host Save, with typed before/after data for capacity and planned-start changes and only a changed marker for description. Activity is also the transactional handoff consumed by notification processing; it is not a generic audit log or global activity feed.
+- **Lobby**: the participant-only detail-page view that combines Game Request activity and chat. Current members may read it in every lifecycle state; leaving revokes access. Only active requests allow chat posting. It shows the latest 200 combined entries oldest-first.
 - **Notification work / delivery**: durable processing state for external notification transports. It is separate from Game Request activity.
 - **Recently viewed**: local/browser presentation history. It is not Game Request activity or notification state.
 

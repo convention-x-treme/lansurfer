@@ -353,6 +353,8 @@ Stable 1.0 coordination continues while a request is `playing`:
 - secret sharing outside a Game Request, per-entry access lists, secret history/versioning, and key-management UI are out of scope;
 - the Host and currently joined participants may use a lightweight request-local private chat while the request is active.
 
+The Game Request detail page presents participant chat and durable Game Request activity together in the **Lobby**. Current members may read Lobby history in every lifecycle state; leaving removes read access immediately. Nonmembers cannot read it. Chat posting remains limited to current members while the request is `open` or `playing`; terminal Lobbies are read-only. The Lobby shows the latest 200 combined entries in chronological order. Historical backfill appears as history but is never delivered as notification.
+
 Secret presentation protects against shoulder-surfing, not database access, server compromise, or an authorized participant inspecting browser tools.
 Request-local chat is not a general messaging subsystem: there are no direct messages, global rooms, threads, reactions, attachments, read receipts, typing indicators, or presence in the stable 1.0 scope.
 

@@ -785,7 +785,12 @@
     background: color-mix(in srgb, var(--color-base-content) 5%, transparent);
   }
 
-  /* Request-local chat log; the Activity card stays separate. */
+  .activity-icon {
+    flex: 0 0 1rem;
+    text-align: center;
+    opacity: 0.65;
+  }
+
   /* Straight rule between the messages and what writes to them. */
   .chat-compose {
     display: flex;

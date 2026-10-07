@@ -231,7 +231,7 @@ test("a detail refresh preserves a selected relative start shortcut", async ({ p
   await expect(page.locator("[data-custom-start]")).toBeHidden();
   await page.getByRole("button", { name: "Save" }).click();
   await page.waitForURL(/\/game-requests\/[0-9a-f-]+(?:\?.*)?$/);
-  const start = new Date((await page.locator("time[data-local-time='start']").getAttribute("datetime"))!);
+  const start = new Date((await page.locator("#game-request-detail time[data-local-time='start']").getAttribute("datetime"))!);
   expect(start.getTime()).toBeGreaterThan(Date.now() + 14 * 60_000);
   expect(start.getTime()).toBeLessThan(Date.now() + 16 * 60_000);
 });
@@ -381,6 +381,25 @@ test("a live detail refresh preserves an unsent chat draft", async ({ page, requ
 
   await expect.poll(async () => (await htmxCounters(page)).after).toBeGreaterThan(0);
   await expect(draft).toHaveValue("I am still typing");
+});
+
+test("the Lobby combines activity and chat and refreshes from a content-free chat signal", async ({ page, request }) => {
+  await page.goto("/game-requests/new?game_id=game-1");
+  await page.getByRole("button", { name: "Create Game Request" }).click();
+  await page.waitForURL(/\/game-requests\/[0-9a-f-]+/);
+  const lobby = page.locator("#game-request-lobby");
+  await expect(lobby.locator(".activity-row")).toContainText("Ada Player created the request");
+  await page.getByRole("textbox", { name: "Message the lobby" }).fill("Ready for game");
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect(lobby.locator(".chat-message")).toContainText("Ready for game");
+  await expect(lobby.locator(".activity-row")).toContainText("Ada Player created the request");
+
+  await waitForRealtime(page, request, 1);
+  await instrumentHtmx(page);
+  const requestID = await page.locator("[data-game-request-detail]").getAttribute("data-game-request-id");
+  await request.post(`/__test__/publish?type=GameRequestChatMessage&request=${requestID}`);
+  await expect.poll(async () => (await htmxCounters(page)).after).toBeGreaterThan(0);
+  await expect(lobby.locator(".chat-message")).toContainText("Ready for game");
 });
 
 test("session-information and general detail refreshes preserve an active inline draft", async ({ page, request }) => {

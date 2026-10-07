@@ -79,12 +79,12 @@ type RouterDependencies struct {
 	// discovery service behind RequestQueries/Discovery satisfy them; saying
 	// so is this composition root's job, not a reason to widen either
 	// handler's own narrower interface.
-	NavigationQueries handler.NavigationQueries
-	NavigationCatalog handler.NavigationCatalog
-	Chat              handler.GameRequestChat
-	Realtime          handler.GameRequestEvents
-	// RealtimeChat gates chat signals on the realtime stream; nil drops them.
-	RealtimeChat               handler.ChatAccess
+	NavigationQueries          handler.NavigationQueries
+	NavigationCatalog          handler.NavigationCatalog
+	Chat                       handler.GameRequestChat
+	LobbyAccess                handler.LobbyAccess
+	LobbyQueries               handler.GameRequestLobbyQueries
+	Realtime                   handler.GameRequestEvents
 	SessionInformation         handler.GameRequestSessionInformation
 	RealtimeSessionInformation handler.SessionInformationAccess
 	Subscriptions              handler.SubscriptionManager
@@ -162,7 +162,7 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 			dependencies.DiscordLifecycle, dependencies.DiscordStatus, navigation, brand, dependencies.SecureCookies,
 		)
 	}
-	realtimeHandler := handler.NewRealtime(dependencies.Realtime, dependencies.RealtimeChat, dependencies.RealtimeSessionInformation)
+	realtimeHandler := handler.NewRealtime(dependencies.Realtime, dependencies.LobbyAccess, dependencies.RealtimeSessionInformation)
 	notificationSettingsHandler := handler.NewNotificationSettings(
 		dependencies.Subscriptions, dependencies.VAPIDPublicKey,
 		dependencies.WebPushConfigured, brand, dependencies.SecureCookies, navigation,
@@ -276,9 +276,10 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 				requests.Post("/{requestID}/start", gameRequestsHandler.Start)
 				requests.Post("/{requestID}/close", gameRequestsHandler.Close)
 				requests.Post("/{requestID}/cancel", gameRequestsHandler.Cancel)
-				if dependencies.Chat != nil {
-					chatHandler := handler.NewChat(dependencies.Chat)
-					requests.Get("/{requestID}/chat", chatHandler.Log)
+				if dependencies.Chat != nil && dependencies.LobbyAccess != nil && dependencies.LobbyQueries != nil {
+					lobbyHandler := handler.NewLobby(dependencies.LobbyAccess, dependencies.LobbyQueries)
+					chatHandler := handler.NewChat(dependencies.Chat, lobbyHandler)
+					requests.Get("/{requestID}/lobby", lobbyHandler.View)
 					requests.Post("/{requestID}/chat", chatHandler.Post)
 				}
 				if dependencies.SessionInformation != nil {

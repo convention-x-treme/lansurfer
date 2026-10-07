@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/convention-x-treme/lansurfer/internal/gamerequest"
+	requestquery "github.com/convention-x-treme/lansurfer/internal/query/gamerequest"
 )
 
 // Chat access follows current membership and the active lifecycle, and the
@@ -20,8 +21,8 @@ func TestGameRequestChatAccess(t *testing.T) {
 	if _, err := fixture.requests.PostMessage(ctx, request.ID, fixture.outsider, "hi"); !errors.Is(err, gamerequest.ErrNotMember) {
 		t.Fatalf("outsider post error = %v, want ErrNotMember", err)
 	}
-	if _, err := fixture.requests.Messages(ctx, request.ID, fixture.outsider); !errors.Is(err, gamerequest.ErrNotMember) {
-		t.Fatalf("outsider read error = %v, want ErrNotMember", err)
+	if _, err := requestquery.NewStore(fixture.pool).Lobby(ctx, request.ID, fixture.outsider); !errors.Is(err, gamerequest.ErrNotMember) {
+		t.Fatalf("outsider Lobby error = %v, want ErrNotMember", err)
 	}
 	if _, err := fixture.requests.PostMessage(ctx, request.ID, fixture.host, "  "); !errors.Is(err, gamerequest.ErrInvalidMessage) {
 		t.Fatalf("blank post error = %v, want ErrInvalidMessage", err)
@@ -44,12 +45,18 @@ func TestGameRequestChatAccess(t *testing.T) {
 		t.Fatalf("other request post: %v", err)
 	}
 
-	messages, err := fixture.requests.Messages(ctx, request.ID, fixture.guest)
+	lobby, err := requestquery.NewStore(fixture.pool).Lobby(ctx, request.ID, fixture.guest)
 	if err != nil {
 		t.Fatalf("guest read: %v", err)
 	}
-	if len(messages) != 2 || messages[0].Body != "meet at row 3" || messages[1].Body != "on my way" {
-		t.Fatalf("messages = %+v, want the two messages of this request in order", messages)
+	var bodies []string
+	for _, entry := range lobby.Entries {
+		if entry.Source == requestquery.LobbySourceChat {
+			bodies = append(bodies, entry.Message.Body)
+		}
+	}
+	if len(bodies) != 2 || bodies[0] != "meet at row 3" || bodies[1] != "on my way" {
+		t.Fatalf("chat bodies = %v, want the two messages of this request in order", bodies)
 	}
 
 	// Playing keeps chat usable.
@@ -73,8 +80,8 @@ func TestGameRequestChatAccess(t *testing.T) {
 	if _, err := fixture.requests.PostMessage(ctx, other.ID, fixture.guest, "late"); !errors.Is(err, gamerequest.ErrNotMember) {
 		t.Fatalf("post after leave = %v, want ErrNotMember", err)
 	}
-	if allowed, err := fixture.requests.CanChat(ctx, other.ID, fixture.guest); err != nil || allowed {
-		t.Fatalf("CanChat after leave = %v, %v", allowed, err)
+	if allowed, err := fixture.requests.CanReadLobby(ctx, other.ID, fixture.guest); err != nil || allowed {
+		t.Fatalf("CanReadLobby after leave = %v, %v", allowed, err)
 	}
 
 	// Closed requests stop active coordination.
@@ -84,8 +91,46 @@ func TestGameRequestChatAccess(t *testing.T) {
 	if _, err := fixture.requests.PostMessage(ctx, request.ID, fixture.host, "after"); !errors.Is(err, gamerequest.ErrChatClosed) {
 		t.Fatalf("post after close = %v, want ErrChatClosed", err)
 	}
-	if _, err := fixture.requests.Messages(ctx, request.ID, fixture.host); !errors.Is(err, gamerequest.ErrChatClosed) {
-		t.Fatalf("read after close = %v, want ErrChatClosed", err)
+	if lobby, err := requestquery.NewStore(fixture.pool).Lobby(ctx, request.ID, fixture.host); err != nil || len(lobby.Entries) == 0 {
+		t.Fatalf("host Lobby after close = %d entries, %v", len(lobby.Entries), err)
+	}
+}
+
+func TestGameRequestLobbyAccessFollowsMembershipAcrossStatuses(t *testing.T) {
+	fixture := newPlayingFixture(t)
+	ctx := t.Context()
+	for _, status := range []string{"open", "playing", "closed", "cancelled"} {
+		t.Run(status, func(t *testing.T) {
+			request := fixture.create(t, "Lobby "+status)
+			if err := fixture.requests.Join(ctx, request.ID, fixture.guest); err != nil {
+				t.Fatalf("join: %v", err)
+			}
+			if status == "playing" || status == "closed" {
+				if err := fixture.requests.Start(ctx, request.ID, fixture.host); err != nil {
+					t.Fatalf("start: %v", err)
+				}
+			}
+			if status == "closed" {
+				if err := fixture.requests.Close(ctx, request.ID, fixture.host); err != nil {
+					t.Fatalf("close: %v", err)
+				}
+			}
+			if status == "cancelled" {
+				if err := fixture.requests.Cancel(ctx, request.ID, fixture.host); err != nil {
+					t.Fatalf("cancel: %v", err)
+				}
+			}
+			for _, userID := range []string{fixture.host, fixture.guest} {
+				allowed, err := fixture.requests.CanReadLobby(ctx, request.ID, userID)
+				if err != nil || !allowed {
+					t.Fatalf("member %s access = %v, %v", userID, allowed, err)
+				}
+			}
+			allowed, err := fixture.requests.CanReadLobby(ctx, request.ID, fixture.outsider)
+			if err != nil || allowed {
+				t.Fatalf("outsider access = %v, %v", allowed, err)
+			}
+		})
 	}
 }
 

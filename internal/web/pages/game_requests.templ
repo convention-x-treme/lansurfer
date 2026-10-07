@@ -685,32 +685,38 @@ templ GameRequestDetailContentWithSession(request requestquery.Request, viewerID
 					}
 				</ul>
 			</section>
-			if chatOpen(request, viewerID) {
-				@collapsible("main-chat", "Lobby chat", "flex-1", true, true) {
-					<ol id="chat-log" class="chat-log" role="log" aria-live="polite" hx-get={ "/game-requests/" + request.ID + "/chat" } hx-trigger="load" hx-swap="outerHTML"></ol>
-					<div class="chat-compose">
-						<div class="flex flex-wrap gap-1.5">
-							for _, quick := range quickChats {
-								<form method="post" action={ "/game-requests/" + request.ID + "/chat" } hx-post={ "/game-requests/" + request.ID + "/chat" } hx-target="#chat-log" hx-swap="outerHTML" hx-disabled-elt="find button">
-									@components.CSRFInput()
-									<input type="hidden" name="body" value={ quick }/>
-									<button class="btn btn-ghost btn-xs chat-chip" type="submit">{ quick }</button>
-								</form>
-							}
+			@collapsible("main-lobby", "Lobby", "flex-1", true) {
+				if request.ViewerJoined {
+					<ol id="game-request-lobby" class="chat-log" role="log" aria-live="polite" data-refresh-url={ "/game-requests/" + request.ID + "/lobby" } hx-get={ "/game-requests/" + request.ID + "/lobby" } hx-trigger="load" hx-swap="outerHTML"></ol>
+					if requestActive(request) {
+						<div class="chat-compose">
+							<div class="flex flex-wrap gap-1.5">
+								for _, quick := range quickChats {
+									<form method="post" action={ "/game-requests/" + request.ID + "/chat" } hx-post={ "/game-requests/" + request.ID + "/chat" } hx-target="#game-request-lobby" hx-swap="outerHTML" hx-disabled-elt="find button">
+										@components.CSRFInput()
+										<input type="hidden" name="body" value={ quick }/>
+										<button class="btn btn-ghost btn-xs chat-chip" type="submit">{ quick }</button>
+									</form>
+								}
+							</div>
+							<form id="chat-compose-form" hx-preserve class="flex gap-2" method="post" action={ "/game-requests/" + request.ID + "/chat" } hx-post={ "/game-requests/" + request.ID + "/chat" } hx-target="#game-request-lobby" hx-swap="outerHTML" hx-disabled-elt="find button" data-chat-form>
+								@components.CSRFInput()
+								<input class="input input-bordered min-w-0 flex-1" type="text" name="body" maxlength="1000" required autocomplete="off" placeholder="Message the lobby" aria-label="Message the lobby"/>
+								<button class="btn btn-primary" type="submit">Send</button>
+							</form>
+							<p class="pointer-coarse:hidden text-xs text-base-content/70">Emoji: <kbd class="data-text">Win</kbd> + <kbd class="data-text">.</kbd> on Windows, <kbd class="data-text">Ctrl</kbd> + <kbd class="data-text">Cmd</kbd> + <kbd class="data-text">Space</kbd> on Mac</p>
 						</div>
-						<form id="chat-compose-form" hx-preserve class="flex gap-2" method="post" action={ "/game-requests/" + request.ID + "/chat" } hx-post={ "/game-requests/" + request.ID + "/chat" } hx-target="#chat-log" hx-swap="outerHTML" hx-disabled-elt="find button" data-chat-form>
-							@components.CSRFInput()
-							<input class="input input-bordered min-w-0 flex-1" type="text" name="body" maxlength="1000" required autocomplete="off" placeholder="Message the lobby" aria-label="Message the lobby"/>
-							<button class="btn btn-primary" type="submit">Send</button>
-						</form>
-						<p class="pointer-coarse:hidden text-xs text-base-content/70">Emoji: <kbd class="data-text">Win</kbd> + <kbd class="data-text">.</kbd> on Windows, <kbd class="data-text">Ctrl</kbd> + <kbd class="data-text">Cmd</kbd> + <kbd class="data-text">Space</kbd> on Mac</p>
-					</div>
+					}
+				} else if requestActive(request) {
+					<p id="game-request-lobby" class="lobby-locked text-sm text-base-content/70" role="status">Join this Game Request to access the Lobby.</p>
+				} else {
+					<p id="game-request-lobby" class="lobby-locked text-sm text-base-content/70" role="status">The Lobby is available to participants only.</p>
 				}
 			}
 		</div>
 		<aside class="detail-rail" aria-label="Game Request context">
 			if requestActive(request) && request.CreatorID == viewerID {
-				@collapsible("rail-host", "Host actions", "detail-card-accent", true, false) {
+				@collapsible("rail-host", "Host actions", "detail-card-accent", true) {
 					if message.Editing {
 						@GameRequestDetailsEditor(request, message)
 					} else {
@@ -736,7 +742,7 @@ templ GameRequestDetailContentWithSession(request requestquery.Request, viewerID
 					}
 				}
 			}
-			@collapsible("rail-game", "Game", "", true, false) {
+			@collapsible("rail-game", "Game", "", true) {
 				<div>
 					<p class="min-w-0 text-[1.0625rem] font-semibold">{ request.Game.Name }</p>
 					if releaseYear(request.Game) != "" {
@@ -756,34 +762,6 @@ templ GameRequestDetailContentWithSession(request requestquery.Request, viewerID
 					</form>
 				}
 				<a class="link count-open icon-label text-sm font-semibold no-underline" href={ templ.SafeURL("/game-requests?q=" + url.QueryEscape(request.Game.Name)) }>More rounds of this game<i class="ph ph-arrow-right" aria-hidden="true"></i></a>
-			}
-			@collapsible("rail-activity", "Activity", "flex-1", true, false) {
-				if len(request.Activity) == 0 {
-					<p class="text-sm text-base-content/70">No activity recorded yet.</p>
-				} else {
-					<ol class="activity-list">
-						for _, entry := range request.Activity {
-							<li class="activity-row">
-								if !entry.OccurredAt.IsZero() {
-									<time class="data-text w-12 flex-none text-xs text-base-content/70" datetime={ entry.OccurredAt.Format(time.RFC3339) } title={ components.AbsoluteTime(entry.OccurredAt) } data-local-time="clock">{ clockLabel(entry.OccurredAt) }</time>
-								}
-								<div class="activity-content min-w-0 flex-1">
-									<p class="text-sm text-base-content/80">{ activityLabel(entry) }</p>
-									if activityHasStartChange(entry) {
-										<p class="activity-detail min-w-0 text-xs">
-											if entry.PreviousMaxPlayers != nil || entry.NewMaxPlayers != nil || entry.DescriptionChanged {
-												Planned start:
-											}
-											<time class="data-text text-xs" datetime={ entry.PreviousStartsAt.Format(time.RFC3339) } title={ components.AbsoluteTime(*entry.PreviousStartsAt) } data-local-time="absolute">{ entry.PreviousStartsAt.UTC().Format("2006-01-02 15:04") }</time>
-											{" → "}
-											<time class="data-text text-xs" datetime={ entry.NewStartsAt.Format(time.RFC3339) } title={ components.AbsoluteTime(*entry.NewStartsAt) } data-local-time="absolute">{ entry.NewStartsAt.UTC().Format("2006-01-02 15:04") }</time>
-										</p>
-									}
-								</div>
-							</li>
-						}
-					</ol>
-				}
 			}
 		</aside>
 	</div>
@@ -844,8 +822,7 @@ func requestActive(request requestquery.Request) bool {
 	return request.Status == gamerequest.StatusOpen || request.Status == gamerequest.StatusPlaying
 }
 
-// capacityLabel renders a stored maximum for the Activity section; nil is the
-// unlimited state.
+// capacityLabel renders a stored maximum in Lobby activity; nil means unlimited.
 func capacityLabel(value *int32) string {
 	if value == nil {
 		return "unlimited"
@@ -998,6 +975,27 @@ func memberAvatarClass(member requestquery.Member, request requestquery.Request)
 		return "avatar-placeholder"
 	}
 	return "avatar-placeholder avatar-placeholder-member"
+}
+
+func activityIcon(kind gamerequest.ActivityKind) string {
+	switch kind {
+	case gamerequest.ActivityCreated:
+		return "ph-plus-circle"
+	case gamerequest.ActivityJoined:
+		return "ph-user-plus"
+	case gamerequest.ActivityLeft:
+		return "ph-user-minus"
+	case gamerequest.ActivityStarted:
+		return "ph-play"
+	case gamerequest.ActivityClosed:
+		return "ph-check-circle"
+	case gamerequest.ActivityCancelled:
+		return "ph-x-circle"
+	case gamerequest.ActivityUpdated:
+		return "ph-pencil-simple"
+	default:
+		return "ph-info"
+	}
 }
 
 func activityHasStartChange(entry requestquery.Activity) bool {
@@ -1298,49 +1296,56 @@ func requestRowConnector(request requestquery.Request) string {
 	return "is looking for"
 }
 
-// chatOpen reports whether the viewer is shown the request chat. The chat is
-// private to the Host and joined players while the request is open or playing.
-func chatOpen(request requestquery.Request, viewerID string) bool {
-	active := request.Status == gamerequest.StatusOpen || request.Status == gamerequest.StatusPlaying
-	return active && (request.ViewerJoined || request.CreatorID == viewerID)
-}
-
 var quickChats = []string{"Ready", "Need 2 min", "On my way", "Running late", "At my seat", "Server is up", "Starting soon", "GG"}
 
-// GameRequestChatLog replaces #chat-log; it carries no load trigger so the swap
-// does not refetch itself.
-// ChatCount is the message total in the chat card title. A negative count
-// renders it empty until the first log load; the log refresh swaps it out of band.
-templ ChatCount(count int) {
-	<span
-		id="main-chat-count"
-		class="data-text text-base-content/70"
-		if count >= 0 {
-			hx-swap-oob="true"
+templ GameRequestLobbyLog(lobby requestquery.GameRequestLobby, viewerID string) {
+	<ol id="game-request-lobby" class="chat-log" role="log" aria-live="polite" data-refresh-url={ "/game-requests/" + lobby.RequestID + "/lobby" }>
+		if len(lobby.Entries) == 0 {
+			<li class="text-sm text-base-content/70">No Lobby entries yet.</li>
 		}
-	>
-		if count >= 0 {
-			{ fmt.Sprintf("(%d)", count) }
-		}
-	</span>
-}
-
-templ GameRequestChatLog(requestID string, messages []gamerequest.Message, viewerID string) {
-	<ol id="chat-log" class="chat-log" role="log" aria-live="polite">
-		if len(messages) == 0 {
-			<li class="text-sm text-base-content/70">No messages yet. Say hi to the lobby.</li>
-		}
-		for _, m := range messages {
-			<li class="chat-message">
-				<div class="flex items-baseline gap-2">
-					<span class={ chatAuthorClass(m, viewerID) }>{ m.AuthorGameNick }</span>
-					<time class="data-text text-xs text-base-content/70" datetime={ m.CreatedAt.Format(time.RFC3339) } title={ components.AbsoluteTime(m.CreatedAt) } data-local-time="clock">{ clockLabel(m.CreatedAt) }</time>
-				</div>
-				<p class="text-sm text-base-content/80">{ m.Body }</p>
-			</li>
+		for _, entry := range lobby.Entries {
+			if entry.Source == requestquery.LobbySourceChat {
+				@GameRequestLobbyChat(entry.Message, viewerID)
+			} else if entry.Source == requestquery.LobbySourceActivity {
+				@GameRequestLobbyActivity(entry.Activity)
+			}
 		}
 	</ol>
-	@ChatCount(len(messages))
+}
+templ GameRequestLobbyChat(message gamerequest.Message, viewerID string) {
+	<li class="chat-message">
+		<div class="flex items-baseline gap-2">
+			<span class={ chatAuthorClass(message, viewerID) }>{ message.AuthorGameNick }</span>
+			<time class="data-text text-xs text-base-content/70" datetime={ message.CreatedAt.Format(time.RFC3339) } title={ components.AbsoluteTime(message.CreatedAt) } data-local-time="clock">{ clockLabel(message.CreatedAt) }</time>
+		</div>
+		<p class="text-sm text-base-content/80">{ message.Body }</p>
+	</li>
+}
+
+templ GameRequestLobbyActivity(activity requestquery.Activity) {
+	<li class="activity-row">
+		if !activity.OccurredAt.IsZero() {
+			<time class="data-text w-12 flex-none text-xs text-base-content/70" datetime={ activity.OccurredAt.Format(time.RFC3339) } title={ components.AbsoluteTime(activity.OccurredAt) } data-local-time="clock">{ clockLabel(activity.OccurredAt) }</time>
+		}
+		<div class="activity-content min-w-0 flex-1">
+			<p class="text-sm text-base-content/80">
+				<span class="icon-label">
+					<i class={ "ph " + activityIcon(activity.Kind) + " activity-icon" } aria-hidden="true"></i>
+					{ activityLabel(activity) }
+				</span>
+			</p>
+			if activityHasStartChange(activity) {
+				<p class="activity-detail min-w-0 text-xs">
+					if activity.PreviousMaxPlayers != nil || activity.NewMaxPlayers != nil || activity.DescriptionChanged {
+						Planned start:
+					}
+					<time class="data-text text-xs" datetime={ activity.PreviousStartsAt.Format(time.RFC3339) } title={ components.AbsoluteTime(*activity.PreviousStartsAt) } data-local-time="absolute">{ activity.PreviousStartsAt.UTC().Format("2006-01-02 15:04") }</time>
+					{" → "}
+					<time class="data-text text-xs" datetime={ activity.NewStartsAt.Format(time.RFC3339) } title={ components.AbsoluteTime(*activity.NewStartsAt) } data-local-time="absolute">{ activity.NewStartsAt.UTC().Format("2006-01-02 15:04") }</time>
+				</p>
+			}
+		</div>
+	</li>
 }
 
 func chatAuthorClass(m gamerequest.Message, viewerID string) string {
@@ -1352,15 +1357,10 @@ func chatAuthorClass(m gamerequest.Message, viewerID string) string {
 
 // collapsible is a rail card the viewer can fold away; app.ts keeps the choice
 // across live refreshes, which otherwise re-render each card in its default.
-templ collapsible(id, title, class string, open, counter bool) {
+templ collapsible(id, title, class string, open bool) {
 	<details id={ id } class={ "detail-card " + class } data-collapsible open?={ open }>
 		<summary class="detail-card-summary section-label">
-			<span>
-				{ title }
-				if counter {
-					@ChatCount(-1)
-				}
-			</span>
+			<span>{ title }</span>
 			<i class="ph ph-caret-down" aria-hidden="true"></i>
 		</summary>
 		<div class="detail-card-body">

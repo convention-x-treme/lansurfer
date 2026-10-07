@@ -125,10 +125,7 @@ type Repository interface {
 	SetStatus(context.Context, string, string, Status) error
 	RecordView(context.Context, string, string) error
 	PostMessage(ctx context.Context, requestID, userID, body string) (Message, error)
-	Messages(ctx context.Context, requestID, userID string) ([]Message, error)
-	// ChatAccess returns nil when userID may read the request's chat, else
-	// ErrNotFound, ErrNotMember, or ErrChatClosed.
-	ChatAccess(ctx context.Context, requestID, userID string) error
+	LobbyAccess(ctx context.Context, requestID, userID string) error
 	SessionInformation(context.Context, string, string) (SessionInformation, error)
 	SessionInformationAccess(context.Context, string, string) error
 	CreateSessionInformationEntry(context.Context, string, string, SessionInformationInput) error

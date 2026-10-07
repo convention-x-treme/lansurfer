@@ -520,11 +520,15 @@ if (realtime?.dataset.realtimeUrl) {
     events.addEventListener("game-request-chat", (message) => {
       try {
         const { requestId } = JSON.parse(message.data) as GameRequestEvent;
-        const log = document.querySelector("#chat-log");
+        const log = document.querySelector<HTMLElement>("#game-request-lobby[data-refresh-url]");
         const detail = document.querySelector<HTMLElement>("[data-game-request-detail]");
-        if (log && detail?.dataset.gameRequestId === requestId) {
-          void htmx.ajax("get", `/game-requests/${encodeURIComponent(requestId)}/chat`, { target: "#chat-log", swap: "outerHTML" });
+        if (!log || detail?.dataset.gameRequestId !== requestId) return;
+        if (pendingMutations > 0) {
+          refreshQueued = true;
+          return;
         }
+        const refreshURL = log.dataset.refreshUrl;
+        if (refreshURL) void htmx.ajax("get", refreshURL, { target: "#game-request-lobby", swap: "outerHTML" });
       } catch {
         // A malformed signal is ignored; the next message refreshes the log.
       }
@@ -817,7 +821,7 @@ document.addEventListener("htmx:afterRequest", (event) => {
 
 document.addEventListener("htmx:afterSwap", (event) => {
   const target = event.target;
-  if (target instanceof HTMLElement && target.id === "chat-log") target.scrollTop = target.scrollHeight;
+  if (target instanceof HTMLElement && target.id === "game-request-lobby") target.scrollTop = target.scrollHeight;
 });
 
 // A live refresh re-renders each collapsible card in its default state, so the

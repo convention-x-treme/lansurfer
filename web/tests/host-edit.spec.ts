@@ -100,7 +100,7 @@ test("Host saves a relative start shortcut", async ({ page }) => {
   await page.getByRole("button", { name: "Save" }).click();
   await page.waitForURL(/\/game-requests\/[0-9a-f-]+(?:\?.*)?$/);
   const after = new Date((await page.request.get(page.url())).headers()["date"]!);
-  const stored = new Date((await page.locator("time[data-local-time='start']").getAttribute("datetime"))!);
+  const stored = new Date((await page.locator("#game-request-detail time[data-local-time='start']").getAttribute("datetime"))!);
   expect(stored.getTime()).toBeGreaterThanOrEqual(before.getTime() + 15 * 60_000 - 1_000);
   expect(stored.getTime()).toBeLessThanOrEqual(after.getTime() + 15 * 60_000 + 1_000);
 });

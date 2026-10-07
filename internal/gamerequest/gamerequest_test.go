@@ -217,6 +217,33 @@ func TestUpdateDetailsValidatesAndTrimsInput(t *testing.T) {
 	}
 }
 
+func TestCanReadLobbyUsesMembershipOnly(t *testing.T) {
+	backendErr := errors.New("database unavailable")
+	for _, tc := range []struct {
+		name    string
+		err     error
+		want    bool
+		wantErr error
+	}{
+		{name: "member", want: true},
+		{name: "non-member", err: ErrNotMember, want: false},
+		{name: "missing", err: ErrNotFound, want: false, wantErr: ErrNotFound},
+		{name: "backend failure", err: backendErr, want: false, wantErr: backendErr},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repository := &recordingRepository{lobbyAccessErr: tc.err}
+			got, err := NewService(repository, staticGames(true), nil).CanReadLobby(t.Context(), "request", "user")
+			if got != tc.want || !errors.Is(err, tc.wantErr) {
+				t.Fatalf("CanReadLobby() = %v, %v; want %v, %v", got, err, tc.want, tc.wantErr)
+			}
+		})
+	}
+}
+
+func (r *recordingRepository) LobbyAccess(context.Context, string, string) error {
+	return r.lobbyAccessErr
+}
+
 type recordingRepository struct {
 	created          GameRequest
 	joinErr          error
@@ -230,6 +257,7 @@ type recordingRepository struct {
 	sessionChanged   bool
 	sessionErr       error
 	sessionAccessErr error
+	lobbyAccessErr   error
 }
 
 func (r *recordingRepository) SessionInformation(context.Context, string, string) (SessionInformation, error) {
@@ -271,10 +299,6 @@ func (*recordingRepository) RecordView(context.Context, string, string) error { 
 func (*recordingRepository) PostMessage(context.Context, string, string, string) (Message, error) {
 	return Message{}, nil
 }
-func (*recordingRepository) Messages(context.Context, string, string) ([]Message, error) {
-	return nil, nil
-}
-func (*recordingRepository) ChatAccess(context.Context, string, string) error { return nil }
 
 type staticGames bool
 

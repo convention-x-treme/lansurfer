@@ -51,7 +51,6 @@ type Request struct {
 	ViewerJoined     bool
 	ViewerSubscribed bool
 	Members          []Member
-	Activity         []Activity
 }
 
 type Member struct {
@@ -62,8 +61,8 @@ type Member struct {
 	JoinedAt  time.Time
 }
 
-// Activity is one durable request-local entry, newest first. Update metadata
-// is populated only for request_updated; nil capacity means "unlimited".
+// Activity is one durable request-local entry. Update metadata is populated
+// only for request_updated; nil capacity means "unlimited".
 type Activity struct {
 	Kind               domain.ActivityKind
 	ActorID            string
@@ -234,20 +233,6 @@ func (s *Store) ByID(ctx context.Context, id, viewerID string) (Request, error) 
 	request.Members = make([]Member, 0, len(members))
 	for _, member := range members {
 		request.Members = append(request.Members, Member{ID: member.UserID, GameNick: member.MemberGameNick.String, AvatarKey: member.AvatarKey, JoinedAt: member.JoinedAt.Time})
-	}
-	activity, err := s.queries.ListGameRequestActivity(ctx, databaseID)
-	if err != nil {
-		return Request{}, fmt.Errorf("list game request activity: %w", err)
-	}
-	request.Activity = make([]Activity, 0, len(activity))
-	for _, entry := range activity {
-		request.Activity = append(request.Activity, Activity{
-			Kind: domain.ActivityKind(entry.Kind), ActorID: entry.ActorID,
-			ActorGameNick: entry.ActorGameNick.String, OccurredAt: entry.OccurredAt.Time,
-			PreviousMaxPlayers: int4Pointer(entry.PreviousMaxPlayers), NewMaxPlayers: int4Pointer(entry.NewMaxPlayers),
-			PreviousStartsAt: timestamptzPointer(entry.PreviousStartsAt), NewStartsAt: timestamptzPointer(entry.NewStartsAt),
-			DescriptionChanged: entry.DescriptionChanged,
-		})
 	}
 	return request, nil
 }
@@ -422,8 +407,7 @@ func requestFromFields(fields requestFields) Request {
 		MaxPlayers: int4Pointer(fields.MaxPlayers), StartsAt: fields.StartsAt.Time, Description: fields.Description,
 		Status: domain.Status(fields.Status), CreatedAt: fields.CreatedAt.Time, MemberCount: fields.MemberCount,
 		ViewerJoined: fields.ViewerJoined, ViewerSubscribed: fields.ViewerSubscribed,
-		Members:  []Member{},
-		Activity: []Activity{},
+		Members: []Member{},
 	}
 }
 

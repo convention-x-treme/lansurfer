@@ -56,17 +56,10 @@ func (s *Service) PostMessage(ctx context.Context, requestID, userID, body strin
 	return message, err
 }
 
-// Messages returns the request's chat, oldest first, under the same access
-// rules as PostMessage.
-func (s *Service) Messages(ctx context.Context, requestID, userID string) ([]Message, error) {
-	return s.repository.Messages(ctx, requestID, userID)
-}
-
-// CanChat reports whether userID may currently read the request's chat. Realtime
-// delivery asks this per event so that leaving cuts access immediately.
-func (s *Service) CanChat(ctx context.Context, requestID, userID string) (bool, error) {
-	err := s.repository.ChatAccess(ctx, requestID, userID)
-	if errors.Is(err, ErrNotFound) || errors.Is(err, ErrNotMember) || errors.Is(err, ErrChatClosed) {
+// CanReadLobby reports whether userID is a current request member.
+func (s *Service) CanReadLobby(ctx context.Context, requestID, userID string) (bool, error) {
+	err := s.repository.LobbyAccess(ctx, requestID, userID)
+	if errors.Is(err, ErrNotMember) {
 		return false, nil
 	}
 	return err == nil, err

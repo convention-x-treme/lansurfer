@@ -306,14 +306,11 @@ func TestDetailActivityProjectsRequestUpdateMetadata(t *testing.T) {
 	if err := fixture.requests.UpdateDetails(t.Context(), request.ID, fixture.host, input); err != nil {
 		t.Fatal(err)
 	}
-	detail, err := queries.ByID(t.Context(), request.ID, fixture.host)
-	if err != nil {
-		t.Fatal(err)
+	activities := lobbyActivities(t, queries, request.ID, fixture.host)
+	if len(activities) != 2 || activities[0].Kind != gamerequest.ActivityCreated || activities[1].Kind != gamerequest.ActivityUpdated {
+		t.Fatalf("activity = %#v, want created then request_updated", activities)
 	}
-	if len(detail.Activity) != 2 || detail.Activity[0].Kind != gamerequest.ActivityUpdated {
-		t.Fatalf("activity = %#v, want request_updated plus created", detail.Activity)
-	}
-	entry := detail.Activity[0]
+	entry := activities[1]
 	if !sameInt32Pointer(entry.PreviousMaxPlayers, new(int32(4))) || !sameInt32Pointer(entry.NewMaxPlayers, new(int32(6))) {
 		t.Errorf("capacity projection = %v -> %v, want 4 -> 6", entry.PreviousMaxPlayers, entry.NewMaxPlayers)
 	}
@@ -321,7 +318,7 @@ func TestDetailActivityProjectsRequestUpdateMetadata(t *testing.T) {
 		entry.NewStartsAt == nil || !entry.NewStartsAt.Equal(input.StartsAt) || !entry.DescriptionChanged {
 		t.Errorf("request update projection = %+v", entry)
 	}
-	created := detail.Activity[1]
+	created := activities[0]
 	if created.PreviousMaxPlayers != nil || created.NewMaxPlayers != nil ||
 		created.PreviousStartsAt != nil || created.NewStartsAt != nil || created.DescriptionChanged {
 		t.Errorf("created activity has update metadata: %+v", created)
@@ -745,21 +742,21 @@ func TestDetailActivityProjectsCapacityChanges(t *testing.T) {
 		}
 	}
 
-	detail, err := queries.ByID(t.Context(), request.ID, fixture.host)
-	if err != nil {
-		t.Fatalf("read detail: %v", err)
-	}
-	// Newest first: unlimited -> 8, 6 -> unlimited, 4 -> 6, then created.
+	activities := lobbyActivities(t, queries, request.ID, fixture.host)
 	want := []capacityChange{
-		{previous: nil, next: new(int32(8))},
-		{previous: new(int32(6)), next: nil},
 		{previous: new(int32(4)), next: new(int32(6))},
+		{previous: new(int32(6)), next: nil},
+		{previous: nil, next: new(int32(8))},
 	}
-	if len(detail.Activity) != len(want)+1 {
-		t.Fatalf("activity = %+v, want %d capacity entries plus created", detail.Activity, len(want))
+	if len(activities) != len(want)+1 {
+		t.Fatalf("activity = %+v, want created plus %d capacity entries", activities, len(want))
+	}
+	created := activities[0]
+	if created.Kind != gamerequest.ActivityCreated || created.PreviousMaxPlayers != nil || created.NewMaxPlayers != nil {
+		t.Errorf("created entry = %+v, want no capacity metadata", created)
 	}
 	for index, change := range want {
-		entry := detail.Activity[index]
+		entry := activities[index+1]
 		if entry.Kind != gamerequest.ActivityUpdated {
 			t.Fatalf("activity[%d] kind = %q, want request_updated", index, entry.Kind)
 		}
@@ -767,10 +764,6 @@ func TestDetailActivityProjectsCapacityChanges(t *testing.T) {
 			t.Errorf("activity[%d] = %s -> %s, want %s", index,
 				formatCapacity(entry.PreviousMaxPlayers), formatCapacity(entry.NewMaxPlayers), change)
 		}
-	}
-	created := detail.Activity[len(want)]
-	if created.Kind != gamerequest.ActivityCreated || created.PreviousMaxPlayers != nil || created.NewMaxPlayers != nil {
-		t.Errorf("created entry = %+v, want no capacity metadata", created)
 	}
 }
 

@@ -25,6 +25,7 @@ import (
 	"net/http"
 	"os"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -60,12 +61,13 @@ func main() {
 		Discovery:                  state,
 		GameRequests:               state,
 		Chat:                       state,
+		LobbyAccess:                state,
+		LobbyQueries:               state,
 		SessionInformation:         state,
 		RequestQueries:             state,
 		NavigationQueries:          state,
 		NavigationCatalog:          state,
 		Realtime:                   state,
-		RealtimeChat:               state,
 		RealtimeSessionInformation: state,
 		Logger:                     slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn})),
 	}))
@@ -82,6 +84,7 @@ type fixtureRequest struct {
 	request            requestquery.Request
 	members            map[string]bool
 	followed           bool
+	activity           []requestquery.Activity
 	messages           []gamerequest.Message
 	sessionInformation []gamerequest.SessionInformationEntry
 	nextSessionEntry   int64
@@ -125,14 +128,20 @@ func (f *fixture) seed(gameName string, maxPlayers int32, members int64, status 
 		ID: id, Game: game.GamePresentation{Name: gameName}, CreatorID: "creator-" + id, CreatorGameNick: "Host",
 		StartsAt: time.Now().Add(time.Hour), Status: status,
 		MemberCount: members, CreatedAt: time.Now().Add(-time.Hour),
-		Members:  []requestquery.Member{{ID: "creator-" + id, GameNick: "Host", JoinedAt: time.Now().Add(-time.Hour)}},
-		Activity: []requestquery.Activity{{Kind: gamerequest.ActivityCreated, ActorID: "creator-" + id, ActorGameNick: "Host", OccurredAt: time.Now().Add(-time.Hour)}},
+		Members: []requestquery.Member{{ID: "creator-" + id, GameNick: "Host", JoinedAt: time.Now().Add(-time.Hour)}},
 	}
 	if maxPlayers > 0 {
 		limit := maxPlayers
 		request.MaxPlayers = &limit
 	}
-	f.requests[id] = &fixtureRequest{request: request, members: map[string]bool{}}
+	f.requests[id] = &fixtureRequest{
+		request: request,
+		members: map[string]bool{request.CreatorID: true},
+		activity: []requestquery.Activity{{
+			Kind: gamerequest.ActivityCreated, ActorID: request.CreatorID,
+			ActorGameNick: "Host", OccurredAt: request.CreatedAt,
+		}},
+	}
 	f.order = append(f.order, id)
 }
 
@@ -184,15 +193,19 @@ func (f *fixture) Create(_ context.Context, _, gameID string, maxPlayers *int32,
 	f.creates++
 	f.next++
 	id := fmt.Sprintf("00000000-0000-0000-0000-00000000000%d", f.next)
+	createdAt := time.Now()
 	f.requests[id] = &fixtureRequest{
 		request: requestquery.Request{
 			ID: id, Game: game.GamePresentation{Name: gameName(gameID)}, CreatorID: viewerID, CreatorGameNick: "Ada Player",
 			MaxPlayers: maxPlayers, StartsAt: startsAt, Description: description,
-			Status: gamerequest.StatusOpen, MemberCount: 1, CreatedAt: time.Now(),
-			Members:  []requestquery.Member{{ID: viewerID, GameNick: "Ada Player", JoinedAt: time.Now()}},
-			Activity: []requestquery.Activity{{Kind: gamerequest.ActivityCreated, ActorID: viewerID, ActorGameNick: "Ada Player", OccurredAt: time.Now()}},
+			Status: gamerequest.StatusOpen, MemberCount: 1, CreatedAt: createdAt,
+			Members: []requestquery.Member{{ID: viewerID, GameNick: "Ada Player", JoinedAt: createdAt}},
 		},
-		members: map[string]bool{},
+		members: map[string]bool{viewerID: true},
+		activity: []requestquery.Activity{{
+			Kind: gamerequest.ActivityCreated, ActorID: viewerID,
+			ActorGameNick: "Ada Player", OccurredAt: createdAt,
+		}},
 	}
 	f.order = append(f.order, id)
 	f.broker.Publish(gamerequest.Event{Type: gamerequest.EventCreated, RequestID: id, GameID: gameID})
@@ -223,7 +236,7 @@ func (f *fixture) Join(_ context.Context, requestID, userID string) error {
 	entry.request.MemberCount++
 	entry.request.ViewerJoined = true
 	entry.request.Members = append(entry.request.Members, requestquery.Member{ID: userID, GameNick: "Ada Player", JoinedAt: time.Now()})
-	entry.request.Activity = append([]requestquery.Activity{{Kind: gamerequest.ActivityJoined, ActorID: userID, ActorGameNick: "Ada Player", OccurredAt: time.Now()}}, entry.request.Activity...)
+	entry.activity = append(entry.activity, requestquery.Activity{Kind: gamerequest.ActivityJoined, ActorID: userID, ActorGameNick: "Ada Player", OccurredAt: time.Now()})
 	f.broker.Publish(gamerequest.Event{Type: gamerequest.EventJoined, RequestID: requestID})
 	return nil
 }
@@ -250,7 +263,7 @@ func (f *fixture) Leave(_ context.Context, requestID, userID string) error {
 	delete(entry.members, userID)
 	entry.request.MemberCount--
 	entry.request.ViewerJoined = false
-	entry.request.Activity = append([]requestquery.Activity{{Kind: gamerequest.ActivityLeft, ActorID: userID, ActorGameNick: "Ada Player", OccurredAt: time.Now()}}, entry.request.Activity...)
+	entry.activity = append(entry.activity, requestquery.Activity{Kind: gamerequest.ActivityLeft, ActorID: userID, ActorGameNick: "Ada Player", OccurredAt: time.Now()})
 	f.broker.Publish(gamerequest.Event{Type: gamerequest.EventLeft, RequestID: requestID})
 	return nil
 }
@@ -315,7 +328,7 @@ func (f *fixture) UpdateDetails(_ context.Context, requestID, userID string, inp
 		newStartsAt := input.StartsAt
 		activity.NewStartsAt = &newStartsAt
 	}
-	entry.request.Activity = append([]requestquery.Activity{activity}, entry.request.Activity...)
+	entry.activity = append(entry.activity, activity)
 	f.broker.Publish(gamerequest.Event{Type: gamerequest.EventUpdated, RequestID: requestID})
 	return nil
 }
@@ -343,7 +356,7 @@ func (f *fixture) transition(requestID, userID string, from, to gamerequest.Stat
 		return gamerequest.ErrNotOpen
 	}
 	entry.request.Status = to
-	entry.request.Activity = append([]requestquery.Activity{{Kind: kind, ActorID: userID, ActorGameNick: "Ada Player", OccurredAt: time.Now()}}, entry.request.Activity...)
+	entry.activity = append(entry.activity, requestquery.Activity{Kind: kind, ActorID: userID, ActorGameNick: "Ada Player", OccurredAt: time.Now()})
 	f.broker.Publish(gamerequest.Event{Type: event, RequestID: requestID})
 	return nil
 }
@@ -414,6 +427,76 @@ func (f *fixture) ByID(_ context.Context, id, viewerID string) (requestquery.Req
 	return request, nil
 }
 
+func (f *fixture) LobbyAccess(_ context.Context, requestID, userID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	entry, ok := f.requests[requestID]
+	if !ok {
+		return gamerequest.ErrNotFound
+	}
+	if !entry.members[userID] {
+		return gamerequest.ErrNotMember
+	}
+	return nil
+}
+
+func (f *fixture) CanReadLobby(ctx context.Context, requestID, userID string) (bool, error) {
+	err := f.LobbyAccess(ctx, requestID, userID)
+	if errors.Is(err, gamerequest.ErrNotMember) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
+func (f *fixture) Lobby(_ context.Context, requestID, userID string) (requestquery.GameRequestLobby, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	entry, ok := f.requests[requestID]
+	if !ok {
+		return requestquery.GameRequestLobby{}, gamerequest.ErrNotFound
+	}
+	if !entry.members[userID] {
+		return requestquery.GameRequestLobby{}, gamerequest.ErrNotMember
+	}
+	type orderedEntry struct {
+		entry  requestquery.LobbyEntry
+		at     time.Time
+		source requestquery.LobbySource
+		order  int
+	}
+	rows := make([]orderedEntry, 0, len(entry.activity)+len(entry.messages))
+	for index, activity := range entry.activity {
+		rows = append(rows, orderedEntry{
+			entry: requestquery.LobbyEntry{Source: requestquery.LobbySourceActivity, Activity: activity},
+			at:    activity.OccurredAt, source: requestquery.LobbySourceActivity, order: index,
+		})
+	}
+	for _, message := range entry.messages {
+		order, _ := strconv.Atoi(message.ID)
+		rows = append(rows, orderedEntry{
+			entry: requestquery.LobbyEntry{Source: requestquery.LobbySourceChat, Message: message},
+			at:    message.CreatedAt, source: requestquery.LobbySourceChat, order: order,
+		})
+	}
+	sort.SliceStable(rows, func(i, j int) bool {
+		if !rows[i].at.Equal(rows[j].at) {
+			return rows[i].at.Before(rows[j].at)
+		}
+		if rows[i].source != rows[j].source {
+			return rows[i].source < rows[j].source
+		}
+		return rows[i].order < rows[j].order
+	})
+	if len(rows) > 200 {
+		rows = rows[len(rows)-200:]
+	}
+	lobby := requestquery.GameRequestLobby{RequestID: requestID, Entries: make([]requestquery.LobbyEntry, len(rows))}
+	for i, row := range rows {
+		lobby.Entries[i] = row.entry
+	}
+	return lobby, nil
+}
+
 // --- chat -----------------------------------------------------------------
 
 func (f *fixture) PostMessage(_ context.Context, requestID, userID, body string) (gamerequest.Message, error) {
@@ -426,6 +509,9 @@ func (f *fixture) PostMessage(_ context.Context, requestID, userID, body string)
 	if !entry.members[userID] {
 		return gamerequest.Message{}, gamerequest.ErrNotMember
 	}
+	if !isActiveStatus(entry.request.Status) {
+		return gamerequest.Message{}, gamerequest.ErrChatClosed
+	}
 	message := gamerequest.Message{
 		ID: strconv.Itoa(len(entry.messages) + 1), RequestID: requestID, AuthorID: userID,
 		AuthorGameNick: "Ada Player", Body: strings.TrimSpace(body), CreatedAt: time.Now(),
@@ -433,19 +519,6 @@ func (f *fixture) PostMessage(_ context.Context, requestID, userID, body string)
 	entry.messages = append(entry.messages, message)
 	f.broker.Publish(gamerequest.Event{Type: gamerequest.EventChatMessage, RequestID: requestID})
 	return message, nil
-}
-
-func (f *fixture) Messages(_ context.Context, requestID, userID string) ([]gamerequest.Message, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	entry, ok := f.requests[requestID]
-	if !ok {
-		return nil, gamerequest.ErrNotFound
-	}
-	if !entry.members[userID] {
-		return nil, gamerequest.ErrNotMember
-	}
-	return slices.Clone(entry.messages), nil
 }
 
 // CountActive is the whole installation's active total (`open` or `playing`),
@@ -731,19 +804,4 @@ func (f *fixture) DeleteSessionInformationEntry(_ context.Context, requestID, en
 		}
 	}
 	return gamerequest.ErrSessionInformationEntryNotFound
-}
-func (f *fixture) CanChat(_ context.Context, requestID, userID string) (bool, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	entry, ok := f.requests[requestID]
-	if !ok {
-		return false, gamerequest.ErrNotFound
-	}
-	if !isActiveStatus(entry.request.Status) {
-		return false, gamerequest.ErrChatClosed
-	}
-	if entry.request.CreatorID == userID || entry.members[userID] {
-		return true, nil
-	}
-	return false, gamerequest.ErrNotMember
 }

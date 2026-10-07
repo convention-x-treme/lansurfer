@@ -77,9 +77,9 @@ func TestGameRequestRowGuardsAgainstDoubleSubmission(t *testing.T) {
 	}
 }
 
-// The detail refresh replaces the request card in place, so the "updated" stamp
-// in the top bar has to travel with it out of band. Activity is newest first.
-func TestGameRequestDetailRefreshCarriesStampAndNewestActivityFirst(t *testing.T) {
+// The detail refresh replaces the request card in place and carries the updated
+// stamp. Durable activity renders in the separate, oldest-first Lobby log.
+func TestGameRequestDetailRefreshCarriesStampAndLobbyRendersOldestFirst(t *testing.T) {
 	now := time.Now()
 	request := requestquery.Request{
 		ID: "request-1", Game: game.GamePresentation{Name: "Warcraft III"}, CreatorID: "host-1",
@@ -88,12 +88,7 @@ func TestGameRequestDetailRefreshCarriesStampAndNewestActivityFirst(t *testing.T
 			{ID: "host-1", GameNick: "Otter", JoinedAt: now.Add(-10 * time.Minute)},
 			{ID: "user-2", GameNick: "Alex", JoinedAt: now.Add(-2 * time.Minute)},
 		},
-		Activity: []requestquery.Activity{
-			{Kind: gamerequest.ActivityJoined, ActorID: "user-2", ActorGameNick: "Alex", OccurredAt: now.Add(-2 * time.Minute)},
-			{Kind: gamerequest.ActivityCreated, ActorID: "host-1", ActorGameNick: "Otter", OccurredAt: now.Add(-10 * time.Minute)},
-		},
 	}
-
 	var refreshed bytes.Buffer
 	if err := GameRequestDetailContent(request, "user-9", true, GameRequestDetailMessage{}).Render(context.Background(), &refreshed); err != nil {
 		t.Fatalf("render refreshed detail: %v", err)
@@ -104,48 +99,43 @@ func TestGameRequestDetailRefreshCarriesStampAndNewestActivityFirst(t *testing.T
 			t.Errorf("refreshed detail does not contain %q", want)
 		}
 	}
-	newest, oldest := strings.Index(body, "Alex joined"), strings.Index(body, "Otter created the request")
-	if newest < 0 || oldest < 0 {
-		t.Fatalf("detail does not render the durable activity record: %s", body)
+	if strings.Contains(body, "Alex joined") || strings.Contains(body, "Otter created the request") {
+		t.Fatal("generic detail includes Lobby history")
 	}
-	if newest > oldest {
-		t.Error("activity does not list the newest entry first")
+	entries := []requestquery.LobbyEntry{
+		{Source: requestquery.LobbySourceActivity, Activity: requestquery.Activity{Kind: gamerequest.ActivityCreated, ActorGameNick: "Otter", OccurredAt: now.Add(-10 * time.Minute)}},
+		{Source: requestquery.LobbySourceActivity, Activity: requestquery.Activity{Kind: gamerequest.ActivityJoined, ActorGameNick: "Alex", OccurredAt: now.Add(-2 * time.Minute)}},
 	}
-
-	var initial bytes.Buffer
-	if err := GameRequestDetailContent(request, "user-9", false, GameRequestDetailMessage{}).Render(context.Background(), &initial); err != nil {
-		t.Fatalf("render initial detail: %v", err)
+	lobby := renderLobby(t, "request-1", entries...)
+	if oldest, newest := strings.Index(lobby, "Otter created the request"), strings.Index(lobby, "Alex joined"); oldest < 0 || newest < 0 || oldest > newest {
+		t.Fatalf("Lobby is not oldest-first: %s", lobby)
 	}
-	if strings.Contains(initial.String(), `hx-swap-oob`) {
-		t.Error("initial detail render must not carry an out-of-band swap")
+	if !strings.Contains(lobby, `id="game-request-lobby"`) || strings.Contains(lobby, `hx-trigger="load"`) {
+		t.Fatalf("Lobby response has wrong refresh contract: %s", lobby)
 	}
 }
 
-// Leaving removes current membership but not the history of the round, so the
-// activity record keeps an entry the player list no longer shows.
-func TestDetailActivityKeepsHistoryAfterLeave(t *testing.T) {
+func TestLobbyKeepsHistoryAfterLeave(t *testing.T) {
 	now := time.Now()
-	request := requestquery.Request{
-		ID: "request-1", Game: game.GamePresentation{Name: "Warcraft III"}, CreatorID: "host-1",
-		Status: gamerequest.StatusOpen, MemberCount: 1, CreatedAt: now.Add(-30 * time.Minute),
-		Members: []requestquery.Member{{ID: "host-1", GameNick: "Otter", JoinedAt: now.Add(-30 * time.Minute)}},
-		Activity: []requestquery.Activity{
-			{Kind: gamerequest.ActivityLeft, ActorID: "user-2", ActorGameNick: "Alex", OccurredAt: now.Add(-time.Minute)},
-			{Kind: gamerequest.ActivityJoined, ActorID: "user-2", ActorGameNick: "Alex", OccurredAt: now.Add(-5 * time.Minute)},
-			{Kind: gamerequest.ActivityCreated, ActorID: "host-1", ActorGameNick: "Otter", OccurredAt: now.Add(-30 * time.Minute)},
-		},
-	}
-
-	var rendered bytes.Buffer
-	if err := GameRequestDetailContent(request, "host-1", false, GameRequestDetailMessage{}).Render(context.Background(), &rendered); err != nil {
-		t.Fatalf("render detail: %v", err)
-	}
-	body := rendered.String()
+	lobby := renderLobby(t, "request-1",
+		requestquery.LobbyEntry{Source: requestquery.LobbySourceActivity, Activity: requestquery.Activity{Kind: gamerequest.ActivityCreated, ActorGameNick: "Otter", OccurredAt: now.Add(-30 * time.Minute)}},
+		requestquery.LobbyEntry{Source: requestquery.LobbySourceActivity, Activity: requestquery.Activity{Kind: gamerequest.ActivityJoined, ActorGameNick: "Alex", OccurredAt: now.Add(-5 * time.Minute)}},
+		requestquery.LobbyEntry{Source: requestquery.LobbySourceActivity, Activity: requestquery.Activity{Kind: gamerequest.ActivityLeft, ActorGameNick: "Alex", OccurredAt: now.Add(-time.Minute)}},
+	)
 	for _, want := range []string{"Alex left", "Alex joined", "Otter created the request"} {
-		if !strings.Contains(body, want) {
-			t.Errorf("activity does not contain %q", want)
+		if !strings.Contains(lobby, want) {
+			t.Errorf("Lobby history lacks %q", want)
 		}
 	}
+}
+
+func renderLobby(t *testing.T, requestID string, entries ...requestquery.LobbyEntry) string {
+	t.Helper()
+	var rendered bytes.Buffer
+	if err := GameRequestLobbyLog(requestquery.GameRequestLobby{RequestID: requestID, Entries: entries}, "host-1").Render(context.Background(), &rendered); err != nil {
+		t.Fatalf("render Lobby: %v", err)
+	}
+	return rendered.String()
 }
 
 // The list wrapper hands the active filters to the live refresh, so an SSE
@@ -850,14 +840,18 @@ func renderLifecycleDetail(t *testing.T, status gamerequest.Status, viewerID str
 	t.Helper()
 	request := requestquery.Request{
 		ID: "request-1", Game: game.GamePresentation{Name: "Warcraft III"}, CreatorID: "host-1",
-		Status: status, MemberCount: 1, Activity: activity,
+		Status: status, MemberCount: 1, ViewerJoined: viewerID == "host-1",
 		Members: []requestquery.Member{{ID: "host-1", GameNick: "Otter"}},
 	}
-	var rendered bytes.Buffer
-	if err := GameRequestDetailContent(request, viewerID, false, GameRequestDetailMessage{}).Render(context.Background(), &rendered); err != nil {
-		t.Fatalf("render detail: %v", err)
+	return renderCapacityDetail(t, request, viewerID, GameRequestDetailMessage{}) + renderLobby(t, request.ID, activityEntries(activity)...)
+}
+
+func activityEntries(activities []requestquery.Activity) []requestquery.LobbyEntry {
+	entries := make([]requestquery.LobbyEntry, len(activities))
+	for index, activity := range activities {
+		entries[index] = requestquery.LobbyEntry{Source: requestquery.LobbySourceActivity, Activity: activity}
 	}
-	return rendered.String()
+	return entries
 }
 
 func TestDetailHostActionsFollowTheLifecycle(t *testing.T) {
@@ -913,6 +907,35 @@ func renderDetail(t *testing.T, request requestquery.Request, viewerID string) s
 		t.Fatalf("render detail: %v", err)
 	}
 	return rendered.String()
+}
+
+func TestLobbyVisibilityAndComposerFollowMembershipAndStatus(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		status gamerequest.Status
+		want   string
+	}{
+		{"active nonmember", gamerequest.StatusOpen, "Join this Game Request to access the Lobby."},
+		{"terminal nonmember", gamerequest.StatusClosed, "The Lobby is available to participants only."},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			request := capacityRequest(tc.status, nil)
+			request.ViewerJoined = false
+			body := renderDetail(t, request, "outsider")
+			if !strings.Contains(body, tc.want) {
+				t.Errorf("locked Lobby lacks %q", tc.want)
+			}
+			if strings.Contains(body, `hx-trigger="load"`) || strings.Contains(body, `data-chat-form`) || strings.Contains(body, `hx-post="/game-requests/request-1/chat"`) {
+				t.Errorf("locked Lobby exposes read or write controls: %s", body)
+			}
+		})
+	}
+	request := capacityRequest(gamerequest.StatusClosed, nil)
+	request.ViewerJoined = true
+	body := renderDetail(t, request, "user-2")
+	if !strings.Contains(body, `hx-trigger="load"`) || strings.Contains(body, `data-chat-form`) {
+		t.Errorf("terminal participant must read Lobby without chat composer: %s", body)
+	}
 }
 
 // Open and playing are both active: the viewer's membership action depends on
@@ -1017,28 +1040,31 @@ func TestPlayingDetailKeepsPlayingIdentityAndLastPlace(t *testing.T) {
 	}
 }
 
-func TestUpdatedActivityLabelsChangedDimensions(t *testing.T) {
-	four, six := int32(4), int32(6)
-	before, after := time.Date(2027, 5, 1, 17, 0, 0, 0, time.UTC), time.Date(2027, 5, 1, 18, 0, 0, 0, time.UTC)
-	for name, tc := range map[string]struct {
-		entry requestquery.Activity
-		want  string
-	}{
-		"capacity": {
-			entry: requestquery.Activity{Kind: gamerequest.ActivityUpdated, ActorGameNick: "Alex", PreviousMaxPlayers: &four, NewMaxPlayers: &six},
-			want:  "Alex changed capacity from 4 to 6",
-		},
-		"description": {
-			entry: requestquery.Activity{Kind: gamerequest.ActivityUpdated, ActorGameNick: "Alex", DescriptionChanged: true},
-			want:  "Alex updated the description",
-		},
-		"multiple dimensions": {
-			entry: requestquery.Activity{Kind: gamerequest.ActivityUpdated, ActorGameNick: "Alex", PreviousMaxPlayers: &four, NewMaxPlayers: &six, PreviousStartsAt: &before, NewStartsAt: &after, DescriptionChanged: true},
-			want:  "Alex updated capacity, planned start, and description",
-		},
+func TestLobbyActivityRowsHaveSemanticIcons(t *testing.T) {
+	kinds := []gamerequest.ActivityKind{
+		gamerequest.ActivityCreated, gamerequest.ActivityJoined, gamerequest.ActivityLeft,
+		gamerequest.ActivityStarted, gamerequest.ActivityClosed, gamerequest.ActivityCancelled,
+		gamerequest.ActivityUpdated,
+	}
+	entries := make([]requestquery.LobbyEntry, len(kinds))
+	for index, kind := range kinds {
+		entries[index] = requestquery.LobbyEntry{
+			Source: requestquery.LobbySourceActivity,
+			Activity: requestquery.Activity{
+				Kind: kind, ActorGameNick: "Ada Player", OccurredAt: time.Date(2026, 10, 7, 12+index, 0, 0, 0, time.UTC),
+			},
+		}
+	}
+	body := renderLobby(t, "request-1", entries...)
+	if strings.Count(body, `class="activity-row"`) != len(kinds) {
+		t.Fatalf("rendered %d activity rows, want %d: %s", strings.Count(body, `class="activity-row"`), len(kinds), body)
+	}
+	for _, icon := range []string{
+		"ph-plus-circle", "ph-user-plus", "ph-user-minus", "ph-play",
+		"ph-check-circle", "ph-x-circle", "ph-pencil-simple",
 	} {
-		if got := activityLabel(tc.entry); got != tc.want {
-			t.Errorf("%s: activityLabel = %q, want %q", name, got, tc.want)
+		if !strings.Contains(body, `class="ph `+icon+` activity-icon`) || !strings.Contains(body, `class="ph `+icon+` activity-icon" aria-hidden="true"`) {
+			t.Errorf("Lobby activity lacks decorative %s icon: %s", icon, body)
 		}
 	}
 }
@@ -1049,16 +1075,13 @@ func TestUpdatedActivityRendersPlannedStartTimesAsLocalizableInstants(t *testing
 	for _, tc := range []struct {
 		name  string
 		entry requestquery.Activity
-		label string
 	}{
-		{"start only", requestquery.Activity{Kind: gamerequest.ActivityUpdated, ActorGameNick: "Alex", PreviousStartsAt: &before, NewStartsAt: &after}, "Alex changed the planned start"},
-		{"capacity and start", requestquery.Activity{Kind: gamerequest.ActivityUpdated, ActorGameNick: "Alex", PreviousMaxPlayers: &four, NewMaxPlayers: &six, PreviousStartsAt: &before, NewStartsAt: &after}, "Alex updated capacity and planned start"},
+		{"start only", requestquery.Activity{Kind: gamerequest.ActivityUpdated, ActorGameNick: "Alex", PreviousStartsAt: &before, NewStartsAt: &after}},
+		{"capacity and start", requestquery.Activity{Kind: gamerequest.ActivityUpdated, ActorGameNick: "Alex", PreviousMaxPlayers: &four, NewMaxPlayers: &six, PreviousStartsAt: &before, NewStartsAt: &after}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			request := capacityRequest(gamerequest.StatusOpen, nil)
 			tc.entry.OccurredAt = time.Date(2027, 5, 1, 16, 0, 0, 0, time.UTC)
-			request.Activity = []requestquery.Activity{tc.entry}
-			body := renderCapacityDetail(t, request, "user-2", GameRequestDetailMessage{})
+			body := renderLobby(t, "request-1", requestquery.LobbyEntry{Source: requestquery.LobbySourceActivity, Activity: tc.entry})
 			rowStart := strings.Index(body, `<li class="activity-row">`)
 			if rowStart < 0 {
 				t.Fatalf("activity row missing: %s", body)
@@ -1077,7 +1100,7 @@ func TestUpdatedActivityRendersPlannedStartTimesAsLocalizableInstants(t *testing
 				t.Fatalf("activity content is not closed: %s", row[contentStart:])
 			}
 			content := row[contentStart : contentStart+contentEnd]
-			for _, want := range []string{tc.label, `datetime="2027-05-01T17:00:00Z"`, `datetime="2027-05-01T18:00:00Z"`, `data-local-time="absolute"`} {
+			for _, want := range []string{`datetime="2027-05-01T17:00:00Z"`, `datetime="2027-05-01T18:00:00Z"`, `data-local-time="absolute"`} {
 				if !strings.Contains(content, want) {
 					t.Errorf("activity content lacks %q: %s", want, content)
 				}
