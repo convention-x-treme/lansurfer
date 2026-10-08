@@ -487,6 +487,8 @@ test("session-information Delete removes the entry inline", async ({ page, reque
   await page.getByRole("textbox", { name: "Value" }).fill("temporary");
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page.locator("#session-information")).toContainText("temporary");
+  // htmx applies HX-Replace-Url after the swap settles, so the text can appear while the URL still has ?session_add=1.
+  await expect(page).not.toHaveURL(/session_add/);
   const currentURL = page.url();
   page.once("dialog", dialog => dialog.accept());
   await page.locator("#session-information").getByRole("button", { name: "Delete Lobby" }).click();
