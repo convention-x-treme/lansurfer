@@ -556,7 +556,7 @@ test("Session Information Delete confirms and refreshes the fragment", async ({ 
   await expect(page).toHaveURL(currentURL);
 });
 
-test("session-information tiles reflow and edit in dialog", async ({ page }) => {
+test("session-information facts render side by side and edit in dialog", async ({ page }) => {
   await page.goto("/game-requests/new?game_id=game-1");
   await page.getByRole("button", { name: "Create Game Request" }).click();
   await page.waitForURL(/\/game-requests\/[0-9a-f-]+/);
@@ -566,7 +566,7 @@ test("session-information tiles reflow and edit in dialog", async ({ page }) => 
     ["Server", "10.20.30.40:27015", false],
     ["Password", "hunter2", true],
     ["Lobby", "CXT-WC3-04", false],
-    ["Long secret", "S".repeat(160), true],
+    ["L".repeat(40), "S".repeat(160), true],
     ["Long value", "A".repeat(90), false],
   ] as const) {
     await page.getByRole("textbox", { name: "Key" }).fill(keyText);
@@ -578,47 +578,42 @@ test("session-information tiles reflow and edit in dialog", async ({ page }) => 
     if (keyText !== "Long value") await page.getByRole("link", { name: "Add", exact: true }).click();
   }
 
-  const tiles = page.locator(".session-information-tile");
-  await expect(tiles).toHaveCount(5);
-  const styleSignature = await tiles.evaluateAll((entries) => entries.map((entry) => {
-    const style = getComputedStyle(entry);
-    return [style.borderStyle, style.borderWidth, style.borderRadius, style.backgroundColor, style.padding].join("|");
-  }));
-  expect(new Set(styleSignature).size).toBe(1);
-  await expect(page.locator("#session-information > .session-information-heading")).toBeVisible();
-  await expect(page.locator(".session-information-tile-heading")).toHaveCount(5);
-  const headingLayout = await page.locator("#session-information").evaluate((section) => {
-    const outer = section.querySelector<HTMLElement>(":scope > .session-information-heading")!;
-    const add = outer.querySelector<HTMLElement>("a")!;
-    const title = outer.querySelector<HTMLElement>("h2")!;
-    const tileHeading = section.querySelector<HTMLElement>(".session-information-tile[data-secret='true'] .session-information-tile-heading")!;
+  const requestID = await page.locator("[data-game-request-detail]").getAttribute("data-game-request-id");
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/game-requests/${requestID}`);
+  const facts = page.locator(".session-information-fact");
+  await expect(facts).toHaveCount(5);
+  await expect(page.locator(".session-information-grid")).toBeVisible();
+  const desktop = await facts.first().evaluate((fact) => {
+    const style = getComputedStyle(fact);
+    const key = fact.querySelector<HTMLElement>(".session-information-key")!;
+    const value = fact.querySelector<HTMLElement>(".session-information-value")!;
+    const actions = fact.querySelector<HTMLElement>(".session-information-copy-actions")!;
     return {
-      outerDisplay: getComputedStyle(outer).display,
-      addRight: Math.abs(outer.getBoundingClientRect().right - add.getBoundingClientRect().right),
-      titleRight: title.getBoundingClientRect().right,
-      addLeft: add.getBoundingClientRect().left,
-      badgeOffset: tileHeading.querySelector(".session-information-secret")!.getBoundingClientRect().top - tileHeading.getBoundingClientRect().top,
+      display: style.display,
+      keyAboveValue: key.getBoundingClientRect().bottom <= value.getBoundingClientRect().top,
+      actionsBesideValue: Math.abs(
+        (actions.getBoundingClientRect().top + actions.getBoundingClientRect().bottom) / 2 -
+        (value.getBoundingClientRect().top + value.getBoundingClientRect().bottom) / 2,
+      ) < 12,
+      factWidth: fact.getBoundingClientRect().width,
+      sameRow: Math.abs(fact.getBoundingClientRect().top - fact.parentElement!.children[1].getBoundingClientRect().top) < 1,
     };
   });
-  expect(headingLayout.outerDisplay).toBe("flex");
-  expect(headingLayout.addRight).toBeLessThanOrEqual(1);
-  expect(headingLayout.addLeft).toBeGreaterThan(headingLayout.titleRight);
-  expect(headingLayout.badgeOffset).toBeLessThanOrEqual(1);
-  const normal = tiles.filter({ hasText: "Server" });
-  const secret = tiles.filter({ hasText: "Password" });
-  await expect(normal.getByRole("button", { name: "Copy Server" })).toBeVisible();
-  await expect(normal.getByRole("button", { name: /Reveal/ })).toHaveCount(0);
+  expect(desktop).toMatchObject({ display: "flex", keyAboveValue: true, actionsBesideValue: true, sameRow: true });
+  expect(desktop.factWidth).toBeGreaterThanOrEqual(220);
+  expect(desktop.factWidth).toBeLessThanOrEqual(320);
+  const secret = facts.filter({ hasText: "Password" });
   await expect(secret.getByRole("button", { name: "Copy Password" })).toBeVisible();
   await expect(secret.getByRole("button", { name: "Reveal Password" })).toBeVisible();
-  for (const keyText of ["Server", "Password"]) {
-    await expect(page.getByRole("link", { name: `Edit ${keyText}` })).toBeVisible();
-    await expect(page.getByRole("button", { name: `Delete ${keyText}` })).toBeVisible();
-  }
-  await expect(tiles.nth(3).locator("[data-secret-value]")).toHaveText("••••••••");
-  await expect(tiles.nth(0)).toContainText("Server");
-  await expect(tiles.nth(4)).toContainText("Long value");
+  await expect(secret.locator("[data-secret-value]")).toHaveText("••••••••");
+  const actionOrder = await secret.locator(".session-information-value-row").evaluate((actions) =>
+    Array.from(actions.querySelectorAll<HTMLElement>("button, a")).map((action) => action.getAttribute("aria-label")));
+  expect(actionOrder).toEqual(["Copy Password", "Reveal Password", "Edit Password", "Delete Password"]);
+  const normalOrder = await facts.filter({ hasText: "Server" }).locator(".session-information-value-row").evaluate((actions) =>
+    Array.from(actions.querySelectorAll<HTMLElement>("button, a")).map((action) => action.getAttribute("aria-label")));
+  expect(normalOrder).toEqual(["Copy Server", "Edit Server", "Delete Server"]);
 
-  const requestID = await page.locator("[data-game-request-detail]").getAttribute("data-game-request-id");
   for (const width of [1440, 900, 390]) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto(`/game-requests/${requestID}`);
@@ -636,15 +631,20 @@ test("session-information tiles reflow and edit in dialog", async ({ page }) => 
     else expect(layout.session.width).toBeGreaterThan(layout.description.width);
   }
 
-  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.setViewportSize({ width: 390, height: 900 });
   await page.goto(`/game-requests/${requestID}`);
+  const mobileStacked = await facts.first().evaluate((first) => {
+    const second = first.parentElement!.children[1].getBoundingClientRect();
+    const firstRect = first.getBoundingClientRect();
+    return Math.abs(firstRect.left - second.left) < 1 && second.top >= firstRect.bottom;
+  });
+  expect(mobileStacked).toBe(true);
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(1);
   await expect(page.locator("#session-information").getByRole("link", { name: "Edit Server" })).toBeVisible();
-  await expect(page.locator("#session-information").getByRole("button", { name: "Delete Server" })).toBeVisible();
   await page.locator("#session-information").getByRole("link", { name: "Edit Server" }).click();
   const dialog = page.getByRole("dialog", { name: "Edit session information" });
   await expect(dialog).toBeVisible();
-  await expect(dialog.locator("[data-session-information-form]")).toBeVisible();
-  await expect(dialog).toHaveClass(/session-dialog--sheet/);
   await page.getByRole("textbox", { name: "Value" }).fill("Saved value");
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page.locator("#session-information")).toContainText("Saved value");
@@ -667,37 +667,37 @@ test("secret copy stays masked and reveal resets on fragment and full-detail ref
   await page.getByRole("checkbox", { name: "Secret value" }).check();
   await page.getByRole("button", { name: "Save" }).click();
 
-  const tile = page.locator(".session-information-tile");
-  const value = tile.locator("[data-secret-value]");
-  await expect(tile).toContainText("Secret");
+  const fact = page.locator(".session-information-fact");
+  const value = fact.locator("[data-secret-value]");
+  await expect(fact).toContainText("Secret");
   await expect(value).toHaveText("••••••••");
-  await tile.getByRole("button", { name: "Copy Password" }).click();
+  await fact.getByRole("button", { name: "Copy Password" }).click();
   await expect.poll(() => page.evaluate(() => window.__copiedSecret)).toBe("shoulder-secret");
   const notices = page.locator("#live-notices");
   await expect(notices).toContainText("Secret copied.");
   await expect(notices).not.toContainText("shoulder-secret");
   await expect(value).toHaveText("••••••••");
 
-  await tile.getByRole("button", { name: "Reveal Password" }).click();
-  const hide = tile.getByRole("button", { name: "Hide Password" });
+  await fact.getByRole("button", { name: "Reveal Password" }).click();
+  const hide = fact.getByRole("button", { name: "Hide Password" });
   await expect(hide).toHaveAttribute("aria-pressed", "true");
   await hide.click();
   await expect(value).toHaveText("••••••••");
 
   await page.clock.install();
-  await tile.getByRole("button", { name: "Reveal Password" }).click();
+  await fact.getByRole("button", { name: "Reveal Password" }).click();
   await page.clock.fastForward(10_000);
-  await tile.getByRole("button", { name: "Copy Password" }).click();
+  await fact.getByRole("button", { name: "Copy Password" }).click();
   await expect(notices).toContainText("Secret copied.");
   await expect(value).toHaveText("shoulder-secret");
   await page.clock.fastForward(10_000);
   await expect(value).toHaveText("••••••••");
-  await tile.getByRole("button", { name: "Reveal Password" }).click();
+  await fact.getByRole("button", { name: "Reveal Password" }).click();
   await expect(value).toHaveText("shoulder-secret");
   const requestID = await page.locator("[data-game-request-detail]").getAttribute("data-game-request-id");
   await request.post(`/__test__/publish?type=GameRequestSessionInformationChanged&request=${requestID}`);
   await expect(value).toHaveText("••••••••");
-  await tile.getByRole("button", { name: "Reveal Password" }).click();
+  await fact.getByRole("button", { name: "Reveal Password" }).click();
   await expect(value).toHaveText("shoulder-secret");
   const previousDetail = await page.locator("#game-request-detail").elementHandle();
   expect(previousDetail).not.toBeNull();
@@ -727,9 +727,9 @@ test("secret copy reports clipboard rejection and unsupported API", async ({ pag
   await page.getByRole("checkbox", { name: "Secret value" }).check();
   await page.getByRole("button", { name: "Save" }).click();
 
-  const tile = page.locator(".session-information-tile");
-  const value = tile.locator("[data-secret-value]");
-  await tile.getByRole("button", { name: "Copy Password" }).click();
+  const fact = page.locator(".session-information-fact");
+  const value = fact.locator("[data-secret-value]");
+  await fact.getByRole("button", { name: "Copy Password" }).click();
   const notices = page.locator("#live-notices");
   await expect(notices).toContainText("Could not copy secret. Please try again.");
   await expect(notices).not.toContainText("shoulder-secret");
@@ -738,7 +738,7 @@ test("secret copy reports clipboard rejection and unsupported API", async ({ pag
   await page.evaluate(() => {
     Object.defineProperty(Navigator.prototype, "clipboard", { configurable: true, get: () => undefined });
   });
-  await tile.getByRole("button", { name: "Copy Password" }).click();
+  await fact.getByRole("button", { name: "Copy Password" }).click();
   await expect(notices.locator('[role="alert"]')).toHaveCount(2);
   await expect(value).toHaveText("••••••••");
 });
@@ -804,8 +804,8 @@ for (const refresh of ["session-information fragment", "full detail"] as const) 
 
     await key.fill("Password");
     await page.getByRole("button", { name: "Save" }).click();
-    await expect(page.locator(".session-information-tile[data-secret='true']")).toContainText("Secret");
-    await expect(page.locator(".session-information-tile[data-secret='true'] [data-secret-value]")).toHaveAttribute("data-revealed", "false");
+    await expect(page.locator(".session-information-fact[data-secret='true']")).toContainText("Secret");
+    await expect(page.locator(".session-information-fact[data-secret='true'] [data-secret-value]")).toHaveAttribute("data-revealed", "false");
     expect(browserConsole.filter(message => /session-information/i.test(message))).toEqual([]);
     expect(pageErrors).toEqual([]);
   });
@@ -883,16 +883,16 @@ test("secret copy falls back to a temporary textarea when clipboard API is unava
   await page.getByRole("checkbox", { name: "Secret value" }).check();
   await page.getByRole("button", { name: "Save" }).click();
 
-  const tile = page.locator(".session-information-tile");
-  await tile.getByRole("button", { name: "Copy Password" }).click();
+  const fact = page.locator(".session-information-fact");
+  await fact.getByRole("button", { name: "Copy Password" }).click();
   await expect.poll(() => page.evaluate(() => window.__copiedSecret)).toBe("shoulder-secret");
-  await expect(tile.locator("[data-secret-value]")).toHaveText("••••••••");
+  await expect(fact.locator("[data-secret-value]")).toHaveText("••••••••");
   await expect(page.locator("#live-notices")).toContainText("Secret copied.");
   await expect(page.locator("textarea")).toHaveCount(0);
   await page.evaluate(() => {
     Object.defineProperty(Navigator.prototype, "clipboard", { configurable: true, get: () => undefined });
   });
-  await tile.getByRole("button", { name: "Copy Password" }).click();
+  await fact.getByRole("button", { name: "Copy Password" }).click();
   await expect.poll(() => page.evaluate(() => window.__copiedSecret)).toBe("shoulder-secret");
   await expect(page.locator("#live-notices [role='status']")).toHaveCount(2);
 });
@@ -909,9 +909,9 @@ test("secret reveal controls are per entry and remask on visibility change", asy
     await page.getByRole("button", { name: "Save" }).click();
   }
 
-  const tiles = page.locator(".session-information-tile");
-  const lobby = tiles.filter({ hasText: "Lobby password" });
-  const voice = tiles.filter({ hasText: "Voice password" });
+  const facts = page.locator(".session-information-fact");
+  const lobby = facts.filter({ hasText: "Lobby password" });
+  const voice = facts.filter({ hasText: "Voice password" });
   const lobbyValue = lobby.locator("[data-secret-value]");
   const voiceValue = voice.locator("[data-secret-value]");
   const revealLobby = lobby.getByRole("button", { name: "Reveal Lobby password" });

@@ -23,24 +23,30 @@ templ GameRequestSessionInformation(view SessionInformationView) {
 				<p class="session-information-empty mt-2 text-sm text-base-content/70">Join this Game Request to see session information.</p>
 			} else {
 				if len(view.Entries) > 0 {
-					<ul class="session-information-tiles" aria-label="Session information entries">
+					<ul class="session-information-grid" aria-label="Session information entries">
 						for _, entry := range view.Entries {
-							<li class="session-information-tile" data-secret={ strconv.FormatBool(entry.IsSecret) }>
-								<div class="session-information-tile-heading">
-									<strong class="session-information-key">{ entry.Key }</strong>
-									if entry.IsSecret {
-										<span class="session-information-secret">Secret</span>
-									}
-								</div>
-								<div class="session-information-value-row">
+							<li class="session-information-fact" data-secret={ strconv.FormatBool(entry.IsSecret) }>
+								<div class="session-information-fact-content">
+									<div class="session-information-fact-heading">
+										<strong class="session-information-key">{ entry.Key }</strong>
+										if entry.IsSecret {
+											<span class="session-information-secret">Secret</span>
+										}
+									</div>
+									<div class="session-information-value-row">
 									if entry.IsSecret {
 										<span class="session-information-value session-information-secret-value" data-secret-value={ entry.Value } data-revealed="false">••••••••</span>
-										<button class="btn btn-ghost btn-square btn-xs" type="button" data-secret-copy aria-label={ "Copy " + entry.Key } title={ "Copy " + entry.Key }><i class="ph ph-copy" aria-hidden="true"></i></button>
-										<button class="btn btn-ghost btn-square btn-xs" type="button" data-secret-reveal aria-label={ "Reveal " + entry.Key } title={ "Reveal " + entry.Key } aria-pressed="false"><i class="ph ph-eye" aria-hidden="true"></i></button>
 									} else {
 										<span class="session-information-value">{ entry.Value }</span>
-										<button class="btn btn-ghost btn-square btn-xs" type="button" data-copy-value={ entry.Value } aria-label={ "Copy " + entry.Key } title={ "Copy " + entry.Key }><i class="ph ph-copy" aria-hidden="true"></i></button>
 									}
+									<div class="session-information-copy-actions">
+										if entry.IsSecret {
+											<button class="btn btn-ghost btn-square btn-xs" type="button" data-secret-copy aria-label={ "Copy " + entry.Key } title={ "Copy " + entry.Key }><i class="ph ph-copy" aria-hidden="true"></i></button>
+											<button class="btn btn-ghost btn-square btn-xs" type="button" data-secret-reveal aria-label={ "Reveal " + entry.Key } title={ "Reveal " + entry.Key } aria-pressed="false"><i class="ph ph-eye" aria-hidden="true"></i></button>
+										} else {
+											<button class="btn btn-ghost btn-square btn-xs" type="button" data-copy-value={ entry.Value } aria-label={ "Copy " + entry.Key } title={ "Copy " + entry.Key }><i class="ph ph-copy" aria-hidden="true"></i></button>
+										}
+									</div>
 									if view.CanEdit {
 										<div class="session-information-actions">
 											<a class="btn btn-ghost btn-square btn-xs" aria-label={ "Edit " + entry.Key } title={ "Edit " + entry.Key } href={ "/game-requests/" + view.RequestID + "?session_edit=" + entry.ID } hx-get={ "/game-requests/" + view.RequestID + "/session-information?session_edit=" + entry.ID + "&dialog=1" } hx-target="#session-information-dialog-content" hx-swap="innerHTML" data-session-edit-trigger={ entry.ID } data-session-dialog-open><i class="ph ph-pencil-simple" aria-hidden="true"></i></a>
@@ -51,6 +57,7 @@ templ GameRequestSessionInformation(view SessionInformationView) {
 										</div>
 									}
 								</div>
+							</div>
 							</li>
 						}
 					</ul>

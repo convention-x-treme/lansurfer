@@ -786,13 +786,13 @@ document.addEventListener("click", (event) => {
     }).catch(() => showActionError("Could not copy value. Please try again."));
     return;
   }
-  const tile = event.target.closest<HTMLElement>(".session-information-tile");
-  if (!tile) return;
-  const value = tile.querySelector<HTMLElement>("[data-secret-value]");
+  const fact = event.target.closest<HTMLElement>(".session-information-fact");
+  if (!fact) return;
+  const value = fact.querySelector<HTMLElement>("[data-secret-value]");
   const button = event.target.closest<HTMLButtonElement>("[data-secret-reveal]");
   if (button && value) {
-    if (value.dataset.revealed === "true") hideSecret(tile);
-    else revealSecret(tile, value);
+    if (value.dataset.revealed === "true") hideSecret(fact);
+    else revealSecret(fact, value);
     return;
   }
   if (event.target.closest("[data-secret-copy]") && value) {
@@ -812,8 +812,8 @@ document.addEventListener("change", (event) => {
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) {
     document.querySelectorAll<HTMLElement>("[data-secret='true'] [data-secret-value][data-revealed='true']").forEach((value) => {
-      const tile = value.closest<HTMLElement>(".session-information-tile");
-      if (tile) hideSecret(tile);
+      const fact = value.closest<HTMLElement>(".session-information-fact");
+      if (fact) hideSecret(fact);
     });
   }
 });
