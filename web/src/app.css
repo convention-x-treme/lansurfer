@@ -964,19 +964,11 @@
 
   .game-card-name {
     min-width: 0;
-    flex: 1;
     overflow-wrap: anywhere;
     font-size: 1.0625rem;
     font-weight: 900;
     letter-spacing: -0.01em;
     line-height: 1.2;
-  }
-
-  .game-card-short {
-    flex: none;
-    font-size: 0.8125rem;
-    font-weight: 700;
-    color: color-mix(in srgb, var(--color-base-content) 65%, transparent);
   }
 
   /* The summary is variable-length prose on a fluid-width card, so the line
@@ -993,8 +985,8 @@
     overflow-wrap: anywhere;
   }
 
-  /* The follow action is the card's point, so it gets the remaining width and
-     "Find Players" stays the quiet companion beside it. */
+  /* "Find Players" takes all free width on the left; the icon-only
+     follow/unfollow button keeps its square on the right. */
   .game-card-actions {
     display: flex;
     margin-top: auto;
@@ -1003,13 +995,8 @@
     padding-top: 0.625rem;
   }
 
-  .game-card-follow {
+  .game-card-actions > a.btn {
     flex: 1;
-    min-width: 0;
-  }
-
-  .game-card-follow .btn {
-    width: 100%;
   }
 
   .game-grid {
