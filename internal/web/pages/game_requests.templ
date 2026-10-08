@@ -757,6 +757,7 @@ templ GameRequestDetailsEditor(request requestquery.Request, message GameRequest
 				<div class="grid gap-2">
 					<p class="label-text font-medium">Start</p>
 					<time class="data-text" datetime={ request.StartsAt.Format(time.RFC3339) } title={ components.AbsoluteTime(request.StartsAt) } data-local-time="absolute">{ request.StartsAt.UTC().Format("2006-01-02 15:04") }</time>
+					<p class="text-xs text-base-content/70">Start time cannot be changed while the Game Request is Playing.</p>
 				</div>
 			}
 			@GameRequestDescriptionField(message.Form.Description, ComposerMessage{Text: message.Text, Field: message.Field})

@@ -1286,6 +1286,10 @@ func TestPlayingEditorCannotEditPlannedStart(t *testing.T) {
 		!strings.Contains(editor, "Start") || !strings.Contains(editor, `datetime="2027-05-01T18:30:00Z"`) {
 		t.Errorf("playing start is not read-only: %s", editor)
 	}
+	if !strings.Contains(editor, "Start time cannot be changed while the Game Request is Playing.") {
+		t.Error("playing editor must explain why planned start is read-only")
+	}
+
 }
 
 func TestFullActiveRowSaysFullInsteadOfJoin(t *testing.T) {
