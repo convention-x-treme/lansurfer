@@ -269,6 +269,11 @@ templ NavigationLinks(state NavigationState) {
 				}
 			</a>
 		</li>
+		<li>
+			<a class={ navigationLinkClass(state.Section == "help") } href="/help" aria-current={ navigationCurrent(state.Section == "help") }>
+				<i class="ph ph-question" aria-hidden="true"></i><span>How it works</span>
+			</a>
+		</li>
 		if state.Viewer != nil && state.Viewer.Role == "admin" {
 			<li>
 				<a class={ navigationLinkClass(strings.HasPrefix(state.Section, "administration")) } href="/admin/games" aria-current={ navigationCurrent(state.Section == "administration") }>

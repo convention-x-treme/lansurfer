@@ -19,6 +19,10 @@ import (
 // to be a separate "My Games" page is the "Followed only" filter here, so a
 // player narrows one catalog instead of navigating between two lists that
 // showed the same cards.
+//
+// A player who follows nothing yet gets a one-line explanation of following
+// above the results; it is gone from the next page load after their first
+// follow. It sits outside the live-search swap target on purpose.
 templ GameCatalog(brand branding.Brand, navigation components.NavigationState, page game.DiscoveryPage, search string, followedOnly bool, message string) {
 	@components.Layout(brand, "Games", navigation) {
 		<header class="app-topbar">
@@ -27,6 +31,9 @@ templ GameCatalog(brand branding.Brand, navigation components.NavigationState, p
 			<a class="btn btn-primary btn-sm" href="/game-requests/new"><i class="ph ph-plus" aria-hidden="true"></i>Create Game Request</a>
 		</header>
 		<div class="content-page">
+			if navigation.Viewer != nil && navigation.FollowedGames == 0 {
+				<div class="alert alert-info mb-4 text-sm"><i class="ph ph-heart" aria-hidden="true"></i><span>Follow games you would like to play. This makes it easier to find relevant Game Requests.</span></div>
+			}
 			@GameCatalogResults(brand, page, search, followedOnly, message, navigation.Viewer)
 		</div>
 	}

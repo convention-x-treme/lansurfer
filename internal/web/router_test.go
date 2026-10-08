@@ -1786,6 +1786,9 @@ func (r *routerGameRequestQueries) CountActive(context.Context) (int64, error) {
 	}
 	return int64(len(r.items)), nil
 }
+func (r *routerGameRequestQueries) HasCreated(context.Context, string) (bool, error) {
+	return false, nil
+}
 
 func (r *routerDiscovery) Browse(_ context.Context, _, search string) (game.DiscoveryPage, error) {
 	r.search = search

@@ -12,6 +12,21 @@ import (
 	"github.com/convention-x-treme/lansurfer/internal/web/components"
 )
 
+// The follow explanation is for players who follow nothing yet and is gone
+// once they follow a game.
+func TestGameCatalogExplainsFollowingUntilFirstFollow(t *testing.T) {
+	for _, followed := range []int64{0, 1} {
+		navigation := components.NavigationState{Viewer: &components.Viewer{ID: "user-1", GameNick: "Ada"}, FollowedGames: followed}
+		var rendered bytes.Buffer
+		if err := GameCatalog(branding.Default(), navigation, game.DiscoveryPage{}, "", false, "").Render(context.Background(), &rendered); err != nil {
+			t.Fatalf("render GameCatalog: %v", err)
+		}
+		if shown := strings.Contains(rendered.String(), "Follow games you would like to play."); shown != (followed == 0) {
+			t.Fatalf("followed=%d: hint shown=%v", followed, shown)
+		}
+	}
+}
+
 // A fresh usable provider instance (or an entirely local-only catalog) must
 // never fall back to a bare-count/zero-games state; the search field itself
 // is the primary experience (spec: "3.1 Empty search state").

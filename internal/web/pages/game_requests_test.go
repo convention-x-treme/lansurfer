@@ -508,7 +508,7 @@ func TestNewGameRequestShowsDiscoveryBeforeSelection(t *testing.T) {
 	form := GameRequestForm{StartPreset: "now"}
 
 	var rendered bytes.Buffer
-	if err := NewGameRequest(branding.Default(), components.NavigationState{}, page, nil, false, "", form, ComposerMessage{}).Render(context.Background(), &rendered); err != nil {
+	if err := NewGameRequest(branding.Default(), components.NavigationState{}, page, nil, false, "", form, ComposerMessage{}, false).Render(context.Background(), &rendered); err != nil {
 		t.Fatalf("render NewGameRequest: %v", err)
 	}
 	body := rendered.String()
@@ -534,7 +534,7 @@ func TestNewGameRequestSelectedStateRendersIdentityAndHiddenFields(t *testing.T)
 	form := GameRequestForm{StartPreset: "now", Provider: "igdb", ExternalID: "42"}
 
 	var rendered bytes.Buffer
-	if err := NewGameRequest(branding.Default(), components.NavigationState{}, game.DiscoveryPage{}, &selected, true, "", form, ComposerMessage{}).Render(context.Background(), &rendered); err != nil {
+	if err := NewGameRequest(branding.Default(), components.NavigationState{}, game.DiscoveryPage{}, &selected, true, "", form, ComposerMessage{}, false).Render(context.Background(), &rendered); err != nil {
 		t.Fatalf("render NewGameRequest: %v", err)
 	}
 	body := rendered.String()
@@ -564,7 +564,7 @@ func TestNewGameRequestDetailFieldsAppearOnlyAfterSelection(t *testing.T) {
 	form := GameRequestForm{StartPreset: "now"}
 
 	var unselected bytes.Buffer
-	if err := NewGameRequest(branding.Default(), components.NavigationState{}, game.DiscoveryPage{}, nil, false, "", form, ComposerMessage{}).Render(context.Background(), &unselected); err != nil {
+	if err := NewGameRequest(branding.Default(), components.NavigationState{}, game.DiscoveryPage{}, nil, false, "", form, ComposerMessage{}, false).Render(context.Background(), &unselected); err != nil {
 		t.Fatalf("render unselected composer: %v", err)
 	}
 	if strings.Contains(unselected.String(), `name="max_players"`) {
@@ -573,7 +573,7 @@ func TestNewGameRequestDetailFieldsAppearOnlyAfterSelection(t *testing.T) {
 
 	selected := game.DiscoveryItem{LocalGameID: "game-1", GamePresentation: game.GamePresentation{Name: "Warcraft III"}, Materialized: true}
 	var afterSelection bytes.Buffer
-	if err := NewGameRequest(branding.Default(), components.NavigationState{}, game.DiscoveryPage{}, &selected, true, "", form, ComposerMessage{}).Render(context.Background(), &afterSelection); err != nil {
+	if err := NewGameRequest(branding.Default(), components.NavigationState{}, game.DiscoveryPage{}, &selected, true, "", form, ComposerMessage{}, false).Render(context.Background(), &afterSelection); err != nil {
 		t.Fatalf("render selected composer: %v", err)
 	}
 	if !strings.Contains(afterSelection.String(), `name="max_players"`) {
@@ -646,7 +646,7 @@ func TestComposerRecoveryDiscoveryPreservesDetailsInNoJSActions(t *testing.T) {
 	}
 
 	var rendered bytes.Buffer
-	if err := NewGameRequest(branding.Default(), components.NavigationState{}, page, nil, true, "age", form, ComposerMessage{Text: "Choose another game."}).Render(context.Background(), &rendered); err != nil {
+	if err := NewGameRequest(branding.Default(), components.NavigationState{}, page, nil, true, "age", form, ComposerMessage{Text: "Choose another game."}, false).Render(context.Background(), &rendered); err != nil {
 		t.Fatalf("render recovery composer: %v", err)
 	}
 	body := rendered.String()
@@ -768,7 +768,7 @@ func TestComposerFieldsCarryNoErrorStateWhenValid(t *testing.T) {
 // has no field to sit beside and stays the page-level alert.
 func TestComposerRequestLevelMessageStaysAPageAlert(t *testing.T) {
 	var rendered bytes.Buffer
-	if err := NewGameRequest(branding.Default(), components.NavigationState{}, game.DiscoveryPage{}, nil, false, "", GameRequestForm{}, ComposerMessage{Text: "This game is no longer available."}).Render(context.Background(), &rendered); err != nil {
+	if err := NewGameRequest(branding.Default(), components.NavigationState{}, game.DiscoveryPage{}, nil, false, "", GameRequestForm{}, ComposerMessage{Text: "This game is no longer available."}, false).Render(context.Background(), &rendered); err != nil {
 		t.Fatalf("render composer: %v", err)
 	}
 	if body := rendered.String(); !strings.Contains(body, `role="alert"`) || !strings.Contains(body, "This game is no longer available.") {

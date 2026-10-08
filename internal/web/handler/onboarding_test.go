@@ -103,7 +103,7 @@ func TestSubmitPendingCreatesAccountAndSession(t *testing.T) {
 
 	handler.SubmitPending(response, request)
 
-	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/game-requests" {
+	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/welcome" {
 		t.Fatalf("status/location = %d, %q", response.Code, response.Header().Get("Location"))
 	}
 	if registration.pendingID != "pending-1" || registration.browserBinding != "binding" || registration.gameNick != "NightOtter" {
@@ -112,6 +112,22 @@ func TestSubmitPendingCreatesAccountAndSession(t *testing.T) {
 	sessionCookie := responseCookie(t, response.Result(), "lansurfer_session")
 	if sessionCookie.Value != "opaque-session" {
 		t.Fatalf("session cookie = %#v", sessionCookie)
+	}
+}
+
+func TestSubmitPendingDeepLinkSkipsWelcome(t *testing.T) {
+	registration := &stubRegistration{session: auth.BrowserSession{Token: "opaque-session", ExpiresAt: time.Now().Add(time.Hour)}}
+	handler := NewOnboarding(&stubPending{}, registration, &stubGameNickClaims{}, &stubIdentityLookup{}, &stubAuthentication{}, branding.Default(), false)
+	request := withURLParam(httptest.NewRequest(http.MethodPost, "/onboarding/pending-1", strings.NewReader("game_nick=NightOtter")), "pendingID", "pending-1")
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	request.AddCookie(&http.Cookie{Name: browserBindingCookieName, Value: "binding"})
+	request.AddCookie(&http.Cookie{Name: returnCookieName, Value: "%2Fgame-requests%2Frequest-1"})
+	response := httptest.NewRecorder()
+
+	handler.SubmitPending(response, request)
+
+	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/game-requests/request-1" {
+		t.Fatalf("status/location = %d, %q", response.Code, response.Header().Get("Location"))
 	}
 }
 

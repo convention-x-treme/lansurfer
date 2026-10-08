@@ -330,6 +330,20 @@ func (s *Store) CountActive(ctx context.Context) (int64, error) {
 	return total, nil
 }
 
+// HasCreated reports whether the viewer has ever created a Game Request, in
+// any status. The composer shows its first-request hint until this is true.
+func (s *Store) HasCreated(ctx context.Context, viewerID string) (bool, error) {
+	creatorID, err := parseUUID(viewerID)
+	if err != nil {
+		return false, fmt.Errorf("parse viewer ID: %w", err)
+	}
+	created, err := s.queries.HasCreatedGameRequest(ctx, creatorID)
+	if err != nil {
+		return false, fmt.Errorf("check created game requests: %w", err)
+	}
+	return created, nil
+}
+
 // GetGameRequestSummary resolves a Game Request for a system caller with no
 // viewer to personalize for, unlike ByID.
 func (s *Store) GetGameRequestSummary(ctx context.Context, gameRequestID string) (RequestSummary, error) {
