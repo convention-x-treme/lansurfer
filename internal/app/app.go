@@ -20,6 +20,7 @@ import (
 	notificationpostgres "github.com/convention-x-treme/lansurfer/internal/notification/postgres"
 	"github.com/convention-x-treme/lansurfer/internal/platform/config"
 	"github.com/convention-x-treme/lansurfer/internal/platform/mediaproxy"
+	"github.com/convention-x-treme/lansurfer/internal/platform/metrics"
 	"github.com/convention-x-treme/lansurfer/internal/platform/postgres"
 	"github.com/convention-x-treme/lansurfer/internal/platform/sse"
 	gamerequestquery "github.com/convention-x-treme/lansurfer/internal/query/gamerequest"
@@ -176,8 +177,12 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	if cfg.WebPush != nil {
 		vapidPublicKey = cfg.WebPush.PublicKey
 	}
+	instanceMetrics := metrics.New(pool)
 	routerDependencies := web.RouterDependencies{
 		Ready:                      postgres.ReadyCheck(pool),
+		MetricsKeys:                metrics.NewStore(pool),
+		Metrics:                    instanceMetrics,
+		MetricsMiddleware:          instanceMetrics.Middleware,
 		Authentication:             oauthService,
 		Sessions:                   sessionService,
 		PendingIdentities:          flowService,

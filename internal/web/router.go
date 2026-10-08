@@ -53,6 +53,9 @@ type Discovery interface {
 
 type RouterDependencies struct {
 	Ready                ReadyCheck
+	MetricsKeys          handler.MetricsKeys
+	Metrics              http.Handler
+	MetricsMiddleware    func(http.Handler) http.Handler
 	Authentication       handler.Authentication
 	Sessions             Sessions
 	PendingIdentities    handler.PendingIdentities
@@ -168,6 +171,9 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 		dependencies.WebPushConfigured, brand, dependencies.SecureCookies, navigation,
 	)
 	router := chi.NewRouter()
+	if dependencies.MetricsMiddleware != nil {
+		router.Use(dependencies.MetricsMiddleware)
+	}
 	router.Use(middleware.RequestID)
 	// RequestTimeout wraps RequestLogging so the logger sees the context the
 	// timeout derived, and can report a timed-out request as such instead of
@@ -184,6 +190,11 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 	router.Use(webmiddleware.Instance(dependencies.InstanceName))
 	router.Use(webmiddleware.Legal(dependencies.Legal))
 
+	var metricsHandler *handler.Metrics
+	if dependencies.MetricsKeys != nil && dependencies.Metrics != nil {
+		metricsHandler = handler.NewMetrics(dependencies.MetricsKeys, dependencies.Metrics, navigation, brand)
+		router.Get("/metrics", metricsHandler.Scrape)
+	}
 	router.Handle("/assets/*", http.StripPrefix("/assets/", assets.Handler()))
 	// Covers are public like /assets/: an anonymous page may show them, and
 	// the handler never touches the session.
@@ -293,9 +304,13 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 		if dependencies.Realtime != nil {
 			authenticated.With(handler.RequireAuthentication(dependencies.SecureCookies), handler.RequireGameNick).Get("/events/game-requests", realtimeHandler.GameRequests)
 		}
-		if dependencies.Games != nil || discordDeliveryHandler != nil {
+		if dependencies.Games != nil || discordDeliveryHandler != nil || metricsHandler != nil {
 			authenticated.Route("/admin", func(admin chi.Router) {
 				admin.Use(handler.RequireAdmin, handler.RequireGameNick)
+				if metricsHandler != nil {
+					admin.Get("/metrics", metricsHandler.Show)
+					admin.Post("/metrics/key", metricsHandler.Rotate)
+				}
 				if dependencies.Games != nil {
 					admin.Get("/games", administrationHandler.Games)
 					admin.Post("/games", administrationHandler.CreateGame)
