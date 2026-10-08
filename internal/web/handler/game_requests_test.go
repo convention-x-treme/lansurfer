@@ -66,7 +66,8 @@ func (f *fakeGameRequestCommands) RecordView(_ context.Context, requestID, userI
 }
 
 type fakeGameRequestQueries struct {
-	request requestquery.Request
+	request    requestquery.Request
+	hasCreated bool
 }
 
 func (fakeGameRequestQueries) ListActive(context.Context, string, requestquery.Filter) ([]requestquery.Request, error) {
@@ -79,6 +80,9 @@ func (fakeGameRequestQueries) Trending(context.Context) ([]requestquery.Trending
 	return nil, nil
 }
 func (fakeGameRequestQueries) CountActive(context.Context) (int64, error) { return 0, nil }
+func (f fakeGameRequestQueries) HasCreated(context.Context, string) (bool, error) {
+	return f.hasCreated, nil
+}
 func (fakeGameRequestQueries) RecentlyViewed(context.Context, string) ([]requestquery.RecentRequest, error) {
 	return nil, nil
 }
@@ -355,6 +359,20 @@ func TestNewGameRequestUsesDiscoveryWithoutMaterializing(t *testing.T) {
 	}
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+}
+
+// The first-request explanation is for players who never created a Game
+// Request and disappears once they have.
+func TestNewGameRequestExplainsJoiningUntilFirstCreated(t *testing.T) {
+	for _, hasCreated := range []bool{false, true} {
+		handler := NewGameRequests(&fakeGameRequestCommands{}, fakeGameRequestQueries{hasCreated: hasCreated}, &fakeGameResolver{}, &fakeGameRequestDiscovery{}, nil, branding.Default())
+		response := httptest.NewRecorder()
+		handler.New(response, httptest.NewRequest(http.MethodGet, "/game-requests/new", nil))
+
+		if shown := strings.Contains(response.Body.String(), "Others join it until it is full"); shown == hasCreated {
+			t.Fatalf("hasCreated=%v: hint shown=%v", hasCreated, shown)
+		}
 	}
 }
 

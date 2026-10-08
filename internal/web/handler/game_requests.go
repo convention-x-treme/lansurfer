@@ -44,6 +44,7 @@ type GameRequestQueries interface {
 	ByID(context.Context, string, string) (requestquery.Request, error)
 	Trending(context.Context) ([]requestquery.TrendingGame, error)
 	CountActive(context.Context) (int64, error)
+	HasCreated(context.Context, string) (bool, error)
 }
 
 // GameResolver turns an opaque IGDB provider reference into the one
@@ -202,7 +203,7 @@ func (h *GameRequests) New(w http.ResponseWriter, r *http.Request) {
 			h.renderError(w, r)
 			return
 		}
-		render(w, r, http.StatusOK, pages.NewGameRequest(h.brand, h.navigationFor(r), page, nil, false, search, form, pages.ComposerMessage{}))
+		render(w, r, http.StatusOK, pages.NewGameRequest(h.brand, h.navigationFor(r), page, nil, false, search, form, pages.ComposerMessage{}, h.firstRequest(r, account.ID)))
 		return
 	}
 
@@ -219,11 +220,23 @@ func (h *GameRequests) New(w http.ResponseWriter, r *http.Request) {
 			h.renderError(w, r)
 			return
 		}
-		render(w, r, http.StatusUnprocessableEntity, pages.NewGameRequest(h.brand, h.navigationFor(r), page, nil, false, "", form, pages.ComposerMessage{Text: gameCatalogUnavailableMessage}))
+		render(w, r, http.StatusUnprocessableEntity, pages.NewGameRequest(h.brand, h.navigationFor(r), page, nil, false, "", form, pages.ComposerMessage{Text: gameCatalogUnavailableMessage}, h.firstRequest(r, account.ID)))
 		return
 	}
 	populateSelectionForm(&form, item)
-	render(w, r, http.StatusOK, pages.NewGameRequest(h.brand, h.navigationFor(r), game.DiscoveryPage{}, &item, true, "", form, pages.ComposerMessage{}))
+	render(w, r, http.StatusOK, pages.NewGameRequest(h.brand, h.navigationFor(r), game.DiscoveryPage{}, &item, true, "", form, pages.ComposerMessage{}, h.firstRequest(r, account.ID)))
+}
+
+// firstRequest reports whether the composer should explain Game Requests to a
+// player who has never created one. The hint is decoration: a failed read
+// is logged and simply hides it.
+func (h *GameRequests) firstRequest(r *http.Request, viewerID string) bool {
+	created, err := h.queries.HasCreated(r.Context(), viewerID)
+	if err != nil {
+		webmiddleware.LogError(r, "check created Game Requests", err)
+		return false
+	}
+	return !created
 }
 
 // Discovery is the composer's live-search fragment (Task 7 Step 6): it
@@ -320,7 +333,7 @@ func (h *GameRequests) renderComposerError(w http.ResponseWriter, r *http.Reques
 			return
 		}
 	}
-	render(w, r, status, pages.NewGameRequest(h.brand, h.navigationFor(r), page, selected, true, "", form, message))
+	render(w, r, status, pages.NewGameRequest(h.brand, h.navigationFor(r), page, selected, true, "", form, message, h.firstRequest(r, account.ID)))
 }
 
 // gameSelectionFromValues parses the composer's identity fields (shared by

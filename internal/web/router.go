@@ -219,6 +219,7 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 		// signed-in player keeps the application shell.
 		authenticated.Get("/terms", legalHandler.Terms)
 		authenticated.Get("/privacy", legalHandler.Privacy)
+		authenticated.Get("/help", legalHandler.Help)
 		authenticated.Get("/auth/login", authenticationHandler.Login)
 		authenticated.Get("/auth/oidc", authenticationHandler.BeginFor("oidc"))
 		authenticated.Get("/auth/discord", authenticationHandler.BeginFor("discord"))
@@ -240,6 +241,7 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 			onboarding.Get("/{pendingID}", onboardingHandler.ShowPending)
 			onboarding.Post("/{pendingID}", onboardingHandler.SubmitPending)
 		})
+		authenticated.With(handler.RequireAuthentication(dependencies.SecureCookies), handler.RequireGameNick).Get("/welcome", onboardingHandler.ShowWelcome)
 		authenticated.Route("/account", func(account chi.Router) {
 			account.Use(handler.RequireAuthentication(dependencies.SecureCookies), handler.RequireGameNick)
 			account.Get("/", accountHandler.Show)
