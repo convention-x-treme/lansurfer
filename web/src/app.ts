@@ -30,6 +30,117 @@ window.addEventListener("pageshow", (event) => {
 // Content-Security-Policy blocks. app.css defines those classes itself.
 htmx.config.includeIndicatorStyles = false;
 
+let pendingSessionDialogOpen = false;
+
+
+function sessionDialogFocusSelector(trigger: HTMLElement): string {
+  if (trigger.hasAttribute("data-session-add-trigger")) return "[data-session-add-trigger]";
+  if (trigger.dataset.sessionEditTrigger) {
+    return `[data-session-edit-trigger="${CSS.escape(trigger.dataset.sessionEditTrigger)}"]`;
+  }
+  const form = trigger.closest<HTMLFormElement>("[data-session-delete-fallback]");
+  if (form?.dataset.sessionDeleteEntry) {
+    return `[data-session-delete-fallback][data-session-delete-entry="${CSS.escape(form.dataset.sessionDeleteEntry)}"] button`;
+  }
+  return "";
+}
+
+function openSessionDialog(dialog: HTMLDialogElement, trigger: HTMLElement): void {
+  dialog.dataset.returnFocusSelector = sessionDialogFocusSelector(trigger);
+  if (!dialog.open) dialog.showModal();
+}
+
+function closeSessionDialog(dialog: HTMLDialogElement): void {
+  if (dialog.open) dialog.close();
+}
+document.querySelectorAll<HTMLDialogElement>("[data-dialog-shell]").forEach((dialog) => {
+  dialog.addEventListener("close", () => {
+    const selector = dialog.dataset.returnFocusSelector;
+    delete dialog.dataset.returnFocusSelector;
+    dialog.querySelector("[data-session-dialog-content]")?.replaceChildren();
+    window.setTimeout(() => {
+      const trigger = (selector ? document.querySelector<HTMLElement>(selector) : null) ??
+        document.querySelector<HTMLElement>("[data-session-add-trigger]") ??
+        document.querySelector<HTMLElement>("#session-information-title");
+      trigger?.focus({ preventScroll: true });
+    }, 50);
+  });
+});
+
+document.addEventListener("htmx:beforeRequest", (event) => {
+  const trigger = (event as CustomEvent<{ elt: HTMLElement }>).detail.elt;
+  if (trigger.matches("[data-session-dialog-open]")) {
+    const dialog = document.querySelector<HTMLDialogElement>("#session-information-dialog");
+    if (!dialog) return;
+    pendingSessionDialogOpen = true;
+    dialog.dataset.returnFocusSelector = sessionDialogFocusSelector(trigger);
+  }
+});
+
+document.addEventListener("htmx:afterSwap", (event) => {
+  const target = (event as CustomEvent<{ target: HTMLElement }>).detail.target;
+  if (target.id === "session-information-dialog-content" && pendingSessionDialogOpen) {
+    pendingSessionDialogOpen = false;
+    const dialog = document.querySelector<HTMLDialogElement>("#session-information-dialog");
+    const form = target.querySelector<HTMLFormElement>("[data-session-information-form]");
+    const title = dialog?.querySelector<HTMLElement>("#session-information-dialog-title");
+    if (!dialog || !form || !title) return;
+    title.textContent = form.dataset.sessionMode === "edit" ? "Edit session information" : "Add session information";
+    if (!dialog.open) dialog.showModal();
+    const field = form.querySelector<HTMLElement>("[aria-invalid='true']") ?? form.querySelector<HTMLInputElement>("[name='key']");
+    field?.focus({ preventScroll: true });
+  }
+});
+
+
+document.addEventListener("submit", (event) => {
+  const source = event.target;
+  if (!(source instanceof HTMLFormElement) || !source.matches("[data-session-delete-fallback]")) return;
+  event.preventDefault();
+  const dialog = document.querySelector<HTMLDialogElement>("#session-information-delete-dialog");
+  const confirmForm = dialog?.querySelector<HTMLFormElement>("[data-session-delete-confirm-form]");
+  const message = dialog?.querySelector<HTMLElement>("[data-session-delete-message]");
+  const title = dialog?.querySelector<HTMLElement>("#session-information-delete-title");
+  const key = source.dataset.sessionDeleteKey ?? "this entry";
+  if (!dialog || !confirmForm || !message || !title) return;
+  const trigger = source.querySelector<HTMLButtonElement>("button[type='submit']");
+  if (!trigger) return;
+  title.textContent = `Delete ${key}?`;
+  message.textContent = "This entry is removed for everyone in this Game Request.";
+  confirmForm.action = source.action;
+  confirmForm.setAttribute("hx-post", source.action);
+  const csrf = source.querySelector<HTMLInputElement>("input[name='csrf_token']");
+  const confirmCSRF = confirmForm.querySelector<HTMLInputElement>("input[name='csrf_token']");
+  if (csrf && confirmCSRF) confirmCSRF.value = csrf.value;
+  htmx.process(confirmForm);
+  openSessionDialog(dialog, trigger);
+});
+
+document.addEventListener("click", (event) => {
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  const close = target.closest<HTMLElement>("[data-dialog-close]");
+  if (close) {
+    closeSessionDialog(close.closest<HTMLDialogElement>("dialog")!);
+    return;
+  }
+  const dialog = target instanceof HTMLDialogElement
+    ? target
+    : document.querySelector<HTMLDialogElement>("[data-dialog-shell][open]");
+  if (dialog?.open && dialog.matches("[data-dialog-shell]")) {
+    const panel = dialog.querySelector<HTMLElement>(".dialog-panel");
+    const rect = panel?.getBoundingClientRect();
+    if (rect && (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom)) {
+      closeSessionDialog(dialog);
+    }
+  }
+});
+
+
+document.addEventListener("session-information-mutated", () => {
+  document.querySelectorAll<HTMLDialogElement>("[data-dialog-shell][open]").forEach(closeSessionDialog);
+});
+
 // The theme the document already paints with: the server renders an explicit
 // choice into <html>, and without one the stylesheet follows the operating
 // system. Setting it from script on load would repaint the page after the
@@ -382,91 +493,6 @@ document.addEventListener("htmx:afterSwap", (event) => {
     if (draft.focused) focus = field;
   }
   focus?.focus({ preventScroll: true });
-});
-type SessionInformationDraft = {
-  mode: string;
-  entryID: string;
-  key: string;
-  value: string;
-  secret: boolean;
-  secretDirty: boolean;
-  keyDirty: boolean;
-  valueDirty: boolean;
-  keyRejected: boolean;
-  valueRejected: boolean;
-  error: string;
-  focused: "key" | "value" | "secret" | "";
-};
-const sessionInformationDrafts = new WeakMap<HTMLElement, SessionInformationDraft>();
-
-document.addEventListener("htmx:beforeSwap", (event) => {
-  const target = (event as CustomEvent<{ target: HTMLElement }>).detail.target;
-  if (target.id !== "session-information" && target.id !== "game-request-detail") return;
-  const section = target.id === "session-information" ? target : target.querySelector<HTMLElement>("#session-information");
-  const form = section?.querySelector<HTMLFormElement>("[data-session-information-form]");
-  if (!form || !section) return;
-  const key = form.querySelector<HTMLInputElement>("[name='key']");
-  const value = form.querySelector<HTMLInputElement>("[name='value']");
-  const secret = form.querySelector<HTMLInputElement>("[name='is_secret']");
-  if (!key || !value || !secret) return;
-  const active = document.activeElement;
-  const keyRejected = key.getAttribute("aria-invalid") === "true";
-  const valueRejected = value.getAttribute("aria-invalid") === "true";
-  const draft: SessionInformationDraft = {
-    mode: form.dataset.sessionMode ?? "",
-    entryID: form.dataset.sessionEntryId ?? "",
-    key: key.value,
-    value: value.value,
-    secret: secret.checked,
-    secretDirty: secret.checked !== (form.dataset.serverIsSecret === "true"),
-    keyDirty: key.value !== key.defaultValue || keyRejected,
-    valueDirty: value.value !== value.defaultValue || valueRejected,
-    keyRejected,
-    valueRejected,
-    error: form.querySelector<HTMLElement>("[role='alert']")?.textContent?.trim() ?? "",
-    focused: active === key ? "key" : active === value ? "value" : active === secret ? "secret" : "",
-  };
-  if (draft.keyDirty || draft.valueDirty || draft.secretDirty) sessionInformationDrafts.set(target, draft);
-});
-
-document.addEventListener("htmx:afterSwap", (event) => {
-  const target = (event as CustomEvent<{ target: HTMLElement }>).detail.target;
-  const draft = sessionInformationDrafts.get(target);
-  if (!draft) return;
-  sessionInformationDrafts.delete(target);
-  const section = document.querySelector<HTMLElement>("#session-information");
-  const form = section?.querySelector<HTMLFormElement>("[data-session-information-form]");
-  if (!form || form.dataset.sessionMode !== draft.mode || (form.dataset.sessionEntryId ?? "") !== draft.entryID) return;
-  const key = form.querySelector<HTMLInputElement>("[name='key']");
-  const value = form.querySelector<HTMLInputElement>("[name='value']");
-  const secret = form.querySelector<HTMLInputElement>("[name='is_secret']");
-  if (!key || !value || !secret) return;
-  if (draft.keyDirty) key.value = draft.key;
-  if (draft.valueDirty) value.value = draft.value;
-  if (draft.secretDirty) {
-    secret.checked = draft.secret;
-    value.type = draft.secret ? "password" : "text";
-  }
-  if (draft.keyRejected) {
-    key.setAttribute("aria-invalid", "true");
-    key.setAttribute("aria-describedby", "session-information-error");
-  }
-  if (draft.valueRejected) {
-    value.setAttribute("aria-invalid", "true");
-    value.setAttribute("aria-describedby", "session-information-error");
-  }
-  if (draft.error) {
-    let error = form.querySelector<HTMLElement>("#session-information-error");
-    if (!error) {
-      error = document.createElement("p");
-      error.id = "session-information-error";
-      error.setAttribute("role", "alert");
-      error.className = "text-sm text-error";
-      form.insertBefore(error, form.querySelector("div"));
-    }
-    error.textContent = draft.error;
-  }
-  (draft.focused === "key" ? key : draft.focused === "value" ? value : draft.focused === "secret" ? secret : null)?.focus({ preventScroll: true });
 });
 // Without an event the current view is refreshed as a whole, which is what a
 // page needs after it was disconnected from the stream for a while. A deferred

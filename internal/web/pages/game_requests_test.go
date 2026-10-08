@@ -431,6 +431,17 @@ func TestGameRequestDetailKeepsDescriptionAndSessionInformationTogether(t *testi
 			t.Errorf("detail does not contain %q: %s", want, body)
 		}
 	}
+	if !strings.Contains(body, `id="session-information-dialog"`) {
+		t.Fatalf("Host detail does not render shared session dialog outside the fragment: %s", body)
+	}
+	if !strings.Contains(body, `</aside></div><dialog`) {
+		t.Fatalf("session dialog must render beside the detail fragment, not inside #session-information: %s", body)
+	}
+	for _, want := range []string{`<dialog`, `aria-labelledby="session-information-dialog-title"`, `data-session-dialog-content`, `session-information-dialog`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("session dialog missing %q: %s", want, body)
+		}
+	}
 }
 
 func TestTerminalGameRequestOmitsSessionInformation(t *testing.T) {

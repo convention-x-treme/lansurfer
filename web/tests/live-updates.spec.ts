@@ -421,7 +421,7 @@ test("a chat signal during a mutation refreshes only the Lobby", async ({ page, 
   await request.post("/__test__/mode?delay=0");
 });
 
-test("session-information and general detail refreshes preserve an active inline draft", async ({ page, request }) => {
+test("session-information and general detail refreshes preserve an active dialog draft", async ({ page, request }) => {
   await page.goto("/game-requests/new?game_id=game-1");
   await page.getByRole("button", { name: "Create Game Request" }).click();
   await page.waitForURL(/\/game-requests\/[0-9a-f-]+/);
@@ -446,7 +446,7 @@ test("session-information and general detail refreshes preserve an active inline
 });
 
 for (const dirtyField of ["key", "value"] as const) {
-  test(`session-information refresh preserves only a dirty ${dirtyField} field`, async ({ page, request }) => {
+  test(`session-information refresh leaves the open dialog's ${dirtyField} draft untouched`, async ({ page, request }) => {
     await page.goto("/game-requests/new?game_id=game-1");
     await page.getByRole("button", { name: "Create Game Request" }).click();
     await page.waitForURL(/\/game-requests\/[0-9a-f-]+/);
@@ -465,7 +465,7 @@ for (const dirtyField of ["key", "value"] as const) {
     const value = page.getByRole("textbox", { name: "Value" });
     const localValue = dirtyField === "key" ? "Local key" : "Local value";
     await (dirtyField === "key" ? key : value).fill(localValue);
-    const csrf = await page.locator("#session-information input[name='csrf_token']").first().inputValue();
+    const csrf = await page.locator("#session-information-dialog input[name='csrf_token']").first().inputValue();
     const requestID = await page.locator("[data-game-request-detail]").getAttribute("data-game-request-id");
     const serverKey = dirtyField === "key" ? "Lobby" : "Server changed";
     const serverValue = dirtyField === "key" ? "Fresh value" : "old value";
@@ -478,15 +478,14 @@ for (const dirtyField of ["key", "value"] as const) {
       return response.status;
     }, { requestID, entryID, key: serverKey, value: serverValue, csrf });
     expect(result).toBe(200);
-    await expect(key).toHaveValue(dirtyField === "key" ? localValue : "Server changed");
-    await expect(value).toHaveValue(dirtyField === "value" ? localValue : "Fresh value");
-    const secret = page.getByRole("checkbox", { name: "Secret value" });
-    await expect(secret).toBeChecked();
-    await expect(value).toHaveAttribute("type", "password");
+    await expect(key).toHaveValue(dirtyField === "key" ? localValue : "Lobby");
+    await expect(value).toHaveValue(dirtyField === "value" ? localValue : "old value");
+    await expect(page.getByRole("checkbox", { name: "Secret value" })).not.toBeChecked();
+    await expect(value).toHaveAttribute("type", "text");
   });
 }
 
-test("session-information validation survives live refreshes but not terminal state", async ({ page, request }) => {
+test("Session Information validation stays in the open dialog across live refreshes", async ({ page, request }) => {
   await page.goto("/game-requests/new?game_id=game-1");
   await page.getByRole("button", { name: "Create Game Request" }).click();
   await page.waitForURL(/\/game-requests\/[0-9a-f-]+/);
@@ -507,15 +506,10 @@ test("session-information validation survives live refreshes but not terminal st
   await request.post(`/__test__/publish?type=GameRequestJoined&request=${requestID}`);
   await expect(key).toHaveValue(rejectedKey);
   await expect(page.locator("#session-information-error")).toContainText("Key must contain");
-
-  page.once("dialog", dialog => dialog.accept());
-  await page.getByRole("button", { name: "Cancel Game Request" }).click();
-  await expect(page.locator("#session-information")).toHaveCount(0);
-  await request.post(`/__test__/publish?type=GameRequestCancelled&request=${requestID}`);
-  await expect(page.locator("#session-information")).toHaveCount(0);
 });
 
-test("session-information Delete removes the entry inline", async ({ page, request }) => {
+
+test("Session Information Delete confirms and refreshes the fragment", async ({ page, request }) => {
   await page.goto("/game-requests/new?game_id=game-1");
   await page.getByRole("button", { name: "Create Game Request" }).click();
   await page.waitForURL(/\/game-requests\/[0-9a-f-]+/);
@@ -526,28 +520,16 @@ test("session-information Delete removes the entry inline", async ({ page, reque
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page.locator("#session-information")).toContainText("temporary");
   const currentURL = page.url();
-  page.once("dialog", dialog => dialog.accept());
   await page.locator("#session-information").getByRole("button", { name: "Delete Lobby" }).click();
+  const dialog = page.getByRole("dialog", { name: "Delete Lobby?" });
+  await expect(dialog).toContainText("removed for everyone in this Game Request");
+  await dialog.getByRole("button", { name: "Delete" }).click();
+  await expect(dialog).not.toBeVisible();
   await expect(page.locator("#session-information")).not.toContainText("temporary");
   await expect(page).toHaveURL(currentURL);
 });
 
-test("session-information terminal detail refresh discards draft", async ({ page, request }) => {
-  await page.goto("/game-requests/new?game_id=game-1");
-  await page.getByRole("button", { name: "Create Game Request" }).click();
-  await page.waitForURL(/\/game-requests\/[0-9a-f-]+/);
-  await waitForRealtime(page, request, 1);
-  await page.getByRole("link", { name: "Add", exact: true }).click();
-  await page.getByRole("textbox", { name: "Key" }).fill("Draft");
-  page.once("dialog", dialog => dialog.accept());
-  await page.getByRole("button", { name: "Cancel Game Request" }).click();
-  await expect(page.locator("#session-information")).toHaveCount(0);
-  await request.post("/__test__/publish?type=GameRequestCancelled");
-  await expect(page.locator("[data-game-request-detail]")).toContainText("Cancelled");
-  await expect(page.locator("#session-information")).toHaveCount(0);
-});
-
-test("session-information tiles reflow and inline editor saves locally", async ({ page }) => {
+test("session-information tiles reflow and edit in dialog", async ({ page }) => {
   await page.goto("/game-requests/new?game_id=game-1");
   await page.getByRole("button", { name: "Create Game Request" }).click();
   await page.waitForURL(/\/game-requests\/[0-9a-f-]+/);
@@ -632,15 +614,10 @@ test("session-information tiles reflow and inline editor saves locally", async (
   await expect(page.locator("#session-information").getByRole("link", { name: "Edit Server" })).toBeVisible();
   await expect(page.locator("#session-information").getByRole("button", { name: "Delete Server" })).toBeVisible();
   await page.locator("#session-information").getByRole("link", { name: "Edit Server" }).click();
-  await expect(page.locator("#session-information .session-information-form")).toHaveCount(1);
-  const editorWidth = await page.locator("#session-information").evaluate((section) => {
-    const sectionRect = section.getBoundingClientRect();
-    const editorRect = section.querySelector<HTMLFormElement>("form.session-information-form")!.getBoundingClientRect();
-    return { section: sectionRect.width, editor: editorRect.width, offset: editorRect.left - sectionRect.left };
-  });
-  expect(editorWidth.editor).toBeGreaterThanOrEqual(editorWidth.section - 1);
-  expect(editorWidth.offset).toBeLessThanOrEqual(1);
-  await expect(page.locator("#session-information form.session-information-form")).toBeVisible();
+  const dialog = page.getByRole("dialog", { name: "Edit session information" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator("[data-session-information-form]")).toBeVisible();
+  await expect(dialog).toHaveClass(/session-dialog--sheet/);
   await page.getByRole("textbox", { name: "Value" }).fill("Saved value");
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page.locator("#session-information")).toContainText("Saved value");
@@ -784,7 +761,7 @@ for (const refresh of ["session-information fragment", "full detail"] as const) 
     await expect(page.locator("#session-information-error")).toContainText("Key must contain");
     await expect(toggle).toBeChecked();
     await expect(value).toHaveAttribute("type", "password");
-    await expect(page.locator("#session-information [data-session-information-form]")).toHaveAttribute("data-server-is-secret", "false");
+    await expect(page.locator("#session-information-dialog [data-session-information-form]")).toHaveAttribute("data-server-is-secret", "false");
 
     const requestID = await page.locator("[data-game-request-detail]").getAttribute("data-game-request-id");
     if (refresh === "session-information fragment") {
@@ -796,7 +773,7 @@ for (const refresh of ["session-information fragment", "full detail"] as const) 
     await expect(page.locator("#session-information-error")).toContainText("Key must contain");
     await expect(toggle).toBeChecked();
     await expect(value).toHaveAttribute("type", "password");
-    await expect(page.locator("#session-information [data-session-information-form]")).toHaveAttribute("data-server-is-secret", "false");
+    await expect(page.locator("#session-information-dialog [data-session-information-form]")).toHaveAttribute("data-server-is-secret", "false");
 
     await key.fill("Password");
     await page.getByRole("button", { name: "Save" }).click();
@@ -928,4 +905,111 @@ test("secret reveal controls are per entry and remask on visibility change", asy
   await expect(voiceValue).toHaveText("••••••••");
   await expect(lobby.getByRole("button", { name: "Reveal Lobby password" })).toHaveAttribute("aria-pressed", "false");
   await expect(voice.getByRole("button", { name: "Reveal Voice password" })).toHaveAttribute("aria-pressed", "false");
+});
+test("Session Information dialogs keep drafts across realtime refreshes and close after save", async ({ page, request }) => {
+  await page.goto("/game-requests/new?game_id=game-1");
+  await page.getByRole("button", { name: "Create Game Request" }).click();
+  await page.waitForURL(/\/game-requests\/[0-9a-f-]+/);
+  await waitForRealtime(page, request, 1);
+
+  const add = page.getByRole("link", { name: "Add", exact: true });
+  await add.click();
+  const dialog = page.getByRole("dialog", { name: "Add session information" });
+  await expect(dialog).toBeVisible();
+  const key = dialog.getByRole("textbox", { name: "Key" });
+  const value = dialog.getByRole("textbox", { name: "Value" });
+  await key.fill("Lobby");
+  await value.fill("draft");
+
+  const requestID = await page.locator("[data-game-request-detail]").getAttribute("data-game-request-id");
+  await request.post(`/__test__/publish?type=GameRequestSessionInformationChanged&request=${requestID}`);
+  await expect(key).toHaveValue("Lobby");
+  await expect(value).toHaveValue("draft");
+  await expect(dialog).toBeVisible();
+
+  await dialog.getByRole("button", { name: "Save" }).click();
+  await expect(dialog).not.toBeVisible();
+  await expect(page.locator("#session-information")).toContainText("draft");
+  await expect(page.locator("#session-information").getByRole("link", { name: "Add", exact: true })).toBeFocused();
+});
+
+test("Session Information dialog supports Escape, backdrop, validation, edit, and delete confirmation", async ({ page }) => {
+  await page.goto("/game-requests/new?game_id=game-1");
+  await page.getByRole("button", { name: "Create Game Request" }).click();
+  await page.waitForURL(/\/game-requests\/[0-9a-f-]+/);
+
+  const add = page.getByRole("link", { name: "Add", exact: true });
+  await add.click();
+  const dialog = page.getByRole("dialog", { name: "Add session information" });
+  const key = dialog.getByRole("textbox", { name: "Key" });
+  await key.fill("X".repeat(41));
+  await dialog.getByRole("textbox", { name: "Value" }).fill("kept");
+  await dialog.getByRole("button", { name: "Save" }).click();
+  await expect(dialog.getByRole("alert")).toContainText("Key must contain");
+  await expect(key).toHaveValue("X".repeat(41));
+  await page.keyboard.press("Escape");
+  await expect(dialog).not.toBeVisible();
+  await expect(add).toBeFocused();
+
+  await page.mouse.click(1, 1);
+  await expect(dialog).not.toBeVisible();
+  await expect(add).toBeFocused();
+
+  await add.click();
+  await dialog.getByRole("textbox", { name: "Key" }).fill("Password");
+  const value = dialog.getByRole("textbox", { name: "Value" });
+  await value.fill("private");
+  await dialog.getByRole("checkbox", { name: "Secret value" }).check();
+  await expect(value).toHaveAttribute("type", "password");
+  await dialog.getByRole("button", { name: "Save" }).click();
+  await expect(page.locator("#session-information")).toContainText("Secret");
+
+  await page.getByRole("link", { name: "Edit Password" }).click();
+  const editDialog = page.getByRole("dialog", { name: "Edit session information" });
+  await expect(editDialog.getByRole("textbox", { name: "Key" })).toHaveValue("Password");
+  await expect(editDialog.getByRole("textbox", { name: "Value" })).toHaveValue("private");
+  await expect(editDialog.getByRole("textbox", { name: "Value" })).toHaveAttribute("type", "password");
+  await editDialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(editDialog).not.toBeVisible();
+  await expect(page.getByRole("link", { name: "Edit Password" })).toBeFocused();
+
+  await page.getByRole("button", { name: "Delete Password" }).click();
+  const deleteDialog = page.getByRole("dialog", { name: "Delete Password?" });
+  await expect(deleteDialog).toContainText("removed for everyone in this Game Request");
+  await deleteDialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(deleteDialog).not.toBeVisible();
+  await expect(page.getByRole("button", { name: "Delete Password" })).toBeFocused();
+});
+test("Session Information no-JavaScript fallback supports add, edit, and delete", async ({ page }) => {
+  const browser = page.context().browser();
+  if (!browser) throw new Error("Playwright browser is unavailable");
+  const context = await browser.newContext({
+    baseURL: "http://127.0.0.1:8123",
+    storageState: await page.context().storageState(),
+    javaScriptEnabled: false,
+  });
+  const noJS = await context.newPage();
+  try {
+    await noJS.goto("/game-requests/new?game_id=game-1");
+    await noJS.getByRole("button", { name: "Create Game Request" }).click();
+    await noJS.waitForURL(/\/game-requests\/[0-9a-f-]+/);
+    await noJS.getByRole("link", { name: "Add", exact: true }).click();
+    await expect(noJS.locator("#session-information .session-information-form")).toBeVisible();
+    await noJS.getByRole("textbox", { name: "Key" }).fill("Server");
+    await noJS.getByRole("textbox", { name: "Value" }).fill("no-js-value");
+    await noJS.getByRole("button", { name: "Save" }).click();
+    await expect(noJS.locator("#session-information")).toContainText("no-js-value");
+
+    await noJS.getByRole("link", { name: "Edit Server" }).click();
+    await expect(noJS.locator("#session-information .session-information-form")).toBeVisible();
+    await expect(noJS.getByRole("textbox", { name: "Value" })).toHaveValue("no-js-value");
+    await noJS.getByRole("textbox", { name: "Value" }).fill("edited-without-js");
+    await noJS.getByRole("button", { name: "Save" }).click();
+    await expect(noJS.locator("#session-information")).toContainText("edited-without-js");
+
+    await noJS.locator("#session-information").getByRole("button", { name: "Delete Server" }).click();
+    await expect(noJS.locator("#session-information")).not.toContainText("edited-without-js");
+  } finally {
+    await context.close();
+  }
 });

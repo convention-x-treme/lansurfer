@@ -765,6 +765,7 @@ templ GameRequestDetailContentWithSession(request requestquery.Request, viewerID
 			}
 		</aside>
 	</div>
+	@GameRequestSessionInformationDialogs(session)
 }
 templ GameRequestDetailsEditor(request requestquery.Request, message GameRequestDetailMessage) {
 	<form method="post" action={ "/game-requests/" + request.ID + "/details" } class="grid gap-4" data-local-start?={ message.InitializeStart } data-start-instant={ request.StartsAt.Format(time.RFC3339) }>
