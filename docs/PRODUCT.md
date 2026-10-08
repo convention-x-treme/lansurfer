@@ -19,6 +19,7 @@ LANsurfer should answer that question with as little friction as possible. It is
 3. They create a Game Request.
 4. Other relevant players see the request in the browser or through an enabled notification transport.
 5. Players join and then start playing together.
+Following remains an explicit action on the Games surface. The Game Request detail page does not expose Follow Game. Viewing, creating, or joining a Game Request never follows its Game implicitly.
 
 The LANsurfer installation itself provides the event context. Players do not need to select or join an Event, Clan, Open Play space, or other parent context before using Game Requests.
 

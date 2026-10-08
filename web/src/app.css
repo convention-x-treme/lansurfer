@@ -562,16 +562,57 @@
 
   .detail-shell {
     display: grid;
+    min-width: 0;
     gap: 1.125rem;
-    align-items: start;
   }
 
-  .detail-main,
-  .detail-rail {
+  .detail-hero,
+  .detail-lower-grid {
+    min-width: 0;
+  }
+
+  .detail-hero-header {
     display: flex;
     min-width: 0;
-    flex-direction: column;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+
+  .detail-actions {
+    display: flex;
+    min-width: 0;
+    flex: 0 1 auto;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin-inline-start: auto;
+  }
+
+  .detail-actions > form {
+    display: flex;
+  }
+
+  .detail-icon-button {
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+  }
+
+  .detail-lower-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
     gap: 1.125rem;
+  }
+
+  .detail-lower-grid > * {
+    min-width: 0;
+  }
+
+  .detail-inline-editor {
+    margin-top: 1rem;
+    border-top: 1px solid var(--border-raised);
+    padding-top: 1rem;
   }
 
   .detail-card,
@@ -588,6 +629,12 @@
 
   .detail-hero {
     gap: 0;
+  }
+
+  @media (min-width: 48rem) {
+    .detail-lower-grid {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+    }
   }
 
   .detail-coordination {
@@ -874,6 +921,12 @@
   }
 
   @media (max-width: 47.99rem) {
+    .detail-actions {
+      flex: 0 0 100%;
+      justify-content: flex-end;
+    }
+
+
     .detail-coordination {
       grid-template-columns: minmax(0, 1fr);
       gap: 1rem;
@@ -895,6 +948,7 @@
      page, so it is set larger here than the top bar's own title. */
   .detail-title {
     min-width: 0;
+    overflow-wrap: anywhere;
     font-size: 1.875rem;
     font-weight: 900;
     letter-spacing: -0.02em;
@@ -937,11 +991,6 @@
     margin-top: auto;
   }
 
-  /* A main-column card titles itself like the Players card beside it. */
-  .detail-main .detail-card-summary {
-    font-size: 1.0625rem;
-    color: var(--color-base-content);
-  }
 
   .chat-log {
     display: flex;
@@ -988,9 +1037,6 @@
   .activity-detail {
     min-width: 0;
     overflow-wrap: anywhere;
-  }
-  .detail-card-accent {
-    border-color: color-mix(in srgb, var(--color-warning) 40%, var(--border-raised));
   }
 
   /* Cover-first: the art is how a player recognises a game across a grid, so
@@ -1637,9 +1683,6 @@
     color: var(--ink-quiet);
   }
 
-  .detail-rail .btn {
-    justify-content: center;
-  }
 
   /* Fills the main column above the footer; main is a flex column. */
   .request-shell {
@@ -2816,12 +2859,9 @@ textarea::placeholder {
 }
 
 @media (min-width: 80rem) {
-  .detail-shell {
-    grid-template-columns: minmax(0, 1fr) 20rem;
+  .detail-lower-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
   }
-
-  /* The rail is a column of cover art now, so it only has to be as wide as a
-     cover plus its gutters. */
   .request-shell {
     grid-template-columns: minmax(0, 1fr) 10.5rem;
   }

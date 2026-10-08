@@ -19,6 +19,59 @@ test.beforeEach(async ({ request }) => {
   await resetFixture(request);
 });
 
+test("detail layout spans hero and stacks lower content without overflow", async ({ page }) => {
+  await page.goto("/game-requests/new?game_id=game-1");
+  await page.getByLabel("Max players").fill("4");
+  await page.getByRole("button", { name: "Create Game Request" }).click();
+  await page.waitForURL(/\/game-requests\/[0-9a-f-]+(?:\?.*)?$/);
+
+  for (const width of [1440, 900]) {
+    await page.setViewportSize({ width, height: 900 });
+    const layout = await page.evaluate(() => {
+      const hero = document.querySelector(".detail-hero")!.getBoundingClientRect();
+      const grid = document.querySelector(".detail-lower-grid")!.getBoundingClientRect();
+      const players = document.querySelector("#players-title")!.closest("section")!.getBoundingClientRect();
+      const lobby = document.querySelector("#main-lobby")!.getBoundingClientRect();
+      return {
+        heroLeft: hero.left, gridLeft: grid.left, heroRight: hero.right, gridRight: grid.right,
+        playersLeft: players.left, lobbyLeft: lobby.left, playersWidth: players.width, lobbyWidth: lobby.width,
+        scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth,
+      };
+    });
+    expect(Math.abs(layout.heroLeft - layout.gridLeft)).toBeLessThanOrEqual(1);
+    expect(Math.abs(layout.heroRight - layout.gridRight)).toBeLessThanOrEqual(1);
+    expect(layout.lobbyLeft).toBeGreaterThan(layout.playersLeft);
+    expect(layout.lobbyWidth).toBeGreaterThan(layout.playersWidth);
+    expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth + 1);
+  }
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  const mobile = await page.evaluate(() => {
+    const top = (selector: string) => document.querySelector(selector)!.getBoundingClientRect().top;
+    const buttons = Array.from(document.querySelectorAll(".detail-actions button"));
+    const title = document.querySelector(".detail-title")!;
+    const titleLines = title.getBoundingClientRect().height / parseFloat(getComputedStyle(title).lineHeight);
+    return {
+      hero: top(".detail-hero"), players: top("#players-title"), lobby: top("#main-lobby"),
+      titleLines,
+      scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth,
+      touchTargets: buttons.map((button) => {
+        const rect = button.getBoundingClientRect();
+        return { width: rect.width, height: rect.height };
+      }),
+    };
+  });
+  expect(mobile.titleLines).toBeLessThanOrEqual(1.05);
+  expect(mobile.players).toBeGreaterThan(mobile.hero);
+  expect(mobile.lobby).toBeGreaterThan(mobile.players);
+  expect(mobile.scrollWidth).toBeLessThanOrEqual(mobile.clientWidth + 1);
+  expect(mobile.touchTargets.every(({ width, height }) => width >= 44 && height >= 44)).toBe(true);
+  await expect(page.getByRole("button", { name: "Start game" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Edit" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Cancel Game Request" })).toBeVisible();
+  await expect(page.getByText("Host actions", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Follow Game", { exact: true })).toHaveCount(0);
+});
 test("Host edits open details, then only capacity and description while Playing", async ({ page }) => {
   await page.goto("/game-requests/new?game_id=game-1");
   await page.getByLabel("Max players").fill("4");
@@ -64,6 +117,8 @@ test("Host edits open details, then only capacity and description while Playing"
   page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "Start game" }).click();
   await expect(page.getByText("Playing", { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Close game" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Cancel Game Request" })).toHaveCount(0);
   await page.getByRole("link", { name: "Edit" }).click();
   await expect(page.locator("#game-request-edit-dialog")).toBeVisible();
   await expect(page.getByLabel("Max players")).toHaveValue("6");

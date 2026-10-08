@@ -366,20 +366,11 @@ func TestTrendingRailRendersRankedCoversWithAccessibleNames(t *testing.T) {
 	}
 }
 
-// The detail page leads with the Game's portrait cover and names it as the
-// screen title. The cover is shown once: the rail's Game panel states the
-// Game in words -- release year and the whole summary -- rather than
-// repeating the art the hero already carries.
-func TestGameRequestDetailContentRendersCoverOnceAndDescribesTheGame(t *testing.T) {
-	release := time.Date(2002, time.July, 3, 0, 0, 0, 0, time.UTC)
+// The request-specific hero owns Game identity; detail omits catalog metadata.
+func TestGameRequestDetailSpansHeroAbovePlayersAndLobby(t *testing.T) {
 	request := requestquery.Request{
 		ID: "request-1", GameID: "game-1",
-		Game: game.GamePresentation{
-			Name: "Warcraft III", CoverImageID: "co1abc", GameType: "Main Game",
-			PlatformNames:    []string{"PC (Microsoft Windows)"},
-			FirstReleaseDate: &release,
-			Summary:          "Reign of Chaos is the third game in the Warcraft series.",
-		},
+		Game:      game.GamePresentation{Name: "Warcraft III", CoverImageID: "co1abc"},
 		CreatorID: "host-1", Status: gamerequest.StatusOpen, MemberCount: 1,
 	}
 	var rendered bytes.Buffer
@@ -387,18 +378,25 @@ func TestGameRequestDetailContentRendersCoverOnceAndDescribesTheGame(t *testing.
 		t.Fatalf("render detail: %v", err)
 	}
 	body := rendered.String()
-	for _, want := range []string{
-		`<h1 class="detail-title">Warcraft III</h1>`,
-		"2002",
-		"Reign of Chaos is the third game in the Warcraft series.",
-		"More rounds of this game",
-	} {
-		if !strings.Contains(body, want) {
-			t.Errorf("detail does not contain %q: %s", want, body)
+	hero := strings.Index(body, `class="detail-hero`)
+	lower := strings.Index(body, `class="detail-lower-grid"`)
+	players := strings.Index(body, `id="players-title"`)
+	lobby := strings.Index(body, `id="main-lobby"`)
+	if hero < 0 || lower < hero || players < lower || lobby < players {
+		t.Fatalf("hero must precede Players and Lobby in lower grid: %s", body)
+	}
+	for _, absent := range []string{"Host actions", "rail-host", "rail-game", "Following", "Follow Game", "More rounds of this game", "2002", "Reign of Chaos"} {
+		if strings.Contains(body, absent) {
+			t.Errorf("detail unexpectedly contains %q", absent)
+		}
+	}
+	for _, present := range []string{`aria-label="Start game"`, `aria-label="Edit"`, `aria-label="Cancel Game Request"`, `data-copy-link`} {
+		if !strings.Contains(body, present) {
+			t.Errorf("host detail lacks %q", present)
 		}
 	}
 	if count := strings.Count(body, "co1abc"); count != 1 {
-		t.Errorf("the cover should be rendered once, got %d: %s", count, body)
+		t.Errorf("cover should render once, got %d", count)
 	}
 }
 func TestGameRequestDetailKeepsDescriptionAndSessionInformationTogether(t *testing.T) {
@@ -453,8 +451,9 @@ func TestGameRequestDetailKeepsDescriptionAndSessionInformationTogether(t *testi
 			t.Errorf("full detail page must render exactly one %s", id)
 		}
 	}
-	if !strings.Contains(page, `</aside></div><dialog`) {
-		t.Fatalf("session dialogs must render outside the detail fragment: %s", page)
+	detailEnd := strings.Index(page, `id="game-request-edit-dialog"`)
+	if detailEnd < 0 || !strings.Contains(page[:detailEnd], `</div></div>`) {
+		t.Fatalf("persistent dialogs must render after the detail fragment")
 	}
 	for _, want := range []string{`aria-labelledby="session-information-dialog-title"`, `data-session-dialog-content`} {
 		if !strings.Contains(page, want) {
@@ -484,34 +483,6 @@ func TestTerminalGameRequestOmitsSessionInformation(t *testing.T) {
 	}
 	if !strings.Contains(body, `class="detail-coordination-description detail-description-wide"`) {
 		t.Fatalf("terminal description must expand: %s", body)
-	}
-}
-
-// Following is offered where a player decides they want more of this Game,
-// and only as an offer: unfollowing belongs to the catalog, not to a round.
-func TestGameRequestDetailOffersFollowOnlyWhileNotFollowing(t *testing.T) {
-	request := requestquery.Request{
-		ID: "request-1", GameID: "game-1",
-		Game:      game.GamePresentation{Name: "Warcraft III"},
-		CreatorID: "host-1", Status: gamerequest.StatusOpen, MemberCount: 1,
-	}
-	var rendered bytes.Buffer
-	if err := GameRequestDetailContent(request, "viewer-1", false, GameRequestDetailMessage{}).Render(context.Background(), &rendered); err != nil {
-		t.Fatalf("render detail: %v", err)
-	}
-	body := rendered.String()
-	if !strings.Contains(body, `action="/games/game-1/follow"`) || !strings.Contains(body, `name="request_id" value="request-1"`) {
-		t.Errorf("an unfollowed Game should offer a follow that returns to the round: %s", body)
-	}
-
-	request.ViewerSubscribed = true
-	rendered.Reset()
-	if err := GameRequestDetailContent(request, "viewer-1", false, GameRequestDetailMessage{}).Render(context.Background(), &rendered); err != nil {
-		t.Fatalf("render detail: %v", err)
-	}
-	body = rendered.String()
-	if strings.Contains(body, "/follow") || strings.Contains(body, "/unfollow") {
-		t.Errorf("a followed Game states the fact and offers no action: %s", body)
 	}
 }
 
@@ -909,41 +880,40 @@ func activityEntries(activities []requestquery.Activity) []requestquery.LobbyEnt
 	}
 	return entries
 }
-
 func TestDetailHostActionsFollowTheLifecycle(t *testing.T) {
 	open := renderLifecycleDetail(t, gamerequest.StatusOpen, "host-1")
-	for _, want := range []string{"Start game", "Edit", "Cancel Game Request", "Visible to the Host only.", `action="/game-requests/request-1/start"`, `data-confirm="Start this game?`} {
+	for _, want := range []string{`aria-label="Start game"`, `aria-label="Edit"`, `aria-label="Cancel Game Request"`, `action="/game-requests/request-1/start"`, `data-confirm="Start this game?`, `data-copy-link`} {
 		if !strings.Contains(open, want) {
 			t.Errorf("open Host detail lacks %q", want)
 		}
 	}
-	openActions := open[strings.Index(open, `action="/game-requests/request-1/start"`):]
-	if !(strings.Index(openActions, "Start game") < strings.Index(openActions, `href="/game-requests/request-1?edit=1"`) &&
-		strings.Index(openActions, `href="/game-requests/request-1?edit=1"`) < strings.Index(openActions, "Cancel Game Request") &&
-		strings.Index(openActions, "Cancel Game Request") < strings.Index(openActions, "Visible to the Host only.")) {
-		t.Errorf("open Host action order is wrong: %s", openActions)
-	}
-	editLink := open[strings.Index(open, `href="/game-requests/request-1?edit=1"`):]
-	if strings.Contains(editLink[:strings.Index(editLink, ">Edit</a>")], "data-confirm") {
-		t.Error("Edit unexpectedly asks for confirmation")
+	if strings.Contains(open, "Host actions") || strings.Contains(open, "rail-host") || strings.Contains(open, "Follow Game") {
+		t.Errorf("open Host detail retains obsolete panels or follow action")
 	}
 
 	playing := renderLifecycleDetail(t, gamerequest.StatusPlaying, "host-1")
-	if !strings.Contains(playing, "Close game") || !strings.Contains(playing, `action="/game-requests/request-1/close"`) {
-		t.Error("playing Host detail lacks Close game")
+	for _, want := range []string{`aria-label="Close game"`, `aria-label="Edit"`, `action="/game-requests/request-1/close"`, `data-copy-link`} {
+		if !strings.Contains(playing, want) {
+			t.Errorf("playing Host detail lacks %q", want)
+		}
 	}
-	for _, unwanted := range []string{"Start game", "/start", "Cancel Game Request", "/cancel"} {
+	for _, unwanted := range []string{`aria-label="Cancel Game Request"`, "/cancel", `aria-label="Start game"`} {
 		if strings.Contains(playing, unwanted) {
 			t.Errorf("playing Host detail contains %q", unwanted)
 		}
 	}
-	playingActions := playing[strings.Index(playing, `action="/game-requests/request-1/close"`):]
-	if !(strings.Index(playingActions, "Close game") < strings.Index(playingActions, `href="/game-requests/request-1?edit=1"`) &&
-		strings.Index(playingActions, `href="/game-requests/request-1?edit=1"`) < strings.Index(playingActions, "Visible to the Host only.")) {
-		t.Errorf("playing Host action order is wrong: %s", playingActions)
-	}
-	if !strings.Contains(playingActions, `data-confirm="Close this game?`) {
+	if !strings.Contains(playing, `data-confirm="Close this game?`) {
 		t.Error("Close game confirmation changed")
+	}
+
+	terminal := renderLifecycleDetail(t, gamerequest.StatusClosed, "host-1")
+	for _, unwanted := range []string{`aria-label="Edit"`, `aria-label="Start game"`, `aria-label="Close game"`, `aria-label="Cancel Game Request"`} {
+		if strings.Contains(terminal, unwanted) {
+			t.Errorf("terminal Host detail contains %q", unwanted)
+		}
+	}
+	if !strings.Contains(terminal, "data-copy-link") {
+		t.Error("terminal detail lost Copy link")
 	}
 }
 
@@ -1283,6 +1253,12 @@ func TestPlayingEditorCannotEditPlannedStart(t *testing.T) {
 	request := capacityRequest(gamerequest.StatusPlaying, &limit)
 	request.StartsAt = time.Date(2027, 5, 1, 18, 30, 0, 0, time.UTC)
 	body := renderCapacityDetail(t, request, "host-1", GameRequestDetailMessage{Editing: true})
+	if count := strings.Count(body, `data-game-request-editor`); count != 1 {
+		t.Fatalf("inline fallback must render exactly one editor, got %d", count)
+	}
+	if strings.Contains(body, "data-game-request-edit-trigger") {
+		t.Fatal("inline fallback must not show a redundant Edit trigger")
+	}
 	start := strings.Index(body, `action="/game-requests/request-1/details"`)
 	if start < 0 {
 		t.Fatalf("Host editor missing: %s", body)
