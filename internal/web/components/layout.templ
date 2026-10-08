@@ -292,6 +292,11 @@ templ NavigationLinks(state NavigationState) {
 					</a>
 				</li>
 			}
+			<li>
+				<a class={ navigationSubLinkClass(state.Section == "administration-metrics") } href="/admin/metrics" aria-current={ navigationCurrent(state.Section == "administration-metrics") }>
+					<i class="ph ph-chart-line" aria-hidden="true"></i><span>Metrics</span>
+				</a>
+			</li>
 		}
 	</ul>
 }

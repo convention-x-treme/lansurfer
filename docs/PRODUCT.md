@@ -208,6 +208,24 @@ A global administrator manages the local Game catalog, optional provider integra
 
 The current product model does not include Event-scoped participant/manager roles, Clan roles, or a generic permission framework.
 
+### Operator metrics
+
+Administrators may generate or rotate exactly one active, metrics-only Metrics API Key
+at **Administration → Metrics**. The full key is shown only in its generation response;
+only a secure hash is stored. `GET /metrics` requires `Authorization: Bearer ...`,
+remains inaccessible before generation, and does not accept browser-session access.
+Rotation invalidates the old credential for new requests immediately.
+
+The Prometheus-compatible endpoint exposes aggregate HTTP/runtime/process/database
+health, current user/session/follow/request counts, and durable create/join/leave/
+cancel/close/start totals. The explicit first `open → playing` transition is the
+games-started signal. Reporting totals survive restarts and account deletion without
+retaining any attributable activity or identity; upgrades can only reconstruct
+retained history and therefore provide historical lower bounds. No PII, arbitrary
+content, session-information secrets, or identifiers are exported. Collection
+failures must not disrupt player workflows. There is no built-in metrics dashboard,
+generic API-key subsystem, or additional required runtime service.
+
 ## 8. Single-Event Instance Model
 
 A LANsurfer installation represents one LAN party or gaming event context.

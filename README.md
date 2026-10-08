@@ -235,6 +235,87 @@ Once promoted, an administrator can also inspect and retry stuck notification de
 
 To create the Web Push VAPID keys and the data-encryption key, run `lansurfer admin notifications generate-secrets` (from source: `go run ./cmd/lansurfer admin notifications generate-secrets`; with Compose: `docker compose exec lansurfer /lansurfer admin notifications generate-secrets`). It needs no configuration or database, prints env-ready `KEY=value` lines to stdout only, and stores nothing. Copy the lines into your `.env` and set `LANSURFER_WEBPUSH_SUBJECT` (`mailto:` or `https://`) yourself. Keep the output secret and out of version control. If you lose `LANSURFER_DATA_ENCRYPTION_KEY`, stored notification credentials become unreadable and users must register their devices again.
 
+### Prometheus metrics
+
+`GET /metrics` requires a metrics-only API key; browser sessions do not grant access.
+Before a key exists, scrapes return `401 Unauthorized`. Sign in as an administrator,
+open **Administration → Metrics** (`/admin/metrics`), and select **Generate Metrics
+API Key**. Save the full key from that response: later page loads cannot retrieve it.
+LANsurfer stores only its SHA-256 hash in PostgreSQL. **Rotate Metrics API Key**
+atomically replaces the instance's one active key; the previous key stops working
+for new requests immediately, including requests to another application process.
+An already-authenticated scrape may finish. Rotation requires updating the scraper's
+credentials file. Database backups contain the hash, not a recoverable plaintext key;
+rotate if the scraper's copy is lost.
+
+Use HTTPS outside loopback. Restrict access to the scraper at the reverse proxy or
+firewall as well, and never put the key in a URL or log `Authorization` headers.
+Prometheus and Grafana are optional external tools, not required LANsurfer services.
+An importable [Grafana monitoring dashboard](docs/grafana/README.md) covers scrape/SQL
+health, HTTP latency/errors, pool pressure, runtime usage and durable product totals.
+Store the key in a file readable only by Prometheus and configure:
+
+```yaml
+scrape_configs:
+  - job_name: lansurfer
+    scheme: https
+    metrics_path: /metrics
+    scrape_interval: 30s
+    scrape_timeout: 10s
+    static_configs:
+      - targets: [lansurfer.example.org]
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/lansurfer-metrics-key
+```
+
+This sends `Authorization: Bearer <metrics-api-key>`. Scrape output includes:
+
+- Process-local HTTP counters/statuses, duration histograms, and in-flight requests:
+  `lansurfer_http_requests_total`, `lansurfer_http_request_duration_seconds`, and
+  `lansurfer_http_requests_in_flight`. SSE contributes to in-flight requests until it
+  ends, and its full stream lifetime contributes to duration.
+- Standard `go_*` runtime and `process_*` metrics. These and HTTP counters reset on
+  process restart; they are not durable event-reporting totals.
+- `lansurfer_db_pool_*` gauges for maximum, total, acquired, idle and constructing
+  connections; process-local counters for acquires, empty/waiting acquires, acquire
+  time, empty-acquire wait time, canceled acquires, new connections, and destruction
+  on maximum lifetime/idle time. Durations are in seconds.
+- Current-state gauges: `lansurfer_users`, `lansurfer_browser_sessions` (unexpired
+  sessions, not online users), `lansurfer_game_requests_open`,
+  `lansurfer_game_requests_playing`, `lansurfer_game_requests_active`, and
+  `lansurfer_game_follows`.
+- PostgreSQL-backed durable counters: `lansurfer_game_requests_created_total`,
+  `lansurfer_game_request_joins_total`, `lansurfer_game_request_leaves_total`,
+  `lansurfer_game_requests_cancelled_total`, `lansurfer_game_requests_closed_total`,
+  and `lansurfer_games_started_total`. The automatic Host membership is a creation,
+  not a join. Only the first explicit `open → playing` transition counts as a start.
+  Rejected, duplicate and rolled-back changes do not count.
+
+Durable totals combine retained live activity with anonymous deletion aggregates
+in one PostgreSQL snapshot. They survive process restarts and account/history
+deletion. Upgrade includes reconstructed history retained at migration time once;
+later backfills do not count as new events. History deleted before the metrics
+migration and prototype actions never recorded cannot be recovered: upgraded totals
+are a historical lower bound. No start time is invented for old closed requests.
+Restoring an older database backup also restores its older totals.
+
+Scrape-time queries have a shared three-second deadline and only one scrape is
+collected at a time; a concurrent scrape returns `503`. If an optional SQL source
+fails, its metrics are omitted and `lansurfer_metrics_collection_success` reports
+`0` for `source="aggregates"` or `source="product_totals"`; runtime, HTTP and pool
+metrics remain available. Authentication-storage failure returns `503` and fails
+closed. Collection failures do not fail player workflows. If deletion-time aggregate
+preservation fails, PostgreSQL logs `metrics counter preservation failed` and allows
+account deletion; affected reporting totals may be incomplete. Do not modify or
+remove metrics tables outside supported migrations.
+
+Metrics contain only aggregate counts and bounded operational labels. HTTP labels
+use route templates, bounded methods/statuses, and `unmatched` rather than raw paths.
+Never add Game Nicks, user/Game/Game Request/session IDs, provider identities, query
+parameters, descriptions, chat, session-information values, or credentials to
+labels or sample values. Protect access to the Prometheus/Grafana data as operator data.
+
 The Compose credentials are development defaults; do not use them for an exposed deployment. See the [contributing guide](CONTRIBUTING.md) for local Go development, configuration, and checks.
 
 ## 🤝 Get involved
