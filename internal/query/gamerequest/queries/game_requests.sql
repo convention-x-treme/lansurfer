@@ -84,7 +84,7 @@ ORDER BY m.joined_at, u.id;
 -- between domain authorization and this query; do not add lifecycle rules here.
 -- name: ReadGameRequestLobby :many
 WITH access AS (
-    SELECT gr.id,
+    SELECT gr.id, gr.creator_id,
            EXISTS (
                SELECT 1 FROM game_request_members member
                WHERE member.game_request_id = gr.id
@@ -98,7 +98,8 @@ WITH access AS (
            a.kind, a.actor_id::text AS actor_id,
            u.game_nick AS actor_game_nick, NULL::text AS body,
            a.previous_max_players, a.new_max_players,
-           a.previous_starts_at, a.new_starts_at, a.description_changed
+           a.previous_starts_at, a.new_starts_at, a.description_changed,
+           NULL::text AS avatar_key
     FROM game_request_activity a
     JOIN users u ON u.id = a.actor_id
     JOIN access permission ON permission.id = a.game_request_id AND permission.is_member
@@ -107,9 +108,11 @@ WITH access AS (
            NULL::bigint, m.id,
            NULL::text, m.author_id::text, u.game_nick, m.body,
            NULL::integer, NULL::integer,
-           NULL::timestamptz, NULL::timestamptz, false::boolean
+           NULL::timestamptz, NULL::timestamptz, false::boolean,
+           avatar.avatar_key
     FROM game_request_messages m
     JOIN users u ON u.id = m.author_id
+    LEFT JOIN user_identities avatar ON avatar.user_id = u.id AND avatar.avatar_selected
     JOIN access permission ON permission.id = m.game_request_id AND permission.is_member
 ), latest AS (
     SELECT * FROM combined
@@ -118,12 +121,14 @@ WITH access AS (
     LIMIT 200
 )
 SELECT permission.id::text AS request_id, permission.is_member,
+       permission.creator_id::text AS host_id,
        COALESCE(entry.source, -1)::integer AS source,
        entry.occurred_at, entry.activity_sequence,
        COALESCE(entry.message_id::text, '')::text AS message_id,
        entry.kind, entry.actor_id, entry.actor_game_nick, entry.body,
        entry.previous_max_players, entry.new_max_players,
-       entry.previous_starts_at, entry.new_starts_at, entry.description_changed
+       entry.previous_starts_at, entry.new_starts_at, entry.description_changed,
+       COALESCE(entry.avatar_key, '')::text AS author_avatar_key
 FROM access permission
 LEFT JOIN latest entry ON permission.is_member
 ORDER BY entry.occurred_at ASC, entry.source ASC,

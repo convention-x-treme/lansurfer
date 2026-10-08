@@ -32,9 +32,19 @@ func TestGameRequestLobbyCombinesSourcesAndRequiresMembership(t *testing.T) {
 	if err := fixture.requests.Start(ctx, request.ID, fixture.host); err != nil {
 		t.Fatalf("start: %v", err)
 	}
+	const avatarKey = "fedcba9876543210fedcba9876543210"
+	if _, err := fixture.pool.Exec(ctx, `
+		INSERT INTO user_identities (user_id, provider_kind, provider_key, subject, avatar_ref, avatar_key, avatar_selected)
+		VALUES ($1, 'discord', 'discord', 'lobby-avatar-guest', '0123456789abcdef0123456789abcdef', $2, true)
+	`, fixture.guest, avatarKey); err != nil {
+		t.Fatalf("insert selected avatar: %v", err)
+	}
 	lobby, err := queries.Lobby(ctx, request.ID, fixture.guest)
 	if err != nil {
 		t.Fatalf("read Lobby: %v", err)
+	}
+	if lobby.HostID != fixture.host || lobby.Entries[2].AuthorAvatarKey != avatarKey {
+		t.Fatalf("Lobby host = %q, chat avatar = %q; want Host %q and the author's selected avatar", lobby.HostID, lobby.Entries[2].AuthorAvatarKey, fixture.host)
 	}
 	if len(lobby.Entries) != 4 {
 		t.Fatalf("entries = %d, want create, join, chat, and start", len(lobby.Entries))

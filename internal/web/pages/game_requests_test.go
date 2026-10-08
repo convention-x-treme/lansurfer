@@ -1321,3 +1321,45 @@ func capacityRequest(status gamerequest.Status, limit *int32) requestquery.Reque
 		Members: []requestquery.Member{{ID: "host-1", GameNick: "Otter"}, {ID: "user-2", GameNick: "Alex"}},
 	}
 }
+
+// Position says whose message it is and colour says what kind, so the Host
+// reading their own Lobby must get both classes; activity ends a run.
+func TestLobbyChatBubblesMarkOwnHostAndRunStarts(t *testing.T) {
+	chat := func(authorID, nick, body string) requestquery.LobbyEntry {
+		return requestquery.LobbyEntry{Source: requestquery.LobbySourceChat, Message: gamerequest.Message{AuthorID: authorID, AuthorGameNick: nick, Body: body}}
+	}
+	lobby := requestquery.GameRequestLobby{RequestID: "request-1", HostID: "host-1", Entries: []requestquery.LobbyEntry{
+		chat("host-1", "Otter", "one"),
+		chat("host-1", "Otter", "two"),
+		{Source: requestquery.LobbySourceActivity, Activity: requestquery.Activity{Kind: gamerequest.ActivityJoined, ActorGameNick: "Alex"}},
+		chat("host-1", "Otter", "three"),
+		chat("user-2", "Alex", "four"),
+	}}
+	render := func(viewerID string) string {
+		var rendered strings.Builder
+		if err := GameRequestLobbyLog(lobby, viewerID).Render(context.Background(), &rendered); err != nil {
+			t.Fatalf("render Lobby: %v", err)
+		}
+		return rendered.String()
+	}
+
+	asGuest := render("user-2")
+	for _, want := range []string{
+		`<li class="chat-message bubble-row bubble-row-host bubble-row-first">`,
+		`<li class="chat-message bubble-row bubble-row-host">`,
+		`<li class="chat-message bubble-row bubble-row-own bubble-row-first">`,
+	} {
+		if !strings.Contains(asGuest, want) {
+			t.Errorf("guest Lobby lacks %s: %s", want, asGuest)
+		}
+	}
+	if got := strings.Count(asGuest, "bubble-row-first"); got != 3 {
+		t.Errorf("guest Lobby starts %d runs, want 3 (activity ends a run)", got)
+	}
+	if got := strings.Count(asGuest, `class="bubble-nick"`); got != 2 {
+		t.Errorf("guest Lobby shows %d nicks, want one per Host run and none for own", got)
+	}
+	if asHost := render("host-1"); !strings.Contains(asHost, `<li class="chat-message bubble-row bubble-row-own bubble-row-host bubble-row-first">`) {
+		t.Errorf("Host's own message must stay right-aligned and gold: %s", asHost)
+	}
+}

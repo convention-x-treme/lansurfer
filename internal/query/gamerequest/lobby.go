@@ -23,12 +23,17 @@ type LobbyEntry struct {
 	Source   LobbySource
 	Activity Activity
 	Message  domain.Message
+	// AuthorAvatarKey is the chat author's selected same-origin avatar key;
+	// empty means Default.
+	AuthorAvatarKey string
 }
 
 // GameRequestLobby is the participant-authorized combined history.
 type GameRequestLobby struct {
 	RequestID string
-	Entries   []LobbyEntry
+	// HostID is the Game Request creator, so the Lobby can mark Host messages.
+	HostID  string
+	Entries []LobbyEntry
 }
 
 // Lobby returns up to 200 combined entries for a current member.
@@ -54,7 +59,7 @@ func (s *Store) Lobby(ctx context.Context, requestID, viewerID string) (GameRequ
 		return GameRequestLobby{}, domain.ErrNotMember
 	}
 
-	lobby := GameRequestLobby{RequestID: rows[0].RequestID, Entries: make([]LobbyEntry, 0, len(rows))}
+	lobby := GameRequestLobby{RequestID: rows[0].RequestID, HostID: rows[0].HostID, Entries: make([]LobbyEntry, 0, len(rows))}
 	for _, row := range rows {
 		if row.Source < 0 {
 			continue
@@ -77,6 +82,7 @@ func (s *Store) Lobby(ctx context.Context, requestID, viewerID string) (GameRequ
 				ID: row.MessageID, RequestID: row.RequestID, AuthorID: textValue(row.ActorID),
 				AuthorGameNick: textValue(row.ActorGameNick), Body: textValue(row.Body), CreatedAt: row.OccurredAt.Time,
 			}
+			entry.AuthorAvatarKey = row.AuthorAvatarKey
 		default:
 			return GameRequestLobby{}, fmt.Errorf("read game request lobby: unexpected source %d", row.Source)
 		}

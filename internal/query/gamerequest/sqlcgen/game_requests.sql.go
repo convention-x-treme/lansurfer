@@ -411,7 +411,7 @@ func (q *Queries) ListRecentlyViewedGameRequests(ctx context.Context, arg ListRe
 
 const readGameRequestLobby = `-- name: ReadGameRequestLobby :many
 WITH access AS (
-    SELECT gr.id,
+    SELECT gr.id, gr.creator_id,
            EXISTS (
                SELECT 1 FROM game_request_members member
                WHERE member.game_request_id = gr.id
@@ -425,7 +425,8 @@ WITH access AS (
            a.kind, a.actor_id::text AS actor_id,
            u.game_nick AS actor_game_nick, NULL::text AS body,
            a.previous_max_players, a.new_max_players,
-           a.previous_starts_at, a.new_starts_at, a.description_changed
+           a.previous_starts_at, a.new_starts_at, a.description_changed,
+           NULL::text AS avatar_key
     FROM game_request_activity a
     JOIN users u ON u.id = a.actor_id
     JOIN access permission ON permission.id = a.game_request_id AND permission.is_member
@@ -434,23 +435,27 @@ WITH access AS (
            NULL::bigint, m.id,
            NULL::text, m.author_id::text, u.game_nick, m.body,
            NULL::integer, NULL::integer,
-           NULL::timestamptz, NULL::timestamptz, false::boolean
+           NULL::timestamptz, NULL::timestamptz, false::boolean,
+           avatar.avatar_key
     FROM game_request_messages m
     JOIN users u ON u.id = m.author_id
+    LEFT JOIN user_identities avatar ON avatar.user_id = u.id AND avatar.avatar_selected
     JOIN access permission ON permission.id = m.game_request_id AND permission.is_member
 ), latest AS (
-    SELECT occurred_at, source, activity_sequence, message_id, kind, actor_id, actor_game_nick, body, previous_max_players, new_max_players, previous_starts_at, new_starts_at, description_changed FROM combined
+    SELECT occurred_at, source, activity_sequence, message_id, kind, actor_id, actor_game_nick, body, previous_max_players, new_max_players, previous_starts_at, new_starts_at, description_changed, avatar_key FROM combined
     ORDER BY occurred_at DESC, source DESC,
              activity_sequence DESC NULLS LAST, message_id DESC NULLS LAST
     LIMIT 200
 )
 SELECT permission.id::text AS request_id, permission.is_member,
+       permission.creator_id::text AS host_id,
        COALESCE(entry.source, -1)::integer AS source,
        entry.occurred_at, entry.activity_sequence,
        COALESCE(entry.message_id::text, '')::text AS message_id,
        entry.kind, entry.actor_id, entry.actor_game_nick, entry.body,
        entry.previous_max_players, entry.new_max_players,
-       entry.previous_starts_at, entry.new_starts_at, entry.description_changed
+       entry.previous_starts_at, entry.new_starts_at, entry.description_changed,
+       COALESCE(entry.avatar_key, '')::text AS author_avatar_key
 FROM access permission
 LEFT JOIN latest entry ON permission.is_member
 ORDER BY entry.occurred_at ASC, entry.source ASC,
@@ -465,6 +470,7 @@ type ReadGameRequestLobbyParams struct {
 type ReadGameRequestLobbyRow struct {
 	RequestID          string
 	IsMember           bool
+	HostID             string
 	Source             int32
 	OccurredAt         pgtype.Timestamptz
 	ActivitySequence   pgtype.Int8
@@ -478,6 +484,7 @@ type ReadGameRequestLobbyRow struct {
 	PreviousStartsAt   pgtype.Timestamptz
 	NewStartsAt        pgtype.Timestamptz
 	DescriptionChanged pgtype.Bool
+	AuthorAvatarKey    string
 }
 
 // The Game Request domain owns Lobby authorization policy. Keep membership in
@@ -495,6 +502,7 @@ func (q *Queries) ReadGameRequestLobby(ctx context.Context, arg ReadGameRequestL
 		if err := rows.Scan(
 			&i.RequestID,
 			&i.IsMember,
+			&i.HostID,
 			&i.Source,
 			&i.OccurredAt,
 			&i.ActivitySequence,
@@ -508,6 +516,7 @@ func (q *Queries) ReadGameRequestLobby(ctx context.Context, arg ReadGameRequestL
 			&i.PreviousStartsAt,
 			&i.NewStartsAt,
 			&i.DescriptionChanged,
+			&i.AuthorAvatarKey,
 		); err != nil {
 			return nil, err
 		}

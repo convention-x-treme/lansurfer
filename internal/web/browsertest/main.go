@@ -490,7 +490,7 @@ func (f *fixture) Lobby(_ context.Context, requestID, userID string) (requestque
 	if len(rows) > 200 {
 		rows = rows[len(rows)-200:]
 	}
-	lobby := requestquery.GameRequestLobby{RequestID: requestID, Entries: make([]requestquery.LobbyEntry, len(rows))}
+	lobby := requestquery.GameRequestLobby{RequestID: requestID, HostID: entry.request.CreatorID, Entries: make([]requestquery.LobbyEntry, len(rows))}
 	for i, row := range rows {
 		lobby.Entries[i] = row.entry
 	}
