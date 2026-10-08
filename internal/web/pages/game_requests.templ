@@ -586,6 +586,7 @@ templ GameRequestDetail(brand branding.Brand, navigation components.NavigationSt
 				<div role="alert" class="alert alert-error mb-4"><span>{ message.Text }</span></div>
 			}
 			@GameRequestDetailContentWithSession(request, viewerID, false, message, session)
+			@GameRequestSessionInformationDialogs(session)
 		</div>
 	}
 }
@@ -765,7 +766,6 @@ templ GameRequestDetailContentWithSession(request requestquery.Request, viewerID
 			}
 		</aside>
 	</div>
-	@GameRequestSessionInformationDialogs(session)
 }
 templ GameRequestDetailsEditor(request requestquery.Request, message GameRequestDetailMessage) {
 	<form method="post" action={ "/game-requests/" + request.ID + "/details" } class="grid gap-4" data-local-start?={ message.InitializeStart } data-start-instant={ request.StartsAt.Format(time.RFC3339) }>

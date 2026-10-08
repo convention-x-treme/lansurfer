@@ -79,17 +79,21 @@ document.addEventListener("htmx:beforeRequest", (event) => {
 
 document.addEventListener("htmx:afterSwap", (event) => {
   const target = (event as CustomEvent<{ target: HTMLElement }>).detail.target;
-  if (target.id === "session-information-dialog-content" && pendingSessionDialogOpen) {
-    pendingSessionDialogOpen = false;
-    const dialog = document.querySelector<HTMLDialogElement>("#session-information-dialog");
-    const form = target.querySelector<HTMLFormElement>("[data-session-information-form]");
-    const title = dialog?.querySelector<HTMLElement>("#session-information-dialog-title");
-    if (!dialog || !form || !title) return;
-    title.textContent = form.dataset.sessionMode === "edit" ? "Edit session information" : "Add session information";
-    if (!dialog.open) dialog.showModal();
-    const field = form.querySelector<HTMLElement>("[aria-invalid='true']") ?? form.querySelector<HTMLInputElement>("[name='key']");
-    field?.focus({ preventScroll: true });
+  if (target.id !== "session-information-dialog-content") return;
+  const form = target.querySelector<HTMLFormElement>("[data-session-information-form]");
+  if (!form) return;
+  const invalidField = form.querySelector<HTMLElement>("[aria-invalid='true']");
+  if (!pendingSessionDialogOpen) {
+    invalidField?.focus({ preventScroll: true });
+    return;
   }
+  pendingSessionDialogOpen = false;
+  const dialog = document.querySelector<HTMLDialogElement>("#session-information-dialog");
+  const title = dialog?.querySelector<HTMLElement>("#session-information-dialog-title");
+  if (!dialog || !title) return;
+  title.textContent = form.dataset.sessionMode === "edit" ? "Edit session information" : "Add session information";
+  if (!dialog.open) dialog.showModal();
+  (invalidField ?? form.querySelector<HTMLInputElement>("[name='key']"))?.focus({ preventScroll: true });
 });
 
 

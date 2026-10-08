@@ -431,15 +431,34 @@ func TestGameRequestDetailKeepsDescriptionAndSessionInformationTogether(t *testi
 			t.Errorf("detail does not contain %q: %s", want, body)
 		}
 	}
-	if !strings.Contains(body, `id="session-information-dialog"`) {
-		t.Fatalf("Host detail does not render shared session dialog outside the fragment: %s", body)
+	if strings.Contains(body, `id="session-information-dialog"`) || strings.Contains(body, `id="session-information-delete-dialog"`) {
+		t.Fatalf("detail refresh fragment must not render persistent session dialogs: %s", body)
 	}
-	if !strings.Contains(body, `</aside></div><dialog`) {
-		t.Fatalf("session dialog must render beside the detail fragment, not inside #session-information: %s", body)
+
+	var fullPage bytes.Buffer
+	if err := GameRequestDetail(
+		branding.Default(),
+		components.NavigationState{},
+		request,
+		"host-1",
+		GameRequestDetailMessage{},
+		components.Notice{},
+		session,
+	).Render(context.Background(), &fullPage); err != nil {
+		t.Fatalf("render full detail page: %v", err)
 	}
-	for _, want := range []string{`<dialog`, `aria-labelledby="session-information-dialog-title"`, `data-session-dialog-content`, `session-information-dialog`} {
-		if !strings.Contains(body, want) {
-			t.Errorf("session dialog missing %q: %s", want, body)
+	page := fullPage.String()
+	for _, id := range []string{`id="session-information-dialog"`, `id="session-information-delete-dialog"`} {
+		if strings.Count(page, id) != 1 {
+			t.Errorf("full detail page must render exactly one %s", id)
+		}
+	}
+	if !strings.Contains(page, `</aside></div><dialog`) {
+		t.Fatalf("session dialogs must render outside the detail fragment: %s", page)
+	}
+	for _, want := range []string{`aria-labelledby="session-information-dialog-title"`, `data-session-dialog-content`} {
+		if !strings.Contains(page, want) {
+			t.Errorf("session dialog missing %q: %s", want, page)
 		}
 	}
 }

@@ -438,11 +438,22 @@ test("session-information and general detail refreshes preserve an active dialog
   await expect(key).toHaveValue("Lobby");
   await expect(value).toHaveValue("CXT-WC3-04");
   await expect(value).toBeFocused();
+  await instrumentHtmx(page);
 
   await request.post(`/__test__/publish?type=GameRequestJoined&request=${requestID}`);
+  await expect.poll(async () => (await htmxCounters(page)).after).toBeGreaterThan(0);
+  await expect(page.locator("#session-information-dialog")).toHaveCount(1);
+  await expect(page.locator("#session-information-delete-dialog")).toHaveCount(1);
   await expect(key).toHaveValue("Lobby");
   await expect(value).toHaveValue("CXT-WC3-04");
   await expect(value).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).not.toBeVisible();
+  await expect(page.getByRole("link", { name: "Add", exact: true })).toBeFocused();
+  await page.getByRole("link", { name: "Add", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Add session information" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("link", { name: "Add", exact: true })).toBeFocused();
 });
 
 for (const dirtyField of ["key", "value"] as const) {
@@ -947,11 +958,24 @@ test("Session Information dialog supports Escape, backdrop, validation, edit, an
   await dialog.getByRole("button", { name: "Save" }).click();
   await expect(dialog.getByRole("alert")).toContainText("Key must contain");
   await expect(key).toHaveValue("X".repeat(41));
+  await expect(key).toHaveAttribute("aria-invalid", "true");
+  await expect(key).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(dialog).not.toBeVisible();
   await expect(add).toBeFocused();
 
-  await page.mouse.click(1, 1);
+  await add.click();
+  await expect(dialog).toBeVisible();
+  const panel = await dialog.locator(".dialog-panel").boundingBox();
+  const viewport = page.viewportSize();
+  if (!panel || !viewport) throw new Error("Dialog geometry is unavailable");
+  await page.mouse.click(panel.x + panel.width / 2, panel.y / 2);
+  await expect(dialog).not.toBeVisible();
+  await expect(add).toBeFocused();
+
+  await add.click();
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Close dialog" }).click();
   await expect(dialog).not.toBeVisible();
   await expect(add).toBeFocused();
 
