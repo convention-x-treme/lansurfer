@@ -416,7 +416,7 @@ templ GameRequestStartFields(form GameRequestForm, message ComposerMessage) {
 			@StartChoice("60", "in 1 h", form.StartPreset)
 			@StartChoice("custom", "Pick date & time", form.StartPreset)
 		</div>
-		<div class="custom-start-fields gap-3 rounded-md bg-base-100 p-4 sm:grid-cols-2" data-custom-start>
+		<div class="custom-start-fields gap-3 rounded-md bg-base-200 p-4 sm:grid-cols-2" data-custom-start>
 			<label class="grid gap-2"><span class="section-label">Date</span><input class="input input-bordered data-text w-full" type="date" name="start_date" value={ form.StartDate } { fieldState("", message.for_("start"), "start-error")... }/></label>
 			<label class="grid gap-2"><span class="section-label">Time</span><input class="input input-bordered data-text w-full" type="time" name="start_time" value={ form.StartTime }/></label>
 		</div>
