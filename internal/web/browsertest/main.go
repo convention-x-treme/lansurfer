@@ -535,6 +535,17 @@ func (f *fixture) CountActive(context.Context) (int64, error) {
 	return total, nil
 }
 
+func (f *fixture) HasCreated(_ context.Context, viewerID string) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, entry := range f.requests {
+		if entry.request.CreatorID == viewerID {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // isActiveStatus mirrors the discovery read model's definition of an active
 // Game Request. Join eligibility is deliberately not derived from it.
 func isActiveStatus(status gamerequest.Status) bool {

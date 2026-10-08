@@ -1,0 +1,67 @@
+package pages
+
+import (
+	"github.com/convention-x-treme/lansurfer/internal/web/branding"
+	"github.com/convention-x-treme/lansurfer/internal/web/components"
+)
+
+// howItWorksSteps is the three-step core flow, shared by the help page and
+// the first-login welcome step so both tell new players the same story.
+templ howItWorksSteps() {
+	<ol class="grid gap-3 sm:grid-cols-3">
+		@howItWorksStep("1", "ph-heart", "Follow your games", "Choose games you would like to play.")
+		@howItWorksStep("2", "ph-magnifying-glass", "Find players", "See who is currently looking for players.")
+		@howItWorksStep("3", "ph-users-three", "Play together", "Join a Game Request or create your own.")
+	</ol>
+}
+
+templ howItWorksStep(number, icon, title, text string) {
+	<li class="detail-card">
+		<span class="flex items-center gap-2 text-primary"><i class={ "ph", icon, "text-2xl" } aria-hidden="true"></i><span class="data-text text-sm font-bold">{ number }</span></span>
+		<strong class="text-[1.0625rem] font-semibold">{ title }</strong>
+		<p class="text-sm text-base-content/70">{ text }</p>
+	</li>
+}
+
+// Help is the public "How it works" page: the core flow plus the three ideas
+// a new player meets first. It is deliberately short, not documentation.
+templ Help(brand branding.Brand, navigation components.NavigationState) {
+	@components.Layout(brand, "How it works", navigation) {
+		<div class="page-shell py-10">
+			<article class="grid max-w-3xl gap-6 [&_h2]:mt-4 [&_h2]:text-xl [&_h2]:font-bold [&_p]:text-base-content/80">
+				<header>
+					<h1 class="text-3xl font-black tracking-tight">How LANsurfer works</h1>
+					<p class="mt-2">LANsurfer helps players at this event find each other for a round of their favourite games.</p>
+				</header>
+				@howItWorksSteps()
+				<h2>What is a Game Request?</h2>
+				<p>A Game Request says: I want to play this game, starting around then, with up to this many players. Whoever creates it is the Host. The Host starts the round when the group is ready, closes it when you are done, or cancels it if it does not happen.</p>
+				<h2>What does following a game do?</h2>
+				<p>Following a game tells LANsurfer what you play. Your followed games come first when you create a Game Request, the <strong>My Games</strong> filter narrows Game Requests to them, and a new Game Request for one of them pops up while LANsurfer is open. With push notifications turned on in your account, it can reach your devices too.</p>
+				<h2>Join and Leave</h2>
+				<p><strong>Join</strong> puts you on a Game Request's player list while it still has a free place. <strong>Leave</strong> takes you off again at any time. The Host is always the first player and cannot leave their own Game Request; they cancel it instead.</p>
+			</article>
+		</div>
+	}
+}
+
+// Welcome is shown once, right after a brand-new player chooses their Game
+// Nick. It is one screen with two ways out, not a wizard.
+templ Welcome(brand branding.Brand) {
+	@components.AuthLayout(brand, "Welcome") {
+		<section class="auth-stage">
+			<div class="auth-panel grid w-[min(100%,48rem)] gap-6 justify-self-center">
+				<header>
+					<h1 class="text-3xl font-bold">Welcome to LANsurfer</h1>
+					<p class="mt-2 text-base-content/70">Three steps from here to your next round.</p>
+				</header>
+				@howItWorksSteps()
+				<div class="flex flex-wrap gap-3">
+					<a class="btn btn-primary" href="/games"><i class="ph ph-game-controller" aria-hidden="true"></i>Choose my games</a>
+					<a class="btn btn-ghost" href="/game-requests"><i class="ph ph-arrow-right" aria-hidden="true"></i>Skip and browse Game Requests</a>
+				</div>
+				<p class="text-sm text-base-content/70">You can read this again any time under <a class="link" href="/help">How it works</a>.</p>
+			</div>
+		</section>
+	}
+}

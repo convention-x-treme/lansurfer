@@ -12,6 +12,21 @@ import (
 	"github.com/convention-x-treme/lansurfer/internal/web/components"
 )
 
+// The follow explanation is for players who follow nothing yet and is gone
+// once they follow a game.
+func TestGameCatalogExplainsFollowingUntilFirstFollow(t *testing.T) {
+	for _, followed := range []int64{0, 1} {
+		navigation := components.NavigationState{Viewer: &components.Viewer{ID: "user-1", GameNick: "Ada"}, FollowedGames: followed}
+		var rendered bytes.Buffer
+		if err := GameCatalog(branding.Default(), navigation, game.DiscoveryPage{}, "", false, "").Render(context.Background(), &rendered); err != nil {
+			t.Fatalf("render GameCatalog: %v", err)
+		}
+		if shown := strings.Contains(rendered.String(), "Follow games you would like to play."); shown != (followed == 0) {
+			t.Fatalf("followed=%d: hint shown=%v", followed, shown)
+		}
+	}
+}
+
 // A fresh usable provider instance (or an entirely local-only catalog) must
 // never fall back to a bare-count/zero-games state; the search field itself
 // is the primary experience (spec: "3.1 Empty search state").
@@ -185,7 +200,7 @@ func TestGameCardRendersUnifiedPresentationForMaterializedAndProviderItems(t *te
 				t.Errorf("%s card unexpectedly still contains %q: %s", name, unwanted, markup)
 			}
 		}
-		if !strings.Contains(markup, ">Follow<") && !strings.Contains(markup, "Following") {
+		if !strings.Contains(markup, `aria-label="Follow Warcraft III`) && !strings.Contains(markup, "Following") {
 			t.Errorf("%s card does not offer a follow control: %s", name, markup)
 		}
 		// Materialization origin, sync-generation terminology, and Local/IGDB
@@ -224,8 +239,7 @@ func TestGameCardRendersAbbreviationFallbackForLocalGameWithoutCover(t *testing.
 }
 
 // The card's secondary line degrades one field at a time: either half alone
-// still reads, and a Game with neither falls back to the slug exactly as it
-// did before the summary moved in.
+// still reads, and a Game with neither shows nothing (never the slug).
 func TestGameCardMetaCombinesYearAndSummary(t *testing.T) {
 	releaseDate := time.Date(2002, time.July, 3, 0, 0, 0, 0, time.UTC)
 	long := strings.Repeat("a", gameCardSummaryLimit+10)
@@ -239,9 +253,9 @@ func TestGameCardMetaCombinesYearAndSummary(t *testing.T) {
 		},
 		"year only":    {presentation: game.GamePresentation{FirstReleaseDate: &releaseDate}, want: "2002"},
 		"summary only": {presentation: game.GamePresentation{Summary: "Azeroth braces for war."}, want: "Azeroth braces for war."},
-		"neither falls back to the slug": {
+		"neither shows nothing": {
 			presentation: game.GamePresentation{Slug: "warcraft-3", GameType: "Main Game"},
-			want:         "warcraft-3",
+			want:         "",
 		},
 		"collapses provider whitespace": {
 			presentation: game.GamePresentation{Summary: "Azeroth\n\nbraces  for war."},

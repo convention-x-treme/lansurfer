@@ -478,7 +478,7 @@ Provider names and email addresses are private account data. Normal player and g
 
 ### Return path after login
 
-The post-login destination is carried in a short-lived `lansurfer_return` cookie (HttpOnly, SameSite=Lax, Secure when configured, `Path=/`, 15 minutes), not in the OAuth `state`, the session, or the database. `GET /auth/login?return_to=<path>` and `RequireAuthentication` (full-page GET requests only, never HTMX fragments or the event stream) capture it; the callback's normal-login branch and onboarding completion consume and clear it. Link and `/account` flows ignore it. The path is validated on capture and again on consumption: a local path only, not `//` or `/\`, no scheme or host, and not under `/auth` or `/onboarding`. A missing or invalid value falls back to `/game-requests`.
+The post-login destination is carried in a short-lived `lansurfer_return` cookie (HttpOnly, SameSite=Lax, Secure when configured, `Path=/`, 15 minutes), not in the OAuth `state`, the session, or the database. `GET /auth/login?return_to=<path>` and `RequireAuthentication` (full-page GET requests only, never HTMX fragments or the event stream) capture it; the callback's normal-login branch and onboarding completion consume and clear it. Link and `/account` flows ignore it. The path is validated on capture and again on consumption: a local path only, not `//` or `/\`, no scheme or host, and not under `/auth` or `/onboarding`. A missing or invalid value falls back to `/game-requests`, except that completing a brand-new account's Game Nick onboarding falls back to the stateless `/welcome` step instead.
 
 The public landing page reads the existing Trending ranking plus one aggregate read-model query in `internal/query/gamerequest`; it performs no writes and exposes no player identity.
 
@@ -667,13 +667,49 @@ The standalone binary must also support an externally managed PostgreSQL instanc
 
 Provide structured logging, `/healthz`, `/readyz`, `lansurfer version`, healthcheck, data-encryption-key generation, and VAPID key-generation commands.
 
-Request logging records an `outcome` of `completed`, `client-aborted`, or `timed-out`, derived from the request context's cancellation cause rather than from the status code, which stays `200` for a response the client never received. The cause is attached by the request-timeout middleware, so that middleware must wrap request logging. Realtime stream open and close are logged with the number of streams the instance currently holds and a close reason, because long-lived `EventSource` connections consuming the browser's per-origin connection pool were the root cause in issue #15 and were not visible in the logs at all. This is operator diagnosability through `log/slog`; LANsurfer does not add a metrics or observability stack.
+Request logging records an `outcome` of `completed`, `client-aborted`, or `timed-out`, derived from the request context's cancellation cause rather than from the status code, which stays `200` for a response the client never received. The cause is attached by the request-timeout middleware, so that middleware must wrap request logging. Realtime stream open and close are logged with the number of streams the instance currently holds and a close reason, because long-lived `EventSource` connections consuming the browser's per-origin connection pool were the root cause in issue #15 and were not visible in the logs at all. Prometheus scraping is optional; LANsurfer requires no external observability service.
 
 The production Compose example pins the LANsurfer image, does not publish PostgreSQL to the host, and retains only application + database as required services. TLS and reverse proxy remain operator responsibilities.
 
 Migrations remain forward-only. Final supported `main`-revision upgrade, backup/restore, and key-backup validation belong to release integration after persistent migrations settle.
 
 Supported production deployment must preserve required HTTP behavior through the chosen proxy/deployment path, including normal regression coverage for core interactions. Issue #15's reported hang is not an open architecture investigation requirement.
+
+### Prometheus metrics
+
+`internal/platform/metrics` owns one instance-local Prometheus registry, standard
+Go/process collectors, bounded HTTP instrumentation, pgx pool statistics, and
+scrape-time aggregate SQL. HTTP middleware wraps recovery and preserves streaming
+interfaces; labels use chi route patterns, never raw paths or request-derived IDs.
+Collection is limited to one scrape with a shared three-second SQL deadline. Optional
+source failures omit those samples and emit a fixed-source collection-success gauge.
+Normal HTTP instrumentation performs no SQL or metrics-source calls.
+
+The composition root wires a metrics-only key store into the transport handler.
+`metrics_access_key` has a checked singleton primary key and one 32-byte SHA-256 hash
+of a cryptographically random 32-byte key. Rotation is one UPSERT. Authentication
+validates canonical base64url, reads the hash on every scrape, and compares in constant
+time: no cache delays cross-process revocation. Admin generation/rotation reuses
+session/role and CSRF middleware, returns plaintext only in the no-store POST response,
+and never places it in a URL, cookie, persistent state or log.
+
+Durable product counters sum retained `origin=live` request activity and
+`metrics_product_totals` in one read statement. That fixed-kind table seeds retained
+backfill totals once and preserves anonymous live totals through a statement-level
+activity-deletion trigger, including account cascades. It stores no user/request IDs
+and is not a second activity history or notification handoff. Insertions require no
+global counter lock, preserving independent request commit ordering; rolled-back
+changes and later backfills do not count. Deletion and aggregate preservation commit
+together. PostgreSQL warnings isolate exceptional preservation failures from account
+deletion, at the cost of incomplete totals if operators damage this optional state.
+Already-deleted or never-recorded pre-upgrade history cannot be recovered. Normal
+source failures never enter domain writes. The existing `started` activity from the
+first `open -> playing` transition supplies `lansurfer_games_started_total`.
+
+All metrics are aggregate-only: no identities, raw URLs/query parameters, arbitrary
+content, session IDs, chat/session-information values or credentials. See the
+[operator configuration](../README.md#prometheus-metrics) for key handling, durability,
+failure behavior and the scrape example.
 
 ---
 

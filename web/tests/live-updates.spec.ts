@@ -546,6 +546,8 @@ test("Session Information Delete confirms and refreshes the fragment", async ({ 
   await page.getByRole("textbox", { name: "Value" }).fill("temporary");
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page.locator("#session-information")).toContainText("temporary");
+  // htmx applies HX-Replace-Url after the swap settles, so the text can appear while the URL still has ?session_add=1.
+  await expect(page).not.toHaveURL(/session_add/);
   const currentURL = page.url();
   await page.locator("#session-information").getByRole("button", { name: "Delete Lobby" }).click();
   const dialog = page.getByRole("dialog", { name: "Delete Lobby?" });
@@ -739,7 +741,7 @@ test("secret copy reports clipboard rejection and unsupported API", async ({ pag
     Object.defineProperty(Navigator.prototype, "clipboard", { configurable: true, get: () => undefined });
   });
   await fact.getByRole("button", { name: "Copy Password" }).click();
-  await expect(notices.locator('[role="alert"]')).toHaveCount(2);
+  await expect(notices.locator('[role="alert"]', { hasText: "Could not copy secret" })).toHaveCount(2);
   await expect(value).toHaveText("••••••••");
 });
 

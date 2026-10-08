@@ -307,7 +307,10 @@ templ GameRequestRow(request requestquery.Request, viewerID, highlightedID strin
 // showDetails true) even when the previously selected provider Game just
 // became unavailable and selected is nil again, so the player can pick a
 // replacement without retyping max players/start/description.
-templ NewGameRequest(brand branding.Brand, navigation components.NavigationState, page game.DiscoveryPage, selected *game.DiscoveryItem, showDetails bool, search string, form GameRequestForm, message ComposerMessage) {
+//
+// firstRequest shows a one-line explanation to a player who has never
+// created a Game Request; it disappears once they have.
+templ NewGameRequest(brand branding.Brand, navigation components.NavigationState, page game.DiscoveryPage, selected *game.DiscoveryItem, showDetails bool, search string, form GameRequestForm, message ComposerMessage, firstRequest bool) {
 	@components.Layout(brand, "Create Game Request", navigation) {
 		<header class="app-topbar">
 			<a class="link count-open icon-label text-sm font-semibold no-underline" href="/game-requests"><i class="ph ph-arrow-left" aria-hidden="true"></i>Game Requests</a>
@@ -315,6 +318,9 @@ templ NewGameRequest(brand branding.Brand, navigation components.NavigationState
 		<div class="content-page">
 			<div class="composer-panel">
 				<div><h1 class="app-title">Who's up for a round?</h1><p class="mt-1 text-sm text-base-content/70">Pick a game, a start time, and how many players can join.</p></div>
+				if firstRequest {
+					<div class="alert alert-info mt-5 text-sm"><i class="ph ph-lightbulb" aria-hidden="true"></i><span>Your Game Request is listed for every player here. Others join it until it is full, so you do not need to invite anyone.</span></div>
+				}
 				if message.pageLevel() {
 					<div role="alert" class="alert alert-error mt-5"><span>{ message.Text }</span></div>
 				}
@@ -427,7 +433,7 @@ templ GameRequestStartFields(form GameRequestForm, message ComposerMessage) {
 templ GameRequestDescriptionField(value string, message ComposerMessage) {
 	<label class="grid gap-2">
 		<span class="label-text font-medium">Description <span class="font-normal text-base-content/65">(optional)</span></span>
-		<textarea class="textarea textarea-bordered min-h-24 w-full" rows="3" name="description" maxlength="1000" placeholder="Anything players should know" data-description { fieldState("", message.for_("description"), "description-error")... }>{ value }</textarea>
+		<textarea class="textarea textarea-bordered min-h-24 w-full" rows="3" name="description" maxlength="1000" placeholder="e.g. Casual 2v2 — rusty players welcome." data-description { fieldState("", message.for_("description"), "description-error")... }>{ value }</textarea>
 		if message.for_("description") {
 			<p id="description-error" class="field-error">{ message.Text }</p>
 		}

@@ -110,7 +110,20 @@ func (h *OnboardingHandler) SubmitPending(w http.ResponseWriter, r *http.Request
 		return
 	}
 	http.SetCookie(w, webmiddleware.SessionCookie(session.Token, session.ExpiresAt, h.secureCookies))
-	http.Redirect(w, r, consumeReturnPath(w, r, h.secureCookies), http.StatusSeeOther)
+	// A brand-new player with no captured destination gets the one-time
+	// welcome step; a deep link they signed in from still wins.
+	next := consumeReturnPath(w, r, h.secureCookies)
+	if next == defaultReturnPath {
+		next = "/welcome"
+	}
+	http.Redirect(w, r, next, http.StatusSeeOther)
+}
+
+// ShowWelcome renders the welcome step SubmitPending sends a brand-new
+// account to. It holds no state: it is "once" because only account creation
+// links here, and revisiting the address is harmless.
+func (h *OnboardingHandler) ShowWelcome(w http.ResponseWriter, r *http.Request) {
+	render(w, r, http.StatusOK, pages.Welcome(h.brand))
 }
 
 // ShowExisting renders the Game Nick form for an already-signed-in, upgraded

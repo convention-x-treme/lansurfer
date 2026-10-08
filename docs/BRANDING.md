@@ -235,9 +235,9 @@ Buttons carry the same six levels everywhere. The level, not the page, decides t
 
 | Level | Class | Treatment | Examples |
 | --- | --- | --- | --- |
-| Commit | `btn-primary` | Surf Blue fill, Deep Ocean text (light theme: Deep Blue fill, White Sand text) | Join, Create Game Request, Follow Game |
+| Commit | `btn-primary` | Surf Blue fill, Deep Ocean text (light theme: Deep Blue fill, White Sand text) | Join, Create Game Request, Follow Game, Find Players (game card) |
 | Urgent commit | `btn-urgent` | Sunset fill, Deep Ocean text | Join on the last free place |
-| Supporting | `btn-quiet` | Harbour surface, Sea Foam text (light theme: Sea Foam and Tide Line surface, dark Deep Blue text) | Find Players, View, Search, Save, Copy link |
+| Supporting | `btn-quiet` | Harbour surface, Sea Foam text (light theme: Sea Foam and Tide Line surface, dark Deep Blue text) | View, Search, Save, Copy link, Follow (icon-only, game card) |
 | Step back | `btn-step-back` | Supporting at rest, Coral surface and text on hover and focus | Leave, Unfollow, Close for new players, Deactivate game, Disable, Remove device |
 | Destructive | `btn-danger` | Coral-tinted surface and Coral text at rest | Cancel Game Request, Delete permanently, Disconnect |
 | Tertiary | `btn-ghost` | Text only | Clear, Log out, Dismiss |

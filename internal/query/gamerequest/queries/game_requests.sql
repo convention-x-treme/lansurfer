@@ -170,6 +170,11 @@ GROUP BY gr.game_id;
 -- name: CountActiveGameRequests :one
 SELECT count(*) FROM game_requests WHERE status IN ('open', 'playing');
 
+-- HasCreatedGameRequest backs the composer's first-request hint: whether this
+-- player has ever created a Game Request, in any status.
+-- name: HasCreatedGameRequest :one
+SELECT EXISTS (SELECT 1 FROM game_requests WHERE creator_id = sqlc.arg(creator_id)::uuid);
+
 -- GetGameRequestSummary backs system callers that need a current request
 -- snapshot without viewer-specific fields or roster/activity data.
 -- name: GetGameRequestSummary :one

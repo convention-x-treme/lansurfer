@@ -72,6 +72,66 @@ test("detail layout spans hero and stacks lower content without overflow", async
   await expect(page.getByText("Host actions", { exact: true })).toHaveCount(0);
   await expect(page.getByText("Follow Game", { exact: true })).toHaveCount(0);
 });
+// Browser layout proof: intrinsic sizing must prefer moving a whole word to
+// splitting it, while an unbroken provider title still fits the mobile viewport.
+test("mobile detail title preserves words and contains unbroken names", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/game-requests/new?game_id=game-1");
+  await page.getByRole("button", { name: "Create Game Request" }).click();
+  await page.waitForURL(/\/game-requests\/[0-9a-f-]+(?:\?.*)?$/);
+  await page.evaluate(async () => {
+    await document.fonts.ready;
+    const title = document.querySelector<HTMLElement>(".detail-title")!;
+    title.textContent = "Warcraft 3";
+    // Exercise the minimum intrinsic width used when flex items compete for space.
+    title.style.width = "min-content";
+  });
+  const wordLines = await page.locator(".detail-title").evaluate((title) => {
+    const range = document.createRange();
+    range.setStart(title.firstChild!, 0);
+    range.setEnd(title.firstChild!, "Warcraft".length);
+    return range.getClientRects().length;
+  });
+  expect(wordLines).toBe(1);
+  await page.evaluate(() => {
+    const title = document.querySelector<HTMLElement>(".detail-title")!;
+    title.style.removeProperty("width");
+    title.textContent = "W".repeat(100);
+  });
+  const bounds = await page.locator(".detail-title").evaluate((title) => ({
+    right: title.getBoundingClientRect().right,
+    scrollWidth: document.documentElement.scrollWidth,
+    viewportWidth: document.documentElement.clientWidth,
+    titleScrollWidth: title.scrollWidth, titleWidth: title.clientWidth,
+  }));
+  expect(bounds.right).toBeLessThanOrEqual(bounds.viewportWidth);
+  expect(bounds.scrollWidth).toBeLessThanOrEqual(bounds.viewportWidth);
+  expect(bounds.titleScrollWidth).toBeLessThanOrEqual(bounds.titleWidth + 1);
+});
+
+test("Lobby disclosure has a coarse-pointer touch target and native toggle", async ({ browser, baseURL }) => {
+  const context = await browser.newContext({ baseURL, hasTouch: true, viewport: { width: 390, height: 844 }, storageState: {
+    cookies: [{ ...otherViewerState.cookies[0], value: "browser-test-session" }], origins: [],
+  } });
+  const page = await context.newPage();
+  try {
+    await page.goto("/game-requests/new?game_id=game-1");
+    await page.getByRole("button", { name: "Create Game Request" }).click();
+    await page.waitForURL(/\/game-requests\/[0-9a-f-]+(?:\?.*)?$/);
+    expect(await page.evaluate(() => matchMedia("(pointer: coarse)").matches)).toBe(true);
+    const lobby = page.locator("#main-lobby");
+    const summary = lobby.locator("summary");
+    expect((await summary.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    await expect(lobby).toHaveAttribute("open", "");
+    await summary.tap();
+    await expect(lobby).not.toHaveAttribute("open");
+    await summary.tap();
+    await expect(lobby).toHaveAttribute("open", "");
+  } finally {
+    await context.close();
+  }
+});
+
 test("Host edits open details, then only capacity and description while Playing", async ({ page }) => {
   await page.goto("/game-requests/new?game_id=game-1");
   await page.getByLabel("Max players").fill("4");

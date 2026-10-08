@@ -158,6 +158,12 @@ This makes Game names and aggregate counts visible without an account. It expose
 
 A visitor who is sent to login from a page, or who clicks a landing tile, returns to that page afterwards. The return target is a validated local path only; anything else falls back to Game Requests.
 
+### First-time guidance
+
+- A brand-new account that has just chosen its Game Nick sees one **Welcome** screen explaining the core flow in three steps (follow your games, find players, play together), with **Choose my games** and **Skip and browse Game Requests**. It is not a wizard and stores no state. A player who signed in from a specific page returns there instead, and an existing user who claims a missing Game Nick skips it.
+- A public **How it works** page (`/help`) repeats the three steps and briefly explains Game Requests, following a Game, and Join/Leave. Signed-in players reach it from the navigation.
+- Games shows a one-line hint about following while the player follows no Game. The composer explains that other players can join until the player has created a first Game Request, and the description field suggests an example. These hints never block anything; there is no tutorial or tooltip framework.
+
 ### Public player identity
 
 - Every player must choose a unique, case-insensitive public **Game Nick** after first login. Existing prototype users complete this once after upgrade.
@@ -208,6 +214,24 @@ Global application roles remain intentionally small:
 A global administrator manages the local Game catalog, optional provider integration, instance-level integrations, and application-wide operations.
 
 The current product model does not include Event-scoped participant/manager roles, Clan roles, or a generic permission framework.
+
+### Operator metrics
+
+Administrators may generate or rotate exactly one active, metrics-only Metrics API Key
+at **Administration → Metrics**. The full key is shown only in its generation response;
+only a secure hash is stored. `GET /metrics` requires `Authorization: Bearer ...`,
+remains inaccessible before generation, and does not accept browser-session access.
+Rotation invalidates the old credential for new requests immediately.
+
+The Prometheus-compatible endpoint exposes aggregate HTTP/runtime/process/database
+health, current user/session/follow/request counts, and durable create/join/leave/
+cancel/close/start totals. The explicit first `open → playing` transition is the
+games-started signal. Reporting totals survive restarts and account deletion without
+retaining any attributable activity or identity; upgrades can only reconstruct
+retained history and therefore provide historical lower bounds. No PII, arbitrary
+content, session-information secrets, or identifiers are exported. Collection
+failures must not disrupt player workflows. There is no built-in metrics dashboard,
+generic API-key subsystem, or additional required runtime service.
 
 ## 8. Single-Event Instance Model
 
@@ -424,6 +448,7 @@ Every signed-in screen renders the same navigation, so its numbers and lists mea
 
 - **Game Requests**, with how many Game Requests are active (`open` or `playing`) on the installation. This count is never narrowed by the player's current discovery filter.
 - **Games**, with how many Games the local catalog holds, and **Followed** beneath it with how many Games this player follows. Both lead to the same Games screen; Followed applies its "Followed only" filter. A count of zero is omitted rather than rendered.
+- **How it works**, the public help page.
 - **Administration**, for administrators only.
 - **Your next games** — up to three active Game Requests this player has joined, soonest first. Requests remain here when they transition to `playing`; a round whose planned start time has arrived is marked urgent with the same treatment the request list uses for "now".
 - **Recently viewed** — up to five Game Requests this player most recently opened, newest first.

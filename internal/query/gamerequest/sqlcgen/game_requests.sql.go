@@ -197,6 +197,19 @@ func (q *Queries) GetGameRequestSummary(ctx context.Context, id pgtype.UUID) (Ge
 	return i, err
 }
 
+const hasCreatedGameRequest = `-- name: HasCreatedGameRequest :one
+SELECT EXISTS (SELECT 1 FROM game_requests WHERE creator_id = $1::uuid)
+`
+
+// HasCreatedGameRequest backs the composer's first-request hint: whether this
+// player has ever created a Game Request, in any status.
+func (q *Queries) HasCreatedGameRequest(ctx context.Context, creatorID pgtype.UUID) (bool, error) {
+	row := q.db.QueryRow(ctx, hasCreatedGameRequest, creatorID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const listActiveGameRequests = `-- name: ListActiveGameRequests :many
 SELECT gr.id::text AS request_id,
        g.id::text AS game_id,

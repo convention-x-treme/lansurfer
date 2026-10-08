@@ -333,6 +333,39 @@ func TestPlayingRequestRemainsActiveInTheReadModels(t *testing.T) {
 	}
 }
 
+// HasCreated backs the composer's first-request hint: only creating a Game
+// Request counts, joining one does not, and a request that later ended still
+// counts.
+func TestHasCreatedCountsOnlyCreatedRequestsInAnyStatus(t *testing.T) {
+	fixture := newPlayingFixture(t)
+	queries := gamerequestquery.NewStore(fixture.pool)
+	hasCreated := func(userID string) bool {
+		t.Helper()
+		created, err := queries.HasCreated(t.Context(), userID)
+		if err != nil {
+			t.Fatalf("HasCreated: %v", err)
+		}
+		return created
+	}
+
+	if hasCreated(fixture.host) {
+		t.Fatal("host has created before any Game Request exists")
+	}
+	request := fixture.create(t, "First round")
+	if err := fixture.requests.Join(t.Context(), request.ID, fixture.guest); err != nil {
+		t.Fatalf("join as guest: %v", err)
+	}
+	if err := fixture.requests.Cancel(t.Context(), request.ID, fixture.host); err != nil {
+		t.Fatalf("cancel: %v", err)
+	}
+	if !hasCreated(fixture.host) {
+		t.Fatal("cancelled request no longer counts as created")
+	}
+	if hasCreated(fixture.guest) {
+		t.Fatal("joining counted as creating")
+	}
+}
+
 func activeRequests(t *testing.T, queries *gamerequestquery.Store, viewerID string, filter gamerequestquery.Filter) []gamerequestquery.Request {
 	t.Helper()
 
