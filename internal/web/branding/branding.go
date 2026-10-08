@@ -1,6 +1,8 @@
 // Package branding contains LANsurfer's fixed brand definition.
 package branding
 
+import "github.com/convention-x-treme/lansurfer/internal/web/assets"
+
 //go:generate go run ./cmd/brandcss -output ../../../web/src/brand.generated.css
 
 // Operator attribution. Every "Powered by …" credit in the interface renders
@@ -98,9 +100,9 @@ func Default() Brand {
 			Coral:      "#FF3F73",
 		},
 		Assets: Assets{
-			Stylesheet:        "/assets/app.css",
-			IconStylesheet:    "/assets/phosphor.css",
-			Script:            "/assets/app.js",
+			Stylesheet:        assets.VersionedURL("app.css"),
+			IconStylesheet:    assets.VersionedURL("phosphor.css"),
+			Script:            assets.VersionedURL("app.js"),
 			Mascot:            "/assets/images/otter.webp",
 			MascotSad:         "/assets/images/otter-sad.webp",
 			PrimaryFont:       "/assets/fonts/schibsted-grotesk-latin-wght-normal.woff2",
@@ -115,7 +117,7 @@ func Default() Brand {
 				Favicon32:     "/assets/images/icons/favicon-32.png",
 				FaviconICO:    "/assets/images/icons/favicon.ico",
 			},
-			AdminPWADiagnostics: "/assets/admin-pwa.js",
+			AdminPWADiagnostics: assets.VersionedURL("admin-pwa.js"),
 		},
 	}
 }

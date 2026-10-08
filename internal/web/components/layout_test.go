@@ -5,10 +5,12 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
 	"github.com/a-h/templ"
+	"github.com/convention-x-treme/lansurfer/internal/web/assets"
 	"github.com/convention-x-treme/lansurfer/internal/web/branding"
 	webmiddleware "github.com/convention-x-treme/lansurfer/internal/web/middleware"
 )
@@ -105,6 +107,25 @@ func TestLayoutRendersManifestAndIconLinks(t *testing.T) {
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("document missing %q", want)
+		}
+	}
+}
+func TestLayoutBundleURLsMatchAssetETags(t *testing.T) {
+	brand := branding.Default()
+	for _, assetURL := range []string{brand.Assets.Stylesheet, brand.Assets.Script} {
+		parsed, err := url.Parse(assetURL)
+		if err != nil {
+			t.Fatalf("parse asset URL %q: %v", assetURL, err)
+		}
+		version := parsed.Query().Get("v")
+		if version == "" {
+			t.Errorf("asset URL %q has no content version", assetURL)
+			continue
+		}
+		response := httptest.NewRecorder()
+		assets.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/"+strings.TrimPrefix(parsed.Path, "/assets/"), nil))
+		if response.Code != http.StatusOK || version != strings.Trim(response.Header().Get("ETag"), `"`) {
+			t.Errorf("asset URL %q does not match served ETag %q (status %d)", assetURL, response.Header().Get("ETag"), response.Code)
 		}
 	}
 }

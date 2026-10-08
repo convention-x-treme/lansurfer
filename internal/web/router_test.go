@@ -1085,7 +1085,7 @@ func TestAdminPWARendersWithoutJavaScript(t *testing.T) {
 	if count := strings.Count(body, "Not available without JavaScript"); count != 5 {
 		t.Errorf("found %d browser-fact placeholders, want 5", count)
 	}
-	if !strings.Contains(body, `src="/assets/admin-pwa.js"`) {
+	if !strings.Contains(body, `src="/assets/admin-pwa.js?v=`) {
 		t.Error("page does not load the progressive diagnostics script")
 	}
 }
