@@ -131,3 +131,38 @@ func TestSessionInformationMutationReadsSecretFlag(t *testing.T) {
 		t.Fatalf("secret flag = false, want true")
 	}
 }
+
+func TestSessionInformationDialogFormAndNoScriptFallback(t *testing.T) {
+	fake := &sessionInformationFake{result: gamerequest.SessionInformation{
+		CanEdit: true,
+		Entries: []gamerequest.SessionInformationEntry{{ID: "entry-1", Key: "Server", Value: "address", IsSecret: true}},
+	}}
+	h := NewGameRequests(&fakeGameRequestCommands{}, fakeGameRequestQueries{}, &fakeGameResolver{}, &fakeGameRequestDiscovery{}, nil, branding.Default(), fake)
+	r := chi.NewRouter()
+	r.Get("/{requestID}/session-information", h.SessionInformation)
+
+	for _, test := range []struct {
+		name, query, formMode, wantValue string
+		dialog                           bool
+	}{
+		{name: "add fallback", query: "session_add=1", formMode: `data-session-mode="add"`},
+		{name: "edit fallback", query: "session_edit=entry-1", formMode: `data-session-mode="edit"`, wantValue: `value="address"`},
+		{name: "dialog edit", query: "session_edit=entry-1&dialog=1", formMode: `data-session-mode="edit"`, wantValue: `value="address"`, dialog: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			req := withCurrentUser(httptest.NewRequest(http.MethodGet, "/request-1/session-information?"+test.query, nil), user.User{ID: "host-1"})
+			if test.dialog {
+				req.Header.Set("HX-Request", "true")
+			}
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, req)
+			body := w.Body.String()
+			if w.Code != http.StatusOK || !strings.Contains(body, test.formMode) || !strings.Contains(body, test.wantValue) {
+				t.Fatalf("status=%d body=%s", w.Code, body)
+			}
+			if test.dialog && (strings.Contains(body, `id="session-information"`) || !strings.Contains(body, `name="dialog" value="1"`)) {
+				t.Fatalf("dialog response must contain only server-rendered form: %s", body)
+			}
+		})
+	}
+}

@@ -58,7 +58,7 @@ func TestNormalSessionInformationCanCopyValue(t *testing.T) {
 	}
 }
 
-func TestSessionInformationUsesCompactContentTilesAndInlineEditor(t *testing.T) {
+func TestSessionInformationRendersFlatFactListAndInlineEditor(t *testing.T) {
 	entry := gamerequest.SessionInformationEntry{ID: "entry-1", Key: "Server", Value: strings.Repeat("10.20.30.40:", 4)}
 	view := SessionInformationView{
 		Visible: true, CanEdit: true, RequestID: "request-1",
@@ -71,28 +71,24 @@ func TestSessionInformationUsesCompactContentTilesAndInlineEditor(t *testing.T) 
 	}
 	html := out.String()
 	for _, want := range []string{
-		`id="session-information"`,
-		`class="session-information-tiles"`,
-		`class="session-information-tile"`,
-		`class="session-information-form"`,
-		`class="session-information-actions"`,
-		`aria-label="Edit Server"`,
-		`aria-label="Delete Server"`,
-		`name="key"`,
-		`name="value"`,
-		"Save",
-		"Cancel",
+		`id="session-information"`, `class="session-information-grid"`,
+		`class="session-information-fact"`, `class="session-information-fact-heading"`,
+		`class="session-information-form"`, `class="session-information-actions"`,
+		`aria-label="Edit Server"`, `aria-label="Delete Server"`,
+		`class="btn btn-ghost btn-square btn-xs" aria-label="Edit Server" title="Edit Server"`,
+		`class="btn btn-step-back btn-square btn-xs" aria-label="Delete Server" title="Delete Server"`,
 	} {
 		if !strings.Contains(html, want) {
-			t.Errorf("session information markup missing %q: %s", want, html)
+			t.Errorf("session information markup missing %q", want)
 		}
 	}
-	if strings.Contains(html, `class="detail-card`) {
-		t.Fatalf("session information must not add a nested card: %s", html)
+	if strings.Contains(html, "session-information-tile") || strings.Contains(html, `class="detail-card`) {
+		t.Fatalf("obsolete tile or nested card rendered")
 	}
+	assertActionOrder(t, html, `aria-label="Copy Server"`, `aria-label="Edit Server"`, `aria-label="Delete Server"`)
 }
 
-func TestSecretSessionInformationIsMaskedAndEditableAsPassword(t *testing.T) {
+func TestSecretSessionInformationIsMaskedAndActionsKeepOrder(t *testing.T) {
 	entry := gamerequest.SessionInformationEntry{ID: "entry-1", Key: "Password", Value: "hunter2", IsSecret: true}
 	view := SessionInformationView{
 		Visible: true, CanEdit: true, RequestID: "request-1", Entries: []gamerequest.SessionInformationEntry{entry},
@@ -104,15 +100,42 @@ func TestSecretSessionInformationIsMaskedAndEditableAsPassword(t *testing.T) {
 	}
 	html := out.String()
 	for _, want := range []string{
-		`type="password"`, `name="is_secret"`, `checked`, `data-server-is-secret="false"`, "Secret", `data-secret-value`, `data-secret="true"`,
-		`class="session-information-heading"`,
-		`class="session-information-tile-heading"`,
-		`aria-label="Copy Password"`, `aria-label="Reveal Password"`, `aria-pressed="false"`,
+		`type="password"`, `name="is_secret"`, `checked`, `data-server-is-secret="false"`,
+		`class="session-information-fact"`, `class="session-information-secret">Secret</span>`,
+		`data-secret-value="hunter2"`, `data-revealed="false">••••••••</span>`,
+		`aria-label="Reveal Password"`, `aria-pressed="false"`,
 		`<i class="ph ph-copy" aria-hidden="true"></i>`, `<i class="ph ph-eye" aria-hidden="true"></i>`,
 	} {
 		if !strings.Contains(html, want) {
-			t.Errorf("secret session information markup missing %q: %s", want, html)
+			t.Errorf("secret session information markup missing %q", want)
 		}
+	}
+	if strings.Contains(html, `>hunter2</span>`) {
+		t.Fatal("secret value rendered as visible text")
+	}
+	assertActionOrder(t, html, `aria-label="Copy Password"`, `aria-label="Reveal Password"`, `aria-label="Edit Password"`, `aria-label="Delete Password"`)
+}
+
+func assertActionOrder(t *testing.T, html string, labels ...string) {
+	t.Helper()
+	last := -1
+	for _, label := range labels {
+		next := strings.Index(html, label)
+		if next <= last {
+			t.Fatalf("action %q is missing or out of order", label)
+		}
+		last = next
+	}
+}
+
+func TestSessionInformationHostCanAddEntry(t *testing.T) {
+	var out bytes.Buffer
+	view := SessionInformationView{Visible: true, CanEdit: true, RequestID: "request-1"}
+	if err := GameRequestSessionInformation(view).Render(context.Background(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), `data-session-add-trigger`) {
+		t.Fatal("Host Add action is missing")
 	}
 }
 

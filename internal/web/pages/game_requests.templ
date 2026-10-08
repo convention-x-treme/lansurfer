@@ -422,7 +422,7 @@ templ GameRequestStartFields(form GameRequestForm, message ComposerMessage) {
 			@StartChoice("60", "in 1 h", form.StartPreset)
 			@StartChoice("custom", "Pick date & time", form.StartPreset)
 		</div>
-		<div class="custom-start-fields gap-3 rounded-md bg-base-100 p-4 sm:grid-cols-2" data-custom-start>
+		<div class="custom-start-fields gap-3 rounded-md bg-base-200 p-4 sm:grid-cols-2" data-custom-start>
 			<label class="grid gap-2"><span class="section-label">Date</span><input class="input input-bordered data-text w-full" type="date" name="start_date" value={ form.StartDate } { fieldState("", message.for_("start"), "start-error")... }/></label>
 			<label class="grid gap-2"><span class="section-label">Time</span><input class="input input-bordered data-text w-full" type="time" name="start_time" value={ form.StartTime }/></label>
 		</div>
@@ -561,12 +561,13 @@ templ StartChoice(value, label, selected string) {
 // GameRequestDetailMessage carries editor mode and values plus one
 // field-local or page-level complaint. Value retains raw submitted capacity.
 type GameRequestDetailMessage struct {
-	Text           string
-	Field          string
-	Value          string
-	Editing        bool
+	Dialog          bool
+	Text            string
+	Field           string
+	Value           string
+	Editing         bool
 	InitializeStart bool
-	Form           GameRequestForm
+	Form            GameRequestForm
 }
 
 func (m GameRequestDetailMessage) forField(field string) bool {
@@ -587,11 +588,13 @@ templ GameRequestDetail(brand branding.Brand, navigation components.NavigationSt
 			@DetailStamp(false)
 		</header>
 		<div class="content-page">
-				@components.NoticeAlert(notice, "mb-4")
+			@components.NoticeAlert(notice, "mb-4")
 			if message.pageLevel() {
 				<div role="alert" class="alert alert-error mb-4"><span>{ message.Text }</span></div>
 			}
 			@GameRequestDetailContentWithSession(request, viewerID, false, message, session)
+			@GameRequestEditDialog(request.CreatorID == viewerID && (request.Status == gamerequest.StatusOpen || request.Status == gamerequest.StatusPlaying))
+			@GameRequestSessionInformationDialogs(session)
 		</div>
 	}
 }
@@ -607,64 +610,86 @@ templ GameRequestDetailContent(request requestquery.Request, viewerID string, re
 }
 
 templ GameRequestDetailContentWithSession(request requestquery.Request, viewerID string, refresh bool, message GameRequestDetailMessage, session SessionInformationView) {
-
 	if refresh {
 		@DetailStamp(true)
 	}
 	<div id="game-request-detail" data-game-request-detail data-game-request-id={ request.ID } data-refresh-url={ detailRefreshURLWithSession(request.ID, message.Editing, session) } class="detail-shell">
-		<div class="detail-main">
-			<article class={ detailHeroClass(request) }>
-				<div class="flex flex-wrap items-start gap-4">
-					<span class="detail-cover">
-						@CoverArt(request.Game.CoverImageID, request.Game.Name, true)
-					</span>
-					<div class="min-w-[12rem] flex-1">
-						<div class="flex flex-wrap items-center gap-2.5">
-							<h1 class="detail-title">{ request.Game.Name }</h1>
-							<span class={ detailStatusChipClass(request) }>{ statusLabel(request.Status) }</span>
-							if lastPlace(request) {
-								<span class="status-chip status-chip-last">Last place</span>
-							}
-						</div>
-						<p class="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-base-content/70 [&>span]:whitespace-nowrap">
-							<strong class={ detailCountClass(request) }>{ playerCount(request) }</strong>
-							<span>players</span>
-							<span class="max-sm:hidden" aria-hidden="true">·</span>
-							<time class={ detailStartClass(request.StartsAt) } datetime={ request.StartsAt.Format(time.RFC3339) } title={ components.AbsoluteTime(request.StartsAt) } data-local-time="start">{ startLongLabel(request.StartsAt) }</time>
-						</p>
-					</div>
-					<div class="flex w-full flex-wrap items-center gap-2.5 sm:w-auto">
-						if requestActive(request) && request.CreatorID != viewerID && request.ViewerJoined {
-							<form method="post" action={ "/game-requests/" + request.ID + "/leave" }>
-								@components.CSRFInput()
-								<button class="btn btn-step-back" type="submit"><i class="ph ph-user-minus" aria-hidden="true"></i>Leave</button>
-							</form>
-						} else if requestActive(request) && request.CreatorID != viewerID && !requestFull(request) {
-							<form method="post" action={ "/game-requests/" + request.ID + "/join" }>
-								@components.CSRFInput()
-								<button class={ detailJoinButtonClass(request) } type="submit"><i class="ph ph-user-plus" aria-hidden="true"></i>Join</button>
-							</form>
+		<article class={ detailHeroClass(request) }>
+			<div class="detail-hero-header">
+				<span class="detail-cover">
+					@CoverArt(request.Game.CoverImageID, request.Game.Name, true)
+				</span>
+				<div class="min-w-0 flex-1">
+					<div class="flex flex-wrap items-center gap-2.5">
+						<h1 class="detail-title">{ request.Game.Name }</h1>
+						<span class={ detailStatusChipClass(request) }>{ statusLabel(request.Status) }</span>
+						if lastPlace(request) {
+							<span class="status-chip status-chip-last">Last place</span>
 						}
-						<button class="btn btn-quiet btn-square" type="button" data-copy-link aria-label="Copy link to this Game Request" title="Copy link">
-							<i class="ph ph-link" aria-hidden="true"></i>
-						</button>
 					</div>
+					<p class="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-base-content/70 [&>span]:whitespace-nowrap">
+						<strong class={ detailCountClass(request) }>{ playerCount(request) }</strong>
+						<span>players</span>
+						<span class="max-sm:hidden" aria-hidden="true">·</span>
+						<time class={ detailStartClass(request.StartsAt) } datetime={ request.StartsAt.Format(time.RFC3339) } title={ components.AbsoluteTime(request.StartsAt) } data-local-time="start">{ startLongLabel(request.StartsAt) }</time>
+					</p>
 				</div>
-				<div class={ detailCoordinationClass(request, session) }>
-					<div class={ detailCoordinationDescriptionClass(request, session) }>
-						<h2 id="detail-description-title" class="section-label data-text">Description</h2>
-						if request.Description == "" {
-							<p class="mt-2 text-sm text-base-content/65">No description.</p>
-						} else {
-							<p class="mt-2 whitespace-pre-wrap break-words leading-relaxed text-base-content/80">{ request.Description }</p>
+				<div class="detail-actions">
+					if requestActive(request) && request.CreatorID == viewerID && !message.Editing {
+						if request.Status == gamerequest.StatusOpen {
+							<form method="post" action={ "/game-requests/" + request.ID + "/start" } data-confirm="Start this game? The Game Request becomes Playing and can no longer be cancelled. Close it when the game is finished.">
+								@components.CSRFInput()
+								<button class="btn btn-primary btn-square detail-icon-button" type="submit" aria-label="Start game" title="Start game"><i class="ph ph-play" aria-hidden="true"></i></button>
+							</form>
 						}
-					</div>
-					if requestActive(request) {
-						@GameRequestSessionInformation(session)
+						if request.Status == gamerequest.StatusPlaying {
+							<form method="post" action={ "/game-requests/" + request.ID + "/close" } data-confirm="Close this game? The Game Request ends and cannot be reopened.">
+								@components.CSRFInput()
+								<button class="btn btn-step-back btn-square detail-icon-button" type="submit" aria-label="Close game" title="Close game"><i class="ph ph-prohibit" aria-hidden="true"></i></button>
+							</form>
+						}
+						<a class="btn btn-quiet btn-square detail-icon-button" href={ "/game-requests/" + request.ID + "?edit=1" } hx-get={ "/game-requests/" + request.ID + "?edit=1" } hx-target="#game-request-edit-dialog-content" hx-swap="innerHTML" data-game-request-edit-trigger aria-label="Edit" title="Edit"><i class="ph ph-pencil-simple" aria-hidden="true"></i></a>
+						if request.Status == gamerequest.StatusOpen {
+							<form method="post" action={ "/game-requests/" + request.ID + "/cancel" } data-confirm="Cancel this Game Request? This cannot be reopened.">
+								@components.CSRFInput()
+								<button class="btn btn-danger btn-square detail-icon-button" type="submit" aria-label="Cancel Game Request" title="Cancel Game Request"><i class="ph ph-x-circle" aria-hidden="true"></i></button>
+							</form>
+						}
+					} else if requestActive(request) && request.CreatorID != viewerID && request.ViewerJoined {
+						<form method="post" action={ "/game-requests/" + request.ID + "/leave" }>
+							@components.CSRFInput()
+							<button class="btn btn-step-back" type="submit"><i class="ph ph-user-minus" aria-hidden="true"></i>Leave</button>
+						</form>
+					} else if requestActive(request) && request.CreatorID != viewerID && !requestFull(request) {
+						<form method="post" action={ "/game-requests/" + request.ID + "/join" }>
+							@components.CSRFInput()
+							<button class={ detailJoinButtonClass(request) } type="submit"><i class="ph ph-user-plus" aria-hidden="true"></i>Join</button>
+						</form>
+					}
+					<button class="btn btn-quiet btn-square detail-icon-button" type="button" data-copy-link aria-label="Copy link to this Game Request" title="Copy link"><i class="ph ph-link" aria-hidden="true"></i></button>
+				</div>
+			</div>
+			if message.Editing {
+				<div class="detail-inline-editor">
+					@GameRequestDetailsEditor(request, message)
+				</div>
+			}
+			<div class={ detailCoordinationClass(request, session) }>
+				<div class={ detailCoordinationDescriptionClass(request, session) }>
+					<h2 id="detail-description-title" class="section-label data-text">Description</h2>
+					if request.Description == "" {
+						<p class="mt-2 text-sm text-base-content/65">No description.</p>
+					} else {
+						<p class="mt-2 whitespace-pre-wrap break-words leading-relaxed text-base-content/80">{ request.Description }</p>
 					}
 				</div>
-			</article>
-			<section class="detail-card flex-1" aria-labelledby="players-title">
+				if requestActive(request) {
+					@GameRequestSessionInformation(session)
+				}
+			</div>
+		</article>
+		<div class="detail-lower-grid">
+			<section class="detail-card" aria-labelledby="players-title">
 				<div class="flex flex-wrap items-baseline justify-between gap-3">
 					<h2 id="players-title" class="text-[1.0625rem] font-semibold">Players</h2>
 					<p class="data-text text-xs text-base-content/70">{ placesSummary(request) }</p>
@@ -691,127 +716,82 @@ templ GameRequestDetailContentWithSession(request requestquery.Request, viewerID
 					}
 				</ul>
 			</section>
-			if chatOpen(request, viewerID) {
-				@collapsible("main-chat", "Lobby chat", "flex-1", true, true) {
-					<ol id="chat-log" class="chat-log" role="log" aria-live="polite" hx-get={ "/game-requests/" + request.ID + "/chat" } hx-trigger="load" hx-swap="outerHTML"></ol>
-					<div class="chat-compose">
-						<div class="flex flex-wrap gap-1.5">
-							for _, quick := range quickChats {
-								<form method="post" action={ "/game-requests/" + request.ID + "/chat" } hx-post={ "/game-requests/" + request.ID + "/chat" } hx-target="#chat-log" hx-swap="outerHTML" hx-disabled-elt="find button">
-									@components.CSRFInput()
-									<input type="hidden" name="body" value={ quick }/>
-									<button class="btn btn-ghost btn-xs chat-chip" type="submit">{ quick }</button>
-								</form>
-							}
+			@collapsible("main-lobby", "Lobby", "", true) {
+				if request.ViewerJoined {
+					<ol id="game-request-lobby" class="chat-log" role="log" aria-live="polite" data-refresh-url={ "/game-requests/" + request.ID + "/lobby" } hx-get={ "/game-requests/" + request.ID + "/lobby" } hx-trigger="load" hx-swap="outerHTML"></ol>
+					if requestActive(request) {
+						<div class="chat-compose">
+							<div class="flex flex-wrap gap-1.5">
+								for _, quick := range quickChats {
+									<form method="post" action={ "/game-requests/" + request.ID + "/chat" } hx-post={ "/game-requests/" + request.ID + "/chat" } hx-target="#game-request-lobby" hx-swap="outerHTML" hx-disabled-elt="find button">
+										@components.CSRFInput()
+										<input type="hidden" name="body" value={ quick }/>
+										<button class="btn btn-ghost btn-xs chat-chip" type="submit">{ quick }</button>
+									</form>
+								}
+							</div>
+							<form id="chat-compose-form" hx-preserve class="flex gap-2" method="post" action={ "/game-requests/" + request.ID + "/chat" } hx-post={ "/game-requests/" + request.ID + "/chat" } hx-target="#game-request-lobby" hx-swap="outerHTML" hx-disabled-elt="find button" data-chat-form>
+								@components.CSRFInput()
+								<input class="input input-bordered min-w-0 flex-1" type="text" name="body" maxlength="1000" required autocomplete="off" placeholder="Message the lobby" aria-label="Message the lobby"/>
+								<button class={ lobbySendButtonClass(request, viewerID) } type="submit">Send</button>
+							</form>
+							<p class="pointer-coarse:hidden text-xs text-base-content/70">Emoji: <kbd class="data-text">Win</kbd> + <kbd class="data-text">.</kbd> on Windows, <kbd class="data-text">Ctrl</kbd> + <kbd class="data-text">Cmd</kbd> + <kbd class="data-text">Space</kbd> on Mac</p>
 						</div>
-						<form id="chat-compose-form" hx-preserve class="flex gap-2" method="post" action={ "/game-requests/" + request.ID + "/chat" } hx-post={ "/game-requests/" + request.ID + "/chat" } hx-target="#chat-log" hx-swap="outerHTML" hx-disabled-elt="find button" data-chat-form>
-							@components.CSRFInput()
-							<input class="input input-bordered min-w-0 flex-1" type="text" name="body" maxlength="1000" required autocomplete="off" placeholder="Message the lobby" aria-label="Message the lobby"/>
-							<button class="btn btn-primary" type="submit">Send</button>
-						</form>
-						<p class="pointer-coarse:hidden text-xs text-base-content/70">Emoji: <kbd class="data-text">Win</kbd> + <kbd class="data-text">.</kbd> on Windows, <kbd class="data-text">Ctrl</kbd> + <kbd class="data-text">Cmd</kbd> + <kbd class="data-text">Space</kbd> on Mac</p>
-					</div>
+					}
+				} else if requestActive(request) {
+					<p id="game-request-lobby" class="lobby-locked text-sm text-base-content/70" role="status">Join this Game Request to access the Lobby.</p>
+				} else {
+					<p id="game-request-lobby" class="lobby-locked text-sm text-base-content/70" role="status">The Lobby is available to participants only.</p>
 				}
 			}
 		</div>
-		<aside class="detail-rail" aria-label="Game Request context">
-			if requestActive(request) && request.CreatorID == viewerID {
-				@collapsible("rail-host", "Host actions", "detail-card-accent", true, false) {
-					if message.Editing {
-						@GameRequestDetailsEditor(request, message)
-					} else {
-						if request.Status == gamerequest.StatusOpen {
-							<form method="post" action={ "/game-requests/" + request.ID + "/start" } data-confirm="Start this game? The Game Request becomes Playing and can no longer be cancelled. Close it when the game is finished.">
-								@components.CSRFInput()
-								<button class="btn btn-primary btn-sm w-full" type="submit"><i class="ph ph-play" aria-hidden="true"></i>Start game</button>
-							</form>
-							<a class="btn btn-quiet btn-sm w-full" href={ "/game-requests/" + request.ID + "?edit=1" }><i class="ph ph-pencil-simple" aria-hidden="true"></i>Edit</a>
-							<form method="post" action={ "/game-requests/" + request.ID + "/cancel" } data-confirm="Cancel this Game Request? This cannot be reopened.">
-								@components.CSRFInput()
-								<button class="btn btn-danger btn-sm w-full" type="submit"><i class="ph ph-x-circle" aria-hidden="true"></i>Cancel Game Request</button>
-							</form>
-							<p class="text-xs leading-relaxed text-base-content/65">Visible to the Host only. Starting asks once; cancelling asks once and notifies every player.</p>
-						} else if request.Status == gamerequest.StatusPlaying {
-							<form method="post" action={ "/game-requests/" + request.ID + "/close" } data-confirm="Close this game? The Game Request ends and cannot be reopened.">
-								@components.CSRFInput()
-								<button class="btn btn-step-back btn-sm w-full" type="submit"><i class="ph ph-prohibit" aria-hidden="true"></i>Close game</button>
-							</form>
-							<a class="btn btn-quiet btn-sm w-full" href={ "/game-requests/" + request.ID + "?edit=1" }><i class="ph ph-pencil-simple" aria-hidden="true"></i>Edit</a>
-							<p class="text-xs leading-relaxed text-base-content/65">Visible to the Host only. Close the game when everyone is done.</p>
-						}
-					}
-				}
-			}
-			@collapsible("rail-game", "Game", "", true, false) {
-				<div>
-					<p class="min-w-0 text-[1.0625rem] font-semibold">{ request.Game.Name }</p>
-					if releaseYear(request.Game) != "" {
-						<p class="data-text text-xs text-base-content/70">{ releaseYear(request.Game) }</p>
-					}
-				</div>
-				if request.Game.Summary != "" {
-					<p class="whitespace-pre-line text-sm leading-relaxed text-base-content/80">{ request.Game.Summary }</p>
-				}
-				if request.ViewerSubscribed {
-					<span class="status-chip status-chip-joined icon-label self-start"><i class="ph-fill ph-heart" aria-hidden="true"></i>Following</span>
-				} else if request.GameID != "" {
-					<form method="post" action={ "/games/" + request.GameID + "/follow" }>
-						@components.CSRFInput()
-						<input type="hidden" name="request_id" value={ request.ID }/>
-						<button class="btn btn-primary btn-sm w-full" type="submit"><i class="ph ph-heart" aria-hidden="true"></i>Follow Game</button>
-					</form>
-				}
-				<a class="link count-open icon-label text-sm font-semibold no-underline" href={ templ.SafeURL("/game-requests?q=" + url.QueryEscape(request.Game.Name)) }>More rounds of this game<i class="ph ph-arrow-right" aria-hidden="true"></i></a>
-			}
-			@collapsible("rail-activity", "Activity", "flex-1", true, false) {
-				if len(request.Activity) == 0 {
-					<p class="text-sm text-base-content/70">No activity recorded yet.</p>
-				} else {
-					<ol class="activity-list">
-						for _, entry := range request.Activity {
-							<li class="activity-row">
-								if !entry.OccurredAt.IsZero() {
-									<time class="data-text w-12 flex-none text-xs text-base-content/70" datetime={ entry.OccurredAt.Format(time.RFC3339) } title={ components.AbsoluteTime(entry.OccurredAt) } data-local-time="clock">{ clockLabel(entry.OccurredAt) }</time>
-								}
-								<div class="activity-content min-w-0 flex-1">
-									<p class="text-sm text-base-content/80">{ activityLabel(entry) }</p>
-									if activityHasStartChange(entry) {
-										<p class="activity-detail min-w-0 text-xs">
-											if entry.PreviousMaxPlayers != nil || entry.NewMaxPlayers != nil || entry.DescriptionChanged {
-												Planned start:
-											}
-											<time class="data-text text-xs" datetime={ entry.PreviousStartsAt.Format(time.RFC3339) } title={ components.AbsoluteTime(*entry.PreviousStartsAt) } data-local-time="absolute">{ entry.PreviousStartsAt.UTC().Format("2006-01-02 15:04") }</time>
-											{" → "}
-											<time class="data-text text-xs" datetime={ entry.NewStartsAt.Format(time.RFC3339) } title={ components.AbsoluteTime(*entry.NewStartsAt) } data-local-time="absolute">{ entry.NewStartsAt.UTC().Format("2006-01-02 15:04") }</time>
-										</p>
-									}
-								</div>
-							</li>
-						}
-					</ol>
-				}
-			}
-		</aside>
 	</div>
 }
+
 templ GameRequestDetailsEditor(request requestquery.Request, message GameRequestDetailMessage) {
-	<form method="post" action={ "/game-requests/" + request.ID + "/details" } class="grid gap-4" data-local-start?={ message.InitializeStart } data-start-instant={ request.StartsAt.Format(time.RFC3339) }>
-		@components.CSRFInput()
-		@GameRequestMaxPlayersField(capacityInputValue(request, message), ComposerMessage{Text: message.Text, Field: message.Field})
-		if request.Status == gamerequest.StatusOpen {
-			@GameRequestStartFields(message.Form, ComposerMessage{Text: message.Text, Field: message.Field})
-		} else {
-			<div class="grid gap-2">
-				<p class="label-text font-medium">Start</p>
-				<time class="data-text" datetime={ request.StartsAt.Format(time.RFC3339) } title={ components.AbsoluteTime(request.StartsAt) } data-local-time="absolute">{ request.StartsAt.UTC().Format("2006-01-02 15:04") }</time>
-			</div>
+	<div data-game-request-editor>
+		if message.Dialog && message.pageLevel() {
+			<div role="alert" tabindex="-1" class="alert alert-error mb-4"><span>{ message.Text }</span></div>
 		}
-		@GameRequestDescriptionField(message.Form.Description, ComposerMessage{Text: message.Text, Field: message.Field})
-		<div class="grid grid-cols-2 gap-2">
-			<button class="btn btn-primary btn-sm" type="submit"><i class="ph ph-floppy-disk" aria-hidden="true"></i>Save</button>
-			<a class="btn btn-quiet btn-sm" href={ "/game-requests/" + request.ID }>Cancel</a>
-		</div>
-	</form>
+		if message.Editing {
+			<form method="post" action={ "/game-requests/" + request.ID + "/details" } class="grid gap-4" data-local-start?={ message.InitializeStart } data-start-instant={ request.StartsAt.Format(time.RFC3339) } { gameRequestEditorAttributes(message.Dialog, request.ID)... }>
+				@components.CSRFInput()
+				@GameRequestMaxPlayersField(capacityInputValue(request, message), ComposerMessage{Text: message.Text, Field: message.Field})
+				if request.Status == gamerequest.StatusOpen {
+					@GameRequestStartFields(message.Form, ComposerMessage{Text: message.Text, Field: message.Field})
+				} else {
+					<div class="grid gap-2">
+						<p class="label-text font-medium">Start</p>
+						<time class="data-text" datetime={ request.StartsAt.Format(time.RFC3339) } title={ components.AbsoluteTime(request.StartsAt) } data-local-time="absolute">{ request.StartsAt.UTC().Format("2006-01-02 15:04") }</time>
+						<p class="text-xs text-base-content/70">Start time cannot be changed while the Game Request is Playing.</p>
+					</div>
+				}
+				@GameRequestDescriptionField(message.Form.Description, ComposerMessage{Text: message.Text, Field: message.Field})
+				<div class="grid grid-cols-2 gap-2">
+					<button class="btn btn-primary btn-sm" type="submit"><i class="ph ph-floppy-disk" aria-hidden="true"></i>Save</button>
+					if message.Dialog {
+						<button class="btn btn-quiet btn-sm" type="button" data-dialog-close>Cancel</button>
+					} else {
+						<a class="btn btn-quiet btn-sm" href={ "/game-requests/" + request.ID }>Cancel</a>
+					}
+				</div>
+			</form>
+		}
+	</div>
+}
+
+templ GameRequestEditDialog(canEdit bool) {
+	if canEdit {
+		<dialog class="game-request-edit-dialog session-dialog--sheet dialog-shell" id="game-request-edit-dialog" data-dialog-shell aria-labelledby="game-request-edit-dialog-title">
+			<div class="dialog-panel">
+				<div class="dialog-heading">
+					<h2 id="game-request-edit-dialog-title" class="text-lg font-semibold">Edit Game Request</h2>
+					<button class="btn btn-ghost btn-square dialog-close" type="button" data-dialog-close aria-label="Close dialog"><i class="ph ph-x" aria-hidden="true"></i></button>
+				</div>
+				<div id="game-request-edit-dialog-content"></div>
+			</div>
+		</dialog>
+	}
 }
 
 templ GameRequestError(brand branding.Brand, navigation components.NavigationState) {
@@ -832,11 +812,29 @@ func detailRefreshURL(requestID string, editing bool) string {
 func detailRefreshURLWithSession(requestID string, editing bool, session SessionInformationView) string {
 	target := "/game-requests/" + requestID + "/refresh"
 	values := url.Values{}
-	if editing { values.Set("edit","1") }
-	if session.Form != nil && session.Form.Mode=="add" { values.Set("session_add","1") }
-	if session.Form != nil && session.Form.Mode=="edit" { values.Set("session_edit",session.Form.EntryID) }
-	if len(values)>0 { return target+"?"+values.Encode() }
+	if editing {
+		values.Set("edit", "1")
+	}
+	if session.Form != nil && session.Form.Mode == "add" {
+		values.Set("session_add", "1")
+	}
+	if session.Form != nil && session.Form.Mode == "edit" {
+		values.Set("session_edit", session.Form.EntryID)
+	}
+	if len(values) > 0 {
+		return target + "?" + values.Encode()
+	}
 	return target
+}
+func gameRequestEditorAttributes(dialog bool, requestID string) templ.Attributes {
+	if !dialog {
+		return nil
+	}
+	return templ.Attributes{
+		"hx-post":   "/game-requests/" + requestID + "/details",
+		"hx-target": "#game-request-edit-dialog-content",
+		"hx-swap":   "innerHTML",
+	}
 }
 
 func requestFull(request requestquery.Request) bool {
@@ -850,8 +848,7 @@ func requestActive(request requestquery.Request) bool {
 	return request.Status == gamerequest.StatusOpen || request.Status == gamerequest.StatusPlaying
 }
 
-// capacityLabel renders a stored maximum for the Activity section; nil is the
-// unlimited state.
+// capacityLabel renders a stored maximum in Lobby activity; nil means unlimited.
 func capacityLabel(value *int32) string {
 	if value == nil {
 		return "unlimited"
@@ -921,6 +918,12 @@ func detailJoinButtonClass(request requestquery.Request) string {
 	return "btn btn-primary"
 }
 
+func lobbySendButtonClass(request requestquery.Request, viewerID string) string {
+	if request.CreatorID == viewerID && request.Status == gamerequest.StatusOpen {
+		return "btn btn-quiet"
+	}
+	return "btn btn-primary"
+}
 func gameRequestRowClass(request requestquery.Request, highlightedID string) string {
 	classes := "request-row"
 	if request.ID == highlightedID {
@@ -1006,6 +1009,27 @@ func memberAvatarClass(member requestquery.Member, request requestquery.Request)
 	return "avatar-placeholder avatar-placeholder-member"
 }
 
+func activityIcon(kind gamerequest.ActivityKind) string {
+	switch kind {
+	case gamerequest.ActivityCreated:
+		return "ph-plus-circle"
+	case gamerequest.ActivityJoined:
+		return "ph-user-plus"
+	case gamerequest.ActivityLeft:
+		return "ph-user-minus"
+	case gamerequest.ActivityStarted:
+		return "ph-play"
+	case gamerequest.ActivityClosed:
+		return "ph-check-circle"
+	case gamerequest.ActivityCancelled:
+		return "ph-x-circle"
+	case gamerequest.ActivityUpdated:
+		return "ph-pencil-simple"
+	default:
+		return "ph-info"
+	}
+}
+
 func activityHasStartChange(entry requestquery.Activity) bool {
 	return entry.Kind == gamerequest.ActivityUpdated && entry.PreviousStartsAt != nil && entry.NewStartsAt != nil
 }
@@ -1063,7 +1087,6 @@ func activityLabel(entry requestquery.Activity) string {
 	}
 }
 
-
 // startTimeClass warms a start time as it approaches and makes it loud once
 // there is no time left, on the shared thresholds. Anything further out stays
 // quiet, so a scanning eye only stops at the rounds that need it.
@@ -1092,15 +1115,6 @@ func detailStartClass(startsAt time.Time) string {
 	default:
 		return "whitespace-nowrap"
 	}
-}
-
-// releaseYear is the one piece of catalog metadata the rail's Game card
-// states outright; everything else it has room for is the summary itself.
-func releaseYear(p game.GamePresentation) string {
-	if p.FirstReleaseDate == nil {
-		return ""
-	}
-	return strconv.Itoa(p.FirstReleaseDate.Year())
 }
 
 func startLongLabel(startsAt time.Time) string {
@@ -1304,69 +1318,145 @@ func requestRowConnector(request requestquery.Request) string {
 	return "is looking for"
 }
 
-// chatOpen reports whether the viewer is shown the request chat. The chat is
-// private to the Host and joined players while the request is open or playing.
-func chatOpen(request requestquery.Request, viewerID string) bool {
-	active := request.Status == gamerequest.StatusOpen || request.Status == gamerequest.StatusPlaying
-	return active && (request.ViewerJoined || request.CreatorID == viewerID)
-}
-
 var quickChats = []string{"Ready", "Need 2 min", "On my way", "Running late", "At my seat", "Server is up", "Starting soon", "GG"}
 
-// GameRequestChatLog replaces #chat-log; it carries no load trigger so the swap
-// does not refetch itself.
-// ChatCount is the message total in the chat card title. A negative count
-// renders it empty until the first log load; the log refresh swaps it out of band.
-templ ChatCount(count int) {
-	<span
-		id="main-chat-count"
-		class="data-text text-base-content/70"
-		if count >= 0 {
-			hx-swap-oob="true"
+templ GameRequestLobbyLog(lobby requestquery.GameRequestLobby, viewerID string) {
+	<ol id="game-request-lobby" class="chat-log" role="log" aria-live="polite" data-refresh-url={ "/game-requests/" + lobby.RequestID + "/lobby" }>
+		if len(lobby.Entries) == 0 {
+			<li class="text-sm text-base-content/70">No Lobby entries yet.</li>
 		}
-	>
-		if count >= 0 {
-			{ fmt.Sprintf("(%d)", count) }
-		}
-	</span>
-}
-
-templ GameRequestChatLog(requestID string, messages []gamerequest.Message, viewerID string) {
-	<ol id="chat-log" class="chat-log" role="log" aria-live="polite">
-		if len(messages) == 0 {
-			<li class="text-sm text-base-content/70">No messages yet. Say hi to the lobby.</li>
-		}
-		for _, m := range messages {
-			<li class="chat-message">
-				<div class="flex items-baseline gap-2">
-					<span class={ chatAuthorClass(m, viewerID) }>{ m.AuthorGameNick }</span>
-					<time class="data-text text-xs text-base-content/70" datetime={ m.CreatedAt.Format(time.RFC3339) } title={ components.AbsoluteTime(m.CreatedAt) } data-local-time="clock">{ clockLabel(m.CreatedAt) }</time>
-				</div>
-				<p class="text-sm text-base-content/80">{ m.Body }</p>
-			</li>
+		for index, entry := range lobby.Entries {
+			if entry.Source == requestquery.LobbySourceChat {
+				@GameRequestLobbyChat(lobbyBubbleAt(lobby, index, viewerID))
+			} else if entry.Source == requestquery.LobbySourceActivity {
+				@GameRequestLobbyActivity(entry.Activity)
+			}
 		}
 	</ol>
-	@ChatCount(len(messages))
 }
 
-func chatAuthorClass(m gamerequest.Message, viewerID string) string {
-	if m.AuthorID == viewerID {
-		return "text-sm font-semibold text-primary"
+// lobbyBubble is one chat message plus the presentation facts its bubble needs.
+type lobbyBubble struct {
+	Message   gamerequest.Message
+	AvatarKey string
+	// Own puts the bubble on the right without nick or avatar; Host tints it
+	// Golden Hour on whichever side Own puts it.
+	Own, Host bool
+	// First marks the start of a run of messages by one author. Activity
+	// between two messages ends the run.
+	First bool
+}
+
+func lobbyBubbleAt(lobby requestquery.GameRequestLobby, index int, viewerID string) lobbyBubble {
+	entry := lobby.Entries[index]
+	first := index == 0
+	if !first {
+		previous := lobby.Entries[index-1]
+		first = previous.Source != requestquery.LobbySourceChat || previous.Message.AuthorID != entry.Message.AuthorID
 	}
-	return "text-sm font-semibold"
+	return lobbyBubble{
+		Message: entry.Message, AvatarKey: entry.AuthorAvatarKey,
+		Own:   entry.Message.AuthorID != "" && entry.Message.AuthorID == viewerID,
+		Host:  entry.Message.AuthorID != "" && entry.Message.AuthorID == lobby.HostID,
+		First: first,
+	}
+}
+
+func (b lobbyBubble) rowClass() string {
+	class := "chat-message bubble-row"
+	if b.Own {
+		class += " bubble-row-own"
+	}
+	if b.Host {
+		class += " bubble-row-host"
+	}
+	if b.First {
+		class += " bubble-row-first"
+	}
+	return class
+}
+
+// nickClass shows the nick once per run of someone else's messages; every
+// other bubble keeps it for assistive technology only.
+func (b lobbyBubble) nickClass() string {
+	if b.First && !b.Own {
+		return "bubble-nick"
+	}
+	return "sr-only"
+}
+
+func (b lobbyBubble) avatarClass() string {
+	if b.Host {
+		return "avatar-placeholder avatar-placeholder-host"
+	}
+	return "avatar-placeholder avatar-placeholder-member"
+}
+
+templ GameRequestLobbyChat(bubble lobbyBubble) {
+	<li class={ bubble.rowClass() }>
+		if !bubble.Own {
+			if bubble.First {
+				@components.Avatar(bubble.avatarClass(), bubble.Message.AuthorGameNick, bubble.AvatarKey)
+			} else {
+				<span class="avatar-placeholder invisible" aria-hidden="true"></span>
+			}
+		}
+		<div class="bubble">
+			<span class={ bubble.nickClass() }>
+				{ bubble.Message.AuthorGameNick }
+				if bubble.Host {
+					<span class="sr-only">(Host)</span>
+				}
+			</span>
+			{ bubble.Message.Body }
+			<time class="bubble-time" datetime={ bubble.Message.CreatedAt.Format(time.RFC3339) } title={ components.AbsoluteTime(bubble.Message.CreatedAt) } data-local-time="clock">{ clockLabel(bubble.Message.CreatedAt) }</time>
+		</div>
+	</li>
+}
+
+templ GameRequestLobbyActivity(activity requestquery.Activity) {
+	<li class="activity-row">
+		<div class={ activityPillClass(activity) }>
+			if !activity.OccurredAt.IsZero() {
+				<time class="activity-time" datetime={ activity.OccurredAt.Format(time.RFC3339) } title={ components.AbsoluteTime(activity.OccurredAt) } data-local-time="clock">{ clockLabel(activity.OccurredAt) }</time>
+			}
+			<div class="activity-content min-w-0 flex-1">
+				<p>
+					<span class="icon-label">
+						<i class={ "ph " + activityIcon(activity.Kind) + " activity-icon" } aria-hidden="true"></i>
+						{ activityLabel(activity) }
+					</span>
+				</p>
+				if activityHasStartChange(activity) {
+					<p class="activity-detail min-w-0 text-xs">
+						if activity.PreviousMaxPlayers != nil || activity.NewMaxPlayers != nil || activity.DescriptionChanged {
+							Planned start:
+						}
+						<time class="data-text text-xs" datetime={ activity.PreviousStartsAt.Format(time.RFC3339) } title={ components.AbsoluteTime(*activity.PreviousStartsAt) } data-local-time="absolute">{ activity.PreviousStartsAt.UTC().Format("2006-01-02 15:04") }</time>
+						{ " → " }
+						<time class="data-text text-xs" datetime={ activity.NewStartsAt.Format(time.RFC3339) } title={ components.AbsoluteTime(*activity.NewStartsAt) } data-local-time="absolute">{ activity.NewStartsAt.UTC().Format("2006-01-02 15:04") }</time>
+					</p>
+				}
+			</div>
+		</div>
+	</li>
+}
+
+// activityPillClass singles out the one activity that changes what players do
+// next: the game has started.
+func activityPillClass(activity requestquery.Activity) string {
+	if activity.Kind == gamerequest.ActivityStarted {
+		return "activity-pill activity-pill-started"
+	}
+	return "activity-pill"
 }
 
 // collapsible is a rail card the viewer can fold away; app.ts keeps the choice
 // across live refreshes, which otherwise re-render each card in its default.
-templ collapsible(id, title, class string, open, counter bool) {
+templ collapsible(id, title, class string, open bool) {
 	<details id={ id } class={ "detail-card " + class } data-collapsible open?={ open }>
 		<summary class="detail-card-summary section-label">
-			<span>
-				{ title }
-				if counter {
-					@ChatCount(-1)
-				}
-			</span>
+			<span>{ title }</span>
 			<i class="ph ph-caret-down" aria-hidden="true"></i>
 		</summary>
 		<div class="detail-card-body">

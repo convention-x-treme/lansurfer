@@ -10,30 +10,18 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// GameRequestChat is the request-local chat the service authorizes per call.
+// GameRequestChat owns the request-local chat write path.
 type GameRequestChat interface {
 	PostMessage(ctx context.Context, requestID, userID, body string) (gamerequest.Message, error)
-	Messages(ctx context.Context, requestID, userID string) ([]gamerequest.Message, error)
 }
 
 type Chat struct {
-	chat GameRequestChat
+	chat  GameRequestChat
+	lobby *Lobby
 }
 
-func NewChat(chat GameRequestChat) *Chat {
-	return &Chat{chat: chat}
-}
-
-// Log renders the chat log. Authorization is the Messages call, never the page.
-func (h *Chat) Log(w http.ResponseWriter, r *http.Request) {
-	account, _ := webmiddleware.CurrentUser(r.Context())
-	requestID := chi.URLParam(r, "requestID")
-	messages, err := h.chat.Messages(r.Context(), requestID, account.ID)
-	if err != nil {
-		h.fail(w, r, err)
-		return
-	}
-	render(w, r, http.StatusOK, pages.GameRequestChatLog(requestID, messages, account.ID))
+func NewChat(chat GameRequestChat, lobby *Lobby) *Chat {
+	return &Chat{chat: chat, lobby: lobby}
 }
 
 func (h *Chat) Post(w http.ResponseWriter, r *http.Request) {
@@ -48,7 +36,7 @@ func (h *Chat) Post(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/game-requests/"+requestID, http.StatusSeeOther)
 		return
 	}
-	h.Log(w, r)
+	h.lobby.View(w, r)
 }
 
 func (h *Chat) fail(w http.ResponseWriter, r *http.Request, cause error) {

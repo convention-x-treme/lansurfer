@@ -327,58 +327,6 @@ func (q *Queries) ListActiveGameRequests(ctx context.Context, arg ListActiveGame
 	return items, nil
 }
 
-const listGameRequestActivity = `-- name: ListGameRequestActivity :many
-SELECT a.kind, a.occurred_at, a.actor_id::text AS actor_id, u.game_nick AS actor_game_nick,
-       a.previous_max_players, a.new_max_players,
-       a.previous_starts_at, a.new_starts_at, a.description_changed
-FROM game_request_activity a
-JOIN users u ON u.id = a.actor_id
-WHERE a.game_request_id = $1::uuid
-ORDER BY a.sequence DESC
-`
-
-type ListGameRequestActivityRow struct {
-	Kind               string
-	OccurredAt         pgtype.Timestamptz
-	ActorID            string
-	ActorGameNick      pgtype.Text
-	PreviousMaxPlayers pgtype.Int4
-	NewMaxPlayers      pgtype.Int4
-	PreviousStartsAt   pgtype.Timestamptz
-	NewStartsAt        pgtype.Timestamptz
-	DescriptionChanged bool
-}
-
-func (q *Queries) ListGameRequestActivity(ctx context.Context, gameRequestID pgtype.UUID) ([]ListGameRequestActivityRow, error) {
-	rows, err := q.db.Query(ctx, listGameRequestActivity, gameRequestID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []ListGameRequestActivityRow
-	for rows.Next() {
-		var i ListGameRequestActivityRow
-		if err := rows.Scan(
-			&i.Kind,
-			&i.OccurredAt,
-			&i.ActorID,
-			&i.ActorGameNick,
-			&i.PreviousMaxPlayers,
-			&i.NewMaxPlayers,
-			&i.PreviousStartsAt,
-			&i.NewStartsAt,
-			&i.DescriptionChanged,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const listGameRequestMembers = `-- name: ListGameRequestMembers :many
 SELECT u.id::text AS user_id, u.game_nick AS member_game_nick, m.joined_at,
        COALESCE(avatar.avatar_key, '')::text AS avatar_key
@@ -463,6 +411,125 @@ func (q *Queries) ListRecentlyViewedGameRequests(ctx context.Context, arg ListRe
 			&i.GameName,
 			&i.Status,
 			&i.ViewedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const readGameRequestLobby = `-- name: ReadGameRequestLobby :many
+WITH access AS (
+    SELECT gr.id, gr.creator_id,
+           EXISTS (
+               SELECT 1 FROM game_request_members member
+               WHERE member.game_request_id = gr.id
+                 AND member.user_id = $1::uuid
+           ) AS is_member
+    FROM game_requests gr
+    WHERE gr.id = $2::uuid
+), combined AS (
+    SELECT a.occurred_at, 0::integer AS source,
+           a.sequence AS activity_sequence, NULL::uuid AS message_id,
+           a.kind, a.actor_id::text AS actor_id,
+           u.game_nick AS actor_game_nick, NULL::text AS body,
+           a.previous_max_players, a.new_max_players,
+           a.previous_starts_at, a.new_starts_at, a.description_changed,
+           NULL::text AS avatar_key
+    FROM game_request_activity a
+    JOIN users u ON u.id = a.actor_id
+    JOIN access permission ON permission.id = a.game_request_id AND permission.is_member
+    UNION ALL
+    SELECT m.created_at, 1::integer,
+           NULL::bigint, m.id,
+           NULL::text, m.author_id::text, u.game_nick, m.body,
+           NULL::integer, NULL::integer,
+           NULL::timestamptz, NULL::timestamptz, false::boolean,
+           avatar.avatar_key
+    FROM game_request_messages m
+    JOIN users u ON u.id = m.author_id
+    LEFT JOIN user_identities avatar ON avatar.user_id = u.id AND avatar.avatar_selected
+    JOIN access permission ON permission.id = m.game_request_id AND permission.is_member
+), latest AS (
+    SELECT occurred_at, source, activity_sequence, message_id, kind, actor_id, actor_game_nick, body, previous_max_players, new_max_players, previous_starts_at, new_starts_at, description_changed, avatar_key FROM combined
+    ORDER BY occurred_at DESC, source DESC,
+             activity_sequence DESC NULLS LAST, message_id DESC NULLS LAST
+    LIMIT 200
+)
+SELECT permission.id::text AS request_id, permission.is_member,
+       permission.creator_id::text AS host_id,
+       COALESCE(entry.source, -1)::integer AS source,
+       entry.occurred_at, entry.activity_sequence,
+       COALESCE(entry.message_id::text, '')::text AS message_id,
+       entry.kind, entry.actor_id, entry.actor_game_nick, entry.body,
+       entry.previous_max_players, entry.new_max_players,
+       entry.previous_starts_at, entry.new_starts_at, entry.description_changed,
+       COALESCE(entry.avatar_key, '')::text AS author_avatar_key
+FROM access permission
+LEFT JOIN latest entry ON permission.is_member
+ORDER BY entry.occurred_at ASC, entry.source ASC,
+         entry.activity_sequence ASC NULLS LAST, entry.message_id ASC NULLS LAST
+`
+
+type ReadGameRequestLobbyParams struct {
+	ViewerID      pgtype.UUID
+	GameRequestID pgtype.UUID
+}
+
+type ReadGameRequestLobbyRow struct {
+	RequestID          string
+	IsMember           bool
+	HostID             string
+	Source             int32
+	OccurredAt         pgtype.Timestamptz
+	ActivitySequence   pgtype.Int8
+	MessageID          string
+	Kind               pgtype.Text
+	ActorID            pgtype.Text
+	ActorGameNick      pgtype.Text
+	Body               pgtype.Text
+	PreviousMaxPlayers pgtype.Int4
+	NewMaxPlayers      pgtype.Int4
+	PreviousStartsAt   pgtype.Timestamptz
+	NewStartsAt        pgtype.Timestamptz
+	DescriptionChanged pgtype.Bool
+	AuthorAvatarKey    string
+}
+
+// The Game Request domain owns Lobby authorization policy. Keep membership in
+// this read snapshot only as a defense-in-depth privacy guard against leaving
+// between domain authorization and this query; do not add lifecycle rules here.
+func (q *Queries) ReadGameRequestLobby(ctx context.Context, arg ReadGameRequestLobbyParams) ([]ReadGameRequestLobbyRow, error) {
+	rows, err := q.db.Query(ctx, readGameRequestLobby, arg.ViewerID, arg.GameRequestID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ReadGameRequestLobbyRow
+	for rows.Next() {
+		var i ReadGameRequestLobbyRow
+		if err := rows.Scan(
+			&i.RequestID,
+			&i.IsMember,
+			&i.HostID,
+			&i.Source,
+			&i.OccurredAt,
+			&i.ActivitySequence,
+			&i.MessageID,
+			&i.Kind,
+			&i.ActorID,
+			&i.ActorGameNick,
+			&i.Body,
+			&i.PreviousMaxPlayers,
+			&i.NewMaxPlayers,
+			&i.PreviousStartsAt,
+			&i.NewStartsAt,
+			&i.DescriptionChanged,
+			&i.AuthorAvatarKey,
 		); err != nil {
 			return nil, err
 		}

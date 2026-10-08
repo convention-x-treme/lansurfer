@@ -562,16 +562,57 @@
 
   .detail-shell {
     display: grid;
+    min-width: 0;
     gap: 1.125rem;
-    align-items: start;
   }
 
-  .detail-main,
-  .detail-rail {
+  .detail-hero,
+  .detail-lower-grid {
+    min-width: 0;
+  }
+
+  .detail-hero-header {
     display: flex;
     min-width: 0;
-    flex-direction: column;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+
+  .detail-actions {
+    display: flex;
+    min-width: 0;
+    flex: 0 1 auto;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin-inline-start: auto;
+  }
+
+  .detail-actions > form {
+    display: flex;
+  }
+
+  .detail-icon-button {
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+  }
+
+  .detail-lower-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
     gap: 1.125rem;
+  }
+
+  .detail-lower-grid > * {
+    min-width: 0;
+  }
+
+  .detail-inline-editor {
+    margin-top: 1rem;
+    border-top: 1px solid var(--border-raised);
+    padding-top: 1rem;
   }
 
   .detail-card,
@@ -588,6 +629,12 @@
 
   .detail-hero {
     gap: 0;
+  }
+
+  @media (min-width: 48rem) {
+    .detail-lower-grid {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+    }
   }
 
   .detail-coordination {
@@ -617,47 +664,51 @@
   }
 
 
-  .session-information-value-row {
+  .session-information-grid {
     display: flex;
-    min-width: 0;
-    flex: 0 1 auto;
     flex-wrap: wrap;
-    align-items: center;
-    gap: 0.25rem 0.5rem;
-  }
-  .session-information-value-row .session-information-value {
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
-    line-height: 1.625;
-    color: color-mix(in srgb, var(--color-base-content) 80%, transparent);
+    justify-content: flex-start;
+    gap: 1.5rem 1rem;
+    margin-top: 0.75rem;
   }
 
-  .session-information-tile-heading {
-    display: inline-flex;
+  .session-information-fact {
+    display: flex;
+    min-width: min(100%, 13.75rem);
+    max-width: 19rem;
+    flex: 0 1 13.75rem;
+    flex-direction: column;
+    gap: 0.375rem;
+    padding: 0.5rem 0;
+  }
+
+  .session-information-fact-content {
+    display: grid;
+    min-width: 0;
+    gap: 0.125rem;
+  }
+
+  .session-information-fact-heading {
+    display: flex;
+    min-width: 0;
+    flex-wrap: wrap;
     align-items: center;
     gap: 0.375rem;
   }
 
-  .session-information-tiles {
+  .session-information-value-row {
     display: flex;
+    min-width: 0;
     flex-wrap: wrap;
-    align-items: flex-start;
-    gap: 0.5rem;
-    margin-top: 0.75rem;
+    align-items: center;
+    gap: 0.125rem 0.375rem;
   }
 
-  .session-information-tile {
-    display: flex;
-    max-width: 100%;
-    min-width: 0;
-    flex: 0 1 auto;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: 0.25rem 0.5rem;
-    border: 1px solid var(--border-raised);
-    border-radius: var(--radius-field);
-    background: var(--color-base-100);
-    padding: 0.375rem 0.5rem;
+  .session-information-value-row .session-information-value {
+    color: color-mix(in srgb, var(--color-base-content) 80%, transparent);
+    line-height: 1.625;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
   }
 
   .session-information-key {
@@ -669,21 +720,22 @@
   .session-information-value {
     min-width: 0;
     overflow-wrap: anywhere;
+    font-family: var(--font-mono);
     font-size: 0.875rem;
   }
 
   .session-information-secret {
-    border-radius: 999px;
+    border-radius: var(--radius-selector);
     background: color-mix(in srgb, var(--color-base-content) 8%, transparent);
     padding: 0.125rem 0.375rem;
     color: color-mix(in srgb, var(--color-base-content) 70%, transparent);
-    font-size: 0.75rem;
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
     font-weight: 500;
+    text-transform: uppercase;
   }
 
-
   .session-information-secret-value {
-    font-family: var(--font-mono);
     letter-spacing: 0.08em;
   }
 
@@ -693,6 +745,45 @@
     left: -9999px;
   }
 
+  .session-information-copy-actions,
+  .session-information-actions {
+    display: inline-flex;
+    min-width: 0;
+    align-items: center;
+    gap: 0.125rem;
+  }
+
+  .session-information-actions form {
+    display: contents;
+  }
+
+  .session-information-copy-actions .btn,
+  .session-information-actions .btn {
+    flex: 0 0 auto;
+  }
+
+  @media (max-width: 47.99rem) {
+    .session-information-fact {
+      min-width: 0;
+      max-width: none;
+      flex-basis: 100%;
+    }
+
+    .session-information-grid {
+      row-gap: 0.75rem;
+    }
+  }
+
+  @media (pointer: coarse) {
+    .session-information-copy-actions .btn,
+    .session-information-actions .btn {
+      min-width: 2.75rem;
+      min-height: 2.75rem;
+    }
+  }
+
+
+
   .session-information-secret-toggle {
     display: flex !important;
     grid-column: 1 / -1;
@@ -701,12 +792,6 @@
     align-items: center;
   }
 
-  .session-information-actions {
-    display: inline-flex;
-    flex: 0 0 auto;
-    align-items: center;
-    gap: 0.125rem;
-  }
 
   .session-information-form {
     display: grid;
@@ -739,8 +824,111 @@
     flex-wrap: wrap;
     gap: 0.5rem;
   }
+  .dialog-shell {
+    width: min(100% - 2rem, 36rem);
+    max-width: none;
+    max-height: 88dvh;
+    margin: auto;
+    overflow: visible;
+    border: 0;
+    background: transparent;
+    color: var(--color-base-content);
+  }
+
+  .dialog-shell::backdrop {
+    background: color-mix(in srgb, var(--brand-deep-ocean) 68%, transparent);
+  }
+
+  .dialog-panel {
+    max-height: 88dvh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border: 1px solid var(--border-raised);
+    border-radius: var(--radius-box);
+    background: var(--color-base-200);
+    padding: 1.25rem;
+    box-shadow: var(--shadow-overlay);
+  }
+
+  .dialog-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1rem;
+  }
+
+  .dialog-close {
+    width: 2.75rem;
+    height: 2.75rem;
+    flex: none;
+  }
+
+  .session-information-dialog .session-information-form {
+    margin-top: 0;
+  }
+
+  .game-request-edit-dialog {
+    width: min(100% - 2rem, 36rem);
+  }
+
+  .game-request-edit-dialog [data-game-request-editor] {
+    margin-top: 0;
+  }
+
+  .session-delete-dialog {
+    width: min(100% - 2rem, 28rem);
+  }
+
+  .session-delete-dialog form {
+    margin-top: 1rem;
+  }
 
   @media (max-width: 47.99rem) {
+    .session-dialog--sheet {
+      width: 100%;
+      max-height: 90dvh;
+      margin: auto 0 0;
+    }
+
+    .session-information-dialog .dialog-panel {
+      max-height: 90dvh;
+      border-radius: 1rem 1rem 0 0;
+      padding: 1.25rem 1rem calc(1rem + env(safe-area-inset-bottom));
+    }
+
+    .session-delete-dialog .dialog-panel {
+      max-height: none;
+      border-radius: 1rem 1rem 0 0;
+      padding: 1.25rem 1rem calc(1rem + env(safe-area-inset-bottom));
+    }
+    .game-request-edit-dialog {
+      width: 100%;
+      max-height: 90dvh;
+      margin: auto 0 0;
+    }
+
+    .game-request-edit-dialog .dialog-panel {
+      max-height: 90dvh;
+      border-radius: 1rem 1rem 0 0;
+      padding: 1.25rem 1rem calc(1rem + env(safe-area-inset-bottom));
+    }
+  }
+
+  @media (pointer: coarse) {
+    .session-information-dialog .btn,
+    .session-delete-dialog .btn {
+      min-height: 2.75rem;
+    }
+  }
+
+  @media (max-width: 47.99rem) {
+    .detail-actions {
+      flex: 0 0 100%;
+      justify-content: flex-end;
+    }
+
+
     .detail-coordination {
       grid-template-columns: minmax(0, 1fr);
       gap: 1rem;
@@ -762,30 +950,141 @@
      page, so it is set larger here than the top bar's own title. */
   .detail-title {
     min-width: 0;
+    overflow-wrap: break-word;
     font-size: 1.875rem;
     font-weight: 900;
     letter-spacing: -0.02em;
     line-height: 1.15;
   }
 
-  /* The activity feed is a scanning surface: alternating rows keep a time
-     with its own sentence without drawing a rule between every entry. */
-  .activity-list {
-    display: grid;
-  }
-
+  /* Activity is context for the conversation, not part of it: a centred,
+     outlined pill that never competes with a bubble for the eye. */
   .activity-row {
     display: flex;
-    gap: 0.75rem;
+    justify-content: center;
+    margin-block: 0.25rem;
+  }
+
+  .activity-pill {
+    display: flex;
+    min-width: 0;
+    max-width: 100%;
+    align-items: baseline;
+    gap: 0.5rem;
+    border: 1px solid var(--border-raised);
     border-radius: var(--radius-field);
-    padding: 0.375rem 0.5rem;
+    padding: 0.25rem 0.625rem;
+    color: color-mix(in srgb, var(--color-base-content) 65%, transparent);
+    font-size: 0.875rem;
   }
 
-  .activity-row:nth-child(odd) {
-    background: color-mix(in srgb, var(--color-base-content) 5%, transparent);
+  /* The time leads in the markup, where a screen reader wants it, and trails
+     on screen, where the sentence matters more. */
+  .activity-time {
+    order: 1;
+    flex: none;
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    font-variant-numeric: tabular-nums;
   }
 
-  /* Request-local chat log; the Activity card stays separate. */
+  .activity-icon {
+    flex: 0 0 1rem;
+    text-align: center;
+    opacity: 0.7;
+  }
+
+  /* Sunset keeps its one job: the game is on. */
+  .activity-pill-started {
+    border-color: color-mix(in srgb, var(--brand-sunset) 45%, transparent);
+    color: var(--ink-last);
+  }
+
+  .activity-pill-started .activity-icon {
+    opacity: 1;
+  }
+
+  /* Lobby chat. Two independent signals: the fill says whose message it is
+     (a primary tint on the right for the viewer, the quiet raised surface on
+     the left for everyone else) and a Golden Hour ring and nick say Host. A
+     Host reading their own Lobby simply gets both. */
+  .bubble-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .bubble-row-own {
+    justify-content: flex-end;
+  }
+
+  .bubble-row-first {
+    margin-top: 0.5rem;
+  }
+
+  .bubble {
+    min-width: 0;
+    max-width: min(34rem, 80%);
+    border-radius: var(--radius-box);
+    border-bottom-left-radius: var(--radius-selector);
+    padding: 0.375rem 0.75rem;
+    background: var(--surface-avatar-member);
+    font-size: 0.9375rem;
+    overflow-wrap: anywhere;
+  }
+
+  .bubble-row-own .bubble {
+    border-bottom-right-radius: var(--radius-selector);
+    border-bottom-left-radius: var(--radius-box);
+    /* Light needs more Deep Blue: at 45% the tint sat 1.3:1 from Tide Line. */
+    background: light-dark(
+      color-mix(in srgb, var(--color-primary) 60%, var(--color-base-200)),
+      color-mix(in srgb, var(--color-primary) 45%, var(--color-base-200))
+    );
+  }
+
+  /* --ink-hot, not Golden Hour itself, which vanishes on Tide Line. */
+  .bubble-row-host .bubble {
+    box-shadow: inset 0 0 0 1px var(--ink-hot);
+  }
+
+  .bubble-nick {
+    display: block;
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+
+  /* --ink-hot alone is 4.1:1 on Tide Line; a fifth of body ink makes it 5:1. */
+  .bubble-row-host .bubble-nick {
+    color: color-mix(in srgb, var(--ink-hot) 80%, var(--color-base-content));
+  }
+
+  /* The time rides the end of the last line and drops below only when the
+     line is full; the clearfix keeps it inside the bubble either way. */
+  .bubble-time {
+    float: right;
+    margin: 0.375rem 0 0 0.75rem;
+    color: color-mix(in srgb, currentColor 70%, transparent);
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .bubble-row-own .bubble-time {
+    color: color-mix(in srgb, currentColor 90%, transparent);
+  }
+
+  .bubble::after {
+    display: table;
+    clear: both;
+    content: "";
+  }
+
+  .avatar-placeholder-host {
+    background: color-mix(in srgb, var(--color-warning) 16%, transparent);
+    color: var(--ink-hot);
+  }
+
   /* Straight rule between the messages and what writes to them. */
   .chat-compose {
     display: flex;
@@ -799,11 +1098,6 @@
     margin-top: auto;
   }
 
-  /* A main-column card titles itself like the Players card beside it. */
-  .detail-main .detail-card-summary {
-    font-size: 1.0625rem;
-    color: var(--color-base-content);
-  }
 
   .chat-log {
     display: flex;
@@ -811,9 +1105,10 @@
     min-height: 8rem;
     flex: 1;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: 0.25rem;
     overflow-y: auto;
     overflow-wrap: anywhere;
+    padding-inline-end: 0.5rem;
   }
 
 
@@ -850,9 +1145,6 @@
   .activity-detail {
     min-width: 0;
     overflow-wrap: anywhere;
-  }
-  .detail-card-accent {
-    border-color: color-mix(in srgb, var(--color-warning) 40%, var(--border-raised));
   }
 
   /* Cover-first: the art is how a player recognises a game across a grid, so
@@ -1486,9 +1778,6 @@
     color: var(--ink-quiet);
   }
 
-  .detail-rail .btn {
-    justify-content: center;
-  }
 
   /* Fills the main column above the footer; main is a flex column. */
   .request-shell {
@@ -1636,7 +1925,12 @@
     font-size: 0.8125rem;
     font-weight: 500;
     line-height: calc(18 / 13);
+    text-transform: uppercase;
   }
+  .app-navigation-link .status-chip-host {
+    text-transform: none;
+  }
+
 
   .status-chip-open,
   .status-chip-cancelled,
@@ -2665,12 +2959,9 @@ textarea::placeholder {
 }
 
 @media (min-width: 80rem) {
-  .detail-shell {
-    grid-template-columns: minmax(0, 1fr) 20rem;
+  .detail-lower-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
   }
-
-  /* The rail is a column of cover art now, so it only has to be as wide as a
-     cover plus its gutters. */
   .request-shell {
     grid-template-columns: minmax(0, 1fr) 10.5rem;
   }
@@ -2853,7 +3144,8 @@ textarea::placeholder {
   .input,
   .select,
   .start-choice span,
-  .filter-toggle {
+  .filter-toggle,
+  .detail-card-summary {
     min-height: 2.75rem;
   }
 

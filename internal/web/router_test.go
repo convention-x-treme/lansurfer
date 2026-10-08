@@ -68,6 +68,25 @@ func TestNotificationReconcileRouteRequiresSessionAndCSRF(t *testing.T) {
 	}
 }
 
+func TestGameRequestChatHasNoReadRoute(t *testing.T) {
+	viewer := &routerAuthentication{account: user.User{ID: "user-1", GameNick: "Ada Player", Role: user.RoleUser}}
+	router := NewRouter(RouterDependencies{
+		Ready: func(context.Context) error { return nil }, Authentication: viewer, Sessions: viewer,
+		GameRequests: &routerGameRequests{}, RequestQueries: &routerGameRequestQueries{},
+		Chat: &struct{ handler.GameRequestChat }{}, LobbyAccess: &struct{ handler.LobbyAccess }{},
+		LobbyQueries: &struct {
+			handler.GameRequestLobbyQueries
+		}{},
+	})
+	request := httptest.NewRequest(http.MethodGet, "/game-requests/request-1/chat", nil)
+	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("GET /chat status = %d, want %d because POST route remains", response.Code, http.StatusMethodNotAllowed)
+	}
+}
+
 func TestHealth(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	response := httptest.NewRecorder()
@@ -1066,7 +1085,7 @@ func TestAdminPWARendersWithoutJavaScript(t *testing.T) {
 	if count := strings.Count(body, "Not available without JavaScript"); count != 5 {
 		t.Errorf("found %d browser-fact placeholders, want 5", count)
 	}
-	if !strings.Contains(body, `src="/assets/admin-pwa.js"`) {
+	if !strings.Contains(body, `src="/assets/admin-pwa.js?v=`) {
 		t.Error("page does not load the progressive diagnostics script")
 	}
 }

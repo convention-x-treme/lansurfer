@@ -59,7 +59,7 @@ func (h *GameRequests) SessionInformation(w http.ResponseWriter, r *http.Request
 		h.sessionFailure(w, r, err)
 		return
 	}
-	if r.Header.Get("HX-Request") == "true" {
+	if r.Header.Get("HX-Request") == "true" && r.URL.Query().Get("dialog") != "1" {
 		target := "/game-requests/" + view.RequestID
 		if mode == "add" {
 			target += "?session_add=1"
@@ -67,6 +67,15 @@ func (h *GameRequests) SessionInformation(w http.ResponseWriter, r *http.Request
 			target += "?session_edit=" + mode
 		}
 		w.Header().Set("HX-Replace-Url", target)
+	}
+	if r.URL.Query().Get("dialog") == "1" {
+		if view.Form == nil {
+			h.sessionFailure(w, r, gamerequest.ErrSessionInformationEntryNotFound)
+			return
+		}
+		view.Form.InDialog = true
+		render(w, r, http.StatusOK, pages.SessionInformationFormContent(view))
+		return
 	}
 	render(w, r, http.StatusOK, pages.GameRequestSessionInformation(view))
 }
@@ -106,6 +115,7 @@ func (h *GameRequests) sessionSuccess(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("HX-Replace-Url", "/game-requests/"+chi.URLParam(r, "requestID"))
+	w.Header().Set("HX-Trigger-After-Swap", "session-information-mutated")
 	h.SessionInformation(w, r)
 }
 func (h *GameRequests) sessionFailure(w http.ResponseWriter, r *http.Request, err error) {
@@ -146,7 +156,14 @@ func (h *GameRequests) sessionMutationFailure(w http.ResponseWriter, r *http.Req
 		view.Form.ErrorField = "value"
 	}
 	if r.Header.Get("HX-Request") == "true" {
-		render(w, r, http.StatusOK, pages.GameRequestSessionInformation(view))
+		if r.FormValue("dialog") == "1" {
+			view.Form.InDialog = true
+			w.Header().Set("HX-Retarget", "#session-information-dialog-content")
+			w.Header().Set("HX-Reswap", "innerHTML")
+			render(w, r, http.StatusOK, pages.SessionInformationFormContent(view))
+		} else {
+			render(w, r, http.StatusOK, pages.GameRequestSessionInformation(view))
+		}
 		return
 	}
 	account, _ := webmiddleware.CurrentUser(r.Context())

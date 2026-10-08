@@ -19,6 +19,7 @@ LANsurfer should answer that question with as little friction as possible. It is
 3. They create a Game Request.
 4. Other relevant players see the request in the browser or through an enabled notification transport.
 5. Players join and then start playing together.
+Following remains an explicit action on the Games surface. The Game Request detail page does not expose Follow Game. Viewing, creating, or joining a Game Request never follows its Game implicitly.
 
 The LANsurfer installation itself provides the event context. Players do not need to select or join an Event, Clan, Open Play space, or other parent context before using Game Requests.
 
@@ -377,6 +378,8 @@ Stable 1.0 coordination continues while a request is `playing`:
 - secret sharing outside a Game Request, per-entry access lists, secret history/versioning, and key-management UI are out of scope;
 - the Host and currently joined participants may use a lightweight request-local private chat while the request is active.
 
+The Game Request detail page presents participant chat and durable Game Request activity together in the **Lobby**. Current members may read Lobby history in every lifecycle state; leaving removes read access immediately. Nonmembers cannot read it. Chat posting remains limited to current members while the request is `open` or `playing`; terminal Lobbies are read-only. The Lobby shows the latest 200 combined entries in chronological order. Historical backfill appears as history but is never delivered as notification.
+
 Secret presentation protects against shoulder-surfing, not database access, server compromise, or an authorized participant inspecting browser tools.
 Request-local chat is not a general messaging subsystem: there are no direct messages, global rooms, threads, reactions, attachments, read receipts, typing indicators, or presence in the stable 1.0 scope.
 
@@ -384,7 +387,7 @@ The primary UI should show Game, player count/capacity, start time, short descri
 
 ### Editing a Game Request
 
-The Host may edit mutable coordination details from the Game Request detail page without recreating the request. The edit flow stays inline on that detail page; discovery/list rows remain read-only.
+The Host may edit mutable coordination details from the Game Request detail page without recreating the request; discovery/list rows remain read-only. Enhanced mode uses a native responsive dialog: a centered modal on desktop and a bottom sheet on mobile. Without JavaScript, the existing inline `?edit=1` fallback remains.
 
 - While `open`, the Host may edit **Max players**, the planned start time, and description.
 - While `playing`, the Host may edit **Max players** and description, but the planned start time is no longer editable.

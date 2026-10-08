@@ -77,15 +77,62 @@ LEFT JOIN user_identities avatar ON avatar.user_id = u.id AND avatar.avatar_sele
 WHERE m.game_request_id = sqlc.arg(game_request_id)::uuid
 ORDER BY m.joined_at, u.id;
 
--- name: ListGameRequestActivity :many
-SELECT a.kind, a.occurred_at, a.actor_id::text AS actor_id, u.game_nick AS actor_game_nick,
-       a.previous_max_players, a.new_max_players,
-       a.previous_starts_at, a.new_starts_at, a.description_changed
-FROM game_request_activity a
-JOIN users u ON u.id = a.actor_id
-WHERE a.game_request_id = sqlc.arg(game_request_id)::uuid
-ORDER BY a.sequence DESC;
 
+
+-- The Game Request domain owns Lobby authorization policy. Keep membership in
+-- this read snapshot only as a defense-in-depth privacy guard against leaving
+-- between domain authorization and this query; do not add lifecycle rules here.
+-- name: ReadGameRequestLobby :many
+WITH access AS (
+    SELECT gr.id, gr.creator_id,
+           EXISTS (
+               SELECT 1 FROM game_request_members member
+               WHERE member.game_request_id = gr.id
+                 AND member.user_id = sqlc.arg(viewer_id)::uuid
+           ) AS is_member
+    FROM game_requests gr
+    WHERE gr.id = sqlc.arg(game_request_id)::uuid
+), combined AS (
+    SELECT a.occurred_at, 0::integer AS source,
+           a.sequence AS activity_sequence, NULL::uuid AS message_id,
+           a.kind, a.actor_id::text AS actor_id,
+           u.game_nick AS actor_game_nick, NULL::text AS body,
+           a.previous_max_players, a.new_max_players,
+           a.previous_starts_at, a.new_starts_at, a.description_changed,
+           NULL::text AS avatar_key
+    FROM game_request_activity a
+    JOIN users u ON u.id = a.actor_id
+    JOIN access permission ON permission.id = a.game_request_id AND permission.is_member
+    UNION ALL
+    SELECT m.created_at, 1::integer,
+           NULL::bigint, m.id,
+           NULL::text, m.author_id::text, u.game_nick, m.body,
+           NULL::integer, NULL::integer,
+           NULL::timestamptz, NULL::timestamptz, false::boolean,
+           avatar.avatar_key
+    FROM game_request_messages m
+    JOIN users u ON u.id = m.author_id
+    LEFT JOIN user_identities avatar ON avatar.user_id = u.id AND avatar.avatar_selected
+    JOIN access permission ON permission.id = m.game_request_id AND permission.is_member
+), latest AS (
+    SELECT * FROM combined
+    ORDER BY occurred_at DESC, source DESC,
+             activity_sequence DESC NULLS LAST, message_id DESC NULLS LAST
+    LIMIT 200
+)
+SELECT permission.id::text AS request_id, permission.is_member,
+       permission.creator_id::text AS host_id,
+       COALESCE(entry.source, -1)::integer AS source,
+       entry.occurred_at, entry.activity_sequence,
+       COALESCE(entry.message_id::text, '')::text AS message_id,
+       entry.kind, entry.actor_id, entry.actor_game_nick, entry.body,
+       entry.previous_max_players, entry.new_max_players,
+       entry.previous_starts_at, entry.new_starts_at, entry.description_changed,
+       COALESCE(entry.avatar_key, '')::text AS author_avatar_key
+FROM access permission
+LEFT JOIN latest entry ON permission.is_member
+ORDER BY entry.occurred_at ASC, entry.source ASC,
+         entry.activity_sequence ASC NULLS LAST, entry.message_id ASC NULLS LAST;
 -- TrendingGames ranks games by Game Request activity inside the rolling window
 -- the caller states in the UI. Ranking comes from recorded request activity, not
 -- from search queries or page views.

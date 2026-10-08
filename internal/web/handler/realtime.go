@@ -17,9 +17,9 @@ type GameRequestEvents interface {
 	Subscribers() int
 }
 
-// ChatAccess answers whether a user may currently read a request's chat.
-type ChatAccess interface {
-	CanChat(ctx context.Context, requestID, userID string) (bool, error)
+// LobbyAccess answers whether a user may currently read a request's Lobby.
+type LobbyAccess interface {
+	CanReadLobby(ctx context.Context, requestID, userID string) (bool, error)
 }
 
 type SessionInformationAccess interface {
@@ -28,12 +28,12 @@ type SessionInformationAccess interface {
 
 type Realtime struct {
 	events             GameRequestEvents
-	chat               ChatAccess
+	lobby              LobbyAccess
 	sessionInformation SessionInformationAccess
 }
 
-func NewRealtime(events GameRequestEvents, chat ChatAccess, session ...SessionInformationAccess) *Realtime {
-	h := &Realtime{events: events, chat: chat}
+func NewRealtime(events GameRequestEvents, lobby LobbyAccess, session ...SessionInformationAccess) *Realtime {
+	h := &Realtime{events: events, lobby: lobby}
 	if len(session) > 0 {
 		h.sessionInformation = session[0]
 	}
@@ -93,10 +93,15 @@ func (h *Realtime) GameRequests(w http.ResponseWriter, r *http.Request) {
 					continue
 				}
 				if event.Type == gamerequest.EventChatMessage {
-					if h.chat == nil {
+					if h.lobby == nil {
 						continue
 					}
-					if allowed, err := h.chat.CanChat(r.Context(), event.RequestID, viewer.ID); err != nil || !allowed {
+					allowed, err := h.lobby.CanReadLobby(r.Context(), event.RequestID, viewer.ID)
+					if err != nil {
+						webmiddleware.LogError(r, "authorize game request Lobby signal", err)
+						continue
+					}
+					if !allowed {
 						continue
 					}
 					name = "game-request-chat"

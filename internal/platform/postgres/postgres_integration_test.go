@@ -3849,11 +3849,12 @@ func TestForwardMigrationPreservesPrototypeGameRequests(t *testing.T) {
 				!preserved.CreatedAt.Equal(fixture.createdAt) {
 				t.Fatalf("preserved request = %#v", preserved)
 			}
-			if got := activityKinds(preserved.Activity); !slices.Equal(got, []gamerequest.ActivityKind{gamerequest.ActivityJoined, gamerequest.ActivityCreated}) {
+			preservedActivity := lobbyActivities(t, readStore, fixture.openID, fixture.joinerID)
+			if got := activityKinds(preservedActivity); !slices.Equal(got, []gamerequest.ActivityKind{gamerequest.ActivityCreated, gamerequest.ActivityJoined}) {
 				t.Fatalf("backfilled activity = %v", got)
 			}
-			if !preserved.Activity[0].OccurredAt.Equal(fixture.joinedAt) || preserved.Activity[0].ActorID != fixture.joinerID {
-				t.Fatalf("backfilled join entry = %#v", preserved.Activity[0])
+			if !preservedActivity[1].OccurredAt.Equal(fixture.joinedAt) || preservedActivity[1].ActorID != fixture.joinerID {
+				t.Fatalf("backfilled join entry = %#v", preservedActivity[1])
 			}
 
 			// The point of the track: discovery no longer depends on an Event
@@ -3873,9 +3874,10 @@ func TestForwardMigrationPreservesPrototypeGameRequests(t *testing.T) {
 			if closed.Status != gamerequest.StatusClosed {
 				t.Fatalf("closed request status = %q", closed.Status)
 			}
-			if len(closed.Activity) == 0 || closed.Activity[0].Kind != gamerequest.ActivityClosed ||
-				!closed.Activity[0].OccurredAt.Equal(fixture.updatedAt) {
-				t.Fatalf("closed request activity = %#v", closed.Activity)
+			closedActivity := lobbyActivities(t, readStore, fixture.closedID, fixture.creatorID)
+			if len(closedActivity) == 0 || closedActivity[len(closedActivity)-1].Kind != gamerequest.ActivityClosed ||
+				!closedActivity[len(closedActivity)-1].OccurredAt.Equal(fixture.updatedAt) {
+				t.Fatalf("closed request activity = %#v", closedActivity)
 			}
 
 			// Legacy Event rows are documented as kept, not silently discarded.
@@ -4238,10 +4240,11 @@ func TestGameRequestActivityDiscoveryAndTrending(t *testing.T) {
 		t.Fatalf("read tracked request: %v", err)
 	}
 	wantKinds := []gamerequest.ActivityKind{
-		gamerequest.ActivityClosed, gamerequest.ActivityStarted, gamerequest.ActivityLeft,
-		gamerequest.ActivityJoined, gamerequest.ActivityCreated,
+		gamerequest.ActivityCreated, gamerequest.ActivityJoined, gamerequest.ActivityLeft,
+		gamerequest.ActivityStarted, gamerequest.ActivityClosed,
 	}
-	if got := activityKinds(detail.Activity); !slices.Equal(got, wantKinds) {
+	activities := lobbyActivities(t, readStore, tracked.ID, host.ID)
+	if got := activityKinds(activities); !slices.Equal(got, wantKinds) {
 		t.Fatalf("activity = %v, want %v (rejected mutations must not record anything)", got, wantKinds)
 	}
 	// Everything written while the application is running is deliverable work;
@@ -4258,8 +4261,8 @@ func TestGameRequestActivityDiscoveryAndTrending(t *testing.T) {
 	if detail.MemberCount != 1 {
 		t.Fatalf("member count after leave = %d, want 1", detail.MemberCount)
 	}
-	if detail.Activity[2].ActorGameNick != "Activity Guest" || detail.Activity[2].ActorID != guest.ID {
-		t.Fatalf("leave entry = %#v", detail.Activity[2])
+	if activities[2].ActorGameNick != "Activity Guest" || activities[2].ActorID != guest.ID {
+		t.Fatalf("leave entry = %#v", activities[2])
 	}
 
 	// A rolled-back write leaves neither the request nor an activity entry.
@@ -4445,12 +4448,9 @@ func TestCommittedActivitySurvivesRestartBeforeDelivery(t *testing.T) {
 			t.Fatalf("activity sequence is not monotonic after restart: %#v", after)
 		}
 	}
-	detail, err := gamerequestquery.NewStore(restarted).ByID(t.Context(), created.ID, host.ID)
-	if err != nil {
-		t.Fatalf("read game request after restart: %v", err)
-	}
-	wantKinds := []gamerequest.ActivityKind{gamerequest.ActivityClosed, gamerequest.ActivityStarted, gamerequest.ActivityJoined, gamerequest.ActivityCreated}
-	if got := activityKinds(detail.Activity); !slices.Equal(got, wantKinds) {
+	activities := lobbyActivities(t, gamerequestquery.NewStore(restarted), created.ID, host.ID)
+	wantKinds := []gamerequest.ActivityKind{gamerequest.ActivityCreated, gamerequest.ActivityJoined, gamerequest.ActivityStarted, gamerequest.ActivityClosed}
+	if got := activityKinds(activities); !slices.Equal(got, wantKinds) {
 		t.Fatalf("activity kinds after restart = %v, want %v", got, wantKinds)
 	}
 }
@@ -4567,10 +4567,11 @@ func TestGameRequestActivityKeepsHistoryAcrossRejoin(t *testing.T) {
 		t.Fatalf("read rejoined request: %v", err)
 	}
 	want := []gamerequest.ActivityKind{
-		gamerequest.ActivityJoined, gamerequest.ActivityLeft,
-		gamerequest.ActivityJoined, gamerequest.ActivityCreated,
+		gamerequest.ActivityCreated, gamerequest.ActivityJoined,
+		gamerequest.ActivityLeft, gamerequest.ActivityJoined,
 	}
-	if got := activityKinds(detail.Activity); !slices.Equal(got, want) {
+	activities := lobbyActivities(t, readStore, created.ID, guest.ID)
+	if got := activityKinds(activities); !slices.Equal(got, want) {
 		t.Fatalf("activity = %v, want %v", got, want)
 	}
 	if detail.MemberCount != 2 || !detail.ViewerJoined {
@@ -4586,8 +4587,8 @@ func TestGameRequestActivityKeepsHistoryAcrossRejoin(t *testing.T) {
 		t.Fatalf("rejoined player appears %d times in the member list, want 1", appearances)
 	}
 	// The rejoin is a new entry rather than the old one resurfacing.
-	if detail.Activity[0].OccurredAt.Before(detail.Activity[1].OccurredAt) {
-		t.Fatalf("rejoin entry is older than the leave it followed: %#v", detail.Activity[:2])
+	if activities[3].OccurredAt.Before(activities[2].OccurredAt) {
+		t.Fatalf("rejoin entry is older than the leave it followed: %#v", activities[2:])
 	}
 }
 

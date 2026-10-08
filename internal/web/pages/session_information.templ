@@ -7,50 +7,57 @@ import (
 	"github.com/convention-x-treme/lansurfer/internal/web/components"
 )
 
-type SessionInformationForm struct { Mode, EntryID, Key, Value, Error, ErrorField string; IsSecret, ServerIsSecret bool }
+type SessionInformationForm struct { Mode, EntryID, Key, Value, Error, ErrorField string; IsSecret, ServerIsSecret, InDialog bool }
 type SessionInformationView struct { RequestID string; Entries []gamerequest.SessionInformationEntry; CanEdit, JoinRequired, Visible bool; Form *SessionInformationForm }
 
 templ GameRequestSessionInformation(view SessionInformationView) {
 	if view.Visible {
 		<div id="session-information" class="session-information" data-session-information data-refresh-url={ sessionInfoRefreshURL(view) }>
 			<div class="session-information-heading">
-				<h2 id="session-information-title" class="section-label data-text">Session information</h2>
+				<h2 id="session-information-title" class="section-label data-text" tabindex="-1">Session information</h2>
 				if view.CanEdit && view.Form == nil {
-					<a class="btn btn-quiet btn-xs" href={ "/game-requests/" + view.RequestID + "?session_add=1" } hx-get={ "/game-requests/" + view.RequestID + "/session-information?session_add=1" } hx-target="#session-information" hx-swap="outerHTML">Add</a>
+					<a class="btn btn-quiet btn-xs" href={ "/game-requests/" + view.RequestID + "?session_add=1" } hx-get={ "/game-requests/" + view.RequestID + "/session-information?session_add=1&dialog=1" } hx-target="#session-information-dialog-content" hx-swap="innerHTML" data-session-add-trigger data-session-dialog-open>Add</a>
 				}
 			</div>
 			if view.JoinRequired {
 				<p class="session-information-empty mt-2 text-sm text-base-content/70">Join this Game Request to see session information.</p>
 			} else {
 				if len(view.Entries) > 0 {
-					<ul class="session-information-tiles" aria-label="Session information entries">
+					<ul class="session-information-grid" aria-label="Session information entries">
 						for _, entry := range view.Entries {
-							<li class="session-information-tile" data-secret={ strconv.FormatBool(entry.IsSecret) }>
-								<div class="session-information-tile-heading">
-									<strong class="session-information-key">{ entry.Key }</strong>
-									if entry.IsSecret {
-										<span class="session-information-secret">Secret</span>
-									}
-								</div>
-								<div class="session-information-value-row">
+							<li class="session-information-fact" data-secret={ strconv.FormatBool(entry.IsSecret) }>
+								<div class="session-information-fact-content">
+									<div class="session-information-fact-heading">
+										<strong class="session-information-key">{ entry.Key }</strong>
+										if entry.IsSecret {
+											<span class="session-information-secret">Secret</span>
+										}
+									</div>
+									<div class="session-information-value-row">
 									if entry.IsSecret {
 										<span class="session-information-value session-information-secret-value" data-secret-value={ entry.Value } data-revealed="false">••••••••</span>
-										<button class="btn btn-ghost btn-square btn-xs" type="button" data-secret-copy aria-label={ "Copy " + entry.Key } title={ "Copy " + entry.Key }><i class="ph ph-copy" aria-hidden="true"></i></button>
-										<button class="btn btn-ghost btn-square btn-xs" type="button" data-secret-reveal aria-label={ "Reveal " + entry.Key } title={ "Reveal " + entry.Key } aria-pressed="false"><i class="ph ph-eye" aria-hidden="true"></i></button>
 									} else {
 										<span class="session-information-value">{ entry.Value }</span>
-										<button class="btn btn-ghost btn-square btn-xs" type="button" data-copy-value={ entry.Value } aria-label={ "Copy " + entry.Key } title={ "Copy " + entry.Key }><i class="ph ph-copy" aria-hidden="true"></i></button>
 									}
+									<div class="session-information-copy-actions">
+										if entry.IsSecret {
+											<button class="btn btn-ghost btn-square btn-xs" type="button" data-secret-copy aria-label={ "Copy " + entry.Key } title={ "Copy " + entry.Key }><i class="ph ph-copy" aria-hidden="true"></i></button>
+											<button class="btn btn-ghost btn-square btn-xs" type="button" data-secret-reveal aria-label={ "Reveal " + entry.Key } title={ "Reveal " + entry.Key } aria-pressed="false"><i class="ph ph-eye" aria-hidden="true"></i></button>
+										} else {
+											<button class="btn btn-ghost btn-square btn-xs" type="button" data-copy-value={ entry.Value } aria-label={ "Copy " + entry.Key } title={ "Copy " + entry.Key }><i class="ph ph-copy" aria-hidden="true"></i></button>
+										}
+									</div>
 									if view.CanEdit {
 										<div class="session-information-actions">
-											<a class="btn btn-ghost btn-square btn-xs" aria-label={ "Edit " + entry.Key } title={ "Edit " + entry.Key } href={ "/game-requests/" + view.RequestID + "?session_edit=" + entry.ID } hx-get={ "/game-requests/" + view.RequestID + "/session-information?session_edit=" + entry.ID } hx-target="#session-information" hx-swap="outerHTML"><i class="ph ph-pencil-simple" aria-hidden="true"></i></a>
-											<form method="post" action={ "/game-requests/" + view.RequestID + "/session-information/" + entry.ID + "/delete" } hx-post={ "/game-requests/" + view.RequestID + "/session-information/" + entry.ID + "/delete" } hx-target="#session-information" hx-swap="outerHTML" data-confirm="Delete this session information?">
+											<a class="btn btn-ghost btn-square btn-xs" aria-label={ "Edit " + entry.Key } title={ "Edit " + entry.Key } href={ "/game-requests/" + view.RequestID + "?session_edit=" + entry.ID } hx-get={ "/game-requests/" + view.RequestID + "/session-information?session_edit=" + entry.ID + "&dialog=1" } hx-target="#session-information-dialog-content" hx-swap="innerHTML" data-session-edit-trigger={ entry.ID } data-session-dialog-open><i class="ph ph-pencil-simple" aria-hidden="true"></i></a>
+											<form method="post" action={ "/game-requests/" + view.RequestID + "/session-information/" + entry.ID + "/delete" } data-session-delete-fallback data-session-delete-entry={ entry.ID } data-session-delete-key={ entry.Key }>
 												@components.CSRFInput()
-												<button class="btn btn-ghost btn-square btn-xs" aria-label={ "Delete " + entry.Key } title={ "Delete " + entry.Key } type="submit"><i class="ph ph-trash" aria-hidden="true"></i></button>
+												<button class="btn btn-step-back btn-square btn-xs" aria-label={ "Delete " + entry.Key } title={ "Delete " + entry.Key } type="submit"><i class="ph ph-trash" aria-hidden="true"></i></button>
 											</form>
 										</div>
 									}
 								</div>
+							</div>
 							</li>
 						}
 					</ul>
@@ -58,17 +65,63 @@ templ GameRequestSessionInformation(view SessionInformationView) {
 					<p class="session-information-empty mt-2 text-sm text-base-content/70">No session information yet.</p>
 				}
 				if view.Form != nil {
-					<form class="session-information-form" data-session-information-form data-session-mode={ view.Form.Mode } data-session-entry-id={ view.Form.EntryID } data-server-is-secret={ strconv.FormatBool(view.Form.ServerIsSecret) } method="post" action={ sessionFormAction(view) } hx-post={ sessionFormAction(view) } hx-target="#session-information" hx-swap="outerHTML">
-						@components.CSRFInput()
-						<label>Key<input class="input input-bordered w-full" name="key" value={ view.Form.Key } required aria-invalid={ sessionInformationInvalid(view.Form.ErrorField, "key") } aria-describedby="session-information-error"/></label>
-						<label>Value<input class="input input-bordered w-full" name="value" type={ sessionValueInputType(view.Form) } value={ view.Form.Value } required aria-invalid={ sessionInformationInvalid(view.Form.ErrorField, "value") } aria-describedby="session-information-error"/></label>
-						<label class="session-information-secret-toggle"><input type="checkbox" name="is_secret" value="true" if view.Form.IsSecret { checked } data-session-secret-toggle/> Secret value</label>
-						<p id="session-information-error" role="alert" class="text-sm text-error">{ view.Form.Error }</p>
-						<div class="session-information-form-actions"><button class="btn btn-primary btn-sm" type="submit">Save</button><a class="btn btn-quiet btn-sm" href={ "/game-requests/" + view.RequestID } hx-get={ "/game-requests/" + view.RequestID + "/session-information" } hx-target="#session-information" hx-swap="outerHTML">Cancel</a></div>
-					</form>
+					@SessionInformationFormContent(view)
 				}
 			}
 		</div>
+	}
+}
+
+templ SessionInformationFormContent(view SessionInformationView) {
+	if view.Form != nil {
+		<form class="session-information-form" data-session-information-form data-session-mode={ view.Form.Mode } data-session-entry-id={ view.Form.EntryID } data-server-is-secret={ strconv.FormatBool(view.Form.ServerIsSecret) } method="post" action={ sessionFormAction(view) } hx-post={ sessionFormAction(view) } hx-target="#session-information" hx-swap="outerHTML">
+			@components.CSRFInput()
+			if view.Form.InDialog {
+				<input type="hidden" name="dialog" value="1"/>
+			}
+			<label>Key<input class="input input-bordered w-full" name="key" value={ view.Form.Key } required aria-invalid={ sessionInformationInvalid(view.Form.ErrorField, "key") } aria-describedby="session-information-error"/></label>
+			<label>Value<input class="input input-bordered w-full" name="value" type={ sessionValueInputType(view.Form) } value={ view.Form.Value } required aria-invalid={ sessionInformationInvalid(view.Form.ErrorField, "value") } aria-describedby="session-information-error"/></label>
+			<label class="session-information-secret-toggle"><input type="checkbox" name="is_secret" value="true" if view.Form.IsSecret { checked } data-session-secret-toggle/> Secret value</label>
+			<p id="session-information-error" role="alert" class="text-sm text-error">{ view.Form.Error }</p>
+			<div class="session-information-form-actions">
+				<button class="btn btn-primary btn-sm" type="submit">Save</button>
+				if view.Form.InDialog {
+					<button class="btn btn-quiet btn-sm" type="button" data-dialog-close>Cancel</button>
+				} else {
+					<a class="btn btn-quiet btn-sm" href={ "/game-requests/" + view.RequestID } hx-get={ "/game-requests/" + view.RequestID + "/session-information" } hx-target="#session-information" hx-swap="outerHTML">Cancel</a>
+				}
+			</div>
+		</form>
+	}
+}
+
+templ GameRequestSessionInformationDialogs(view SessionInformationView) {
+	if view.Visible && view.CanEdit {
+		<dialog class="session-information-dialog session-dialog--sheet dialog-shell" id="session-information-dialog" data-dialog-shell aria-labelledby="session-information-dialog-title">
+			<div class="dialog-panel">
+				<div class="dialog-heading">
+					<h2 id="session-information-dialog-title" class="text-lg font-semibold">Session information</h2>
+					<button class="btn btn-ghost btn-square dialog-close" type="button" data-dialog-close aria-label="Close dialog"><i class="ph ph-x" aria-hidden="true"></i></button>
+				</div>
+				<div id="session-information-dialog-content" data-session-dialog-content></div>
+			</div>
+		</dialog>
+		<dialog class="session-information-dialog session-dialog--sheet dialog-shell session-delete-dialog" id="session-information-delete-dialog" data-dialog-shell aria-labelledby="session-information-delete-title">
+			<div class="dialog-panel">
+				<div class="dialog-heading">
+					<h2 id="session-information-delete-title" class="text-lg font-semibold">Delete session information?</h2>
+					<button class="btn btn-ghost btn-square dialog-close" type="button" data-dialog-close aria-label="Close dialog"><i class="ph ph-x" aria-hidden="true"></i></button>
+				</div>
+				<p class="text-sm text-base-content/75" data-session-delete-message></p>
+				<form method="post" action="" data-session-delete-confirm-form hx-target="#session-information" hx-swap="outerHTML">
+					@components.CSRFInput()
+					<div class="session-information-form-actions">
+						<button class="btn btn-quiet btn-sm" type="button" data-dialog-close>Cancel</button>
+						<button class="btn btn-danger btn-sm" type="submit">Delete</button>
+					</div>
+				</form>
+			</div>
+		</dialog>
 	}
 }
 

@@ -705,6 +705,24 @@ func TestRefreshViewDoesNotRecordAVisit(t *testing.T) {
 		t.Fatalf("recorded views = %#v, want none", commands.viewed)
 	}
 }
+func TestViewHTMXEditReturnsOnlyAuthorizedEditorFragment(t *testing.T) {
+	queries := fakeGameRequestQueries{request: requestquery.Request{
+		ID: "request-1", CreatorID: "host-1", Game: game.GamePresentation{Name: "Warcraft III"},
+		Status: gamerequest.StatusOpen, StartsAt: time.Date(2027, 5, 1, 12, 0, 0, 0, time.UTC),
+	}}
+	handler := NewGameRequests(&fakeGameRequestCommands{}, queries, &fakeGameResolver{}, &fakeGameRequestDiscovery{}, nil, branding.Default())
+	request := withCurrentUser(httptest.NewRequest(http.MethodGet, "/game-requests/request-1?edit=1", nil), user.User{ID: "host-1"})
+	request.Header.Set("HX-Request", "true")
+	response := httptest.NewRecorder()
+	handler.View(response, request)
+
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `action="/game-requests/request-1/details"`) {
+		t.Fatalf("editor response = %d, body = %s", response.Code, response.Body.String())
+	}
+	if strings.Contains(response.Body.String(), "<!doctype html") || strings.Contains(response.Body.String(), `id="game-request-detail"`) {
+		t.Fatalf("HTMX edit response contains page or detail fragment: %s", response.Body.String())
+	}
+}
 
 func TestStartCallsCommandAndRedirectsToDetail(t *testing.T) {
 	commands := &fakeGameRequestCommands{}
@@ -954,6 +972,27 @@ func TestUpdateDetailsKeepsBusinessErrorOnEditor(t *testing.T) {
 		!strings.Contains(body, `value="2"`) ||
 		!strings.Contains(body, "Maximum players cannot be lower than the current player count.") {
 		t.Errorf("business error response = %d, body = %s", response.Code, body)
+	}
+}
+func TestUpdateDetailsHTMXShowsPageLevelErrorInDialog(t *testing.T) {
+	requestState := requestquery.Request{
+		ID: "request-1", CreatorID: "host-1", Game: game.GamePresentation{Name: "Warcraft III"},
+		Status: gamerequest.StatusClosed, StartsAt: time.Date(2027, 5, 1, 12, 0, 0, 0, time.UTC),
+	}
+	commands := &fakeGameRequestCommands{detailsErr: gamerequest.ErrNotActive}
+	handler := NewGameRequests(commands, fakeGameRequestQueries{request: requestState}, nil, &fakeGameRequestDiscovery{}, nil, branding.Default())
+	form := url.Values{"max_players": {"4"}, "start_preset": {"now"}, "description": {"draft"}}
+	request := httptest.NewRequest(http.MethodPost, "/request-1/details", strings.NewReader(form.Encode()))
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	request.Header.Set("HX-Request", "true")
+	request = request.WithContext(webmiddleware.ContextWithUser(request.Context(), user.User{ID: "host-1"}))
+	response := httptest.NewRecorder()
+	handler.UpdateDetails(response, request)
+
+	if response.Code != http.StatusOK ||
+		!strings.Contains(response.Body.String(), "This Game Request is no longer active.") ||
+		strings.Contains(response.Body.String(), `action="/game-requests/request-1/details"`) {
+		t.Fatalf("page-level editor error = %d %s", response.Code, response.Body.String())
 	}
 }
 

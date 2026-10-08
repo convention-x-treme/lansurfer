@@ -132,9 +132,9 @@ func (s *stubGameRequestEvents) Subscribers() int {
 	return 1
 }
 
-type stubChatAccess struct{ allowed map[string]bool }
+type stubLobbyAccess struct{ allowed map[string]bool }
 
-func (s stubChatAccess) CanChat(_ context.Context, _, userID string) (bool, error) {
+func (s stubLobbyAccess) CanReadLobby(_ context.Context, _, userID string) (bool, error) {
 	return s.allowed[userID], nil
 }
 
@@ -149,9 +149,10 @@ func TestRealtimeChatSignalsOnlyReachParticipants(t *testing.T) {
 		request := httptest.NewRequest("GET", "/events/game-requests?detailRequestId=request-1", nil)
 		request = request.WithContext(webmiddleware.ContextWithUser(request.Context(), user.User{ID: userID}))
 		response := httptest.NewRecorder()
+		source := &stubGameRequestEvents{events: events}
 		NewRealtime(
-			&stubGameRequestEvents{events: events},
-			stubChatAccess{allowed: map[string]bool{"member": true}},
+			source,
+			stubLobbyAccess{allowed: map[string]bool{"member": true}},
 		).GameRequests(response, request)
 		return response.Body.String()
 	}
@@ -165,9 +166,9 @@ func TestRealtimeChatSignalsOnlyReachParticipants(t *testing.T) {
 	}
 }
 
-type countingChatAccess struct{ calls int }
+type countingLobbyAccess struct{ calls int }
 
-func (s *countingChatAccess) CanChat(context.Context, string, string) (bool, error) {
+func (s *countingLobbyAccess) CanReadLobby(context.Context, string, string) (bool, error) {
 	s.calls++
 	return true, nil
 }
@@ -176,7 +177,7 @@ func TestRealtimeSkipsChatAuthorizationForUnwatchedRequest(t *testing.T) {
 	events := make(chan gamerequest.Event, 1)
 	events <- gamerequest.Event{Type: gamerequest.EventChatMessage, RequestID: "request-2"}
 	close(events)
-	access := &countingChatAccess{}
+	access := &countingLobbyAccess{}
 	request := httptest.NewRequest("GET", "/events/game-requests?detailRequestId=request-1", nil)
 	request = request.WithContext(webmiddleware.ContextWithUser(request.Context(), user.User{ID: "member"}))
 	response := httptest.NewRecorder()
@@ -184,7 +185,7 @@ func TestRealtimeSkipsChatAuthorizationForUnwatchedRequest(t *testing.T) {
 	NewRealtime(&stubGameRequestEvents{events: events}, access).GameRequests(response, request)
 
 	if access.calls != 0 {
-		t.Fatalf("CanChat calls = %d, want 0 for unrelated request", access.calls)
+		t.Fatalf("CanReadLobby calls = %d, want 0 for unrelated request", access.calls)
 	}
 	if strings.Contains(response.Body.String(), "game-request-chat") {
 		t.Fatal("unwatched chat signal was delivered")
