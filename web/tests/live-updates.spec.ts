@@ -50,13 +50,15 @@ for (const scenario of ["draft", "validation error", "tab return"] as const) {
     await page.getByRole("button", { name: "Create Game Request" }).click();
     await page.waitForURL(/\/game-requests\/[0-9a-f-]+(?:\?.*)?$/);
     await page.getByRole("link", { name: "Edit" }).click();
-    await page.waitForURL(/\?edit=1$/);
+    await expect(page.locator("#game-request-edit-dialog")).toBeVisible();
     const capacity = page.getByLabel("Max players");
     const value = scenario === "validation error" ? "1" : "6";
     await capacity.fill(value);
     if (scenario === "validation error") {
       await page.getByRole("button", { name: "Save" }).click();
       await expect(page.locator("#max-players-error")).toBeVisible();
+      await expect(capacity).toHaveValue("1");
+      await expect(capacity).toBeFocused();
     }
     await page.waitForLoadState("load");
     await capacity.focus();
@@ -71,12 +73,22 @@ for (const scenario of ["draft", "validation error", "tab return"] as const) {
     }
 
     await expect.poll(async () => (await htmxCounters(page)).after).toBeGreaterThan(0);
+    await expect(page.locator("#game-request-edit-dialog")).toHaveCount(1);
     await expect(capacity).toHaveValue(value);
     await expect(capacity).toBeFocused();
     if (scenario === "validation error") {
       await expect(page.locator("#max-players-error")).toBeVisible();
       await expect(capacity).toHaveAttribute("aria-invalid", "true");
     }
+    const firstRefreshCount = (await htmxCounters(page)).after;
+    const id = await page.locator("#game-request-detail").getAttribute("data-game-request-id");
+    await request.post(`/__test__/publish?type=GameRequestJoined&request=${id}`);
+    await expect.poll(async () => (await htmxCounters(page)).after).toBeGreaterThan(firstRefreshCount);
+    await expect(page.locator("#game-request-edit-dialog")).toHaveCount(1);
+    await expect(capacity).toHaveValue(value);
+    await page.keyboard.press("Escape");
+    await page.getByRole("link", { name: "Edit" }).click();
+    await expect(page.locator("#game-request-edit-dialog")).toBeVisible();
   });
 }
 
@@ -87,13 +99,13 @@ for (const scenario of ["description draft", "capacity draft"] as const) {
     await page.getByRole("button", { name: "Create Game Request" }).click();
     await page.waitForURL(/\/game-requests\/[0-9a-f-]+(?:\?.*)?$/);
     await page.getByRole("link", { name: "Edit" }).click();
-    await page.waitForURL(/\?edit=1$/);
+    await expect(page.locator("#game-request-edit-dialog")).toBeVisible();
     await waitForRealtime(page, page.request, 1);
     await instrumentHtmx(page);
 
     const detail = page.locator("#game-request-detail");
     const id = await detail.getAttribute("data-game-request-id");
-    const csrf = await detail.locator("input[name='csrf_token']").first().inputValue();
+    const csrf = await page.locator("#game-request-edit-dialog form[action$='/details'] input[name='csrf_token']").inputValue();
     const capacity = page.getByLabel("Max players");
     const description = page.getByLabel("Description");
     if (scenario === "description draft") await description.fill("A😀B");
@@ -117,17 +129,15 @@ for (const scenario of ["description draft", "capacity draft"] as const) {
       await expect(description.locator("xpath=..").locator("[data-description-count]")).toHaveText("3 / 1000");
       await description.fill("A😀BC");
       await expect(description.locator("xpath=..").locator("[data-description-count]")).toHaveText("4 / 1000");
-      await expect(capacity).toHaveValue("6");
+      await expect(capacity).toHaveValue("4");
     } else {
       await expect(capacity).toHaveValue("6");
-      await expect(description).toHaveValue("Server description");
+      await expect(description).toHaveValue("");
     }
     await page.getByRole("button", { name: "Save" }).click();
-    await page.waitForURL(/\/game-requests\/[0-9a-f-]+(?:\?.*)?$/);
-    await expect(page.locator("#game-request-detail")).toContainText("1/6");
-    await expect(page.locator("#game-request-detail")).toContainText(
-      scenario === "description draft" ? "A😀BC" : "Server description",
-    );
+    await expect(page.locator("#game-request-edit-dialog")).toBeHidden();
+    await expect(page.locator("#game-request-detail")).toContainText(scenario === "description draft" ? "1/4" : "1/6");
+    await expect(page.locator("#game-request-detail")).toContainText(scenario === "description draft" ? "A😀BC" : "No description.");
   });
 }
 
@@ -137,7 +147,7 @@ test("a detail refresh preserves dirty custom start date and time", async ({ pag
   await page.getByRole("button", { name: "Create Game Request" }).click();
   await page.waitForURL(/\/game-requests\/[0-9a-f-]+(?:\?.*)?$/);
   await page.getByRole("link", { name: "Edit" }).click();
-  await page.waitForURL(/\?edit=1$/);
+  await expect(page.locator("#game-request-edit-dialog")).toBeVisible();
   await page.getByText("Pick date & time").click();
   const date = page.locator("input[name='start_date']");
   const time = page.locator("input[name='start_time']");
@@ -157,7 +167,7 @@ test("a detail refresh preserves dirty custom start date and time", async ({ pag
     return new Date(year, month - 1, day, hour, minute).toISOString().replace(".000Z", "Z");
   });
   await page.getByRole("button", { name: "Save" }).click();
-  await page.waitForURL(/\/game-requests\/[0-9a-f-]+(?:\?.*)?$/);
+  await expect(page.locator("#game-request-edit-dialog")).toBeHidden();
   await expect(page.locator("#game-request-detail time[data-local-time='start']")).toHaveAttribute("datetime", expectedStart);
 });
 
@@ -170,15 +180,15 @@ test.describe("Berlin custom-start refresh", () => {
     await page.getByRole("button", { name: "Create Game Request" }).click();
     await page.waitForURL(/\/game-requests\/[0-9a-f-]+(?:\?.*)?$/);
     await page.getByRole("link", { name: "Edit" }).click();
-    await page.waitForURL(/\?edit=1$/);
+    await expect(page.locator("#game-request-edit-dialog")).toBeVisible();
     await page.getByText("Pick date & time").click();
     await page.locator("input[name='start_date']").fill("2099-05-02");
     await page.locator("input[name='start_time']").fill("20:30");
     await page.getByRole("button", { name: "Save" }).click();
-    await page.waitForURL(/\/game-requests\/[0-9a-f-]+(?:\?.*)?$/);
+    await expect(page.locator("#game-request-edit-dialog")).toBeHidden();
 
     await page.getByRole("link", { name: "Edit" }).click();
-    await page.waitForURL(/\?edit=1$/);
+    await expect(page.locator("#game-request-edit-dialog")).toBeVisible();
     const time = page.locator("input[name='start_time']");
     await expect(time).toHaveValue("20:30");
     await time.fill("18:30");
@@ -189,7 +199,7 @@ test.describe("Berlin custom-start refresh", () => {
     await expect.poll(async () => (await htmxCounters(page)).after).toBeGreaterThan(0);
     await expect(time).toHaveValue("18:30");
     await page.getByRole("button", { name: "Save" }).click();
-    await page.waitForURL(/\/game-requests\/[0-9a-f-]+(?:\?.*)?$/);
+    await expect(page.locator("#game-request-edit-dialog")).toBeHidden();
     await expect(page.locator("#game-request-detail time[data-local-time='start']")).toHaveAttribute(
       "datetime",
       "2099-05-02T16:30:00Z",
@@ -202,7 +212,7 @@ test("number inputs inserted by a detail refresh clamp immediately", async ({ pa
   await page.getByRole("button", { name: "Create Game Request" }).click();
   await page.waitForURL(/\/game-requests\/[0-9a-f-]+(?:\?.*)?$/);
   await page.getByRole("link", { name: "Edit" }).click();
-  await page.waitForURL(/\?edit=1$/);
+  await expect(page.locator("#game-request-edit-dialog")).toBeVisible();
   await waitForRealtime(page, request, 1);
   await instrumentHtmx(page);
   const id = await page.locator("#game-request-detail").getAttribute("data-game-request-id");
@@ -220,7 +230,7 @@ test("a detail refresh preserves a selected relative start shortcut", async ({ p
   await page.getByRole("button", { name: "Create Game Request" }).click();
   await page.waitForURL(/\/game-requests\/[0-9a-f-]+(?:\?.*)?$/);
   await page.getByRole("link", { name: "Edit" }).click();
-  await page.waitForURL(/\?edit=1$/);
+  await expect(page.locator("#game-request-edit-dialog")).toBeVisible();
   await page.locator("label.start-choice").filter({ hasText: "in 15 min" }).click();
   await waitForRealtime(page, request, 1);
   await instrumentHtmx(page);
@@ -230,18 +240,18 @@ test("a detail refresh preserves a selected relative start shortcut", async ({ p
   await expect(page.locator("input[name='start_preset'][value='15']")).toBeChecked();
   await expect(page.locator("[data-custom-start]")).toBeHidden();
   await page.getByRole("button", { name: "Save" }).click();
-  await page.waitForURL(/\/game-requests\/[0-9a-f-]+(?:\?.*)?$/);
+  await expect(page.locator("#game-request-edit-dialog")).toBeHidden();
   const start = new Date((await page.locator("#game-request-detail time[data-local-time='start']").getAttribute("datetime"))!);
   expect(start.getTime()).toBeGreaterThan(Date.now() + 14 * 60_000);
   expect(start.getTime()).toBeLessThan(Date.now() + 16 * 60_000);
 });
-test("a Playing refresh does not restore removed planned-start controls", async ({ page }) => {
+test("a playing refresh leaves the open edit draft untouched", async ({ page }) => {
   await page.goto("/game-requests/new?game_id=game-1");
   await page.locator("input[name='max_players']").fill("4");
   await page.getByRole("button", { name: "Create Game Request" }).click();
   await page.waitForURL(/\/game-requests\/[0-9a-f-]+(?:\?.*)?$/);
   await page.getByRole("link", { name: "Edit" }).click();
-  await page.waitForURL(/\?edit=1$/);
+  await expect(page.locator("#game-request-edit-dialog")).toBeVisible();
   await waitForRealtime(page, page.request, 1);
   await instrumentHtmx(page);
 
@@ -254,18 +264,18 @@ test("a Playing refresh does not restore removed planned-start controls", async 
   await expect.poll(async () => (await htmxCounters(page)).after).toBeGreaterThan(0);
 
   await expect(page.getByText("Playing", { exact: true }).first()).toBeVisible();
-  await expect(page.locator("form[action$='/details'] input[name='start_date'], form[action$='/details'] input[name='start_time']")).toHaveCount(0);
+  await expect(page.locator("form[action$='/details'] input[name='start_date'], form[action$='/details'] input[name='start_time']")).toHaveCount(2);
   await expect(page.getByLabel("Max players")).toHaveValue("4");
   await expect(page.getByLabel("Description")).toHaveValue("Local description");
 });
 
-test("a detail refresh updates an untouched request editor and removes a draft when cancelled", async ({ page, request }) => {
+test("a detail refresh does not merge server edits into an open editor draft", async ({ page, request }) => {
   await page.goto("/game-requests/new?game_id=game-1");
   await page.locator("input[name='max_players']").fill("4");
   await page.getByRole("button", { name: "Create Game Request" }).click();
   await page.waitForURL(/\/game-requests\/[0-9a-f-]+(?:\?.*)?$/);
   await page.getByRole("link", { name: "Edit" }).click();
-  await page.waitForURL(/\?edit=1$/);
+  await expect(page.locator("#game-request-edit-dialog")).toBeVisible();
   await instrumentHtmx(page);
   const capacity = page.getByLabel("Max players");
 
@@ -286,15 +296,21 @@ test("a detail refresh updates an untouched request editor and removes a draft w
   expect(new URL(changed.url()).pathname).toBe(`/game-requests/${id}`);
   await expect.poll(async () => (await htmxCounters(page)).after).toBeGreaterThan(0);
 
-  await expect(capacity).toHaveValue("5");
+  await expect(capacity).toHaveValue("4");
+  await expect(page.locator("#game-request-detail")).toContainText("1/5");
 
   await capacity.fill("6");
   const cancelled = await page.request.post(`/game-requests/${id}/cancel`, {
     form: { csrf_token: csrf },
   });
   expect(cancelled.ok()).toBe(true);
-  await expect(capacity).toHaveCount(0);
+  await expect(capacity).toHaveValue("6");
   await expect(page.getByText("Cancelled", { exact: true }).first()).toBeVisible();
+  await page.getByRole("button", { name: "Save" }).click();
+  const alert = page.locator("#game-request-edit-dialog [role='alert']");
+  await expect(alert).toContainText("This Game Request is no longer active.");
+  await expect(alert).toBeFocused();
+  await expect(page.locator("#game-request-edit-dialog form[action$='/details']")).toHaveCount(0);
 });
 
 test("a live update refreshes the list without disturbing the page", async ({ page, request }) => {

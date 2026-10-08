@@ -397,6 +397,15 @@ func (h *GameRequests) View(w http.ResponseWriter, r *http.Request) {
 		webmiddleware.LogError(r, "record Game Request view", err)
 	}
 	message := detailEditorMessage(request, account.ID, r.URL.Query().Get("edit") == "1")
+	if r.Header.Get("HX-Request") == "true" && r.URL.Query().Get("edit") == "1" {
+		message.Dialog = true
+		if !message.Editing {
+			http.Error(w, "game request not found", http.StatusNotFound)
+			return
+		}
+		render(w, r, http.StatusOK, pages.GameRequestDetailsEditor(request, message))
+		return
+	}
 	session, sessionErr := h.sessionView(r, sessionModeFromQuery(r))
 	if sessionErr != nil {
 		webmiddleware.LogError(r, "load session information", sessionErr)
@@ -573,6 +582,11 @@ func (h *GameRequests) UpdateDetails(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	if err == nil {
+		if r.Header.Get("HX-Request") == "true" {
+			w.Header().Set("HX-Trigger", "game-request-details-saved")
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
 		h.redirect(w, r, "/game-requests/"+requestID)
 		return
 	}
@@ -601,6 +615,11 @@ func (h *GameRequests) UpdateDetails(w http.ResponseWriter, r *http.Request) {
 	if sessionErr != nil {
 		webmiddleware.LogError(r, "reload session information after details error", sessionErr)
 		h.renderError(w, r)
+		return
+	}
+	if r.Header.Get("HX-Request") == "true" {
+		message.Dialog = true
+		render(w, r, http.StatusOK, pages.GameRequestDetailsEditor(request, message))
 		return
 	}
 	render(w, r, status, pages.GameRequestDetail(h.brand, h.navigationFor(r), request, account.ID, message, components.Notice{}, session))

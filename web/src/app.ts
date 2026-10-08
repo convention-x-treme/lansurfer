@@ -31,6 +31,8 @@ window.addEventListener("pageshow", (event) => {
 htmx.config.includeIndicatorStyles = false;
 
 let pendingSessionDialogOpen = false;
+let pendingGameRequestEditOpen = false;
+let pendingGameRequestDetailRefresh = false;
 
 
 function sessionDialogFocusSelector(trigger: HTMLElement): string {
@@ -57,11 +59,14 @@ document.querySelectorAll<HTMLDialogElement>("[data-dialog-shell]").forEach((dia
   dialog.addEventListener("close", () => {
     const selector = dialog.dataset.returnFocusSelector;
     delete dialog.dataset.returnFocusSelector;
-    dialog.querySelector("[data-session-dialog-content]")?.replaceChildren();
+    dialog.querySelector("[data-session-dialog-content], #game-request-edit-dialog-content")?.replaceChildren();
     window.setTimeout(() => {
-      const trigger = (selector ? document.querySelector<HTMLElement>(selector) : null) ??
-        document.querySelector<HTMLElement>("[data-session-add-trigger]") ??
-        document.querySelector<HTMLElement>("#session-information-title");
+      const fallback = dialog.id === "game-request-edit-dialog"
+        ? document.querySelector<HTMLElement>("[data-game-request-edit-trigger]") ??
+          document.querySelector<HTMLElement>("#game-request-detail h1")
+        : document.querySelector<HTMLElement>("[data-session-add-trigger]") ??
+          document.querySelector<HTMLElement>("#session-information-title");
+      const trigger = (selector ? document.querySelector<HTMLElement>(selector) : null) ?? fallback;
       trigger?.focus({ preventScroll: true });
     }, 50);
   });
@@ -75,6 +80,47 @@ document.addEventListener("htmx:beforeRequest", (event) => {
     pendingSessionDialogOpen = true;
     dialog.dataset.returnFocusSelector = sessionDialogFocusSelector(trigger);
   }
+});
+document.addEventListener("htmx:beforeRequest", (event) => {
+  const trigger = (event as CustomEvent<{ elt: HTMLElement }>).detail.elt;
+  if (!trigger.matches("[data-game-request-edit-trigger]")) return;
+  const dialog = document.querySelector<HTMLDialogElement>("#game-request-edit-dialog");
+  if (!dialog) return;
+  pendingGameRequestEditOpen = true;
+  dialog.dataset.returnFocusSelector = "[data-game-request-edit-trigger]";
+});
+
+document.addEventListener("htmx:afterSwap", (event) => {
+  const target = (event as CustomEvent<{ target: HTMLElement }>).detail.target;
+  if (target.id === "game-request-edit-dialog-content") {
+    const form = target.querySelector<HTMLFormElement>("form[action$='/details']");
+    const dialog = document.querySelector<HTMLDialogElement>("#game-request-edit-dialog");
+    if (!dialog) return;
+    const invalid = form?.querySelector<HTMLElement>("[aria-invalid='true']");
+    const alert = target.querySelector<HTMLElement>("[role='alert']");
+    if (!form) {
+      alert?.focus({ preventScroll: true });
+      return;
+    }
+    if (pendingGameRequestEditOpen) {
+      pendingGameRequestEditOpen = false;
+      dialog.showModal();
+    }
+    (invalid ?? alert ?? form.querySelector<HTMLElement>("input[name='max_players']"))?.focus({ preventScroll: true });
+    return;
+  }
+  if (target.id === "game-request-detail" && pendingGameRequestDetailRefresh) {
+    pendingGameRequestDetailRefresh = false;
+    const dialog = document.querySelector<HTMLDialogElement>("#game-request-edit-dialog");
+    if (dialog?.open) dialog.close();
+  }
+});
+
+document.addEventListener("game-request-details-saved", () => {
+  const detail = document.querySelector<HTMLElement>("[data-game-request-detail]");
+  if (!detail?.dataset.refreshUrl) return;
+  pendingGameRequestDetailRefresh = true;
+  void htmx.ajax("get", detail.dataset.refreshUrl, { target: "#game-request-detail", swap: "outerHTML" });
 });
 
 document.addEventListener("htmx:afterSwap", (event) => {
@@ -394,8 +440,8 @@ document.addEventListener("htmx:afterRequest", () => {
   }
 });
 
-// Detail refreshes keep only locally dirty or rejected field state. The server
-// always owns the refreshed form structure.
+// The inline ?edit=1 fallback can run with JavaScript enabled. Preserve its
+// draft during detail swaps; enhanced dialog drafts live outside that target.
 type RequestDetailFieldDraft = {
   name: string;
   value: string;

@@ -362,7 +362,7 @@ The primary UI should show Game, player count/capacity, start time, short descri
 
 ### Editing a Game Request
 
-The Host may edit mutable coordination details from the Game Request detail page without recreating the request. The edit flow stays inline on that detail page; discovery/list rows remain read-only.
+The Host may edit mutable coordination details from the Game Request detail page without recreating the request; discovery/list rows remain read-only. Enhanced mode uses a native responsive dialog: a centered modal on desktop and a bottom sheet on mobile. Without JavaScript, the existing inline `?edit=1` fallback remains.
 
 - While `open`, the Host may edit **Max players**, the planned start time, and description.
 - While `playing`, the Host may edit **Max players** and description, but the planned start time is no longer editable.

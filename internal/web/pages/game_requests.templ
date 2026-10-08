@@ -555,6 +555,7 @@ templ StartChoice(value, label, selected string) {
 // GameRequestDetailMessage carries editor mode and values plus one
 // field-local or page-level complaint. Value retains raw submitted capacity.
 type GameRequestDetailMessage struct {
+	Dialog          bool
 	Text           string
 	Field          string
 	Value          string
@@ -586,6 +587,7 @@ templ GameRequestDetail(brand branding.Brand, navigation components.NavigationSt
 				<div role="alert" class="alert alert-error mb-4"><span>{ message.Text }</span></div>
 			}
 			@GameRequestDetailContentWithSession(request, viewerID, false, message, session)
+			@GameRequestEditDialog(request.CreatorID == viewerID && (request.Status == gamerequest.StatusOpen || request.Status == gamerequest.StatusPlaying))
 			@GameRequestSessionInformationDialogs(session)
 		</div>
 	}
@@ -726,7 +728,7 @@ templ GameRequestDetailContentWithSession(request requestquery.Request, viewerID
 								@components.CSRFInput()
 								<button class="btn btn-primary btn-sm w-full" type="submit"><i class="ph ph-play" aria-hidden="true"></i>Start game</button>
 							</form>
-							<a class="btn btn-quiet btn-sm w-full" href={ "/game-requests/" + request.ID + "?edit=1" }><i class="ph ph-pencil-simple" aria-hidden="true"></i>Edit</a>
+							<a class="btn btn-quiet btn-sm w-full" href={ "/game-requests/" + request.ID + "?edit=1" } hx-get={ "/game-requests/" + request.ID + "?edit=1" } hx-target="#game-request-edit-dialog-content" hx-swap="innerHTML" data-game-request-edit-trigger><i class="ph ph-pencil-simple" aria-hidden="true"></i>Edit</a>
 							<form method="post" action={ "/game-requests/" + request.ID + "/cancel" } data-confirm="Cancel this Game Request? This cannot be reopened.">
 								@components.CSRFInput()
 								<button class="btn btn-danger btn-sm w-full" type="submit"><i class="ph ph-x-circle" aria-hidden="true"></i>Cancel Game Request</button>
@@ -737,7 +739,7 @@ templ GameRequestDetailContentWithSession(request requestquery.Request, viewerID
 								@components.CSRFInput()
 								<button class="btn btn-step-back btn-sm w-full" type="submit"><i class="ph ph-prohibit" aria-hidden="true"></i>Close game</button>
 							</form>
-							<a class="btn btn-quiet btn-sm w-full" href={ "/game-requests/" + request.ID + "?edit=1" }><i class="ph ph-pencil-simple" aria-hidden="true"></i>Edit</a>
+							<a class="btn btn-quiet btn-sm w-full" href={ "/game-requests/" + request.ID + "?edit=1" } hx-get={ "/game-requests/" + request.ID + "?edit=1" } hx-target="#game-request-edit-dialog-content" hx-swap="innerHTML" data-game-request-edit-trigger><i class="ph ph-pencil-simple" aria-hidden="true"></i>Edit</a>
 							<p class="text-xs leading-relaxed text-base-content/65">Visible to the Host only. Close the game when everyone is done.</p>
 						}
 					}
@@ -768,23 +770,48 @@ templ GameRequestDetailContentWithSession(request requestquery.Request, viewerID
 	</div>
 }
 templ GameRequestDetailsEditor(request requestquery.Request, message GameRequestDetailMessage) {
-	<form method="post" action={ "/game-requests/" + request.ID + "/details" } class="grid gap-4" data-local-start?={ message.InitializeStart } data-start-instant={ request.StartsAt.Format(time.RFC3339) }>
-		@components.CSRFInput()
-		@GameRequestMaxPlayersField(capacityInputValue(request, message), ComposerMessage{Text: message.Text, Field: message.Field})
-		if request.Status == gamerequest.StatusOpen {
-			@GameRequestStartFields(message.Form, ComposerMessage{Text: message.Text, Field: message.Field})
-		} else {
-			<div class="grid gap-2">
-				<p class="label-text font-medium">Start</p>
-				<time class="data-text" datetime={ request.StartsAt.Format(time.RFC3339) } title={ components.AbsoluteTime(request.StartsAt) } data-local-time="absolute">{ request.StartsAt.UTC().Format("2006-01-02 15:04") }</time>
-			</div>
+	<div data-game-request-editor>
+		if message.Dialog && message.pageLevel() {
+			<div role="alert" tabindex="-1" class="alert alert-error mb-4"><span>{ message.Text }</span></div>
 		}
-		@GameRequestDescriptionField(message.Form.Description, ComposerMessage{Text: message.Text, Field: message.Field})
-		<div class="grid grid-cols-2 gap-2">
-			<button class="btn btn-primary btn-sm" type="submit"><i class="ph ph-floppy-disk" aria-hidden="true"></i>Save</button>
-			<a class="btn btn-quiet btn-sm" href={ "/game-requests/" + request.ID }>Cancel</a>
-		</div>
-	</form>
+		if message.Editing {
+			<form method="post" action={ "/game-requests/" + request.ID + "/details" } class="grid gap-4" data-local-start?={ message.InitializeStart } data-start-instant={ request.StartsAt.Format(time.RFC3339) } { gameRequestEditorAttributes(message.Dialog, request.ID)... }>
+			@components.CSRFInput()
+			@GameRequestMaxPlayersField(capacityInputValue(request, message), ComposerMessage{Text: message.Text, Field: message.Field})
+			if request.Status == gamerequest.StatusOpen {
+				@GameRequestStartFields(message.Form, ComposerMessage{Text: message.Text, Field: message.Field})
+			} else {
+				<div class="grid gap-2">
+					<p class="label-text font-medium">Start</p>
+					<time class="data-text" datetime={ request.StartsAt.Format(time.RFC3339) } title={ components.AbsoluteTime(request.StartsAt) } data-local-time="absolute">{ request.StartsAt.UTC().Format("2006-01-02 15:04") }</time>
+				</div>
+			}
+			@GameRequestDescriptionField(message.Form.Description, ComposerMessage{Text: message.Text, Field: message.Field})
+			<div class="grid grid-cols-2 gap-2">
+				<button class="btn btn-primary btn-sm" type="submit"><i class="ph ph-floppy-disk" aria-hidden="true"></i>Save</button>
+				if message.Dialog {
+					<button class="btn btn-quiet btn-sm" type="button" data-dialog-close>Cancel</button>
+				} else {
+					<a class="btn btn-quiet btn-sm" href={ "/game-requests/" + request.ID }>Cancel</a>
+				}
+			</div>
+			</form>
+		}
+	</div>
+}
+
+templ GameRequestEditDialog(canEdit bool) {
+	if canEdit {
+		<dialog class="game-request-edit-dialog session-dialog--sheet dialog-shell" id="game-request-edit-dialog" data-dialog-shell aria-labelledby="game-request-edit-dialog-title">
+			<div class="dialog-panel">
+				<div class="dialog-heading">
+					<h2 id="game-request-edit-dialog-title" class="text-lg font-semibold">Edit Game Request</h2>
+					<button class="btn btn-ghost btn-square dialog-close" type="button" data-dialog-close aria-label="Close dialog"><i class="ph ph-x" aria-hidden="true"></i></button>
+				</div>
+				<div id="game-request-edit-dialog-content"></div>
+			</div>
+		</dialog>
+	}
 }
 
 templ GameRequestError(brand branding.Brand, navigation components.NavigationState) {
@@ -810,6 +837,16 @@ func detailRefreshURLWithSession(requestID string, editing bool, session Session
 	if session.Form != nil && session.Form.Mode=="edit" { values.Set("session_edit",session.Form.EntryID) }
 	if len(values)>0 { return target+"?"+values.Encode() }
 	return target
+}
+func gameRequestEditorAttributes(dialog bool, requestID string) templ.Attributes {
+	if !dialog {
+		return nil
+	}
+	return templ.Attributes{
+		"hx-post":   "/game-requests/" + requestID + "/details",
+		"hx-target": "#game-request-edit-dialog-content",
+		"hx-swap":   "innerHTML",
+	}
 }
 
 func requestFull(request requestquery.Request) bool {

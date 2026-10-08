@@ -26,7 +26,11 @@ test("Host edits open details, then only capacity and description while Playing"
   await page.waitForURL(/\/game-requests\/[0-9a-f-]+(?:\?.*)?$/);
 
   await page.getByRole("link", { name: "Edit" }).click();
-  await page.waitForURL(/\?edit=1$/);
+  const dialog = page.locator("#game-request-edit-dialog");
+  await expect(dialog).toBeVisible();
+  await expect(page).not.toHaveURL(/edit=1/);
+  await expect(dialog.getByRole("heading", { name: "Edit Game Request" })).toBeVisible();
+  await expect(dialog.locator("[name='game_id'], [name='game']")).toHaveCount(0);
   const date = page.locator("input[name='start_date']");
   const time = page.locator("input[name='start_time']");
   const storedStart = await page.locator("#game-request-detail time[data-local-time='start']").getAttribute("datetime");
@@ -51,7 +55,7 @@ test("Host edits open details, then only capacity and description while Playing"
     return new Date(`${dateValue}T${timeValue}`).toISOString().replace(".000Z", "Z");
   });
   await page.getByRole("button", { name: "Save" }).click();
-  await page.waitForURL(/\/game-requests\/[0-9a-f-]+(?:\?.*)?$/);
+  await expect(page.locator("#game-request-edit-dialog")).toBeHidden();
   await expect(page.locator("#game-request-detail")).toContainText("1/6");
   await expect(page.locator("#game-request-detail")).toContainText("Updated plan");
   await expect(page.locator("#game-request-detail time[data-local-time='start']")).toHaveAttribute("datetime", expectedStart);
@@ -61,7 +65,7 @@ test("Host edits open details, then only capacity and description while Playing"
   await page.getByRole("button", { name: "Start game" }).click();
   await expect(page.getByText("Playing", { exact: true }).first()).toBeVisible();
   await page.getByRole("link", { name: "Edit" }).click();
-  await page.waitForURL(/\?edit=1$/);
+  await expect(page.locator("#game-request-edit-dialog")).toBeVisible();
   await expect(page.getByLabel("Max players")).toHaveValue("6");
   await expect(page.getByLabel("Description")).toHaveValue("Updated plan");
   await expect(page.locator("input[name='start_date'], input[name='start_time']")).toHaveCount(0);
@@ -71,17 +75,17 @@ test("Host edits open details, then only capacity and description while Playing"
   await page.getByLabel("Max players").fill("5");
   await page.getByLabel("Description").fill("Playing update");
   await page.getByRole("button", { name: "Save" }).click();
-  await page.waitForURL(/\/game-requests\/[0-9a-f-]+(?:\?.*)?$/);
+  await expect(page.locator("#game-request-edit-dialog")).toBeHidden();
   await expect(page.locator("#game-request-detail")).toContainText("1/5");
   await expect(page.locator("#game-request-detail")).toContainText("Playing update");
   await expect(page.locator("#game-request-detail time[data-local-time='start']")).toHaveAttribute("datetime", expectedStart);
 
   await page.getByRole("link", { name: "Edit" }).click();
-  await page.waitForURL(/\?edit=1$/);
+  await expect(page.locator("#game-request-edit-dialog")).toBeVisible();
   await page.getByLabel("Max players").fill("8");
   await page.getByLabel("Description").fill("Discard this draft");
-  await page.getByRole("link", { name: "Cancel" }).click();
-  await page.waitForURL(/\/game-requests\/[0-9a-f-]+(?:\?.*)?$/);
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.locator("#game-request-edit-dialog")).toBeHidden();
   await expect(page.locator("#game-request-detail")).toContainText("1/5");
   await expect(page.locator("#game-request-detail")).toContainText("Playing update");
 });
@@ -93,12 +97,12 @@ test("Host saves a relative start shortcut", async ({ page }) => {
   const detailURL = page.url();
   const before = new Date((await page.request.get(detailURL)).headers()["date"]!);
   await page.getByRole("link", { name: "Edit" }).click();
-  await page.waitForURL(/\?edit=1$/);
+  await expect(page.locator("#game-request-edit-dialog")).toBeVisible();
   await expect(page.locator("input[name='start_preset'][value='custom']")).toBeChecked();
   await page.locator("label.start-choice").filter({ hasText: "in 15 min" }).click();
   await expect(page.locator("[data-custom-start]")).toBeHidden();
   await page.getByRole("button", { name: "Save" }).click();
-  await page.waitForURL(/\/game-requests\/[0-9a-f-]+(?:\?.*)?$/);
+  await expect(page.locator("#game-request-edit-dialog")).toBeHidden();
   const after = new Date((await page.request.get(page.url())).headers()["date"]!);
   const stored = new Date((await page.locator("#game-request-detail time[data-local-time='start']").getAttribute("datetime"))!);
   expect(stored.getTime()).toBeGreaterThanOrEqual(before.getTime() + 15 * 60_000 - 1_000);
@@ -114,7 +118,7 @@ test("planned-start activity stays inside a narrow rail", async ({ page }) => {
   await page.waitForURL(/\/game-requests\/[0-9a-f-]+(?:\?.*)?$/);
   const requestID = await page.locator("#game-request-detail").getAttribute("data-game-request-id");
   await page.getByRole("link", { name: "Edit" }).click();
-  await page.waitForURL(/\?edit=1$/);
+  await expect(page.locator("#game-request-edit-dialog")).toBeVisible();
   const form = page.locator("form[action$='/details']");
   const csrf = await form.locator("input[name='csrf_token']").inputValue();
   const timezone = await form.locator("input[name='timezone']").inputValue();
@@ -175,4 +179,55 @@ test("Playing request still supports Join, Leave, and Full states", async ({ pag
   await row.getByRole("button", { name: "Leave" }).click();
   await expect(otherRow.getByRole("button", { name: "Join" })).toBeVisible();
   await otherContext.close();
+});
+test("no-JavaScript edit URL keeps inline Save and Cancel behavior", async ({ page, browser }) => {
+  await page.goto("/game-requests/new?game_id=game-1");
+  await page.getByLabel("Max players").fill("4");
+  await page.getByRole("button", { name: "Create Game Request" }).click();
+  await page.waitForURL(/\/game-requests\/[0-9a-f-]+(?:\?.*)?$/);
+  const detailURL = new URL(page.url());
+  const editURL = `${detailURL.pathname}?edit=1`;
+  const context = await browser.newContext({
+    baseURL: "http://127.0.0.1:8123",
+    storageState: await page.context().storageState(),
+    javaScriptEnabled: false,
+  });
+  const noJS = await context.newPage();
+  await noJS.goto(editURL);
+  await expect(noJS.getByLabel("Max players")).toHaveValue("4");
+  await noJS.getByLabel("Max players").fill("6");
+  await noJS.getByLabel("Description").fill("No-JS update");
+  await noJS.getByRole("button", { name: "Save" }).click();
+  await noJS.waitForURL(editURL.replace("?edit=1", ""));
+  await expect(noJS.locator("#game-request-detail")).toContainText("1/6");
+  await expect(noJS.locator("#game-request-detail")).toContainText("No-JS update");
+  await noJS.goto(editURL);
+  await noJS.getByLabel("Max players").fill("8");
+  await noJS.getByRole("link", { name: "Cancel" }).click();
+  await noJS.waitForURL(editURL.replace("?edit=1", ""));
+  await expect(noJS.locator("#game-request-detail")).toContainText("1/6");
+  await context.close();
+});
+test("dialog close controls discard draft and return focus to Edit", async ({ page }) => {
+  await page.goto("/game-requests/new?game_id=game-1");
+  await page.getByLabel("Max players").fill("4");
+  await page.getByRole("button", { name: "Create Game Request" }).click();
+  await page.waitForURL(/\/game-requests\/[0-9a-f-]+(?:\?.*)?$/);
+
+  for (const close of ["Cancel", "Close dialog", "Escape", "Backdrop"]) {
+    const edit = page.getByRole("link", { name: "Edit" });
+    await edit.click();
+    const dialog = page.locator("#game-request-edit-dialog");
+    await expect(dialog).toBeVisible();
+    await page.getByLabel("Max players").fill("8");
+    if (close === "Cancel") await dialog.getByRole("button", { name: close, exact: true }).click();
+    else if (close === "Close dialog") await page.getByRole("button", { name: close }).click();
+    else if (close === "Escape") await page.keyboard.press("Escape");
+    else await page.mouse.click(1, 1);
+    await expect(dialog).toBeHidden();
+    await expect(edit).toBeFocused();
+    await edit.click();
+    await expect(page.getByLabel("Max players")).toHaveValue("4");
+    await page.keyboard.press("Escape");
+  }
 });
