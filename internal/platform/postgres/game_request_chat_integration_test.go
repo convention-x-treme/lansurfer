@@ -96,6 +96,33 @@ func TestGameRequestChatAccess(t *testing.T) {
 	}
 }
 
+func TestGameRequestLobbyAccessStaysRevokedAfterLeavingAndClosing(t *testing.T) {
+	fixture := newPlayingFixture(t)
+	ctx := t.Context()
+	request := fixture.create(t, "Leave then close")
+	if err := fixture.requests.Join(ctx, request.ID, fixture.guest); err != nil {
+		t.Fatalf("join: %v", err)
+	}
+	if err := fixture.requests.Leave(ctx, request.ID, fixture.guest); err != nil {
+		t.Fatalf("leave: %v", err)
+	}
+	if allowed, err := fixture.requests.CanReadLobby(ctx, request.ID, fixture.guest); err != nil || allowed {
+		t.Fatalf("access after leave = %v, %v; want denied", allowed, err)
+	}
+	if err := fixture.requests.Start(ctx, request.ID, fixture.host); err != nil {
+		t.Fatalf("start after leave: %v", err)
+	}
+	if err := fixture.requests.Close(ctx, request.ID, fixture.host); err != nil {
+		t.Fatalf("close after leave: %v", err)
+	}
+	if allowed, err := fixture.requests.CanReadLobby(ctx, request.ID, fixture.guest); err != nil || allowed {
+		t.Fatalf("access after close = %v, %v; want denied", allowed, err)
+	}
+	if _, err := requestquery.NewStore(fixture.pool).Lobby(ctx, request.ID, fixture.guest); !errors.Is(err, gamerequest.ErrNotMember) {
+		t.Fatalf("Lobby after close = %v; want ErrNotMember", err)
+	}
+}
+
 func TestGameRequestLobbyAccessFollowsMembershipAcrossStatuses(t *testing.T) {
 	fixture := newPlayingFixture(t)
 	ctx := t.Context()

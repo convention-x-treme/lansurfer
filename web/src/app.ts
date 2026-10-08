@@ -257,6 +257,8 @@ type GameRequestEvent = {
 // removing the element a response is about to be swapped into.
 let pendingMutations = 0;
 let refreshQueued = false;
+let lobbyRefreshQueued = false;
+let queuedLobbyRequestID: string | null = null;
 
 document.addEventListener("htmx:beforeRequest", () => {
   pendingMutations += 1;
@@ -264,9 +266,17 @@ document.addEventListener("htmx:beforeRequest", () => {
 
 document.addEventListener("htmx:afterRequest", () => {
   pendingMutations = Math.max(0, pendingMutations - 1);
-  if (pendingMutations > 0 || !refreshQueued) return;
-  refreshQueued = false;
-  refreshGameRequests();
+  if (pendingMutations > 0) return;
+  if (refreshQueued) {
+    refreshQueued = false;
+    refreshGameRequests();
+  }
+  if (lobbyRefreshQueued) {
+    lobbyRefreshQueued = false;
+    const requestID = queuedLobbyRequestID;
+    queuedLobbyRequestID = null;
+    if (requestID) refreshGameRequestLobby(requestID);
+  }
 });
 
 // Detail refreshes keep only locally dirty or rejected field state. The server
@@ -497,6 +507,18 @@ function refreshGameRequests(event?: GameRequestEvent): void {
   }
 }
 
+function refreshGameRequestLobby(requestID: string): void {
+  if (pendingMutations > 0) {
+    lobbyRefreshQueued = true;
+    queuedLobbyRequestID = requestID;
+    return;
+  }
+  const detail = document.querySelector<HTMLElement>("[data-game-request-detail]");
+  const log = document.querySelector<HTMLElement>("#game-request-lobby[data-refresh-url]");
+  if (detail?.dataset.gameRequestId !== requestID || !log?.dataset.refreshUrl) return;
+  void htmx.ajax("get", log.dataset.refreshUrl, { target: "#game-request-lobby", swap: "outerHTML" });
+}
+
 const realtime = document.querySelector<HTMLElement>("[data-realtime-url]");
 if (realtime?.dataset.realtimeUrl) {
   const baseRealtimeURL = realtime.dataset.realtimeUrl;
@@ -523,12 +545,7 @@ if (realtime?.dataset.realtimeUrl) {
         const log = document.querySelector<HTMLElement>("#game-request-lobby[data-refresh-url]");
         const detail = document.querySelector<HTMLElement>("[data-game-request-detail]");
         if (!log || detail?.dataset.gameRequestId !== requestId) return;
-        if (pendingMutations > 0) {
-          refreshQueued = true;
-          return;
-        }
-        const refreshURL = log.dataset.refreshUrl;
-        if (refreshURL) void htmx.ajax("get", refreshURL, { target: "#game-request-lobby", swap: "outerHTML" });
+        refreshGameRequestLobby(requestId);
       } catch {
         // A malformed signal is ignored; the next message refreshes the log.
       }

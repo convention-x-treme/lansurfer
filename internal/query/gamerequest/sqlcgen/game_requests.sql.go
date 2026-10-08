@@ -480,7 +480,9 @@ type ReadGameRequestLobbyRow struct {
 	DescriptionChanged pgtype.Bool
 }
 
-// Read the latest 200 combined entries only for a current request member.
+// The Game Request domain owns Lobby authorization policy. Keep membership in
+// this read snapshot only as a defense-in-depth privacy guard against leaving
+// between domain authorization and this query; do not add lifecycle rules here.
 func (q *Queries) ReadGameRequestLobby(ctx context.Context, arg ReadGameRequestLobbyParams) ([]ReadGameRequestLobbyRow, error) {
 	rows, err := q.db.Query(ctx, readGameRequestLobby, arg.ViewerID, arg.GameRequestID)
 	if err != nil {

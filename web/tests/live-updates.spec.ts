@@ -401,6 +401,25 @@ test("the Lobby combines activity and chat and refreshes from a content-free cha
   await expect.poll(async () => (await htmxCounters(page)).after).toBeGreaterThan(0);
   await expect(lobby.locator(".chat-message")).toContainText("Ready for game");
 });
+test("a chat signal during a mutation refreshes only the Lobby", async ({ page, request }) => {
+  await page.goto("/game-requests/new?game_id=game-1");
+  await page.getByRole("button", { name: "Create Game Request" }).click();
+  await page.waitForURL(/\/game-requests\/[0-9a-f-]+/);
+  await waitForRealtime(page, request, 1);
+
+  const requestID = await page.locator("[data-game-request-detail]").getAttribute("data-game-request-id");
+  const requestedURLs: string[] = [];
+  page.on("request", (outgoing) => requestedURLs.push(outgoing.url()));
+  await request.post("/__test__/mode?delay=500");
+  await page.getByRole("textbox", { name: "Message the lobby" }).fill("Sending while signal arrives");
+  await page.getByRole("button", { name: "Send" }).click({ noWaitAfter: true });
+  await request.post(`/__test__/publish?type=GameRequestChatMessage&request=${requestID}`);
+
+  await expect(page.locator("#game-request-lobby .chat-message")).toContainText("Sending while signal arrives");
+  await expect.poll(() => requestedURLs.some((url) => url.endsWith("/lobby"))).toBe(true);
+  expect(requestedURLs.some((url) => url.endsWith("/refresh"))).toBe(false);
+  await request.post("/__test__/mode?delay=0");
+});
 
 test("session-information and general detail refreshes preserve an active inline draft", async ({ page, request }) => {
   await page.goto("/game-requests/new?game_id=game-1");

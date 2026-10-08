@@ -138,6 +138,32 @@ func renderLobby(t *testing.T, requestID string, entries ...requestquery.LobbyEn
 	return rendered.String()
 }
 
+func TestLobbyActivityUpdateLabelsRemainUnchanged(t *testing.T) {
+	four, six := int32(4), int32(6)
+	before := time.Date(2027, 5, 1, 17, 0, 0, 0, time.UTC)
+	after := before.Add(time.Hour)
+	for _, tc := range []struct {
+		name  string
+		entry requestquery.Activity
+		want  string
+	}{
+		{"capacity only", requestquery.Activity{PreviousMaxPlayers: &four, NewMaxPlayers: &six}, "Alex changed capacity from 4 to 6"},
+		{"description only", requestquery.Activity{DescriptionChanged: true}, "Alex updated the description"},
+		{"planned start only", requestquery.Activity{PreviousStartsAt: &before, NewStartsAt: &after}, "Alex changed the planned start"},
+		{"multiple dimensions", requestquery.Activity{PreviousMaxPlayers: &four, NewMaxPlayers: &six, PreviousStartsAt: &before, NewStartsAt: &after, DescriptionChanged: true}, "Alex updated capacity, planned start, and description"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tc.entry.Kind = gamerequest.ActivityUpdated
+			tc.entry.ActorGameNick = "Alex"
+			tc.entry.OccurredAt = before
+			body := renderLobby(t, "request-1", requestquery.LobbyEntry{Source: requestquery.LobbySourceActivity, Activity: tc.entry})
+			if !strings.Contains(body, tc.want) {
+				t.Fatalf("Lobby activity label missing %q: %s", tc.want, body)
+			}
+		})
+	}
+}
+
 // The list wrapper hands the active filters to the live refresh, so an SSE
 // update reloads the same selection instead of silently widening it.
 func TestListContentCarriesActiveFilters(t *testing.T) {
