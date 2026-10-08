@@ -887,11 +887,27 @@ func TestDetailHostActionsFollowTheLifecycle(t *testing.T) {
 			t.Errorf("open Host detail lacks %q", want)
 		}
 	}
+	if !strings.Contains(open, `class="btn btn-quiet" type="submit">Send</button>`) {
+		t.Error("open Host detail must keep Lobby Send quiet beside Start game")
+	}
 	if strings.Contains(open, "Host actions") || strings.Contains(open, "rail-host") || strings.Contains(open, "Follow Game") {
 		t.Errorf("open Host detail retains obsolete panels or follow action")
 	}
+	if got := statusLabel(gamerequest.StatusOpen); got != "Open" {
+		t.Errorf("statusLabel(Open) = %q; want unchanged HTML text", got)
+	}
+	if got := statusLabel(gamerequest.StatusPlaying); got != "Playing" {
+		t.Errorf("statusLabel(Playing) = %q; want unchanged HTML text", got)
+	}
+
+	if got := lobbySendButtonClass(requestquery.Request{CreatorID: "host-1", Status: gamerequest.StatusOpen}, "user-2"); got != "btn btn-primary" {
+		t.Errorf("joined player's Send class = %q; want primary", got)
+	}
 
 	playing := renderLifecycleDetail(t, gamerequest.StatusPlaying, "host-1")
+	if !strings.Contains(playing, `class="btn btn-primary" type="submit">Send</button>`) {
+		t.Error("playing Host detail must keep Lobby Send primary without Start game")
+	}
 	for _, want := range []string{`aria-label="Close game"`, `aria-label="Edit"`, `action="/game-requests/request-1/close"`, `data-copy-link`} {
 		if !strings.Contains(playing, want) {
 			t.Errorf("playing Host detail lacks %q", want)

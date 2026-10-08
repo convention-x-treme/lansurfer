@@ -75,7 +75,8 @@ func TestSessionInformationRendersFlatFactListAndInlineEditor(t *testing.T) {
 		`class="session-information-fact"`, `class="session-information-fact-heading"`,
 		`class="session-information-form"`, `class="session-information-actions"`,
 		`aria-label="Edit Server"`, `aria-label="Delete Server"`,
-		`name="key"`, `name="value"`, "Save", "Cancel",
+		`class="btn btn-ghost btn-square btn-xs" aria-label="Edit Server" title="Edit Server"`,
+		`class="btn btn-step-back btn-square btn-xs" aria-label="Delete Server" title="Delete Server"`,
 	} {
 		if !strings.Contains(html, want) {
 			t.Errorf("session information markup missing %q", want)

@@ -52,7 +52,7 @@ templ GameRequestSessionInformation(view SessionInformationView) {
 											<a class="btn btn-ghost btn-square btn-xs" aria-label={ "Edit " + entry.Key } title={ "Edit " + entry.Key } href={ "/game-requests/" + view.RequestID + "?session_edit=" + entry.ID } hx-get={ "/game-requests/" + view.RequestID + "/session-information?session_edit=" + entry.ID + "&dialog=1" } hx-target="#session-information-dialog-content" hx-swap="innerHTML" data-session-edit-trigger={ entry.ID } data-session-dialog-open><i class="ph ph-pencil-simple" aria-hidden="true"></i></a>
 											<form method="post" action={ "/game-requests/" + view.RequestID + "/session-information/" + entry.ID + "/delete" } data-session-delete-fallback data-session-delete-entry={ entry.ID } data-session-delete-key={ entry.Key }>
 												@components.CSRFInput()
-												<button class="btn btn-ghost btn-square btn-xs" aria-label={ "Delete " + entry.Key } title={ "Delete " + entry.Key } type="submit"><i class="ph ph-trash" aria-hidden="true"></i></button>
+												<button class="btn btn-step-back btn-square btn-xs" aria-label={ "Delete " + entry.Key } title={ "Delete " + entry.Key } type="submit"><i class="ph ph-trash" aria-hidden="true"></i></button>
 											</form>
 										</div>
 									}

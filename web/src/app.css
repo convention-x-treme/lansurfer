@@ -725,12 +725,14 @@
   }
 
   .session-information-secret {
-    border-radius: 999px;
+    border-radius: var(--radius-selector);
     background: color-mix(in srgb, var(--color-base-content) 8%, transparent);
     padding: 0.125rem 0.375rem;
     color: color-mix(in srgb, var(--color-base-content) 70%, transparent);
-    font-size: 0.75rem;
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
     font-weight: 500;
+    text-transform: uppercase;
   }
 
   .session-information-secret-value {
@@ -1830,7 +1832,12 @@
     font-size: 0.8125rem;
     font-weight: 500;
     line-height: calc(18 / 13);
+    text-transform: uppercase;
   }
+  .app-navigation-link .status-chip-host {
+    text-transform: none;
+  }
+
 
   .status-chip-open,
   .status-chip-cancelled,

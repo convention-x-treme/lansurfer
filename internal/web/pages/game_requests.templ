@@ -728,7 +728,7 @@ templ GameRequestDetailContentWithSession(request requestquery.Request, viewerID
 								<form id="chat-compose-form" hx-preserve class="flex gap-2" method="post" action={ "/game-requests/" + request.ID + "/chat" } hx-post={ "/game-requests/" + request.ID + "/chat" } hx-target="#game-request-lobby" hx-swap="outerHTML" hx-disabled-elt="find button" data-chat-form>
 									@components.CSRFInput()
 									<input class="input input-bordered min-w-0 flex-1" type="text" name="body" maxlength="1000" required autocomplete="off" placeholder="Message the lobby" aria-label="Message the lobby"/>
-									<button class="btn btn-primary" type="submit">Send</button>
+									<button class={ lobbySendButtonClass(request, viewerID) } type="submit">Send</button>
 								</form>
 								<p class="pointer-coarse:hidden text-xs text-base-content/70">Emoji: <kbd class="data-text">Win</kbd> + <kbd class="data-text">.</kbd> on Windows, <kbd class="data-text">Ctrl</kbd> + <kbd class="data-text">Cmd</kbd> + <kbd class="data-text">Space</kbd> on Mac</p>
 							</div>
@@ -903,6 +903,12 @@ func detailJoinButtonClass(request requestquery.Request) string {
 	return "btn btn-primary"
 }
 
+func lobbySendButtonClass(request requestquery.Request, viewerID string) string {
+	if request.CreatorID == viewerID && request.Status == gamerequest.StatusOpen {
+		return "btn btn-quiet"
+	}
+	return "btn btn-primary"
+}
 func gameRequestRowClass(request requestquery.Request, highlightedID string) string {
 	classes := "request-row"
 	if request.ID == highlightedID {
