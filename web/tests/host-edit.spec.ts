@@ -19,30 +19,138 @@ test.beforeEach(async ({ request }) => {
   await resetFixture(request);
 });
 
-test("detail layout spans hero and stacks lower content without overflow", async ({ page }) => {
+test("detail layout spans hero and contains Player rows across responsive widths", async ({ browser, baseURL, page }) => {
   await page.goto("/game-requests/new?game_id=game-1");
   await page.getByLabel("Max players").fill("4");
   await page.getByRole("button", { name: "Create Game Request" }).click();
   await page.waitForURL(/\/game-requests\/[0-9a-f-]+(?:\?.*)?$/);
 
-  for (const width of [1440, 900]) {
-    await page.setViewportSize({ width, height: 900 });
-    const layout = await page.evaluate(() => {
-      const hero = document.querySelector(".detail-hero")!.getBoundingClientRect();
-      const grid = document.querySelector(".detail-lower-grid")!.getBoundingClientRect();
-      const players = document.querySelector("#players-title")!.closest("section")!.getBoundingClientRect();
-      const lobby = document.querySelector("#main-lobby")!.getBoundingClientRect();
-      return {
-        heroLeft: hero.left, gridLeft: grid.left, heroRight: hero.right, gridRight: grid.right,
-        playersLeft: players.left, lobbyLeft: lobby.left, playersWidth: players.width, lobbyWidth: lobby.width,
-        scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth,
-      };
-    });
-    expect(Math.abs(layout.heroLeft - layout.gridLeft)).toBeLessThanOrEqual(1);
-    expect(Math.abs(layout.heroRight - layout.gridRight)).toBeLessThanOrEqual(1);
-    expect(layout.lobbyLeft).toBeGreaterThan(layout.playersLeft);
-    expect(layout.lobbyWidth).toBeGreaterThan(layout.playersWidth);
-    expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth + 1);
+  const detailURL = page.url();
+  const otherContext = await browser.newContext({ baseURL, storageState: otherViewerState });
+  try {
+    const otherPage = await otherContext.newPage();
+    await otherPage.goto(detailURL);
+    await otherPage.getByRole("button", { name: "Join", exact: true }).click();
+    await expect(otherPage.getByRole("button", { name: "Leave", exact: true })).toBeVisible();
+  } finally {
+    await otherContext.close();
+  }
+  await page.goto(detailURL);
+  await expect(page.locator(".member-row")).toHaveCount(2);
+  await expect(page.locator(".member-row .status-chip-host")).toHaveCount(1);
+  await expect(page.locator(".member-time").filter({ hasText: /^created \d{2}:\d{2}$/ })).toHaveCount(1);
+  await expect(page.locator(".member-time").filter({ hasText: /^joined \d{2}:\d{2}$/ })).toHaveCount(1);
+
+  const viewports = [
+    { width: 390, height: 844 },
+    { width: 768, height: 1024 },
+    { width: 820, height: 1180 },
+    { width: 900, height: 900 },
+    { width: 1024, height: 768 },
+    { width: 1180, height: 820 },
+    { width: 1279, height: 900 },
+    { width: 1280, height: 900 },
+    { width: 1440, height: 900 },
+  ];
+  for (const viewport of viewports) {
+    await page.setViewportSize(viewport);
+    for (const longNicks of [false, true]) {
+      await page.evaluate(async (replaceNicks) => {
+        await document.fonts.ready;
+        await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+        for (const nick of document.querySelectorAll<HTMLElement>(".member-row > span.truncate")) {
+          if (replaceNicks) {
+            nick.dataset.originalNick ??= nick.textContent ?? "";
+            nick.textContent = "W".repeat(32);
+          } else if (nick.dataset.originalNick !== undefined) {
+            nick.textContent = nick.dataset.originalNick;
+            delete nick.dataset.originalNick;
+          }
+        }
+      }, longNicks);
+      const layout = await page.evaluate(() => {
+        const rect = (element: Element) => {
+          const bounds = element.getBoundingClientRect();
+          return { left: bounds.left, right: bounds.right, top: bounds.top, bottom: bounds.bottom, width: bounds.width, height: bounds.height };
+        };
+        const hero = rect(document.querySelector(".detail-hero")!);
+        const grid = rect(document.querySelector(".detail-lower-grid")!);
+        const playersElement = document.querySelector("#players-title")!.closest("section")!;
+        const players = rect(playersElement);
+        const lobby = rect(document.querySelector("#main-lobby")!);
+        const rows = Array.from(document.querySelectorAll(".member-row"), (row) => ({
+          bounds: rect(row),
+          children: Array.from(row.children, rect),
+          times: Array.from(row.querySelectorAll(".member-time"), (time) => {
+            const range = document.createRange();
+            range.selectNodeContents(time);
+            const text = range.getBoundingClientRect();
+            return { bounds: rect(time), text: { left: text.left, right: text.right, top: text.top, bottom: text.bottom }, clientWidth: (time as HTMLElement).clientWidth, scrollWidth: (time as HTMLElement).scrollWidth, textContent: time.textContent };
+          }),
+          nick: (() => {
+            const nick = row.querySelector<HTMLElement>("span.truncate")!;
+            const style = getComputedStyle(nick);
+            return { clientWidth: nick.clientWidth, scrollWidth: nick.scrollWidth, textOverflow: style.textOverflow, overflowX: style.overflowX, whiteSpace: style.whiteSpace };
+          })(),
+        }));
+        return {
+          hero, grid, players, lobby, rows,
+          scrollWidth: document.documentElement.scrollWidth,
+          clientWidth: document.documentElement.clientWidth,
+        };
+      });
+      for (const row of layout.rows) {
+        expect(row.bounds.left).toBeGreaterThanOrEqual(layout.players.left - 1);
+        expect(row.bounds.right).toBeLessThanOrEqual(layout.players.right + 1);
+        expect(row.bounds.top).toBeGreaterThanOrEqual(layout.players.top - 1);
+        expect(row.bounds.bottom).toBeLessThanOrEqual(layout.players.bottom + 1);
+        for (const child of row.children) {
+          expect(child.left).toBeGreaterThanOrEqual(row.bounds.left - 1);
+          expect(child.right).toBeLessThanOrEqual(row.bounds.right + 1);
+          expect(child.top).toBeGreaterThanOrEqual(row.bounds.top - 1);
+          expect(child.bottom).toBeLessThanOrEqual(row.bounds.bottom + 1);
+        }
+        for (const time of row.times) {
+          expect(time.textContent).toMatch(/^(created|joined) \d{2}:\d{2}$/);
+          expect(time.clientWidth).toBeGreaterThanOrEqual(0);
+          expect(time.scrollWidth).toBeLessThanOrEqual(time.clientWidth + 1);
+          for (const bounds of [time.text, time.bounds]) {
+            expect(bounds.left).toBeGreaterThanOrEqual(layout.players.left - 1);
+            expect(bounds.right).toBeLessThanOrEqual(layout.players.right + 1);
+            expect(bounds.top).toBeGreaterThanOrEqual(layout.players.top - 1);
+            expect(bounds.bottom).toBeLessThanOrEqual(layout.players.bottom + 1);
+          }
+          expect(time.text.left).toBeGreaterThanOrEqual(time.bounds.left - 1);
+          expect(time.text.right).toBeLessThanOrEqual(time.bounds.right + 1);
+          expect(time.text.top).toBeGreaterThanOrEqual(time.bounds.top - 1);
+          expect(time.text.bottom).toBeLessThanOrEqual(time.bounds.bottom + 1);
+        }
+        expect(row.nick.clientWidth).toBeGreaterThan(0);
+        expect(row.nick.textOverflow).toBe("ellipsis");
+        expect(row.nick.overflowX).toBe("hidden");
+        expect(row.nick.whiteSpace).toBe("nowrap");
+        if (longNicks && viewport.width === 1280) expect(row.nick.scrollWidth).toBeGreaterThan(row.nick.clientWidth);
+      }
+      expect(layout.rows.flatMap((row) => row.times).map((time) => time.textContent).sort()).toEqual(["created", "joined"].map((prefix) => {
+        const matching = layout.rows.flatMap((row) => row.times).find((time) => time.textContent?.startsWith(prefix));
+        return matching?.textContent;
+      }).sort());
+      expect(layout.rows.flatMap((row) => row.children).length).toBeGreaterThan(0);
+      expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth + 1);
+      expect(Math.abs(layout.hero.left - layout.grid.left)).toBeLessThanOrEqual(1);
+      expect(Math.abs(layout.hero.right - layout.grid.right)).toBeLessThanOrEqual(1);
+      expect(layout.hero.bottom).toBeLessThan(layout.players.top);
+      expect(layout.hero.bottom).toBeLessThan(layout.lobby.top);
+      if (viewport.width < 1280) {
+        expect(Math.abs(layout.players.left - layout.lobby.left)).toBeLessThanOrEqual(1);
+        expect(Math.abs(layout.players.right - layout.lobby.right)).toBeLessThanOrEqual(1);
+        expect(layout.lobby.top).toBeGreaterThanOrEqual(layout.players.bottom - 1);
+      } else {
+        expect(Math.abs(layout.players.top - layout.lobby.top)).toBeLessThanOrEqual(1);
+        expect(layout.lobby.left).toBeGreaterThanOrEqual(layout.players.right - 1);
+        expect(Math.abs(layout.lobby.width - 2 * layout.players.width)).toBeLessThanOrEqual(2);
+      }
+    }
   }
 
   await page.setViewportSize({ width: 390, height: 844 });
@@ -56,8 +164,8 @@ test("detail layout spans hero and stacks lower content without overflow", async
       titleLines,
       scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth,
       touchTargets: buttons.map((button) => {
-        const rect = button.getBoundingClientRect();
-        return { width: rect.width, height: rect.height };
+        const bounds = button.getBoundingClientRect();
+        return { width: bounds.width, height: bounds.height };
       }),
     };
   });
