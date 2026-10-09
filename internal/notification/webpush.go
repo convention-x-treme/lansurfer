@@ -18,6 +18,7 @@ type GameRequestSummary struct {
 	GameName        string
 	CoverImageID    string
 	StartsAt        time.Time
+	StartedAt       *time.Time
 	Status          string
 	MemberCount     int64
 	MaxPlayers      *int32

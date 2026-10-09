@@ -88,6 +88,7 @@ func (r notificationRequestSummaries) GetGameRequestSummary(ctx context.Context,
 	}
 	return notification.GameRequestSummary{
 		RequestID: summary.RequestID, GameID: summary.GameID, GameName: summary.GameName,
+		StartedAt: summary.StartedAt,
 		StartsAt: summary.StartsAt, Status: string(summary.Status), MemberCount: summary.MemberCount,
 		MaxPlayers: summary.MaxPlayers, CreatorGameNick: summary.CreatorGameNick, Description: summary.Description,
 	}, nil

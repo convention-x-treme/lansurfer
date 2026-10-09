@@ -26,10 +26,15 @@ func TestDiscordMessageCurrentState(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			payload := buildDiscordMessage(GameRequestSummary{
+			summary := GameRequestSummary{
 				RequestID: "request/one", GameName: "Chess", CoverImageID: "co1abc", StartsAt: time.Date(2026, 9, 25, 18, 30, 0, 0, time.UTC),
 				Status: tc.status, MemberCount: tc.members, MaxPlayers: tc.capacity, CreatorGameNick: "Ada", Description: tc.description,
-			}, "https://play.example/", "Friday Club")
+			}
+			if tc.status == "playing" || tc.status == "closed" {
+				actual := time.Date(2026, 9, 25, 18, 0, 0, 0, time.UTC)
+				summary.StartedAt = &actual
+			}
+			payload := buildDiscordMessage(summary, "https://play.example/", "Friday Club")
 			encoded, err := json.Marshal(payload)
 			if err != nil {
 				t.Fatal(err)
@@ -60,7 +65,13 @@ func TestDiscordMessageCurrentState(t *testing.T) {
 				field := raw.(map[string]any)
 				fields[field["name"].(string)] = field["value"].(string)
 			}
-			for key, want := range map[string]string{"Start": "<t:" + strconv.FormatInt(time.Date(2026, 9, 25, 18, 30, 0, 0, time.UTC).Unix(), 10) + ":F>", "Status": tc.status, "Players": tc.places} {
+			startField := "Planned start"
+			startAt := time.Date(2026, 9, 25, 18, 30, 0, 0, time.UTC)
+			if tc.status == "playing" || tc.status == "closed" {
+				startField = "Started at"
+				startAt = time.Date(2026, 9, 25, 18, 0, 0, 0, time.UTC)
+			}
+			for key, want := range map[string]string{startField: "<t:" + strconv.FormatInt(startAt.Unix(), 10) + ":F>", "Status": tc.status, "Players": tc.places} {
 				if fields[key] != want {
 					t.Errorf("%s = %q, want %q", key, fields[key], want)
 				}

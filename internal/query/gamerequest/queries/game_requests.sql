@@ -8,7 +8,7 @@ SELECT gr.id::text AS request_id,
        enrichment.platform_names,
        enrichment.first_release_date,
        gr.creator_id::text AS creator_id, u.game_nick AS creator_game_nick,
-       gr.max_players, gr.starts_at, gr.description, gr.status,
+       gr.max_players, gr.starts_at, gr.started_at, gr.description, gr.status,
        gr.created_at, gr.updated_at,
        count(m.user_id) AS member_count,
        bool_or(m.user_id = sqlc.arg(viewer_id)::uuid) AS viewer_joined,
@@ -53,7 +53,7 @@ SELECT gr.id::text AS request_id,
        -- page states it in full, and a list of rows has no room for it.
        enrichment.summary,
        gr.creator_id::text AS creator_id, u.game_nick AS creator_game_nick,
-       gr.max_players, gr.starts_at, gr.description, gr.status,
+       gr.max_players, gr.starts_at, gr.started_at, gr.description, gr.status,
        gr.created_at, gr.updated_at,
        count(m.user_id) AS member_count,
        bool_or(m.user_id = sqlc.arg(viewer_id)::uuid) AS viewer_joined,
@@ -180,7 +180,7 @@ SELECT EXISTS (SELECT 1 FROM game_requests WHERE creator_id = sqlc.arg(creator_i
 -- name: GetGameRequestSummary :one
 SELECT gr.id::text AS request_id, g.id::text AS game_id, g.name AS game_name,
        enrichment.cover_image_id,
-       gr.starts_at, gr.status, gr.max_players, count(m.user_id) AS member_count,
+       gr.starts_at, gr.started_at, gr.status, gr.max_players, count(m.user_id) AS member_count,
        u.game_nick AS creator_game_nick, gr.description
 FROM game_requests gr
 JOIN games g ON g.id = gr.game_id

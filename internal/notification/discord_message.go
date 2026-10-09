@@ -4,6 +4,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 )
 
@@ -55,9 +56,16 @@ func buildDiscordMessage(summary GameRequestSummary, baseURL, instanceName strin
 		}
 		players = count + "/" + max + " players (" + places + ")"
 	}
+	startLabel, startValue := "Planned start", summary.StartsAt
+	if summary.Status == "playing" || (summary.Status == "closed" && summary.StartedAt != nil && !summary.StartedAt.IsZero()) {
+		startLabel, startValue = "Started at", time.Time{}
+		if summary.StartedAt != nil {
+			startValue = *summary.StartedAt
+		}
+	}
 	startsAt := "Not set"
-	if !summary.StartsAt.IsZero() {
-		startsAt = "<t:" + strconv.FormatInt(summary.StartsAt.Unix(), 10) + ":F>"
+	if !startValue.IsZero() {
+		startsAt = "<t:" + strconv.FormatInt(startValue.Unix(), 10) + ":F>"
 	}
 	title := discordPlainText(summary.GameName, 256)
 	if creator := discordPlainText(summary.CreatorGameNick, 256); creator != "" {
@@ -82,7 +90,7 @@ func buildDiscordMessage(summary GameRequestSummary, baseURL, instanceName strin
 		URL:         requestURL,
 		Description: discordPlainText(summary.Description, 240),
 		Fields: []discordField{
-			{Name: "Start", Value: startsAt},
+			{Name: startLabel, Value: startsAt},
 			{Name: "Status", Value: discordPlainText(summary.Status, 1024)},
 			{Name: "Players", Value: players},
 			{Name: "Link", Value: "[Open in browser ↗](" + requestURL + ")"},
