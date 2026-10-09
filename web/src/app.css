@@ -631,11 +631,6 @@
     gap: 0;
   }
 
-  @media (min-width: 48rem) {
-    .detail-lower-grid {
-      grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
-    }
-  }
 
   .detail-coordination {
     display: grid;
@@ -2388,6 +2383,11 @@
     border-bottom: 1px solid color-mix(in srgb, var(--border-raised) 60%, transparent);
     padding: 0.625rem 0.25rem;
   }
+  .member-row {
+    min-width: 0;
+    flex-wrap: wrap;
+  }
+
 
   .member-row:last-child,
   .last-place-row:last-child {

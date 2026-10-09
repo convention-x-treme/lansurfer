@@ -42,7 +42,14 @@ export default defineConfig({
   // The full Chromium build rather than the reduced headless shell: these
   // tests depend on real browser connection-pool behavior, which is the thing
   // the original hang in issue #15 was caused by.
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"], channel: "chromium" } }],
+  projects: [
+    { name: "chromium", use: { ...devices["Desktop Chrome"], channel: "chromium" } },
+    {
+      name: "webkit",
+      grep: /detail layout spans hero and contains Player rows/,
+      use: { ...devices["Desktop Safari"] },
+    },
+  ],
   webServer: {
     command: `go run ./internal/web/browsertest -address 127.0.0.1:${port}`,
     url: `http://127.0.0.1:${port}/__test__/state`,
