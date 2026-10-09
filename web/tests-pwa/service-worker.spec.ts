@@ -237,6 +237,28 @@ test("push without visible LANsurfer window shows localized created, joined, and
   await channel.cdp.detach();
 });
 
+test("playing push without StartedAt shows status without planned time", async ({ page }) => {
+  await page.context().grantPermissions(["notifications"]);
+  await page.goto("/game-requests");
+  await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
+  const channel = await openPushChannel(page);
+  const worker = await getServiceWorker(page);
+  await page.goto("about:blank");
+  await channel.cdp.send("ServiceWorker.deliverPushMessage", {
+    origin: channel.origin,
+    registrationId: channel.registrationId,
+    data: JSON.stringify({
+      ...pushPayload(channel.origin), kind: "started", status: "playing",
+      started_at: undefined, creator_game_nick: undefined, member_count: 3, max_players: 4,
+    }),
+  });
+  await expect.poll(() => worker.evaluate(async () => (await (globalThis as unknown as ServiceWorkerGlobalScope).registration.getNotifications()).length)).toBe(1);
+  await page.goto("/game-requests");
+  const notification = await page.evaluate(async () => (await navigator.serviceWorker.getRegistration("/"))?.getNotifications().then(([item]) => ({ title: item.title, body: item.body })));
+  expect(notification).toEqual({ title: "Demo", body: "Game started · 3/4 players · LANsurfer" });
+  await channel.cdp.detach();
+});
+
 test("planned-start and starting-soon pushes use planned-time labels and discard expired reminders", async ({ page }) => {
   await page.context().grantPermissions(["notifications"]);
   await page.goto("/game-requests");
@@ -299,8 +321,7 @@ test("malformed and unsupported pushes do not crash or notify", async ({ page })
   for (const data of [
     "{",
     JSON.stringify({ ...pushPayload(channel.origin), version: 3 }),
-    JSON.stringify({ ...pushPayload(channel.origin), status: "playing" }),
-    JSON.stringify({ ...pushPayload(channel.origin), status: "unknown" }),
+    JSON.stringify({ ...pushPayload(channel.origin), status: "playing", started_at: "0001-01-01T00:00:00Z" }),
     JSON.stringify({ ...pushPayload(channel.origin), creator_game_nick: 12 }),
     JSON.stringify({ ...pushPayload(channel.origin), starts_at: "invalid" }),
     JSON.stringify({ ...pushPayload(channel.origin), url: `${channel.origin}/elsewhere/request-123` }),

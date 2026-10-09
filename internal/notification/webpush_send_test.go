@@ -298,3 +298,32 @@ func TestWebPushReminderEligibilityTTLAndProviderAcceptance(t *testing.T) {
 		t.Fatalf("known retry = %+v, calls %d TTL %d; want retryable, one additional call, TTL 300", result, sender.calls, sender.ttl)
 	}
 }
+
+type failingReminderSummaryReader struct{ calls int }
+
+func (r *failingReminderSummaryReader) GetGameRequestSummary(context.Context, string) (GameRequestSummary, error) {
+	r.calls++
+	return GameRequestSummary{}, errors.New("summary should not be read")
+}
+
+func TestWebPushReminderRejectsMismatchedTransportBeforeReservation(t *testing.T) {
+	summary := &failingReminderSummaryReader{}
+	sender := &recordingPushSender{}
+	transport := &WebPushTransport{summaries: summary, sender: sender}
+	reservations := 0
+	result := transport.SendReminder(
+		t.Context(),
+		StartReminder{GameRequestID: "request-1", StartsAt: time.Now().Add(time.Minute)},
+		Target{Transport: "discord", Key: encodeWebPushTarget(1, "user-1")},
+		func(context.Context) (bool, error) {
+			reservations++
+			return true, nil
+		},
+	)
+	if result.Outcome != OutcomeNoLongerEligible || !errors.Is(result.Err, ErrNoLongerEligible) {
+		t.Fatalf("SendReminder() = %+v; want suppressed mismatched target", result)
+	}
+	if summary.calls != 0 || reservations != 0 || sender.calls != 0 {
+		t.Fatalf("summary reads=%d reservations=%d provider calls=%d; want all zero", summary.calls, reservations, sender.calls)
+	}
+}

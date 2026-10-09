@@ -60,14 +60,43 @@ func TestWebPushPayloadKindsAndPrivacy(t *testing.T) {
 	}
 }
 
-func TestWebPushPayloadRequiresActualStartWhenPlaying(t *testing.T) {
-	_, err := buildWebPushPayload(
-		Activity{Kind: ActivityStarted, GameRequestID: "request-42"},
-		GameRequestSummary{GameName: "Chess", Status: "playing"},
-		"", "https://play.example", "",
-	)
-	if err == nil {
-		t.Fatal("playing payload accepted without actual start")
+func TestWebPushPlayingPayloadUsesOnlyValidActualStart(t *testing.T) {
+	planned := time.Date(2026, 10, 9, 12, 30, 0, 0, time.UTC)
+	actual := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
+	zero := time.Time{}
+	for _, tc := range []struct {
+		name      string
+		startedAt *time.Time
+		want      string
+	}{
+		{name: "nil"},
+		{name: "zero", startedAt: &zero},
+		{name: "valid", startedAt: &actual, want: actual.Format(time.RFC3339)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body, err := buildWebPushPayload(
+				Activity{Kind: ActivityStarted, GameRequestID: "request-42"},
+				GameRequestSummary{GameName: "Chess", StartsAt: planned, StartedAt: tc.startedAt, Status: "playing"},
+				"", "https://play.example", "",
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var got map[string]any
+			if err := json.Unmarshal(body, &got); err != nil {
+				t.Fatal(err)
+			}
+			if got["status"] != "playing" || got["starts_at"] != planned.Format(time.RFC3339) {
+				t.Fatalf("payload = %v; want playing status and separate planned time", got)
+			}
+			if tc.want == "" {
+				if _, present := got["started_at"]; present {
+					t.Fatalf("payload invented actual start: %v", got)
+				}
+			} else if got["started_at"] != tc.want {
+				t.Fatalf("started_at = %v; want %s", got["started_at"], tc.want)
+			}
+		})
 	}
 }
 

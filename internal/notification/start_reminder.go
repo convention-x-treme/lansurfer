@@ -39,10 +39,11 @@ func (t *WebPushTransport) ReminderTargets(ctx context.Context, reminder StartRe
 }
 
 func (t *WebPushTransport) SendReminder(ctx context.Context, reminder StartReminder, target Target, reserve func(context.Context) (bool, error)) SendResult {
+	if target.Transport != t.Name() {
+		return SendResult{Outcome: OutcomeNoLongerEligible, Err: ErrNoLongerEligible}
+	}
 	if reserve == nil {
 		return SendResult{Outcome: OutcomePermanent, Err: fmt.Errorf("start reminder reservation required")}
-	}
-	if target.Transport != t.Name() {
 	}
 	eligibleNow, err := t.reminderEligible(ctx, reminder)
 	if err != nil {

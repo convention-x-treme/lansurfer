@@ -55,9 +55,6 @@ func buildWebPushPayload(activity Activity, summary GameRequestSummary, actorGam
 	default:
 		return nil, fmt.Errorf("unsupported Game Request status: %s", summary.Status)
 	}
-	if summary.Status == "playing" && (summary.StartedAt == nil || summary.StartedAt.IsZero()) {
-		return nil, fmt.Errorf("playing Game Request has no actual start")
-	}
 	payload := webPushPayload{
 		Version: 4, Kind: activity.Kind, Game: summary.GameName,
 		MemberCount: summary.MemberCount, MaxPlayers: summary.MaxPlayers,

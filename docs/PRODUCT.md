@@ -362,7 +362,7 @@ A `playing` request remains active and visible in normal discovery and shared na
 
 A started request is not cancelled; it is closed when finished. Existing historical `closed` requests that predate the explicit start signal do not gain an invented actual start time.
 
-Time presentation follows lifecycle state. Open requests show planned time and may use relative countdown and urgency. Playing requests show actual start time, never planned-time countdown or urgency. Closed requests show actual start when recorded; legacy closed requests and cancelled requests show planned time as history. Historical time uses explicit labels so it cannot read as a future start.
+Time presentation follows lifecycle state. Open requests show planned time and may use relative countdown and urgency. Playing requests show a valid actual start time when available; otherwise, they show no time. Playing requests never show planned-time countdown or urgency. Closed requests show actual start when recorded; legacy closed requests and cancelled requests show planned time as history. Historical time uses explicit labels so it cannot read as a future start.
 
 Stable 1.0 coordination continues while a request is `playing`:
 
@@ -478,7 +478,7 @@ The durable notification system has Web Push and Discord transports. External de
 - For an open request, LANsurfer creates at most one reminder per request/planned-time pair when that time enters the next 15 minutes. Only currently eligible participants receive it. Returning to a previously reminded time does not repeat it; obsolete reminders are suppressed.
 - Recipient/device sets are not expanded later for old work. Delayed/retried delivery re-checks current eligibility and suppresses a delivery that is no longer permitted rather than sending stale personal notification work.
 - When LANsurfer is already visibly open in the browser, the service worker suppresses the duplicate OS notification and SSE remains the in-browser live-update path.
-- Version 4 activity payloads contain only the minimum data needed to render a notification: activity kind, Game, lifecycle status, planned time, optional actual start time, same-origin deep link, minimum instance context, current player count/capacity, and optional creator or join/leave actor Game Nick. Separate time-only payloads identify a planned-start change or reminder and contain no roster, description, or identity data. The worker labels times as planned or actual from lifecycle state, omits unavailable times, and drops reminders received after their planned time.
+- Version 4 activity payloads contain only the minimum data needed to render a notification: activity kind, Game, lifecycle status, planned time, optional actual start time, same-origin deep link, minimum instance context, current player count/capacity, and optional creator or join/leave actor Game Nick. Separate time-only payloads identify a planned-start change or reminder and contain no roster, description, or identity data. The worker labels times as planned or actual from lifecycle state, omits unavailable times, and drops reminders received after their planned time. A `playing` notification remains valid without an actual start time and then shows status without a time.
 
 ### Discord delivery
 

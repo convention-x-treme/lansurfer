@@ -68,9 +68,10 @@ function gameRequestURL(value: unknown): URL | null {
 }
 
 function validTimestamp(value: unknown): value is string {
-  return typeof value === "string" &&
-    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(value) &&
-    Number.isFinite(Date.parse(value));
+  if (typeof value !== "string" ||
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(value)) return false;
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString() !== "0001-01-01T00:00:00.000Z";
 }
 
 function isPushPayload(value: unknown): value is PushPayload {
@@ -96,8 +97,7 @@ function isPushPayload(value: unknown): value is PushPayload {
   const startedAt = "started_at" in value ? value.started_at : undefined;
   if (startsAt !== undefined && !validTimestamp(startsAt)) return false;
   if (startedAt !== undefined && !validTimestamp(startedAt)) return false;
-  return !(value.status === "playing" && startedAt === undefined) &&
-    !((value.status === "open" || value.status === "cancelled") && startedAt !== undefined);
+  return !((value.status === "open" || value.status === "cancelled") && startedAt !== undefined);
 }
 
 

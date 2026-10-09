@@ -25,10 +25,12 @@ CREATE UNIQUE INDEX notification_delivery_start_reminder_target_idx
     WHERE start_reminder_id IS NOT NULL;
 
 -- +goose Down
+DELETE FROM notification_delivery WHERE start_reminder_id IS NOT NULL;
 DROP INDEX notification_delivery_start_reminder_target_idx;
 ALTER TABLE notification_delivery DROP CONSTRAINT notification_delivery_reminder_send_check;
 ALTER TABLE notification_delivery DROP CONSTRAINT notification_delivery_reminder_transport_check;
 ALTER TABLE notification_delivery DROP CONSTRAINT notification_delivery_parent_check;
+ALTER TABLE notification_delivery DROP CONSTRAINT notification_delivery_start_reminder_id_fkey;
 ALTER TABLE notification_delivery DROP COLUMN send_started_at;
 ALTER TABLE notification_delivery DROP COLUMN start_reminder_id;
 ALTER TABLE notification_delivery ALTER COLUMN work_id SET NOT NULL;
