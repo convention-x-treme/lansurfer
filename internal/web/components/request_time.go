@@ -20,6 +20,9 @@ func RequestTime(status gamerequest.Status, startsAt time.Time, startedAt *time.
 		}
 		return historicalRequestTime(*startedAt, now)
 	}
+	if startsAt.IsZero() {
+		return RequestTimePresentation{}
+	}
 	if status == gamerequest.StatusClosed {
 		if startedAt != nil && !startedAt.IsZero() && !startedAt.After(now) {
 			return historicalRequestTime(*startedAt, now)

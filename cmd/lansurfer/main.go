@@ -12,6 +12,7 @@ import (
 	"syscall"
 
 	"github.com/convention-x-treme/lansurfer/internal/app"
+	"github.com/convention-x-treme/lansurfer/internal/notification"
 	"github.com/convention-x-treme/lansurfer/internal/platform/config"
 )
 
@@ -101,7 +102,7 @@ func run(ctx context.Context, arguments []string, logger *slog.Logger, output io
 		}
 		for _, problem := range problems {
 			if _, err := fmt.Fprintf(output, "%d\t%s\t%s\t%s\t%s\n",
-				problem.DeliveryID, problem.Status, problem.Target.Transport, problem.Activity.GameRequestID, problem.LastError,
+				problem.DeliveryID, problem.Status, problem.Target.Transport, notificationProblemGameRequestID(problem), problem.LastError,
 			); err != nil {
 				return err
 			}
@@ -132,6 +133,13 @@ func run(ctx context.Context, arguments []string, logger *slog.Logger, output io
 	}
 
 	return usageError()
+}
+
+func notificationProblemGameRequestID(problem notification.ProblemDelivery) string {
+	if problem.StartReminder != nil {
+		return problem.StartReminder.GameRequestID
+	}
+	return problem.Activity.GameRequestID
 }
 
 func promoteUserID(arguments []string) (string, error) {

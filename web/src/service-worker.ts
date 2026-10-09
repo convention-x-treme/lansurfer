@@ -23,23 +23,36 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(self.clients.claim());
 });
 
-type PushKind = "created" | "joined" | "left" | "started" | "closed" | "cancelled";
+type PushKind = "created" | "joined" | "left" | "started" | "closed" | "cancelled" | "starting_soon" | "planned_start_changed";
+type RequestStatus = "open" | "playing" | "closed" | "cancelled";
 
-interface PushPayload {
-  version: 3;
-  kind: PushKind;
+interface ActivityPushPayload {
+  version: 4;
+  kind: "created" | "joined" | "left" | "started" | "closed" | "cancelled";
   game: string;
   member_count: number;
   max_players?: number;
   creator_game_nick?: string;
   starts_at?: string;
+  started_at?: string;
+  status: RequestStatus;
   url: string;
   instance: string;
   actor_game_nick?: string;
 }
 
+interface TimePushPayload {
+  version: 4;
+  kind: "starting_soon" | "planned_start_changed";
+  game: string;
+  starts_at: string;
+  url: string;
+  instance: string;
+}
+type PushPayload = ActivityPushPayload | TimePushPayload;
+
 function isPushKind(value: unknown): value is PushKind {
-  return value === "created" || value === "joined" || value === "left" || value === "started" || value === "closed" || value === "cancelled";
+  return value === "created" || value === "joined" || value === "left" || value === "started" || value === "closed" || value === "cancelled" || value === "starting_soon" || value === "planned_start_changed";
 }
 
 function gameRequestURL(value: unknown): URL | null {
@@ -54,30 +67,39 @@ function gameRequestURL(value: unknown): URL | null {
   }
 }
 
+function validTimestamp(value: unknown): value is string {
+  return typeof value === "string" &&
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(value) &&
+    Number.isFinite(Date.parse(value));
+}
+
 function isPushPayload(value: unknown): value is PushPayload {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
-  if (!("version" in value) || !("kind" in value) || !("game" in value) || !("member_count" in value) || !("instance" in value) || !("url" in value)) return false;
-  if (value.version !== 3 || !isPushKind(value.kind)) return false;
-  if (typeof value.game !== "string" || value.game.trim() === "") return false;
-  if (typeof value.instance !== "string" || value.instance.trim() === "") return false;
+  if (!("version" in value) || !("kind" in value) || !("game" in value) || !("instance" in value) || !("url" in value)) return false;
+  if (value.version !== 4 || !isPushKind(value.kind) || typeof value.game !== "string" || value.game.trim() === "" || typeof value.instance !== "string" || value.instance.trim() === "") return false;
+  if (gameRequestURL(value.url) === null) return false;
+  if (value.kind === "starting_soon" || value.kind === "planned_start_changed") {
+    return Object.keys(value).every((key) => ["version", "kind", "game", "starts_at", "url", "instance"].includes(key)) &&
+      Object.keys(value).length === 6 && "starts_at" in value && validTimestamp(value.starts_at);
+  }
+  if (!("member_count" in value) || !("status" in value)) return false;
+  if (value.status !== "open" && value.status !== "playing" && value.status !== "closed" && value.status !== "cancelled") return false;
   if (!Number.isSafeInteger(value.member_count) || (value.member_count as number) < 0) return false;
   if ("max_players" in value && (!Number.isSafeInteger(value.max_players) || (value.max_players as number) < 1 || (value.max_players as number) < (value.member_count as number))) return false;
   const creator = "creator_game_nick" in value ? value.creator_game_nick : undefined;
   if (creator !== undefined && (typeof creator !== "string" || creator.trim() === "")) return false;
-
   const hasActor = value.kind === "joined" || value.kind === "left";
   const actorGameNick = "actor_game_nick" in value ? value.actor_game_nick : undefined;
   if (hasActor && (typeof actorGameNick !== "string" || actorGameNick.trim() === "")) return false;
   if (!hasActor && actorGameNick !== undefined) return false;
   const startsAt = "starts_at" in value ? value.starts_at : undefined;
-  if (startsAt !== undefined && (
-    typeof startsAt !== "string" ||
-    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(startsAt) ||
-    !Number.isFinite(Date.parse(startsAt))
-  )) return false;
-
-  return gameRequestURL(value.url) !== null;
+  const startedAt = "started_at" in value ? value.started_at : undefined;
+  if (startsAt !== undefined && !validTimestamp(startsAt)) return false;
+  if (startedAt !== undefined && !validTimestamp(startedAt)) return false;
+  return !(value.status === "playing" && startedAt === undefined) &&
+    !((value.status === "open" || value.status === "cancelled") && startedAt !== undefined);
 }
+
 
 
 function parsePushPayload(data: PushMessageData | null): PushPayload | null {
@@ -96,28 +118,34 @@ function notificationURL(data: unknown): URL | null {
   return gameRequestURL(data.url);
 }
 
-self.addEventListener("push", (event) => {
+ self.addEventListener("push", (event) => {
   event.waitUntil((async () => {
     const payload = parsePushPayload(event.data);
     if (!payload) return;
-
+    if (payload.kind === "starting_soon" && Date.parse(payload.starts_at) <= Date.now()) return;
     const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
     if (windows.some((client) => {
-      try {
-        return new URL(client.url).origin === self.location.origin && client.visibilityState === "visible";
-      } catch {
-        return false;
-      }
+      try { return new URL(client.url).origin === self.location.origin && client.visibilityState === "visible"; }
+      catch { return false; }
     })) return;
-
-    const title = payload.kind === "started"
-      ? payload.game
-      : payload.creator_game_nick
-        ? `${payload.creator_game_nick} is looking for ${payload.game}`
-        : payload.game;
-    const startsAt = payload.starts_at
-      ? new Intl.DateTimeFormat(undefined, { dateStyle: "full", timeStyle: "short" }).format(new Date(payload.starts_at))
-      : "Not set";
+    if (payload.kind === "starting_soon" || payload.kind === "planned_start_changed") {
+      const label = payload.kind === "starting_soon" ? "Starting soon" : "Start time changed";
+      const time = new Intl.DateTimeFormat(undefined, { dateStyle: "full", timeStyle: "short" }).format(new Date(payload.starts_at));
+      await self.registration.showNotification(payload.game, {
+        body: `${label} · Planned start: ${time} · ${payload.instance}`,
+        data: { url: payload.url },
+      });
+      return;
+    }
+    if (!("status" in payload)) return;
+    const title = payload.status === "open" && payload.creator_game_nick
+      ? `${payload.creator_game_nick} is looking for ${payload.game}`
+      : payload.game;
+    const hasActualStart = payload.status === "playing" || (payload.status === "closed" && payload.started_at !== undefined);
+    const timeValue = hasActualStart ? payload.started_at : payload.starts_at;
+    const timeLabel = timeValue
+      ? `${hasActualStart ? "Started at" : "Planned start"}: ${new Intl.DateTimeFormat(undefined, { dateStyle: "full", timeStyle: "short" }).format(new Date(timeValue))} · `
+      : "";
     const prefix = payload.kind === "joined" || payload.kind === "left"
       ? `${payload.actor_game_nick} ${payload.kind} · `
       : payload.kind === "started"
@@ -129,7 +157,7 @@ self.addEventListener("push", (event) => {
       ? `${payload.member_count} players (unlimited)`
       : `${payload.member_count}/${payload.max_players} players`;
     await self.registration.showNotification(title, {
-      body: `${prefix}${startsAt} · ${players} · ${payload.instance}`,
+      body: `${prefix}${timeLabel}${players} · ${payload.instance}`,
       data: { url: payload.url },
     });
   })());

@@ -57,15 +57,25 @@ func buildDiscordMessage(summary GameRequestSummary, baseURL, instanceName strin
 		players = count + "/" + max + " players (" + places + ")"
 	}
 	startLabel, startValue := "Planned start", summary.StartsAt
-	if summary.Status == "playing" || (summary.Status == "closed" && summary.StartedAt != nil && !summary.StartedAt.IsZero()) {
-		startLabel, startValue = "Started at", time.Time{}
-		if summary.StartedAt != nil {
-			startValue = *summary.StartedAt
+	switch summary.Status {
+	case "playing":
+		if summary.StartedAt == nil || summary.StartedAt.IsZero() {
+			startLabel, startValue = "", time.Time{}
+		} else {
+			startLabel, startValue = "Started at", *summary.StartedAt
+		}
+	case "closed":
+		if summary.StartedAt != nil && !summary.StartedAt.IsZero() {
+			startLabel, startValue = "Started at", *summary.StartedAt
 		}
 	}
 	startsAt := "Not set"
 	if !startValue.IsZero() {
 		startsAt = "<t:" + strconv.FormatInt(startValue.Unix(), 10) + ":F>"
+	}
+	fields := []discordField{}
+	if startLabel != "" {
+		fields = append(fields, discordField{Name: startLabel, Value: startsAt})
 	}
 	title := discordPlainText(summary.GameName, 256)
 	if creator := discordPlainText(summary.CreatorGameNick, 256); creator != "" {
@@ -89,12 +99,11 @@ func buildDiscordMessage(summary GameRequestSummary, baseURL, instanceName strin
 		Title:       title,
 		URL:         requestURL,
 		Description: discordPlainText(summary.Description, 240),
-		Fields: []discordField{
-			{Name: startLabel, Value: startsAt},
-			{Name: "Status", Value: discordPlainText(summary.Status, 1024)},
-			{Name: "Players", Value: players},
-			{Name: "Link", Value: "[Open in browser ↗](" + requestURL + ")"},
-		},
+		Fields: append(fields,
+			discordField{Name: "Status", Value: discordPlainText(summary.Status, 1024)},
+			discordField{Name: "Players", Value: players},
+			discordField{Name: "Link", Value: "[Open in browser ↗](" + requestURL + ")"},
+		),
 		Footer: discordFooter{Text: discordPlainText(instanceName, 2048)},
 	}
 	switch summary.Status {

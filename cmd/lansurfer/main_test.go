@@ -6,8 +6,37 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/convention-x-treme/lansurfer/internal/notification"
 	"github.com/convention-x-treme/lansurfer/internal/platform/config"
 )
+
+func TestNotificationProblemGameRequestID(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		problem notification.ProblemDelivery
+		want    string
+	}{
+		{
+			name:    "activity",
+			problem: notification.ProblemDelivery{Activity: notification.Activity{GameRequestID: "activity-id"}},
+			want:    "activity-id",
+		},
+		{
+			name: "reminder",
+			problem: notification.ProblemDelivery{
+				Activity:      notification.Activity{GameRequestID: "activity-id"},
+				StartReminder: &notification.StartReminder{GameRequestID: "reminder-id"},
+			},
+			want: "reminder-id",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := notificationProblemGameRequestID(tc.problem); got != tc.want {
+				t.Fatalf("notificationProblemGameRequestID() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
 
 func TestPromoteUserID(t *testing.T) {
 	userID, err := promoteUserID([]string{"--user-id", "2c359aee-7690-4975-a2f8-1730cf37f42b"})

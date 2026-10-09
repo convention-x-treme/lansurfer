@@ -13,39 +13,59 @@ func (t *WebPushTransport) Send(ctx context.Context, activity Activity, target T
 	if target.Transport != t.Name() || err != nil {
 		return SendResult{Outcome: OutcomePermanent, Err: ErrNoLongerEligible}
 	}
-	sub, err := t.delivery.GetSubscriptionByID(ctx, id)
-	if errors.Is(err, ErrDeliveryNotFound) {
-		return SendResult{Outcome: OutcomePermanent, Err: ErrNoLongerEligible}
+	sub, result := t.loadEligibleSubscription(ctx, id, owner)
+	if result.Outcome != OutcomeSucceeded {
+		return result
 	}
-	if err != nil {
-		return SendResult{Outcome: OutcomeRetryable, Err: fmt.Errorf("get push subscription: %w", err)}
-	}
-	if sub.ID != id || sub.UserID != owner {
-		return SendResult{Outcome: OutcomePermanent, Err: ErrNoLongerEligible}
-	}
-	// Reuse Targets' audience policy rather than duplicating its preference and
-	// membership rules. The Worker also checks this before calling Send.
 	eligible, err := t.Targets(ctx, activity)
 	if err != nil {
 		return SendResult{Outcome: OutcomeRetryable, Err: fmt.Errorf("recheck push eligibility: %w", err)}
 	}
 	if !containsTarget(eligible, target) {
-		return SendResult{Outcome: OutcomePermanent, Err: ErrNoLongerEligible}
+		outcome := OutcomePermanent
+		if activity.Kind == ActivityUpdated {
+			outcome = OutcomeNoLongerEligible
+		}
+		return SendResult{Outcome: outcome, Err: ErrNoLongerEligible}
 	}
 	summary, err := t.summaries.GetGameRequestSummary(ctx, activity.GameRequestID)
 	if err != nil {
 		return SendResult{Outcome: OutcomeRetryable, Err: fmt.Errorf("get game request summary: %w", err)}
 	}
-	nick, err := t.actorGameNick(ctx, activity)
-	if err != nil {
-		return SendResult{Outcome: OutcomeRetryable, Err: fmt.Errorf("get actor Game Nick: %w", err)}
+	var payload []byte
+	if activity.Kind == ActivityUpdated {
+		if !validPlannedStartChange(activity) || summary.Status != "open" || !summary.StartsAt.Equal(*activity.NewStartsAt) {
+			return SendResult{Outcome: OutcomeNoLongerEligible, Err: ErrNoLongerEligible}
+		}
+		payload, err = buildWebPushTimePayload("planned_start_changed", activity.GameRequestID, *activity.NewStartsAt, summary, t.baseURL, t.instanceName)
+	} else {
+		nick, nickErr := t.actorGameNick(ctx, activity)
+		if nickErr != nil {
+			return SendResult{Outcome: OutcomeRetryable, Err: fmt.Errorf("get actor Game Nick: %w", nickErr)}
+		}
+		payload, err = buildWebPushPayload(activity, summary, nick, t.baseURL, t.instanceName)
 	}
-	payload, err := buildWebPushPayload(activity, summary, nick, t.baseURL, t.instanceName)
 	if err != nil {
 		return SendResult{Outcome: OutcomePermanent, Err: err}
 	}
+	return t.sendWithSubscription(ctx, id, owner, sub, payload, 300, false, nil)
+}
 
-	// Plaintext exists only in this last step, immediately before provider use.
+func (t *WebPushTransport) loadEligibleSubscription(ctx context.Context, id int64, owner string) (PushSubscriptionRecord, SendResult) {
+	sub, err := t.delivery.GetSubscriptionByID(ctx, id)
+	if errors.Is(err, ErrDeliveryNotFound) {
+		return PushSubscriptionRecord{}, SendResult{Outcome: OutcomePermanent, Err: ErrNoLongerEligible}
+	}
+	if err != nil {
+		return PushSubscriptionRecord{}, SendResult{Outcome: OutcomeRetryable, Err: fmt.Errorf("get push subscription: %w", err)}
+	}
+	if sub.ID != id || sub.UserID != owner {
+		return PushSubscriptionRecord{}, SendResult{Outcome: OutcomePermanent, Err: ErrNoLongerEligible}
+	}
+	return sub, SendResult{Outcome: OutcomeSucceeded}
+}
+
+func (t *WebPushTransport) sendWithSubscription(ctx context.Context, id int64, owner string, sub PushSubscriptionRecord, payload []byte, ttl int, reminder bool, reserve func(context.Context) (bool, error)) SendResult {
 	endpoint, err := platformcrypto.Decrypt(t.encryptionKey, sub.EndpointCiphertext)
 	if err != nil {
 		return SendResult{Outcome: OutcomeRetryable, Err: errors.New("decrypt push endpoint failed")}
@@ -58,10 +78,21 @@ func (t *WebPushTransport) Send(ctx context.Context, activity Activity, target T
 	if err != nil {
 		return SendResult{Outcome: OutcomeRetryable, Err: errors.New("decrypt push auth failed")}
 	}
-	outcome := t.sender.Send(ctx, endpoint, p256dh, auth, payload, 300)
-	if outcome.Expired {
-		// Scope deletion to the snapshotted owner: a reassigned row must survive.
+	if reserve != nil {
+		reserved, err := reserve(ctx)
+		if err != nil {
+			return SendResult{Outcome: OutcomeRetryable, Err: fmt.Errorf("reserve Web Push send: %w", err)}
+		}
+		if !reserved {
+			return SendResult{Outcome: OutcomeAlreadyRecorded}
+		}
+	}
+	provider := t.sender.Send(ctx, endpoint, p256dh, auth, payload, ttl)
+	if provider.Expired {
 		_, _ = t.subscriptions.DeleteSubscription(ctx, id, owner)
 	}
-	return SendResult{Outcome: outcome.Outcome, RetryAfter: outcome.RetryAfter, Err: outcome.Err}
+	if reminder && provider.AcceptanceUnknown {
+		return SendResult{Outcome: OutcomeUncertain, Err: provider.Err}
+	}
+	return SendResult{Outcome: provider.Outcome, RetryAfter: provider.RetryAfter, Err: provider.Err}
 }

@@ -12,6 +12,7 @@ import (
 
 	"github.com/convention-x-treme/lansurfer/internal/game"
 	gamepostgres "github.com/convention-x-treme/lansurfer/internal/game/postgres"
+	"github.com/convention-x-treme/lansurfer/internal/gamerequest"
 	"github.com/convention-x-treme/lansurfer/internal/notification"
 	notificationpostgres "github.com/convention-x-treme/lansurfer/internal/notification/postgres"
 	gamerequestquery "github.com/convention-x-treme/lansurfer/internal/query/gamerequest"
@@ -28,6 +29,7 @@ func (r pushSummaryReader) GetGameRequestSummary(ctx context.Context, id string)
 	}
 	return notification.GameRequestSummary{
 		GameID: summary.GameID, GameName: summary.GameName, StartsAt: summary.StartsAt,
+		Status: string(summary.Status), StartedAt: summary.StartedAt,
 		MemberCount: summary.MemberCount, MaxPlayers: summary.MaxPlayers, CreatorGameNick: summary.CreatorGameNick,
 	}, nil
 }
@@ -57,6 +59,7 @@ func (s *fakePushSender) Send(_ context.Context, endpoint, _, _ string, payload 
 		"https://push.example/disabled": "disabled",
 		"https://push.example/device-a": "device-a",
 		"https://push.example/device-b": "device-b",
+		"https://push.example/reminder": "reminder",
 	}[endpoint]
 	s.calls = append(s.calls, pushSendCall{device, append([]byte(nil), payload...)})
 	if ttl != 300 {
@@ -116,7 +119,7 @@ func TestWebPushWorkerPostgresEndToEnd(t *testing.T) {
 	}
 	queries := gamerequestquery.NewStore(pool)
 	sender := &fakePushSender{retry: true}
-	transport := notification.NewWebPushTransport(store, store, store, followers, queries, pushSummaryReader{queries}, pushNickReader{users}, "https://lan.example", "Camp Nova", key, sender)
+	transport := notification.NewWebPushTransport(store, store, store, followers, queries, pushSummaryReader{queries}, pushNickReader{users}, "https://lan.example", "Camp Nova", key, sender, time.Now)
 	worker := newTestWorker(store, []notification.Transport{transport})
 	created, err := fixture.requests.Create(t.Context(), fixture.host.ID, fixture.gameID, nil, time.Now().Add(time.Hour), "Private description")
 	if err != nil {
@@ -159,13 +162,16 @@ func TestWebPushWorkerPostgresEndToEnd(t *testing.T) {
 		if err := json.Unmarshal(call.payload, &payload); err != nil {
 			t.Fatal(err)
 		}
-		want := map[string]any{"version": float64(3), "kind": "created", "game": "Notification Game", "url": "https://lan.example/game-requests/" + created.ID, "instance": "Camp Nova", "member_count": float64(1), "creator_game_nick": fixture.host.GameNick}
+		want := map[string]any{"version": float64(4), "status": "open", "kind": "created", "game": "Notification Game", "url": "https://lan.example/game-requests/" + created.ID, "instance": "Camp Nova", "member_count": float64(1), "creator_game_nick": fixture.host.GameNick}
 		for key, value := range want {
 			if payload[key] != value {
 				t.Fatalf("payload %s = %v; want %v", key, payload[key], value)
 			}
 		}
-		allowed := map[string]bool{"version": true, "kind": true, "game": true, "member_count": true, "max_players": true, "creator_game_nick": true, "starts_at": true, "url": true, "instance": true}
+		allowed := map[string]bool{"version": true, "status": true, "kind": true, "game": true, "member_count": true, "max_players": true, "creator_game_nick": true, "starts_at": true, "started_at": true, "url": true, "instance": true}
+		if _, present := payload["started_at"]; present {
+			t.Fatalf("open request payload contains actual start: %v", payload["started_at"])
+		}
 		for key := range payload {
 			if !allowed[key] {
 				t.Fatalf("unexpected payload field %q", key)
@@ -207,8 +213,38 @@ func TestWebPushWorkerPostgresEndToEnd(t *testing.T) {
 		t.Fatalf("joined payload lacks actor or current player count: %v", joined)
 	}
 	for field := range joined {
-		if !map[string]bool{"version": true, "kind": true, "game": true, "member_count": true, "max_players": true, "creator_game_nick": true, "starts_at": true, "url": true, "instance": true, "actor_game_nick": true}[field] {
+		if !map[string]bool{"version": true, "status": true, "kind": true, "game": true, "member_count": true, "max_players": true, "creator_game_nick": true, "starts_at": true, "started_at": true, "url": true, "instance": true, "actor_game_nick": true}[field] {
 			t.Fatalf("unexpected joined payload field %q", field)
+		}
+	}
+
+	// Only an actual planned-time change creates a personal update push.
+	newStart := created.StartsAt.Add(time.Hour)
+	if err := fixture.requests.UpdateDetails(t.Context(), created.ID, fixture.host.ID, gamerequest.UpdateDetailsInput{
+		StartsAt: newStart, Description: "Private description",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	sender.calls = nil
+	worker.Tick(t.Context())
+	if len(sender.calls) != 2 {
+		t.Fatalf("planned-time update sends = %d; want guest's two devices", len(sender.calls))
+	}
+	for _, call := range sender.calls {
+		if call.device != "device-a" && call.device != "device-b" {
+			t.Fatalf("planned-time update sent to %q; want non-actor devices", call.device)
+		}
+		var update map[string]any
+		if err := json.Unmarshal(call.payload, &update); err != nil {
+			t.Fatal(err)
+		}
+		wantUpdate := map[string]any{
+			"version": float64(4), "kind": "planned_start_changed", "game": "Notification Game",
+			"starts_at": newStart.Format(time.RFC3339), "url": "https://lan.example/game-requests/" + created.ID,
+			"instance": "Camp Nova",
+		}
+		if !reflect.DeepEqual(update, wantUpdate) {
+			t.Fatalf("planned-time update payload = %#v; want %#v", update, wantUpdate)
 		}
 	}
 
@@ -262,5 +298,193 @@ func TestWebPushWorkerPostgresEndToEnd(t *testing.T) {
 	}
 	if err := pool.QueryRow(t.Context(), "SELECT status FROM notification_delivery d JOIN notification_work w ON w.id=d.work_id WHERE w.game_request_id=$1", obsolete.ID).Scan(&statuses[0]); err != nil || statuses[0] != "suppressed" {
 		t.Fatalf("obsolete status = %q, err = %v", statuses[0], err)
+	}
+}
+
+func TestWebPushStartingSoonReminderPostgresEndToEnd(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatal(err)
+	}
+	fixture := newNotificationFixture(t, pool)
+	store := notificationpostgres.NewStore(pool)
+	if err := store.InitializeBaseline(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	key := make([]byte, 32)
+	subscriptions, err := notification.NewSubscriptionService(store, store, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := subscriptions.Enable(t.Context(), fixture.host.ID, "reminder-device", "Device", "https://push.example/reminder", "browser-key", "browser-auth"); err != nil {
+		t.Fatal(err)
+	}
+	startsAt := time.Now().Add(10 * time.Minute).UTC().Truncate(time.Microsecond)
+	request, err := fixture.requests.Create(t.Context(), fixture.host.ID, fixture.gameID, nil, startsAt, "Reminder")
+	if err != nil {
+		t.Fatal(err)
+	}
+	queries := gamerequestquery.NewStore(pool)
+	followers := game.NewSubscriptionService(gamepostgres.NewStore(pool))
+	sender := &fakePushSender{}
+	transport := notification.NewWebPushTransport(
+		store, store, store, followers, queries, pushSummaryReader{queries}, nil,
+		"https://lan.example", "Camp Nova", key, sender, time.Now,
+	)
+	newTestWorker(store, []notification.Transport{transport}).Tick(t.Context())
+
+	if len(sender.calls) != 1 || sender.calls[0].device != "reminder" {
+		t.Fatalf("reminder provider calls = %#v; want one reminder device", sender.calls)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(sender.calls[0].payload, &payload); err != nil {
+		t.Fatal(err)
+	}
+	encodedStart, ok := payload["starts_at"].(string)
+	if !ok {
+		t.Fatalf("starting-soon payload missing starts_at: %#v", payload)
+	}
+	parsedStart, err := time.Parse(time.RFC3339, encodedStart)
+	if err != nil || !parsedStart.Equal(startsAt.Truncate(time.Second)) {
+		t.Fatalf("payload start = %q (%v), want instant %v", encodedStart, err, startsAt.Truncate(time.Second))
+	}
+	want := map[string]any{
+		"version": float64(4), "kind": "starting_soon", "game": "Notification Game",
+		"starts_at": encodedStart, "url": "https://lan.example/game-requests/" + request.ID,
+		"instance": "Camp Nova",
+	}
+	if !reflect.DeepEqual(payload, want) {
+		t.Fatalf("starting-soon payload = %#v, want %#v", payload, want)
+	}
+	var succeeded int
+	if err := pool.QueryRow(t.Context(), `SELECT count(*) FROM notification_delivery d
+		JOIN notification_start_reminder r ON r.id = d.start_reminder_id
+		WHERE r.game_request_id = $1 AND d.status = 'succeeded' AND d.send_started_at IS NOT NULL`, request.ID).Scan(&succeeded); err != nil {
+		t.Fatal(err)
+	}
+	if succeeded != 1 {
+		t.Fatalf("reserved successful reminder deliveries = %d; want 1", succeeded)
+	}
+}
+func TestWebPushPlannedStartChangeUsesCurrentParticipantsAndRetriesAsynchronously(t *testing.T) {
+	pool := newTestPool(t)
+	if err := Migrate(t.Context(), pool, testLogger()); err != nil {
+		t.Fatal(err)
+	}
+	fixture := newNotificationFixture(t, pool)
+	users := user.NewService(userpostgres.NewStore(pool))
+	left, err := users.Register(t.Context(), "Left Before Delivery")
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := notificationpostgres.NewStore(pool)
+	subscriptions, err := notification.NewSubscriptionService(store, store, make([]byte, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	enable := func(id, device, endpoint string) {
+		t.Helper()
+		if err := subscriptions.Enable(t.Context(), id, device, "Device", endpoint, "browser-key", "browser-auth"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	enable(fixture.host.ID, "actor", "https://push.example/actor")
+	enable(fixture.guest.ID, "guest", "https://push.example/device-a")
+	enable(left.ID, "left", "https://push.example/device-b")
+	request, err := fixture.requests.Create(t.Context(), fixture.host.ID, fixture.gameID, nil, time.Now().Add(time.Hour), "Private description")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.requests.Join(t.Context(), request.ID, fixture.guest.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.requests.Join(t.Context(), request.ID, left.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.InitializeBaseline(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	noOp := gamerequest.UpdateDetailsInput{StartsAt: request.StartsAt, Description: request.Description}
+	if err := fixture.requests.UpdateDetails(t.Context(), request.ID, fixture.host.ID, noOp); err != nil {
+		t.Fatal(err)
+	}
+	var noOpActivities int
+	if err := pool.QueryRow(t.Context(), `SELECT count(*) FROM game_request_activity
+		WHERE game_request_id = $1 AND kind = 'request_updated'`, request.ID).Scan(&noOpActivities); err != nil {
+		t.Fatal(err)
+	}
+	if noOpActivities != 0 {
+		t.Fatalf("no-op update activity rows = %d, want 0", noOpActivities)
+	}
+	next := request.StartsAt.Add(30 * time.Minute)
+	if err := fixture.requests.UpdateDetails(t.Context(), request.ID, fixture.host.ID, gamerequest.UpdateDetailsInput{
+		StartsAt: next, Description: request.Description,
+	}); err != nil {
+		t.Fatalf("real start-time update: %v", err)
+	}
+	queries := gamerequestquery.NewStore(pool)
+	key := make([]byte, 32)
+	sender := &fakePushSender{retry: true}
+	transport := notification.NewWebPushTransport(
+		store, store, store, game.NewSubscriptionService(gamepostgres.NewStore(pool)),
+		queries, pushSummaryReader{queries}, pushNickReader{users},
+		"https://lan.example", "Camp Nova", key, sender, time.Now,
+	)
+	activities, err := store.DiscoverActivity(t.Context(), 10)
+	if err != nil || len(activities) != 1 || activities[0].Kind != notification.ActivityUpdated {
+		t.Fatalf("DiscoverActivity() = %#v, %v; want one request_updated activity", activities, err)
+	}
+	targets, err := transport.Targets(t.Context(), activities[0])
+	if err != nil || len(targets) != 2 {
+		t.Fatalf("Targets() = %#v, %v; want guest and joined participant before leave", targets, err)
+	}
+	if err := store.MaterializeWork(t.Context(), activities[0], targets); err != nil {
+		t.Fatalf("MaterializeWork(): %v", err)
+	}
+	if err := fixture.requests.Leave(t.Context(), request.ID, left.ID); err != nil {
+		t.Fatalf("leave before delivery: %v", err)
+	}
+	leaveActivities, err := store.DiscoverActivity(t.Context(), 10)
+	if err != nil || len(leaveActivities) != 1 || leaveActivities[0].Kind != notification.ActivityLeft {
+		t.Fatalf("DiscoverActivity() after leave = %#v, %v; want one leave activity", leaveActivities, err)
+	}
+	if err := store.MaterializeWork(t.Context(), leaveActivities[0], nil); err != nil {
+		t.Fatalf("MaterializeWork() for leave: %v", err)
+	}
+	worker := newTestWorker(store, []notification.Transport{transport})
+	worker.Tick(t.Context())
+
+	var deliveredDevices []string
+	for _, call := range sender.calls {
+		deliveredDevices = append(deliveredDevices, call.device)
+	}
+	if len(deliveredDevices) != 1 || deliveredDevices[0] != "device-a" {
+		t.Fatalf("delivered devices = %v, want only current guest device", deliveredDevices)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(sender.calls[0].payload, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload["kind"] != "planned_start_changed" || payload["starts_at"] != next.Format(time.RFC3339) {
+		t.Fatalf("change payload = %#v, want new planned start", payload)
+	}
+	for _, privateField := range []string{"description", "members", "actor_game_nick"} {
+		if _, exists := payload[privateField]; exists {
+			t.Errorf("payload contains private field %q", privateField)
+		}
+	}
+	var retryCount, suppressedCount, deliveryCount int
+	if err := pool.QueryRow(t.Context(), `
+		SELECT count(*) FILTER (WHERE d.status = 'pending'),
+		       count(*) FILTER (WHERE d.status = 'suppressed'), count(*)
+		FROM notification_delivery d
+		JOIN notification_work w ON w.id = d.work_id
+		WHERE w.game_request_id = $1 AND w.kind = 'request_updated'`,
+		request.ID,
+	).Scan(&retryCount, &suppressedCount, &deliveryCount); err != nil {
+		t.Fatal(err)
+	}
+	if retryCount != 1 || suppressedCount != 1 || deliveryCount != 2 {
+		t.Fatalf("pending=%d suppressed=%d total=%d, want 1, 1, and 2", retryCount, suppressedCount, deliveryCount)
 	}
 }

@@ -3,6 +3,7 @@ package notification
 import (
 	"context"
 	"testing"
+	"time"
 )
 
 type fakeGameNickReader struct {
@@ -96,7 +97,7 @@ func TestWebPushTargetsForCreatedUnionsFollowersAndAllAudienceExcludingActor(t *
 		},
 		audienceAll: []string{"follower-1", "all-audience-1"},
 	}
-	transport := NewWebPushTransport(subs, subs, subs, followers, &fakeRequestParticipants{}, summaries, nil, "https://lansurfer.example", "", nil, nil)
+	transport := NewWebPushTransport(subs, subs, subs, followers, &fakeRequestParticipants{}, summaries, nil, "https://lansurfer.example", "", nil, nil, time.Now)
 
 	targets, err := transport.Targets(t.Context(), Activity{Sequence: 1, GameRequestID: "req-1", ActorID: "actor-1", Kind: ActivityCreated})
 	if err != nil {
@@ -124,7 +125,7 @@ func TestWebPushTargetsForLifecycleUsesCurrentParticipantsRegardlessOfAudience(t
 		subsByUser:  map[string][]PushSubscriptionRecord{"participant-1": {{ID: 30}}},
 		preferences: map[string]PushPreference{"participant-1": {WebPushEnabled: true, NewRequestAudience: AudienceFollowed}},
 	}
-	transport := NewWebPushTransport(subs, subs, subs, &fakeGameFollowers{}, participants, &fakeGameRequestSummaryReader{}, nil, "https://lansurfer.example", "", nil, nil)
+	transport := NewWebPushTransport(subs, subs, subs, &fakeGameFollowers{}, participants, &fakeGameRequestSummaryReader{}, nil, "https://lansurfer.example", "", nil, nil, time.Now)
 
 	targets, err := transport.Targets(t.Context(), Activity{Sequence: 2, GameRequestID: "req-1", ActorID: "leaving-actor", Kind: ActivityLeft})
 	if err != nil {
@@ -143,7 +144,7 @@ func TestWebPushTargetsForStartedUsesCurrentParticipantsExcludingHostAndHonorsPr
 		preferences: map[string]PushPreference{"participant-1": {WebPushEnabled: true}, "disabled-1": {WebPushEnabled: false}, "host": {WebPushEnabled: true}},
 	}
 	nicks := &fakeGameNickReader{nick: "unused"}
-	transport := NewWebPushTransport(subs, subs, subs, &fakeGameFollowers{}, participants, &fakeGameRequestSummaryReader{}, nicks, "https://lansurfer.example", "", nil, nil)
+	transport := NewWebPushTransport(subs, subs, subs, &fakeGameFollowers{}, participants, &fakeGameRequestSummaryReader{}, nicks, "https://lansurfer.example", "", nil, nil, time.Now)
 
 	targets, err := transport.Targets(t.Context(), Activity{Sequence: 4, GameRequestID: "req-1", ActorID: "host", Kind: ActivityStarted})
 	if err != nil {
@@ -187,7 +188,7 @@ func TestWebPushTargetsExcludesDisabledUsers(t *testing.T) {
 		subsByUser:  map[string][]PushSubscriptionRecord{"disabled-follower": {{ID: 40}}},
 		preferences: map[string]PushPreference{"disabled-follower": {WebPushEnabled: false, NewRequestAudience: AudienceFollowed}},
 	}
-	transport := NewWebPushTransport(subs, subs, subs, followers, &fakeRequestParticipants{}, summaries, nil, "https://lansurfer.example", "", nil, nil)
+	transport := NewWebPushTransport(subs, subs, subs, followers, &fakeRequestParticipants{}, summaries, nil, "https://lansurfer.example", "", nil, nil, time.Now)
 
 	targets, err := transport.Targets(t.Context(), Activity{Sequence: 3, GameRequestID: "req-1", ActorID: "someone-else", Kind: ActivityCreated})
 
@@ -221,18 +222,55 @@ func TestWebPushActorGameNickLookupOnlyForJoinedAndLeft(t *testing.T) {
 	}
 }
 
-// A request update reaches Discord only. It returns no Web Push targets without
-// reading participants, followers, summaries, preferences or subscriptions.
-func TestWebPushTargetsForRequestUpdatedQueriesNothingAndReturnsNone(t *testing.T) {
-	failing := &failOnReadWebPushSource{t: t}
-	transport := NewWebPushTransport(failing, failing, failing, failing, failing, failing, nil, "https://lansurfer.example", "", nil, nil)
-
-	targets, err := transport.Targets(t.Context(), Activity{Sequence: 9, GameRequestID: "req-1", ActorID: "host", Kind: ActivityUpdated})
-	if err != nil {
-		t.Fatalf("Targets() error = %v", err)
+func TestWebPushTargetsForRequestUpdatedRequiresCurrentChangedTimeAndExcludesActor(t *testing.T) {
+	previous := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
+	next := previous.Add(time.Hour)
+	source := &fakeWebPushSubscriptionSource{
+		subsByUser:  map[string][]PushSubscriptionRecord{"guest": {{ID: 3}}, "host": {{ID: 4}}},
+		preferences: map[string]PushPreference{"guest": {WebPushEnabled: true}, "host": {WebPushEnabled: true}},
 	}
-	if len(targets) != 0 {
-		t.Fatalf("Targets() for request_updated = %#v, want none", targets)
+	participants := &fakeRequestParticipants{participants: map[string][]string{"req-1": {"host", "guest"}}}
+	summaries := &fakeGameRequestSummaryReader{summaries: map[string]GameRequestSummary{
+		"req-1": {Status: "open", StartsAt: next},
+	}}
+	transport := NewWebPushTransport(source, source, source, nil, participants, summaries, nil, "https://lansurfer.example", "", nil, nil, time.Now)
+	activity := Activity{GameRequestID: "req-1", ActorID: "host", Kind: ActivityUpdated, PreviousStartsAt: &previous, NewStartsAt: &next}
+	targets, err := transport.Targets(t.Context(), activity)
+	if err != nil || len(targets) != 1 || targets[0].Key != encodeWebPushTarget(3, "guest") {
+		t.Fatalf("Targets() = %#v, %v; want guest only", targets, err)
+	}
+
+	for _, tc := range []struct {
+		name string
+		edit func()
+	}{
+		{"capacity or description only", func() { activity.NewStartsAt = &previous }},
+		{"stale time", func() { summaries.summaries["req-1"] = GameRequestSummary{Status: "open", StartsAt: previous} }},
+		{"non-open request", func() { summaries.summaries["req-1"] = GameRequestSummary{Status: "playing", StartsAt: next} }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tc.edit()
+			got, err := transport.Targets(t.Context(), activity)
+			if err != nil || len(got) != 0 {
+				t.Fatalf("Targets() = %#v, %v; want no targets", got, err)
+			}
+		})
+		activity.NewStartsAt = &next
+		summaries.summaries["req-1"] = GameRequestSummary{Status: "open", StartsAt: next}
+	}
+}
+
+func TestWebPushTargetsForNonTimeUpdateDoesNotReadRecipients(t *testing.T) {
+	failing := &failOnReadWebPushSource{t: t}
+	transport := NewWebPushTransport(failing, failing, failing, failing, failing, failing, nil, "https://lansurfer.example", "", nil, nil, time.Now)
+	for _, activity := range []Activity{
+		{GameRequestID: "req-1", Kind: ActivityUpdated},
+		{GameRequestID: "req-1", Kind: ActivityUpdated, PreviousStartsAt: new(time.Time), NewStartsAt: new(time.Time)},
+	} {
+		targets, err := transport.Targets(t.Context(), activity)
+		if err != nil || len(targets) != 0 {
+			t.Fatalf("Targets() = %#v, %v; want no targets", targets, err)
+		}
 	}
 }
 

@@ -49,6 +49,42 @@ func (f fakeManualRetryTransport) Send(context.Context, Activity, Target) SendRe
 	return SendResult{Outcome: OutcomeSucceeded}
 }
 
+type fakeReminderRetryTransport struct {
+	fakeManualRetryTransport
+	reminderTargets []Target
+	reminderCalls   int
+}
+
+func (f *fakeReminderRetryTransport) ReminderTargets(context.Context, StartReminder) ([]Target, error) {
+	f.reminderCalls++
+	return f.reminderTargets, nil
+}
+func (*fakeReminderRetryTransport) SendReminder(context.Context, StartReminder, Target, func(context.Context) (bool, error)) SendResult {
+	return SendResult{Outcome: OutcomeSucceeded}
+}
+
+func TestServiceManualRetryUsesReminderEligibilityForOneTarget(t *testing.T) {
+	target := Target{Transport: "push", Key: "one"}
+	repo := &fakeDiagnosticsRepository{
+		detail: DeliveryDetail{
+			DeliveryID: 1, Status: StatusUncertain, Target: target,
+			StartReminder: &StartReminder{ID: 8, GameRequestID: "request"},
+		},
+		reopened: true,
+	}
+	transport := &fakeReminderRetryTransport{
+		fakeManualRetryTransport: fakeManualRetryTransport{name: "push", targets: []Target{{Transport: "push", Key: "wrong"}}},
+		reminderTargets:          []Target{target, {Transport: "push", Key: "second"}},
+	}
+	service := NewService(repo, []Transport{transport})
+	if err := service.ManualRetryUncertain(t.Context(), 1); err != nil {
+		t.Fatal(err)
+	}
+	if transport.reminderCalls != 1 || !repo.reopenedUncCal || repo.reopenedCal {
+		t.Fatalf("reminder calls=%d uncertain=%v ordinary=%v", transport.reminderCalls, repo.reopenedUncCal, repo.reopenedCal)
+	}
+}
+
 func TestServiceManualRetryRejectsDeliveryNotInExhaustedOrPermanentState(t *testing.T) {
 	repo := &fakeDiagnosticsRepository{detail: DeliveryDetail{DeliveryID: 1, Status: StatusUncertain}}
 	service := NewService(repo, nil)

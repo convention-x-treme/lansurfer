@@ -83,6 +83,7 @@ func (w *Worker) Wait(ctx context.Context) {
 // internal poll ticker.
 func (w *Worker) Tick(ctx context.Context) {
 	w.materialize(ctx)
+	w.materializeStartReminders(ctx)
 	w.processDue(ctx)
 }
 
@@ -115,6 +116,40 @@ func (w *Worker) materialize(ctx context.Context) {
 	}
 }
 
+func (w *Worker) materializeStartReminders(ctx context.Context) {
+	repository, ok := w.repo.(StartReminderRepository)
+	if !ok {
+		return
+	}
+	var transport StartReminderTransport
+	for _, candidate := range w.transports {
+		if reminderTransport, ok := candidate.(StartReminderTransport); ok {
+			transport = reminderTransport
+			break
+		}
+	}
+	if transport == nil {
+		return
+	}
+	reminders, err := repository.DiscoverStartReminders(ctx, w.now(), w.discoveryBatch)
+	if err != nil {
+		if ctx.Err() == nil {
+			w.logger.Error("discover start reminders", "error", err)
+		}
+		return
+	}
+	for _, reminder := range reminders {
+		targets, err := transport.ReminderTargets(ctx, reminder)
+		if err != nil {
+			w.logger.Error("resolve start reminder targets", "game_request_id", reminder.GameRequestID, "error", err)
+			continue
+		}
+		if err := repository.MaterializeStartReminder(ctx, reminder, targets); err != nil && ctx.Err() == nil {
+			w.logger.Error("materialize start reminder", "game_request_id", reminder.GameRequestID, "error", err)
+		}
+	}
+}
+
 func (w *Worker) processDue(ctx context.Context) {
 	claimed, err := w.repo.ClaimDueDeliveries(ctx, w.claimBatch, w.now().Add(w.claimLease))
 	if err != nil {
@@ -137,18 +172,26 @@ func (w *Worker) processOne(ctx context.Context, delivery ClaimedDelivery) {
 		return
 	}
 
-	// Eligibility is re-checked before every send, including retries: a
-	// target materialized as eligible can become ineligible later (a
-	// subscription removed, a user leaving the request), and old work must
-	// never be sent to a target it no longer applies to. Suppression is
-	// worker policy computed from a fresh Targets() call, not something the
-	// transport reports from Send.
-	targets, err := transport.Targets(ctx, delivery.Activity)
+	var (
+		targets []Target
+		err     error
+	)
+	if reminder := delivery.StartReminder; reminder != nil {
+		reminderTransport, ok := transport.(StartReminderTransport)
+		if !ok {
+			w.recordOutcome(ctx, delivery, SendResult{Outcome: OutcomePermanent, Err: fmt.Errorf("transport %q cannot send start reminders", transport.Name())})
+			return
+		}
+		targets, err = reminderTransport.ReminderTargets(ctx, *reminder)
+	} else {
+		targets, err = transport.Targets(ctx, delivery.Activity)
+	}
 	if err != nil {
 		w.logger.Error("recheck transport eligibility", "transport", transport.Name(), "error", err)
 		w.recordOutcome(ctx, delivery, SendResult{Outcome: OutcomeRetryable, Err: err})
 		return
-	} else if !containsTarget(targets, delivery.Target) {
+	}
+	if !containsTarget(targets, delivery.Target) {
 		if recordErr := w.repo.RecordSuppressed(ctx, delivery.DeliveryID, ErrNoLongerEligible.Error()); recordErr != nil && ctx.Err() == nil {
 			w.logger.Error("record notification delivery suppressed", "delivery_id", delivery.DeliveryID, "error", recordErr)
 		}
@@ -157,7 +200,23 @@ func (w *Worker) processOne(ctx context.Context, delivery ClaimedDelivery) {
 
 	sendCtx, cancel := context.WithTimeout(ctx, w.sendTimeout)
 	var result SendResult
-	if claimed, ok := transport.(interface {
+	if reminder := delivery.StartReminder; reminder != nil {
+		repository, ok := w.repo.(StartReminderRepository)
+		if !ok {
+			cancel()
+			w.recordOutcome(ctx, delivery, SendResult{Outcome: OutcomePermanent, Err: ErrTransportNotConfigured})
+			return
+		}
+		reminderTransport, ok := transport.(StartReminderTransport)
+		if !ok {
+			cancel()
+			w.recordOutcome(ctx, delivery, SendResult{Outcome: OutcomePermanent, Err: ErrTransportNotConfigured})
+			return
+		}
+		result = reminderTransport.SendReminder(sendCtx, *reminder, delivery.Target, func(reserveCtx context.Context) (bool, error) {
+			return repository.ReserveStartReminderSend(reserveCtx, delivery.DeliveryID)
+		})
+	} else if claimed, ok := transport.(interface {
 		SendClaimed(context.Context, ClaimedDelivery) SendResult
 	}); ok {
 		result = claimed.SendClaimed(sendCtx, delivery)

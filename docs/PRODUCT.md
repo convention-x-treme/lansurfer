@@ -362,6 +362,8 @@ A `playing` request remains active and visible in normal discovery and shared na
 
 A started request is not cancelled; it is closed when finished. Existing historical `closed` requests that predate the explicit start signal do not gain an invented actual start time.
 
+Time presentation follows lifecycle state. Open requests show planned time and may use relative countdown and urgency. Playing requests show actual start time, never planned-time countdown or urgency. Closed requests show actual start when recorded; legacy closed requests and cancelled requests show planned time as history. Historical time uses explicit labels so it cannot read as a future start.
+
 Stable 1.0 coordination continues while a request is `playing`:
 
 - players may join or leave while capacity permits; the Host remains a member and cannot leave;
@@ -395,7 +397,7 @@ The Host may edit mutable coordination details from the Game Request detail page
 - The Game, Host, lifecycle state, and authoritative actual start time (`started_at`) are never editable through this flow.
 - One Save applies all changed details atomically. Saving a semantically identical state is a no-op: no request write, activity entry, live update, or Discord synchronization is produced.
 - A successful edit creates one durable request-update activity regardless of how many editable fields changed. Capacity and planned-start changes retain typed before/after values; a description change records only that the description changed, not copies of the old/new text.
-- Request edits refresh the synchronized Discord message, create no personal Web Push, and do not influence Trending.
+- Request edits refresh the synchronized Discord message. A planned-start change also sends a personal Web Push to currently eligible request participants except the Host; capacity- and description-only edits do not. Edits do not influence Trending.
 
 ### Capacity
 
@@ -450,7 +452,7 @@ Every signed-in screen renders the same navigation, so its numbers and lists mea
 - **Games**, with how many Games the local catalog holds, and **Followed** beneath it with how many Games this player follows. Both lead to the same Games screen; Followed applies its "Followed only" filter. A count of zero is omitted rather than rendered.
 - **How it works**, the public help page.
 - **Administration**, for administrators only.
-- **Your next games** — up to three active Game Requests this player has joined, soonest first. Requests remain here when they transition to `playing`; a round whose planned start time has arrived is marked urgent with the same treatment the request list uses for "now".
+- **Your active games** — up to three active Game Requests this player has joined, soonest planned start first. Open requests show planned-start urgency. Playing requests show actual start time without countdown or urgency.
 - **Recently viewed** — up to five Game Requests this player most recently opened, newest first.
 
 "Recently viewed" is private reading history. It is per-player and never visible to anyone else, it records only that a player opened a Game Request's detail page, and it states what the player read rather than what is still open: a Game Request that closed or was cancelled after they read it stays listed and says so. Re-opening a Game Request moves it back to the top instead of adding a second entry, and a deleted Game Request leaves the list entirely. Opening a Game Request is not an activity entry, is never delivered as a notification, and never reaches the live-update stream.
@@ -472,10 +474,11 @@ The durable notification system has Web Push and Discord transports. External de
 - For a newly created request, notify currently eligible players in the selected audience except the creator.
 - Join, leave, start, close, and cancel activity may also notify current request participants independently of the new-request audience setting. The actor never receives a personal push for their own activity.
 - Join/leave notifications may name the actor by public Game Nick. Start/close/cancel notifications remain actor-neutral.
-- A Host request-detail update never creates a personal push; it reaches Discord only.
+- A planned-start edit sends a minimal personal push only when the request remains open at the newly saved time; the Host actor is excluded. Capacity- and description-only edits send no personal push.
+- For an open request, LANsurfer creates at most one reminder per request/planned-time pair when that time enters the next 15 minutes. Only currently eligible participants receive it. Returning to a previously reminded time does not repeat it; obsolete reminders are suppressed.
 - Recipient/device sets are not expanded later for old work. Delayed/retried delivery re-checks current eligibility and suppresses a delivery that is no longer permitted rather than sending stale personal notification work.
 - When LANsurfer is already visibly open in the browser, the service worker suppresses the duplicate OS notification and SSE remains the in-browser live-update path.
-- Push payloads contain only the minimum data needed to render the notification: activity kind, Game, optional creator Game Nick, current player count and optional capacity, planned time, deep link, minimum instance context, and optional join/leave actor Game Nick. The notification uses the Game Requests list title; its body shows viewer-local planned time and current player count/capacity without repeating the Game, with activity context on changes. Payloads omit description, roster, cover, provider identity data, and activity history.
+- Version 4 activity payloads contain only the minimum data needed to render a notification: activity kind, Game, lifecycle status, planned time, optional actual start time, same-origin deep link, minimum instance context, current player count/capacity, and optional creator or join/leave actor Game Nick. Separate time-only payloads identify a planned-start change or reminder and contain no roster, description, or identity data. The worker labels times as planned or actual from lifecycle state, omits unavailable times, and drops reminders received after their planned time.
 
 ### Discord delivery
 
@@ -484,7 +487,7 @@ The durable notification system has Web Push and Discord transports. External de
 - Global administrators connect, reconnect, disconnect, and diagnose the destination.
 - LANsurfer maintains one synchronized Discord message per Game Request in the current destination. It creates the message with `wait=true`, stores the returned message ID, and edits that same message as request state changes.
 - Discord reflects the current Game Request snapshot rather than replaying request activity. Rapid changes may collapse into one newer edit, and a new live change after reconnect may create the current request's first message in the new destination without replaying older work.
-- The message uses the Game Requests list title with creator Game Nick and Game. It includes a viewer-local `Start` field, status with a color-coded embed accent, current capacity/free-place summary, a short sanitized request description, an explicit `Open in browser ↗` link below the metadata, and minimal instance context. The optional provider Game cover appears as a Discord thumbnail linked directly from IGDB. The web UI keeps covers same-origin; a local base URL still prevents Discord users from opening the deep link.
+- The message uses the Game Requests list title with creator Game Nick and Game. It includes `Planned start` for open/cancelled and legacy closed requests, or `Started at` when an actual start exists. Playing without valid actual start omits the field. It includes status with a color-coded embed accent, current capacity/free-place summary, a short sanitized request description, an explicit `Open in browser ↗` link below the metadata, and minimal instance context. The optional provider Game cover appears as a Discord thumbnail linked directly from IGDB. The web UI keeps covers same-origin; a local base URL still prevents Discord users from opening the deep link.
 - The full participant roster and durable request activity remain in LANsurfer and are not mirrored into Discord. A Host request edit updates the same synchronized message with the current capacity, planned time, and description snapshot and posts no separate message.
 - Provider identity data such as Discord usernames or email addresses is never used as public identity in the message.
 - User-authored descriptions are treated as plain content and Discord mentions are disabled on every create/edit.

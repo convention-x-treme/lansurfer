@@ -52,12 +52,21 @@ func (s *Service) reopen(ctx context.Context, deliveryID int64, uncertainOnly bo
 	} else if detail.Status != StatusExhausted && detail.Status != StatusPermanent {
 		return ErrDeliveryNotRetryable
 	}
-
 	transport, ok := s.transportsByName[detail.Target.Transport]
 	if !ok {
 		return ErrTransportNotConfigured
 	}
-	targets, err := transport.Targets(ctx, detail.Activity)
+
+	var targets []Target
+	if reminder := detail.StartReminder; reminder != nil {
+		reminderTransport, ok := transport.(StartReminderTransport)
+		if !ok {
+			return ErrTransportNotConfigured
+		}
+		targets, err = reminderTransport.ReminderTargets(ctx, *reminder)
+	} else {
+		targets, err = transport.Targets(ctx, detail.Activity)
+	}
 	if err != nil {
 		return fmt.Errorf("recheck delivery eligibility: %w", err)
 	}

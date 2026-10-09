@@ -190,6 +190,7 @@ LEFT JOIN game_igdb_enrichment enrichment ON enrichment.game_id = g.id
 WHERE gr.id = sqlc.arg(id)::uuid
 GROUP BY gr.id, g.id, g.name, enrichment.game_id, u.game_nick;
 
+
 -- ListRecentlyViewedGameRequests backs the navigation's "Recently viewed"
 -- list. It is per-viewer reading history, so it deliberately ignores status:
 -- a request the player closed or cancelled is still the one they just read.
@@ -204,3 +205,16 @@ JOIN games g ON g.id = gr.game_id
 WHERE v.user_id = sqlc.arg(viewer_id)::uuid
 ORDER BY v.viewed_at DESC, gr.id
 LIMIT sqlc.arg(result_limit);
+-- ListDueStartReminders exposes only the currently persisted schedule.
+-- name: ListDueStartReminders :many
+SELECT gr.id::text AS game_request_id, gr.starts_at
+FROM game_requests gr
+WHERE gr.status = 'open'
+  AND gr.starts_at > sqlc.arg(now)::timestamptz
+  AND gr.starts_at <= sqlc.arg(now)::timestamptz + interval '15 minutes'
+  AND NOT EXISTS (
+      SELECT 1 FROM notification_start_reminder r
+      WHERE r.game_request_id = gr.id AND r.starts_at = gr.starts_at
+  )
+ORDER BY gr.starts_at, gr.id
+LIMIT LEAST(sqlc.arg(row_limit)::integer, 200);

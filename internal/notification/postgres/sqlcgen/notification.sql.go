@@ -12,24 +12,33 @@ import (
 )
 
 const claimDueDeliveries = `-- name: ClaimDueDeliveries :many
-WITH claimed AS (
+WITH recovered AS (
+    UPDATE notification_delivery
+    SET status = 'uncertain', claimed_until = NULL,
+        last_error = 'start reminder send outcome is unknown', updated_at = now()
+    WHERE status = 'claimed' AND claimed_until <= now()
+      AND start_reminder_id IS NOT NULL AND send_started_at IS NOT NULL
+), claimed AS (
     UPDATE notification_delivery
     SET status = 'claimed', claimed_until = $1, updated_at = now()
     WHERE id IN (
         SELECT id FROM notification_delivery
         WHERE (status = 'pending' AND next_attempt_at <= now())
-           OR (status = 'claimed' AND claimed_until <= now())
+           OR (status = 'claimed' AND claimed_until <= now()
+               AND (start_reminder_id IS NULL OR send_started_at IS NULL))
         ORDER BY next_attempt_at
         LIMIT $2
         FOR UPDATE SKIP LOCKED
     )
-    RETURNING id, work_id, transport, target_key, attempt_count
+    RETURNING id, work_id, start_reminder_id, transport, target_key, attempt_count
 )
 SELECT c.id, c.transport, c.target_key, c.attempt_count,
-       w.activity_sequence, w.game_request_id::text AS game_request_id, w.actor_id::text AS actor_id,
-       w.kind, w.occurred_at
+       w.activity_sequence, COALESCE(w.game_request_id::text, '')::text AS game_request_id, COALESCE(w.actor_id::text, '')::text AS actor_id,
+       w.kind, w.occurred_at, w.previous_starts_at, w.new_starts_at,
+       r.id AS reminder_id, COALESCE(r.game_request_id::text, '')::text AS reminder_game_request_id, r.starts_at AS reminder_starts_at
 FROM claimed c
-JOIN notification_work w ON w.id = c.work_id
+LEFT JOIN notification_work w ON w.id = c.work_id
+LEFT JOIN notification_start_reminder r ON r.id = c.start_reminder_id
 `
 
 type ClaimDueDeliveriesParams struct {
@@ -38,15 +47,20 @@ type ClaimDueDeliveriesParams struct {
 }
 
 type ClaimDueDeliveriesRow struct {
-	ID               int64
-	Transport        string
-	TargetKey        string
-	AttemptCount     int32
-	ActivitySequence int64
-	GameRequestID    string
-	ActorID          string
-	Kind             string
-	OccurredAt       pgtype.Timestamptz
+	ID                    int64
+	Transport             string
+	TargetKey             string
+	AttemptCount          int32
+	ActivitySequence      pgtype.Int8
+	GameRequestID         string
+	ActorID               string
+	Kind                  pgtype.Text
+	OccurredAt            pgtype.Timestamptz
+	PreviousStartsAt      pgtype.Timestamptz
+	NewStartsAt           pgtype.Timestamptz
+	ReminderID            pgtype.Int8
+	ReminderGameRequestID string
+	ReminderStartsAt      pgtype.Timestamptz
 }
 
 func (q *Queries) ClaimDueDeliveries(ctx context.Context, arg ClaimDueDeliveriesParams) ([]ClaimDueDeliveriesRow, error) {
@@ -68,6 +82,11 @@ func (q *Queries) ClaimDueDeliveries(ctx context.Context, arg ClaimDueDeliveries
 			&i.ActorID,
 			&i.Kind,
 			&i.OccurredAt,
+			&i.PreviousStartsAt,
+			&i.NewStartsAt,
+			&i.ReminderID,
+			&i.ReminderGameRequestID,
+			&i.ReminderStartsAt,
 		); err != nil {
 			return nil, err
 		}
@@ -113,7 +132,7 @@ func (q *Queries) ClaimedDiscordDelivery(ctx context.Context, arg ClaimedDiscord
 
 const discoverNewActivity = `-- name: DiscoverNewActivity :many
 SELECT a.sequence, a.game_request_id::text AS game_request_id, a.actor_id::text AS actor_id,
-       a.kind, a.occurred_at
+       a.kind, a.occurred_at, a.previous_starts_at, a.new_starts_at
 FROM game_request_activity a
 WHERE a.origin = 'live'
   AND NOT EXISTS (SELECT 1 FROM notification_work w WHERE w.activity_sequence = a.sequence)
@@ -122,11 +141,13 @@ LIMIT $1
 `
 
 type DiscoverNewActivityRow struct {
-	Sequence      int64
-	GameRequestID string
-	ActorID       string
-	Kind          string
-	OccurredAt    pgtype.Timestamptz
+	Sequence         int64
+	GameRequestID    string
+	ActorID          string
+	Kind             string
+	OccurredAt       pgtype.Timestamptz
+	PreviousStartsAt pgtype.Timestamptz
+	NewStartsAt      pgtype.Timestamptz
 }
 
 func (q *Queries) DiscoverNewActivity(ctx context.Context, rowLimit int32) ([]DiscoverNewActivityRow, error) {
@@ -144,6 +165,8 @@ func (q *Queries) DiscoverNewActivity(ctx context.Context, rowLimit int32) ([]Di
 			&i.ActorID,
 			&i.Kind,
 			&i.OccurredAt,
+			&i.PreviousStartsAt,
+			&i.NewStartsAt,
 		); err != nil {
 			return nil, err
 		}
@@ -156,24 +179,32 @@ func (q *Queries) DiscoverNewActivity(ctx context.Context, rowLimit int32) ([]Di
 }
 
 const getDeliveryDetail = `-- name: GetDeliveryDetail :one
+
 SELECT d.id, d.transport, d.target_key, d.status,
-       w.activity_sequence, w.game_request_id::text AS game_request_id, w.actor_id::text AS actor_id,
-       w.kind, w.occurred_at
+       w.activity_sequence, COALESCE(w.game_request_id::text, '')::text AS game_request_id, COALESCE(w.actor_id::text, '')::text AS actor_id,
+       w.kind, w.occurred_at, w.previous_starts_at, w.new_starts_at,
+       r.id AS reminder_id, COALESCE(r.game_request_id::text, '')::text AS reminder_game_request_id, r.starts_at AS reminder_starts_at
 FROM notification_delivery d
-JOIN notification_work w ON w.id = d.work_id
+LEFT JOIN notification_work w ON w.id = d.work_id
+LEFT JOIN notification_start_reminder r ON r.id = d.start_reminder_id
 WHERE d.id = $1
 `
 
 type GetDeliveryDetailRow struct {
-	ID               int64
-	Transport        string
-	TargetKey        string
-	Status           string
-	ActivitySequence int64
-	GameRequestID    string
-	ActorID          string
-	Kind             string
-	OccurredAt       pgtype.Timestamptz
+	ID                    int64
+	Transport             string
+	TargetKey             string
+	Status                string
+	ActivitySequence      pgtype.Int8
+	GameRequestID         string
+	ActorID               string
+	Kind                  pgtype.Text
+	OccurredAt            pgtype.Timestamptz
+	PreviousStartsAt      pgtype.Timestamptz
+	NewStartsAt           pgtype.Timestamptz
+	ReminderID            pgtype.Int8
+	ReminderGameRequestID string
+	ReminderStartsAt      pgtype.Timestamptz
 }
 
 func (q *Queries) GetDeliveryDetail(ctx context.Context, id int64) (GetDeliveryDetailRow, error) {
@@ -189,6 +220,11 @@ func (q *Queries) GetDeliveryDetail(ctx context.Context, id int64) (GetDeliveryD
 		&i.ActorID,
 		&i.Kind,
 		&i.OccurredAt,
+		&i.PreviousStartsAt,
+		&i.NewStartsAt,
+		&i.ReminderID,
+		&i.ReminderGameRequestID,
+		&i.ReminderStartsAt,
 	)
 	return i, err
 }
@@ -213,7 +249,7 @@ ON CONFLICT (work_id, transport, target_key) DO NOTHING
 `
 
 type InsertNotificationDeliveryParams struct {
-	WorkID    int64
+	WorkID    pgtype.Int8
 	Transport string
 	TargetKey string
 }
@@ -224,13 +260,16 @@ func (q *Queries) InsertNotificationDelivery(ctx context.Context, arg InsertNoti
 }
 
 const insertNotificationWork = `-- name: InsertNotificationWork :one
-INSERT INTO notification_work (activity_sequence, game_request_id, actor_id, kind, occurred_at, baseline)
+INSERT INTO notification_work (activity_sequence, game_request_id, actor_id, kind, occurred_at,
+                               previous_starts_at, new_starts_at, baseline)
 VALUES (
     $1,
     $2::uuid,
     $3::uuid,
     $4,
     $5,
+    $6,
+    $7,
     false
 )
 ON CONFLICT (activity_sequence) DO NOTHING
@@ -243,6 +282,8 @@ type InsertNotificationWorkParams struct {
 	ActorID          pgtype.UUID
 	Kind             string
 	OccurredAt       pgtype.Timestamptz
+	PreviousStartsAt pgtype.Timestamptz
+	NewStartsAt      pgtype.Timestamptz
 }
 
 func (q *Queries) InsertNotificationWork(ctx context.Context, arg InsertNotificationWorkParams) (int64, error) {
@@ -252,35 +293,79 @@ func (q *Queries) InsertNotificationWork(ctx context.Context, arg InsertNotifica
 		arg.ActorID,
 		arg.Kind,
 		arg.OccurredAt,
+		arg.PreviousStartsAt,
+		arg.NewStartsAt,
 	)
 	var id int64
 	err := row.Scan(&id)
 	return id, err
 }
 
+const insertStartReminder = `-- name: InsertStartReminder :one
+INSERT INTO notification_start_reminder (game_request_id, starts_at)
+VALUES ($1::uuid, $2)
+ON CONFLICT (game_request_id, starts_at) DO NOTHING
+RETURNING id
+`
+
+type InsertStartReminderParams struct {
+	GameRequestID pgtype.UUID
+	StartsAt      pgtype.Timestamptz
+}
+
+func (q *Queries) InsertStartReminder(ctx context.Context, arg InsertStartReminderParams) (int64, error) {
+	row := q.db.QueryRow(ctx, insertStartReminder, arg.GameRequestID, arg.StartsAt)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
+const insertStartReminderDelivery = `-- name: InsertStartReminderDelivery :exec
+INSERT INTO notification_delivery (start_reminder_id, transport, target_key)
+VALUES ($1, 'webpush', $2)
+ON CONFLICT (start_reminder_id, transport, target_key) WHERE start_reminder_id IS NOT NULL DO NOTHING
+`
+
+type InsertStartReminderDeliveryParams struct {
+	StartReminderID pgtype.Int8
+	TargetKey       string
+}
+
+func (q *Queries) InsertStartReminderDelivery(ctx context.Context, arg InsertStartReminderDeliveryParams) error {
+	_, err := q.db.Exec(ctx, insertStartReminderDelivery, arg.StartReminderID, arg.TargetKey)
+	return err
+}
+
 const listProblemDeliveries = `-- name: ListProblemDeliveries :many
 SELECT d.id, d.transport, d.target_key, d.status, d.attempt_count, d.last_error, d.updated_at,
-       w.activity_sequence, w.game_request_id::text AS game_request_id, w.actor_id::text AS actor_id,
-       w.kind, w.occurred_at
+       w.activity_sequence, COALESCE(w.game_request_id::text, '')::text AS game_request_id, COALESCE(w.actor_id::text, '')::text AS actor_id,
+       w.kind, w.occurred_at, w.previous_starts_at, w.new_starts_at,
+       r.id AS reminder_id, COALESCE(r.game_request_id::text, '')::text AS reminder_game_request_id, r.starts_at AS reminder_starts_at
 FROM notification_delivery d
-JOIN notification_work w ON w.id = d.work_id
+LEFT JOIN notification_work w ON w.id = d.work_id
+LEFT JOIN notification_start_reminder r ON r.id = d.start_reminder_id
 WHERE d.status IN ('exhausted', 'permanent', 'uncertain', 'suppressed')
 ORDER BY d.updated_at DESC
 `
 
 type ListProblemDeliveriesRow struct {
-	ID               int64
-	Transport        string
-	TargetKey        string
-	Status           string
-	AttemptCount     int32
-	LastError        pgtype.Text
-	UpdatedAt        pgtype.Timestamptz
-	ActivitySequence int64
-	GameRequestID    string
-	ActorID          string
-	Kind             string
-	OccurredAt       pgtype.Timestamptz
+	ID                    int64
+	Transport             string
+	TargetKey             string
+	Status                string
+	AttemptCount          int32
+	LastError             pgtype.Text
+	UpdatedAt             pgtype.Timestamptz
+	ActivitySequence      pgtype.Int8
+	GameRequestID         string
+	ActorID               string
+	Kind                  pgtype.Text
+	OccurredAt            pgtype.Timestamptz
+	PreviousStartsAt      pgtype.Timestamptz
+	NewStartsAt           pgtype.Timestamptz
+	ReminderID            pgtype.Int8
+	ReminderGameRequestID string
+	ReminderStartsAt      pgtype.Timestamptz
 }
 
 func (q *Queries) ListProblemDeliveries(ctx context.Context) ([]ListProblemDeliveriesRow, error) {
@@ -305,6 +390,11 @@ func (q *Queries) ListProblemDeliveries(ctx context.Context) ([]ListProblemDeliv
 			&i.ActorID,
 			&i.Kind,
 			&i.OccurredAt,
+			&i.PreviousStartsAt,
+			&i.NewStartsAt,
+			&i.ReminderID,
+			&i.ReminderGameRequestID,
+			&i.ReminderStartsAt,
 		); err != nil {
 			return nil, err
 		}
@@ -317,8 +407,9 @@ func (q *Queries) ListProblemDeliveries(ctx context.Context) ([]ListProblemDeliv
 }
 
 const materializeBaselineWork = `-- name: MaterializeBaselineWork :exec
-INSERT INTO notification_work (activity_sequence, game_request_id, actor_id, kind, occurred_at, baseline)
-SELECT sequence, game_request_id, actor_id, kind, occurred_at, true
+INSERT INTO notification_work (activity_sequence, game_request_id, actor_id, kind, occurred_at,
+                               previous_starts_at, new_starts_at, baseline)
+SELECT sequence, game_request_id, actor_id, kind, occurred_at, previous_starts_at, new_starts_at, true
 FROM game_request_activity
 WHERE origin = 'live'
 ON CONFLICT (activity_sequence) DO NOTHING
@@ -388,7 +479,7 @@ func (q *Queries) RecordDeliveryPermanent(ctx context.Context, arg RecordDeliver
 const recordDeliveryRetry = `-- name: RecordDeliveryRetry :exec
 UPDATE notification_delivery
 SET status = 'pending', attempt_count = attempt_count + 1, next_attempt_at = $1,
-    claimed_until = NULL, last_error = $2, updated_at = now()
+    claimed_until = NULL, send_started_at = NULL, last_error = $2, updated_at = now()
 WHERE id = $3 AND status = 'claimed'
 `
 
@@ -473,7 +564,7 @@ func (q *Queries) RecordDeliveryUncertain(ctx context.Context, arg RecordDeliver
 const reopenDeliveryForManualRetry = `-- name: ReopenDeliveryForManualRetry :one
 UPDATE notification_delivery
 SET status = 'pending', attempt_count = 0, next_attempt_at = now(),
-    claimed_until = NULL, last_error = NULL, updated_at = now()
+    claimed_until = NULL, send_started_at = NULL, last_error = NULL, updated_at = now()
 WHERE id = $1 AND status IN ('exhausted', 'permanent')
 RETURNING id
 `
@@ -488,13 +579,29 @@ func (q *Queries) ReopenDeliveryForManualRetry(ctx context.Context, id int64) (i
 const reopenUncertainDeliveryForManualRetry = `-- name: ReopenUncertainDeliveryForManualRetry :one
 UPDATE notification_delivery
 SET status = 'pending', attempt_count = 0, next_attempt_at = now(),
-    claimed_until = NULL, last_error = NULL, updated_at = now()
+    claimed_until = NULL, send_started_at = NULL, last_error = NULL, updated_at = now()
 WHERE id = $1 AND status = 'uncertain'
 RETURNING id
 `
 
 func (q *Queries) ReopenUncertainDeliveryForManualRetry(ctx context.Context, id int64) (int64, error) {
 	row := q.db.QueryRow(ctx, reopenUncertainDeliveryForManualRetry, id)
+	var id_2 int64
+	err := row.Scan(&id_2)
+	return id_2, err
+}
+
+const reserveStartReminderSend = `-- name: ReserveStartReminderSend :one
+UPDATE notification_delivery
+SET send_started_at = now(), updated_at = now()
+WHERE id = $1 AND status = 'claimed'
+  AND claimed_until > now() AND start_reminder_id IS NOT NULL
+  AND send_started_at IS NULL
+RETURNING id
+`
+
+func (q *Queries) ReserveStartReminderSend(ctx context.Context, id int64) (int64, error) {
+	row := q.db.QueryRow(ctx, reserveStartReminderSend, id)
 	var id_2 int64
 	err := row.Scan(&id_2)
 	return id_2, err

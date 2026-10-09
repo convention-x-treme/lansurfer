@@ -76,5 +76,5 @@ func (s *libraryWebPushSender) Send(ctx context.Context, endpoint, p256dh, auth 
 		}
 		return out
 	}
-	return WebPushSendOutcome{Outcome: OutcomeRetryable, Err: errors.New("Web Push send failed")}
+	return WebPushSendOutcome{Outcome: OutcomeRetryable, AcceptanceUnknown: true, Err: errors.New("Web Push send failed")}
 }

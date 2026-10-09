@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/convention-x-treme/lansurfer/internal/gamerequest"
 	"github.com/convention-x-treme/lansurfer/internal/notification"
 	"github.com/convention-x-treme/lansurfer/internal/notification/postgres/sqlcgen"
+	gamerequestquery "github.com/convention-x-treme/lansurfer/internal/query/gamerequest"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -58,6 +60,70 @@ func (s *Store) InitializeBaseline(ctx context.Context) error {
 	return nil
 }
 
+func (s *Store) DiscoverStartReminders(ctx context.Context, now time.Time, limit int) ([]notification.StartReminder, error) {
+	candidates, err := gamerequestquery.NewStore(s.pool).ListDueStartReminders(ctx, now, limit)
+	if err != nil {
+		return nil, fmt.Errorf("discover start reminders: %w", err)
+	}
+	reminders := make([]notification.StartReminder, 0, len(candidates))
+	for _, candidate := range candidates {
+		reminders = append(reminders, notification.StartReminder{
+			GameRequestID: candidate.GameRequestID, StartsAt: candidate.StartsAt,
+		})
+	}
+	return reminders, nil
+}
+func (s *Store) MaterializeStartReminder(ctx context.Context, reminder notification.StartReminder, targets []notification.Target) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin materialize start reminder transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+	summary, err := gamerequestquery.NewStoreWithTx(tx).GetGameRequestSummary(ctx, reminder.GameRequestID)
+	if errors.Is(err, gamerequest.ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("recheck start reminder request: %w", err)
+	}
+	if summary.Status != gamerequest.StatusOpen || !summary.StartsAt.Equal(reminder.StartsAt) {
+		return nil
+	}
+	requestID, err := parseUUID(reminder.GameRequestID)
+	if err != nil {
+		return fmt.Errorf("parse start reminder game request ID: %w", err)
+	}
+	reminderID, err := s.queries.WithTx(tx).InsertStartReminder(ctx, sqlcgen.InsertStartReminderParams{
+		GameRequestID: requestID, StartsAt: pgtype.Timestamptz{Time: reminder.StartsAt, Valid: true},
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("insert start reminder: %w", err)
+	}
+	for _, target := range targets {
+		if err := s.queries.WithTx(tx).InsertStartReminderDelivery(ctx, sqlcgen.InsertStartReminderDeliveryParams{
+			StartReminderID: pgtype.Int8{Int64: reminderID, Valid: true}, TargetKey: target.Key,
+		}); err != nil {
+			return fmt.Errorf("insert start reminder delivery: %w", err)
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit materialize start reminder: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) ReserveStartReminderSend(ctx context.Context, deliveryID int64) (bool, error) {
+	if _, err := s.queries.ReserveStartReminderSend(ctx, deliveryID); errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	} else if err != nil {
+		return false, fmt.Errorf("reserve start reminder send: %w", err)
+	}
+	return true, nil
+}
+
 // DiscoverActivity finds live game_request_activity rows that have not yet
 // been materialized into notification_work, via a NOT EXISTS anti-join on
 // activity_sequence rather than a high-watermark cursor. sequence values are
@@ -75,6 +141,7 @@ func (s *Store) DiscoverActivity(ctx context.Context, limit int) ([]notification
 		activities = append(activities, notification.Activity{
 			Sequence: row.Sequence, GameRequestID: row.GameRequestID, ActorID: row.ActorID,
 			Kind: notification.ActivityKind(row.Kind), OccurredAt: row.OccurredAt.Time,
+			PreviousStartsAt: timestamptzPointer(row.PreviousStartsAt), NewStartsAt: timestamptzPointer(row.NewStartsAt),
 		})
 	}
 	return activities, nil
@@ -105,6 +172,7 @@ func (s *Store) MaterializeWork(ctx context.Context, activity notification.Activ
 	workID, err := queries.InsertNotificationWork(ctx, sqlcgen.InsertNotificationWorkParams{
 		ActivitySequence: activity.Sequence, GameRequestID: gameRequestID, ActorID: actorID,
 		Kind: string(activity.Kind), OccurredAt: pgtype.Timestamptz{Time: activity.OccurredAt, Valid: true},
+		PreviousStartsAt: timestamptzValue(activity.PreviousStartsAt), NewStartsAt: timestamptzValue(activity.NewStartsAt),
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil // another materialization already handled this activity row
@@ -114,7 +182,7 @@ func (s *Store) MaterializeWork(ctx context.Context, activity notification.Activ
 	}
 	for _, target := range targets {
 		if err := queries.InsertNotificationDelivery(ctx, sqlcgen.InsertNotificationDeliveryParams{
-			WorkID: workID, Transport: target.Transport, TargetKey: target.Key,
+			WorkID: pgtype.Int8{Int64: workID, Valid: true}, Transport: target.Transport, TargetKey: target.Key,
 		}); err != nil {
 			return fmt.Errorf("insert notification delivery: %w", err)
 		}
@@ -142,15 +210,20 @@ func (s *Store) ClaimDueDeliveries(ctx context.Context, limit int, leaseUntil ti
 	}
 	claimed := make([]notification.ClaimedDelivery, 0, len(rows))
 	for _, row := range rows {
-		claimed = append(claimed, notification.ClaimedDelivery{
-			DeliveryID:   row.ID,
-			Target:       notification.Target{Transport: row.Transport, Key: row.TargetKey},
+		delivery := notification.ClaimedDelivery{
+			DeliveryID: row.ID, Target: notification.Target{Transport: row.Transport, Key: row.TargetKey},
 			AttemptCount: row.AttemptCount,
-			Activity: notification.Activity{
-				Sequence: row.ActivitySequence, GameRequestID: row.GameRequestID, ActorID: row.ActorID,
-				Kind: notification.ActivityKind(row.Kind), OccurredAt: row.OccurredAt.Time,
-			},
-		})
+		}
+		if row.ActivitySequence.Valid {
+			delivery.Activity = notification.Activity{
+				Sequence: row.ActivitySequence.Int64, GameRequestID: row.GameRequestID, ActorID: row.ActorID,
+				Kind: notification.ActivityKind(row.Kind.String), OccurredAt: row.OccurredAt.Time,
+				PreviousStartsAt: timestamptzPointer(row.PreviousStartsAt), NewStartsAt: timestamptzPointer(row.NewStartsAt),
+			}
+		} else if row.ReminderID.Valid {
+			delivery.StartReminder = &notification.StartReminder{ID: row.ReminderID.Int64, GameRequestID: row.ReminderGameRequestID, StartsAt: row.ReminderStartsAt.Time}
+		}
+		claimed = append(claimed, delivery)
 	}
 	return claimed, nil
 }
@@ -239,15 +312,21 @@ func (s *Store) ListProblemDeliveries(ctx context.Context) ([]notification.Probl
 	}
 	problems := make([]notification.ProblemDelivery, 0, len(rows))
 	for _, row := range rows {
-		problems = append(problems, notification.ProblemDelivery{
+		problem := notification.ProblemDelivery{
 			DeliveryID: row.ID, Target: notification.Target{Transport: row.Transport, Key: row.TargetKey},
 			Status: notification.DeliveryStatus(row.Status), AttemptCount: row.AttemptCount,
 			LastError: textString(row.LastError), UpdatedAt: row.UpdatedAt.Time,
-			Activity: notification.Activity{
-				Sequence: row.ActivitySequence, GameRequestID: row.GameRequestID, ActorID: row.ActorID,
-				Kind: notification.ActivityKind(row.Kind), OccurredAt: row.OccurredAt.Time,
-			},
-		})
+		}
+		if row.ActivitySequence.Valid {
+			problem.Activity = notification.Activity{
+				Sequence: row.ActivitySequence.Int64, GameRequestID: row.GameRequestID, ActorID: row.ActorID,
+				Kind: notification.ActivityKind(row.Kind.String), OccurredAt: row.OccurredAt.Time,
+				PreviousStartsAt: timestamptzPointer(row.PreviousStartsAt), NewStartsAt: timestamptzPointer(row.NewStartsAt),
+			}
+		} else if row.ReminderID.Valid {
+			problem.StartReminder = &notification.StartReminder{ID: row.ReminderID.Int64, GameRequestID: row.ReminderGameRequestID, StartsAt: row.ReminderStartsAt.Time}
+		}
+		problems = append(problems, problem)
 	}
 	return problems, nil
 }
@@ -262,14 +341,20 @@ func (s *Store) GetDeliveryDetail(ctx context.Context, deliveryID int64) (notifi
 	if err != nil {
 		return notification.DeliveryDetail{}, fmt.Errorf("get delivery detail: %w", err)
 	}
-	return notification.DeliveryDetail{
+	detail := notification.DeliveryDetail{
 		DeliveryID: row.ID, Target: notification.Target{Transport: row.Transport, Key: row.TargetKey},
 		Status: notification.DeliveryStatus(row.Status),
-		Activity: notification.Activity{
-			Sequence: row.ActivitySequence, GameRequestID: row.GameRequestID, ActorID: row.ActorID,
-			Kind: notification.ActivityKind(row.Kind), OccurredAt: row.OccurredAt.Time,
-		},
-	}, nil
+	}
+	if row.ActivitySequence.Valid {
+		detail.Activity = notification.Activity{
+			Sequence: row.ActivitySequence.Int64, GameRequestID: row.GameRequestID, ActorID: row.ActorID,
+			Kind: notification.ActivityKind(row.Kind.String), OccurredAt: row.OccurredAt.Time,
+			PreviousStartsAt: timestamptzPointer(row.PreviousStartsAt), NewStartsAt: timestamptzPointer(row.NewStartsAt),
+		}
+	} else if row.ReminderID.Valid {
+		detail.StartReminder = &notification.StartReminder{ID: row.ReminderID.Int64, GameRequestID: row.ReminderGameRequestID, StartsAt: row.ReminderStartsAt.Time}
+	}
+	return detail, nil
 }
 
 // ReopenDelivery reopens one exhausted or permanent delivery for a fresh
@@ -695,4 +780,19 @@ func textString(value pgtype.Text) string {
 		return ""
 	}
 	return value.String
+}
+
+func timestamptzPointer(value pgtype.Timestamptz) *time.Time {
+	if !value.Valid {
+		return nil
+	}
+	t := value.Time
+	return &t
+}
+
+func timestamptzValue(value *time.Time) pgtype.Timestamptz {
+	if value == nil {
+		return pgtype.Timestamptz{}
+	}
+	return pgtype.Timestamptz{Time: *value, Valid: true}
 }
