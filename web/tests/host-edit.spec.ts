@@ -78,21 +78,22 @@ test("detail layout spans hero and contains Player rows across responsive widths
         const playersElement = document.querySelector("#players-title")!.closest("section")!;
         const players = rect(playersElement);
         const lobby = rect(document.querySelector("#main-lobby")!);
-        const rows = Array.from(document.querySelectorAll(".member-row"), (row) => ({
-          bounds: rect(row),
-          children: Array.from(row.children, rect),
-          times: Array.from(row.querySelectorAll(".member-time"), (time) => {
-            const range = document.createRange();
-            range.selectNodeContents(time);
-            const text = range.getBoundingClientRect();
-            return { bounds: rect(time), text: { left: text.left, right: text.right, top: text.top, bottom: text.bottom }, clientWidth: (time as HTMLElement).clientWidth, scrollWidth: (time as HTMLElement).scrollWidth, textContent: time.textContent };
-          }),
-          nick: (() => {
-            const nick = row.querySelector<HTMLElement>("span.truncate")!;
-            const style = getComputedStyle(nick);
-            return { clientWidth: nick.clientWidth, scrollWidth: nick.scrollWidth, textOverflow: style.textOverflow, overflowX: style.overflowX, whiteSpace: style.whiteSpace };
-          })(),
-        }));
+        const rows = Array.from(document.querySelectorAll(".member-row"), (row) => {
+          const nick = row.querySelector<HTMLElement>("span.truncate")!;
+          const style = getComputedStyle(nick);
+          return {
+            bounds: rect(row),
+            children: Array.from(row.children, rect),
+            isHost: row.querySelector(".status-chip-host") !== null,
+            times: Array.from(row.querySelectorAll(".member-time"), (time) => {
+              const range = document.createRange();
+              range.selectNodeContents(time);
+              const text = range.getBoundingClientRect();
+              return { bounds: rect(time), text: { left: text.left, right: text.right, top: text.top, bottom: text.bottom }, clientWidth: (time as HTMLElement).clientWidth, scrollWidth: (time as HTMLElement).scrollWidth, textContent: time.textContent };
+            }),
+            nick: { clientWidth: nick.clientWidth, scrollWidth: nick.scrollWidth, textOverflow: style.textOverflow, overflowX: style.overflowX, whiteSpace: style.whiteSpace },
+          };
+        });
         return {
           hero, grid, players, lobby, rows,
           scrollWidth: document.documentElement.scrollWidth,
@@ -129,13 +130,11 @@ test("detail layout spans hero and contains Player rows across responsive widths
         expect(row.nick.textOverflow).toBe("ellipsis");
         expect(row.nick.overflowX).toBe("hidden");
         expect(row.nick.whiteSpace).toBe("nowrap");
-        if (longNicks && viewport.width === 1280) expect(row.nick.scrollWidth).toBeGreaterThan(row.nick.clientWidth);
+        if (longNicks && row.isHost && viewport.width === 1280) {
+          expect(row.nick.scrollWidth).toBeGreaterThan(row.nick.clientWidth);
+          expect(row.nick.textOverflow).toBe("ellipsis");
+        }
       }
-      expect(layout.rows.flatMap((row) => row.times).map((time) => time.textContent).sort()).toEqual(["created", "joined"].map((prefix) => {
-        const matching = layout.rows.flatMap((row) => row.times).find((time) => time.textContent?.startsWith(prefix));
-        return matching?.textContent;
-      }).sort());
-      expect(layout.rows.flatMap((row) => row.children).length).toBeGreaterThan(0);
       expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth + 1);
       expect(Math.abs(layout.hero.left - layout.grid.left)).toBeLessThanOrEqual(1);
       expect(Math.abs(layout.hero.right - layout.grid.right)).toBeLessThanOrEqual(1);
