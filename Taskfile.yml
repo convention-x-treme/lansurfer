@@ -149,9 +149,9 @@ tasks:
       - go run ./tools/loadtest/race -request '{{.REQUEST}}' -joiners '{{.JOINERS | default "100"}}' -sessions "${LANSURFER_LOADTEST_SESSIONS_FILE:-$HOME/lansurfer-loadtest-sessions.jsonl}"
 
   loadtest:sse:
-    desc: Test concurrent authenticated SSE connections on local port 18080
+    desc: "Test concurrent authenticated SSE connections on port 18080 (optional: REQUEST=<id> TRIGGER=20 REFRESH=1 RECONNECT=1)"
     cmds:
-      - go run ./tools/loadtest/sse -clients '{{.USERS | default "20"}}' -duration '{{.DURATION | default "1m"}}' -sessions "${LANSURFER_LOADTEST_SESSIONS_FILE:-$HOME/lansurfer-loadtest-sessions.jsonl}"
+      - go run ./tools/loadtest/sse -clients '{{.USERS | default "20"}}' -duration '{{.DURATION | default "1m"}}' {{if .REQUEST}}-request '{{.REQUEST}}' -trigger '{{.TRIGGER | default "20"}}'{{end}} {{if eq (.REFRESH | default "") "1"}}-refresh{{end}} {{if eq (.RECONNECT | default "") "1"}}-allow-reconnect{{end}} -sessions "${LANSURFER_LOADTEST_SESSIONS_FILE:-$HOME/lansurfer-loadtest-sessions.jsonl}"
 
   loadtest:report:
     desc: List local k6 summary reports
