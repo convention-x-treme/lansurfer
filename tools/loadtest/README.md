@@ -1,53 +1,79 @@
-# LANsurfer local load-test harness (work in progress)
+# LANsurfer local load-test harness (in development)
 
-This directory is a test-only workstream for #139. It does **not** add guest access or an authentication bypass. The final HTTP/SSE load runners and measured acceptance report are not yet implemented.
+Part of #139. The test harness has three implemented pieces:
 
-## Supported development environment
+1. Seed independent **normal LANsurfer users and browser sessions** directly into an isolated database without creating Keycloak, Discord, OIDC, or guest-login accounts.
+2. Run authenticated **read-only HTTP/HTMX browsing** with k6 in Docker.
+3. Open sustained **authenticated SSE streams** with a lightweight Go runner.
 
-WSL2/Linux with working Docker Desktop integration, Docker Compose, Go 1.27.1 (as required by `go.mod`), and a clone on the WSL ext4 filesystem is recommended.
+**Not yet implemented:** realistic test Games/Game Requests, create/join/leave/close/chat traffic, SSE mutation fan-out and reconnect correctness, database/system monitoring integration, recovery scenarios, and pilot-level capacity evidence. These are tracked in #139 and #93. The current tools do not yet prove that the first LAN will support 400 players.
 
-## Start the isolated stack
+## Requirements (WSL2)
 
-From the repository root:
+WSL2/Linux with Docker Desktop integration, Docker Compose, Go 1.27.1 (as required by go.mod), and Task 3.x. Store the repository on the WSL Linux filesystem where possible.
+
+All commands below run from the repository root on branch test/load-testing.
+
+## 1. Start isolated LANsurfer
 
 ```sh
-docker compose -f tools/loadtest/compose.yaml up -d --build --wait
-curl -fsS http://localhost:18080/readyz
+task loadtest:up
+curl -fsS http://127.0.0.1:18080/readyz
 ```
 
-This uses a dedicated Compose project, database named `lansurfer_loadtest`, and loopback ports `18080` (HTTP) and `55433` (PostgreSQL). It does not use the root `compose.yaml` volumes.
+This uses the dedicated Compose project "lansurfer-loadtest", a disposable PostgreSQL database named "lansurfer_loadtest", localhost HTTP port 18080, and localhost PostgreSQL port 55433. It does not use your regular development volumes.
 
-## Create independent users and sessions
-
-Run only after the application has completed its database migrations and `/readyz` is healthy:
+## 2. Generate test players (once per fresh database)
 
 ```sh
 export LANSURFER_LOADTEST_DATABASE_URL='postgres://lansurfer_loadtest:local-loadtest-only@127.0.0.1:55433/lansurfer_loadtest?sslmode=disable'
 umask 077
-go run ./tools/loadtest/seed -users 400 -output "$HOME/lansurfer-loadtest-sessions.jsonl"
+task loadtest:seed USERS=400
 ```
 
-Each JSONL record includes a user ID, unique Game Nick, and opaque cookie token (the `lansurfer_session` cookie). The seeder uses normal user registration, the official session service and server-side session hashes; no Keycloak accounts are involved. **Treat the JSONL file as live authentication credentials.** Never commit it, paste it into an issue, or include it in diagnostic logs. The command will refuse to overwrite a preexisting file. Use a fresh test database before re-running with the same prefix.
+The default output is "$HOME/lansurfer-loadtest-sessions.jsonl". Each record contains the local player ID, unique Game Nick, and raw session token for the existing "lansurfer_session" cookie. The server stores only the session token hash. The file is created mode 0600 and may **not** be committed, copied to an issue, or logged. Its presence means the seed has already happened; **do not run seed twice** on the same database with the same nick prefix. The seeder refuses any database not named exactly "lansurfer_loadtest", and it never uses the normal "LANSURFER_DATABASE_URL".
 
-The seeder refuses any database not named exactly `lansurfer_loadtest` and deliberately ignores the normal `LANSURFER_DATABASE_URL`. It cannot be used to log in to a different installation.
+If the credentials file is elsewhere, set "LANSURFER_LOADTEST_SESSIONS_FILE" to that full path before running HTTP or SSE.
 
-## Stop or dispose
+## 3. HTTP load in Docker (no local k6 installation)
 
 ```sh
-docker compose -f tools/loadtest/compose.yaml down
-# Destructive! Only the isolated load-test project:
+task loadtest:run USERS=20 DURATION=30s
+task loadtest:run USERS=100 DURATION=2m
+task loadtest:run USERS=200 DURATION=2m
+task loadtest:run USERS=400 DURATION=3m
+task loadtest:report
+```
+
+Try 20 users first. Start with a short duration, then increase. Each virtual player reads pages using one of the seeded sessions; k6 keeps each VU's own identity, disables redirect-following, and reports any authentication redirects as failures.
+
+The current HTTP profile randomly navigates Games, filtered and searched Games, Game Request lists, filtered list fragments, refreshes, and the request composer. It uses real Cookie + optional HX-Request headers and user think times. **It performs no mutations and does not exercise CSRF or concurrency invariants yet.**
+
+The script can only contact "http://lansurfer:8080" on the private Docker Compose network. It reads the owner-only credentials by bind mount, as the current WSL user. Reports with HTTP duration p95/p99 and check/failure rates go to "$HOME/lansurfer-loadtest-reports" (override with "LANSURFER_LOADTEST_REPORT_DIR"). The exploratory unexpected-response threshold is below 1%; that is not an agreed release SLO.
+
+## 4. SSE connections (same seeded users)
+
+```sh
+task loadtest:sse USERS=20 DURATION=45s
+task loadtest:sse USERS=400 DURATION=1m
+```
+
+The Go runner uses localhost port 18080 only. It opens one real SSE stream per seeded user, counts successfully connected/peak simultaneous streams, unexpected disconnects, connection failures, and "game-request" events. A read-only environment is expected to produce **zero events**. To measure write-to-SSE propagation and resulting browser refresh amplification, we still need the planned mutation workload.
+
+For a combined read-only workload, run a k6 HTTP test and an SSE test in two WSL terminals at the same time. Both may reuse a seeded user token concurrently.
+
+## 5. Stop and dispose of data
+
+```sh
+task loadtest:down                        # keep test DB volume
+# DESTRUCTIVE: delete only the dedicated isolated test DB!
 docker compose -f tools/loadtest/compose.yaml down -v
 rm -f "$HOME/lansurfer-loadtest-sessions.jsonl"
 unset LANSURFER_LOADTEST_DATABASE_URL
 ```
 
-The `down -v` operation deletes **all data in the disposable load-test stack**, not the regular developer Compose project. Do not run it against any other Compose file/project.
+"down -v" destroys everything in the dedicated load-test stack, not the ordinary development stack. Use the exact Compose file and double-check the project before deleting.
 
-## Not yet done
+## Interpretation and pilot validation
 
-- A k6/HTTP workload including CSRF/cookie handling and realistic browse/create/join/leave flows
-- A sustained SSE load and fan-out/reconnection client
-- Seeded Games/Game Requests and configurable activity mixes
-- Performance dashboards, latency thresholds, failure/recovery scenarios and pilot hardware evidence
-
-The pilot validation evidence belongs in #93 and must identify the exact revision, server hardware, generator location and measurements.
+A local WSL result measures your workstation *and* the load generator, so it is a development rehearsal, not reliable pilot capacity evidence. For the actual #93 validation run, repeat against pilot-equivalent hardware, proxy, and network conditions, ideally with the load generator on a different machine. Record exact git revision, hardware/resources, workload, observed p95/p99, server/database metrics, SSE behavior, failures and recovery. No #93 acceptance checkbox is automatically passed by a working local test.
