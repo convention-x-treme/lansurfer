@@ -20,14 +20,17 @@ func RequestTime(status gamerequest.Status, startsAt time.Time, startedAt *time.
 		}
 		return historicalRequestTime(*startedAt, now)
 	}
-	if startsAt.IsZero() {
-		return RequestTimePresentation{}
-	}
 	if status == gamerequest.StatusClosed {
 		if startedAt != nil && !startedAt.IsZero() && !startedAt.After(now) {
 			return historicalRequestTime(*startedAt, now)
 		}
+		if startsAt.IsZero() {
+			return RequestTimePresentation{}
+		}
 		return RequestTimePresentation{Label: "planned " + startsAt.UTC().Format("Jan 2"), At: startsAt}
+	}
+	if startsAt.IsZero() {
+		return RequestTimePresentation{}
 	}
 	if status == gamerequest.StatusCancelled {
 		return RequestTimePresentation{Label: "planned " + startsAt.UTC().Format("Jan 2"), At: startsAt}
@@ -75,5 +78,5 @@ func plannedStartLabel(startsAt, now time.Time) string {
 	if remaining < 24*time.Hour {
 		return fmt.Sprintf("in %d h", max(1, int(remaining.Round(time.Hour)/time.Hour)))
 	}
-	return startsAt.UTC().Format("Jan 2")
+	return startsAt.UTC().Format("Jan 2") + " at " + startsAt.UTC().Format("15:04")
 }

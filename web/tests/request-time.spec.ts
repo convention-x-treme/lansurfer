@@ -97,3 +97,27 @@ test("closed actual start uses historical time and legacy closed stays planned",
   await expect(time).toContainText(/^planned /);
   await expect(time).toHaveAttribute("datetime", iso(plan));
 });
+test.describe("future planned start localization", () => {
+  test.use({ timezoneId: "Europe/Berlin" });
+
+  test("shows local date and clock across list, detail, and navigation beyond 24 hours", async ({ page, request }) => {
+    const plan = new Date(Date.now() + 48 * 60 * 60_000 + 90 * 60_000);
+    await setLifecycle(request, "open", plan);
+    await page.goto("/game-requests");
+    const local = new Intl.DateTimeFormat("en-US", {
+      timeZone: "Europe/Berlin", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+    }).format(plan).replace(",", " at");
+    for (const surface of [
+      page.locator(`#game-request-${requestID} time[data-local-time='start']`),
+      page.locator(`a.nav-upcoming-item[href='/game-requests/${requestID}'] time[data-local-time='start']`).first(),
+    ]) {
+      await expect(surface).toHaveText(`starts ${local}`);
+      await expect(surface).toHaveAttribute("datetime", iso(plan));
+      await expect(surface).toHaveAttribute("title", /\d{4}-\d{2}-\d{2} \d{2}:\d{2}/);
+    }
+    await page.goto(`/game-requests/${requestID}`);
+    const detail = page.locator("#game-request-detail time[data-local-time='start']");
+    await expect(detail).toHaveText(`starts ${local}`);
+    await expect(detail).toHaveAttribute("datetime", iso(plan));
+  });
+});

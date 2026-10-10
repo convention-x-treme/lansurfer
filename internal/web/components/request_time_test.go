@@ -23,6 +23,7 @@ func TestRequestTimeLifecycle(t *testing.T) {
 		urgency string
 	}{
 		{"open", gamerequest.StatusOpen, plan, &actual, "starts in 1 h", plan, UrgencyNone},
+		{"open beyond a day", gamerequest.StatusOpen, now.Add(48*time.Hour + 90*time.Minute), nil, "starts Sep 27 at 19:30", now.Add(48*time.Hour + 90*time.Minute), UrgencyNone},
 		{"open at 15 minutes", gamerequest.StatusOpen, now.Add(15 * time.Minute), nil, "starts in 15 min", now.Add(15 * time.Minute), UrgencySoon},
 		{"open at 5 minutes", gamerequest.StatusOpen, now.Add(5 * time.Minute), nil, "starts in 5 min", now.Add(5 * time.Minute), UrgencyStarting},
 		{"open at 2 minutes", gamerequest.StatusOpen, now.Add(2 * time.Minute), nil, "starts now", now.Add(2 * time.Minute), UrgencyStarting},
@@ -36,6 +37,8 @@ func TestRequestTimeLifecycle(t *testing.T) {
 		{"closed zero actual", gamerequest.StatusClosed, plan, &zero, "planned Sep 25", plan, UrgencyNone},
 		{"closed future actual", gamerequest.StatusClosed, plan, &future, "planned Sep 25", plan, UrgencyNone},
 		{"closed zero plan", gamerequest.StatusClosed, time.Time{}, nil, "", time.Time{}, UrgencyNone},
+		{"closed actual without plan", gamerequest.StatusClosed, time.Time{}, &actual, "started 3 min ago", actual, UrgencyNone},
+		{"closed without valid times", gamerequest.StatusClosed, time.Time{}, &zero, "", time.Time{}, UrgencyNone},
 		{"cancelled", gamerequest.StatusCancelled, plan, &actual, "planned Sep 25", plan, UrgencyNone},
 		{"cancelled zero plan", gamerequest.StatusCancelled, time.Time{}, nil, "", time.Time{}, UrgencyNone},
 		{"open zero plan", gamerequest.StatusOpen, time.Time{}, nil, "", time.Time{}, UrgencyNone},
