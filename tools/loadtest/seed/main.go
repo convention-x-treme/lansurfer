@@ -17,6 +17,7 @@ import (
 	authpostgres "github.com/convention-x-treme/lansurfer/internal/auth/postgres"
 	"github.com/convention-x-treme/lansurfer/internal/user"
 	userpostgres "github.com/convention-x-treme/lansurfer/internal/user/postgres"
+	"github.com/convention-x-treme/lansurfer/tools/loadtest/internal/target"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -48,17 +49,9 @@ func run(count int, output, prefix string) error {
 	if _, err := user.ValidateGameNick(fmt.Sprintf("%s_%04d", prefix, count)); err != nil {
 		return fmt.Errorf("invalid -prefix: %w", err)
 	}
-	databaseURL := os.Getenv("LANSURFER_LOADTEST_DATABASE_URL")
-	if databaseURL == "" {
-		return errors.New("set LANSURFER_LOADTEST_DATABASE_URL explicitly; production LANSURFER_DATABASE_URL is ignored")
-	}
-	cfg, err := pgxpool.ParseConfig(databaseURL)
+	cfg, err := target.DatabaseConfig()
 	if err != nil {
-		return fmt.Errorf("parse load-test database URL: %w", err)
-	}
-	// A hard database-name allowlist protects existing development and production data.
-	if cfg.ConnConfig.Database != "lansurfer_loadtest" {
-		return errors.New("refusing to seed: database must be named exactly lansurfer_loadtest")
+		return err
 	}
 
 	// Create the credential file before writing any records, with owner-only permissions.

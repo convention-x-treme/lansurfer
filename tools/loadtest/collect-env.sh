@@ -23,4 +23,4 @@ echo "--- container limits (0 = unlimited) ---"
 for id in $(docker compose -f "$compose" ps -q 2>/dev/null); do
   docker inspect --format '{{.Name}} memory_limit={{.HostConfig.Memory}} nano_cpus={{.HostConfig.NanoCpus}}' "$id"
 done
-echo "note: /metrics needs an operator-generated Metrics API key and is not scraped by this harness"
+echo "note: loadtest:profile uses the private metrics key; never share key files or raw reports"

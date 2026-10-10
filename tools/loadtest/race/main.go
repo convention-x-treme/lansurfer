@@ -20,12 +20,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/convention-x-treme/lansurfer/tools/loadtest/internal/target"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 const baseURL = "http://127.0.0.1:18080"
 
-type player struct{ userID, token string }
+type player struct{ token string }
 
 func main() {
 	request := flag.String("request", "", "Game Request ID (UUID) to race on")
@@ -66,16 +67,9 @@ func run(requestID string, joiners, repeat int, sessionsPath string) error {
 	if requestID == "" || sessionsPath == "" || joiners < 2 || repeat < 1 {
 		return errors.New("-request and -sessions are required and -joiners must be at least 2")
 	}
-	databaseURL := os.Getenv("LANSURFER_LOADTEST_DATABASE_URL")
-	if databaseURL == "" {
-		return errors.New("set LANSURFER_LOADTEST_DATABASE_URL explicitly; production LANSURFER_DATABASE_URL is ignored")
-	}
-	cfg, err := pgxpool.ParseConfig(databaseURL)
+	cfg, err := target.DatabaseConfig()
 	if err != nil {
-		return fmt.Errorf("parse load-test database URL: %w", err)
-	}
-	if cfg.ConnConfig.Database != "lansurfer_loadtest" {
-		return errors.New("refusing to run: database must be named exactly lansurfer_loadtest")
+		return err
 	}
 	players, err := readPlayers(sessionsPath)
 	if err != nil {
@@ -94,28 +88,10 @@ func run(requestID string, joiners, repeat int, sessionsPath string) error {
 		FROM game_requests r WHERE r.id = $1 AND r.status = 'open'`, requestID).Scan(&maxPlayers, &before); err != nil {
 		return fmt.Errorf("load open Game Request: %w", err)
 	}
-	rows, err := pool.Query(ctx, `SELECT user_id::text FROM game_request_members WHERE game_request_id = $1`, requestID)
-	if err != nil {
-		return fmt.Errorf("load members: %w", err)
+	if len(players) < joiners {
+		return fmt.Errorf("only %d sessions available for %d joiners", len(players), joiners)
 	}
-	members := map[string]bool{}
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			return err
-		}
-		members[id] = true
-	}
-	rows.Close()
-	var racers []player
-	for _, p := range players {
-		if !members[p.userID] && len(racers) < joiners {
-			racers = append(racers, p)
-		}
-	}
-	if len(racers) < joiners {
-		return fmt.Errorf("only %d non-member players available for %d joiners", len(racers), joiners)
-	}
+	racers := players[:joiners]
 
 	target, _ := url.Parse(baseURL)
 	clients := make([]*http.Client, len(racers))
@@ -130,7 +106,7 @@ func run(requestID string, joiners, repeat int, sessionsPath string) error {
 		setup.Add(1)
 		go func() { // a normal page GET makes LANsurfer issue the CSRF cookie
 			defer setup.Done()
-			resp, err := clients[i].Get(baseURL + "/game-requests/")
+			resp, err := clients[i].Get(baseURL + "/game-requests/new")
 			if err == nil {
 				resp.Body.Close()
 				if resp.StatusCode != http.StatusOK {
@@ -227,7 +203,7 @@ func readPlayers(path string) ([]player, error) {
 		if err := json.Unmarshal(scanner.Bytes(), &r); err != nil || r.UserID == "" || r.Token == "" {
 			return nil, errors.New("invalid sessions file line")
 		}
-		out = append(out, player{userID: r.UserID, token: r.Token})
+		out = append(out, player{token: r.Token})
 	}
 	return out, scanner.Err()
 }

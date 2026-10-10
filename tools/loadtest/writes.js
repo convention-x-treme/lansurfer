@@ -11,13 +11,22 @@
 //               chat rate limit). HTMX answers 200 + HX-Retarget #live-notices.
 //   unexpected  403 (CSRF/permission), redirect to login, 4xx/5xx, anything else
 import http from 'k6/http';
-import { check, sleep } from 'k6';
+import { check, sleep, randomSeed } from 'k6';
 import { SharedArray } from 'k6/data';
 import { Counter, Rate } from 'k6/metrics';
+import { classifyHtmx } from './outcomes.mjs';
 
-const BASE_URL = 'http://lansurfer:8080';
+const BASE_URL = __ENV.BASE_URL || 'http://lansurfer:8080';
+const SESSION_OFFSET = Number(__ENV.SESSION_OFFSET || '0');
+const SEED = Number(__ENV.SEED || '139');
 const users = Number(__ENV.USERS || '20');
 const duration = __ENV.DURATION || '1m';
+if (BASE_URL !== 'http://lansurfer:8080' && BASE_URL !== 'http://proxy:8080') {
+  throw new Error('BASE_URL is not an allowed isolated origin');
+}
+if (!Number.isInteger(SESSION_OFFSET) || SESSION_OFFSET < 0 || !Number.isInteger(SEED) || SEED < 0) {
+  throw new Error('SESSION_OFFSET and SEED must be non-negative integers');
+}
 if (!Number.isInteger(users) || users < 1 || users > 2000) {
   throw new Error('USERS must be an integer between 1 and 2000');
 }
@@ -29,21 +38,20 @@ const sessions = new SharedArray('lansurfer-local-test-sessions', () => {
   }
   return records;
 });
-if (users > sessions.length) {
-  throw new Error('USERS=' + users + ' exceeds the ' + sessions.length + ' seeded sessions');
+if (SESSION_OFFSET + users > sessions.length) {
+  throw new Error('SESSION_OFFSET plus USERS exceeds the seeded sessions');
 }
 // Fixture IDs only (no tokens): { games: [...], requests: { open: [...], ... } }.
 const fixtures = new SharedArray('lansurfer-local-test-fixtures', () => [JSON.parse(open('/fixtures.json'))])[0];
 const joinable = [].concat(fixtures.requests.open, fixtures.requests.nearly_full, fixtures.requests.empty);
 
-const actions = ['create', 'join', 'leave', 'chat', 'csrf_negative'];
+const actions = ['browse', 'create', 'join', 'leave', 'chat', 'csrf_negative'];
 const outcomes = ['ok', 'conflict', 'unexpected'];
 const outcomeCounter = new Counter('loadtest_outcomes');
 const unexpectedRate = new Rate('loadtest_unexpected_response_rate');
 
-// Thresholds here only force k6 to export per-action latency and outcome counts
-// in the summary; they are always true and are not release SLOs.
-const thresholds = { loadtest_unexpected_response_rate: ['rate<0.01'] };
+// Fail the run on every unexpected outcome; latency thresholds export action metrics only.
+const thresholds = { loadtest_unexpected_response_rate: ['rate==0'] };
 for (const action of actions) {
   thresholds['http_req_duration{endpoint:' + action + '}'] = ['p(95)>=0', 'p(99)>=0'];
   for (const outcome of outcomes) {
@@ -57,8 +65,8 @@ export const options = {
   },
   // k6 clears each VU's cookie jar between iterations by default; the session
   // and CSRF cookies must live as long as a browser's would.
+  discardResponseBodies: false,
   noCookiesReset: true,
-  discardResponseBodies: true,
   summaryTrendStats: ['avg', 'min', 'med', 'p(90)', 'p(95)', 'p(99)', 'max'],
   thresholds,
 };
@@ -85,7 +93,7 @@ function csrfToken() {
 // A normal page GET makes LANsurfer issue the CSRF cookie, like a browser.
 function ensureCsrf() {
   if (csrfToken()) return;
-  http.get(BASE_URL + '/game-requests/', {
+  http.get(BASE_URL + '/game-requests/new', {
     headers: { Accept: 'text/html' }, redirects: 0, timeout: '20s', tags: { endpoint: 'page' },
   });
 }
@@ -96,34 +104,44 @@ function record(action, outcome, res) {
   unexpectedRate.add(outcome === 'unexpected', { action });
   // Diagnose without leaking secrets: status and redirect target only, first few per VU.
   if (outcome === 'unexpected' && res && unexpectedLogged++ < 3) {
-    console.error('unexpected ' + action + ': status=' + res.status + ' location=' + header(res, 'Location') + ' token_sent=' + lastTokenSent);
+    console.error('unexpected ' + action + ': status=' + res.status + ' location=' + header(res, 'Location') + ' token_sent=' + lastTokenSent + ' csrf_rejection=' + isCsrfRejection(res) + ' retarget=' + header(res, 'HX-Retarget'));
   }
 }
 
 let lastTokenSent = '';
 function post(action, path, fields, htmx, withToken) {
   const body = Object.assign({}, fields);
-  lastTokenSent = withToken ? (csrfToken() ? 'present' : 'ABSENT') : 'not-requested';
-  if (withToken) body.csrf_token = csrfToken();
+  const token = withToken ? csrfToken() : '';
+  lastTokenSent = withToken ? (token ? 'present' : 'ABSENT') : 'not-requested';
+  if (withToken) body.csrf_token = token;
   const headers = { Accept: 'text/html' };
   if (htmx) headers['HX-Request'] = 'true';
   return http.post(BASE_URL + path, body, { headers, redirects: 0, timeout: '20s', tags: { endpoint: action } });
 }
 
-function classifyHtmx(res) {
-  if (res.status === 403) jar.delete(BASE_URL, 'lansurfer_csrf'); // refetch a token next time
-  if (res.status !== 200) return 'unexpected';
-  return header(res, 'HX-Retarget') === '#live-notices' ? 'conflict' : 'ok';
+function isCsrfRejection(res) {
+  return res.status === 403 && res.body.trim() === 'invalid CSRF token';
 }
 
+function classifyAction(res, action, plannedConflict = false) {
+  if (action !== 'csrf_negative' && isCsrfRejection(res)) jar.delete(BASE_URL, 'lansurfer_csrf');
+  return classifyHtmx({ status: res.status, headers: res.headers, body: res.body }, action, { plannedConflict });
+}
 function pick(list) {
   return list[Math.floor(Math.random() * list.length)];
+}
+
+function doBrowse() {
+  const res = http.get(BASE_URL + '/game-requests/' + pick(['?scope=joined', '?q=craft', '?q=mine']), {
+    headers: { Accept: 'text/html' }, redirects: 0, timeout: '20s', tags: { endpoint: 'browse' },
+  });
+  record('browse', res.status === 200 ? 'ok' : 'unexpected', res);
 }
 
 function doJoin() {
   const id = pick(joinable);
   const res = post('join', '/game-requests/' + id + '/join', { return_to: 'list' }, true, true);
-  const outcome = classifyHtmx(res);
+  const outcome = classifyAction(res, 'join');
   if (outcome === 'ok' && memberOf.indexOf(id) < 0) memberOf.push(id);
   record('join', outcome, res);
 }
@@ -132,8 +150,9 @@ function doLeave() {
   // With nothing joined yet, leave a random request: a legitimate "not a member" conflict.
   const id = memberOf.length ? memberOf[Math.floor(Math.random() * memberOf.length)] : pick(joinable);
   const res = post('leave', '/game-requests/' + id + '/leave', { return_to: 'list' }, true, true);
-  const outcome = classifyHtmx(res);
-  if (outcome === 'ok') memberOf.splice(memberOf.indexOf(id), 1);
+  const outcome = classifyAction(res, 'leave');
+  const index = memberOf.indexOf(id);
+  if (outcome === 'ok' && index >= 0) memberOf.splice(index, 1);
   record('leave', outcome, res);
 }
 
@@ -141,7 +160,7 @@ function doChat() {
   const pool = memberOf.concat(hosted);
   const id = pool.length ? pick(pool) : pick(joinable);
   const res = post('chat', '/game-requests/' + id + '/chat', { body: 'load test message ' + __ITER }, true, true);
-  record('chat', classifyHtmx(res), res);
+  record('chat', classifyAction(res, 'chat'), res);
 }
 
 function doCreate() {
@@ -157,7 +176,7 @@ function doCreate() {
     hosted.push(match[1]);
     record('create', 'ok');
   } else {
-    if (res.status === 403) jar.delete(BASE_URL, 'lansurfer_csrf');
+    if (isCsrfRejection(res)) jar.delete(BASE_URL, 'lansurfer_csrf');
     record('create', 'unexpected', res);
   }
 }
@@ -165,23 +184,44 @@ function doCreate() {
 // Authenticated POST without a CSRF token must be refused with 403 and change nothing.
 function doCsrfNegative() {
   const res = post('csrf_negative', '/game-requests/' + pick(joinable) + '/join', { return_to: 'list' }, true, false);
-  const refused = res.status === 403;
+  const refused = classifyAction(res, 'csrf_negative') === 'csrf_403';
   check(res, { 'missing CSRF token is refused with 403': () => refused });
   record('csrf_negative', refused ? 'ok' : 'unexpected', res);
 }
 
-export default function () {
+export function runWriteAction(action) {
   if (!primed) {
+    randomSeed(SEED + __VU);
     jar = http.cookieJar();
-    jar.set(BASE_URL, 'lansurfer_session', sessions[__VU - 1].session_token, { path: '/' });
+    jar.set(BASE_URL, 'lansurfer_session', sessions[SESSION_OFFSET + __VU - 1].session_token, { path: '/' });
     primed = true;
   }
   ensureCsrf();
-  const roll = Math.random();
-  if (roll < 0.05) doCreate();
-  else if (roll < 0.40) doJoin();
-  else if (roll < 0.55) doLeave();
-  else if (roll < 0.97) doChat();
-  else doCsrfNegative();
-  sleep(0.7 + Math.random() * 2.3);
+  if (action === 'weighted') {
+    const roll = Math.random();
+    if (roll < 0.70) action = 'browse';
+    else if (roll < 0.73) action = 'create';
+    else if (roll < 0.83) action = 'join';
+    else if (roll < 0.88) action = 'leave';
+    else action = 'chat';
+  } else if (action === 'mixed') {
+    const roll = Math.random();
+    if (roll < 0.05) action = 'create';
+    else if (roll < 0.40) action = 'join';
+    else if (roll < 0.55) action = 'leave';
+    else if (roll < 0.97) action = 'chat';
+    else action = 'csrf_negative';
+  }
+  if (action === 'browse') doBrowse();
+  else if (action === 'create') doCreate();
+  else if (action === 'join') doJoin();
+  else if (action === 'leave') doLeave();
+  else if (action === 'chat') doChat();
+  else if (action === 'csrf_negative') doCsrfNegative();
+  else throw new Error('Unknown write action: ' + action);
+  sleep(__ENV.WORKLOAD === 'soak' ? 2 + Math.random() * 6 : 0.7 + Math.random() * 2.3);
+}
+
+export default function () {
+  runWriteAction(__ENV.WORKLOAD === 'soak' ? 'weighted' : 'mixed');
 }

@@ -131,15 +131,32 @@ tasks:
     cmds:
       - go run ./tools/loadtest/fixtures -games '{{.GAMES | default "20"}}' -requests '{{.REQUESTS | default "60"}}' -sessions "${LANSURFER_LOADTEST_SESSIONS_FILE:-$HOME/lansurfer-loadtest-sessions.jsonl}" -output "${LANSURFER_LOADTEST_FIXTURES_FILE:-$HOME/lansurfer-loadtest-fixtures.json}"
 
-  loadtest:run:
-    desc: Run read-only k6 HTTP load against the isolated Compose network
+
+  loadtest:fixtures:large:
+    desc: Resume the isolated large-v1 dataset into a separate private manifest
     cmds:
-      - bash tools/loadtest/run-http.sh '{{.USERS | default "20"}}' '{{.DURATION | default "1m"}}'
+      - bash tools/loadtest/guard-compose.sh
+      - go run ./tools/loadtest/fixtures -dataset large-v1 -extend-from "${LANSURFER_LOADTEST_FIXTURES_FILE:-$HOME/lansurfer-loadtest-fixtures.json}" -output "${LANSURFER_LOADTEST_LARGE_FIXTURES_FILE:-$HOME/lansurfer-loadtest-fixtures-large.json}" -games '{{.GAMES | default "1000"}}' -requests '{{.REQUESTS | default "5000"}}' -messages-per-request '{{.MESSAGES | default "4"}}' -sessions "${LANSURFER_LOADTEST_SESSIONS_FILE:-$HOME/lansurfer-loadtest-sessions.jsonl}"
+  loadtest:prepare:
+    desc: Prepare isolated profiling extension, control request, and private metrics key
+    cmds:
+      - bash tools/loadtest/guard-compose.sh
+      - go run ./tools/loadtest/state -mode prepare -sessions "${LANSURFER_LOADTEST_SESSIONS_FILE:-$HOME/lansurfer-loadtest-sessions.jsonl}" -fixtures "${LANSURFER_LOADTEST_FIXTURES_FILE:-$HOME/lansurfer-loadtest-fixtures.json}" -output "$HOME/lansurfer-loadtest-control.json"
+      - go run ./tools/loadtest/state -mode metrics-key -output "$HOME/lansurfer-loadtest-metrics-key"
+  loadtest:profile:
+    desc: Collect isolated Prometheus, PostgreSQL, and container profiles
+    cmds:
+      - bash tools/loadtest/guard-compose.sh
+      - bash tools/loadtest/report/run.sh profile bash -c 'go run ./tools/loadtest/profile -duration "$1" -interval "$2" -metrics-key-file "$HOME/lansurfer-loadtest-metrics-key" -output "$LANSURFER_LOADTEST_REPORT_DIR/profile.jsonl"' profile '{{.DURATION | default "1m"}}' '{{.INTERVAL | default "5s"}}'
+  loadtest:run:
+    desc: Run authenticated k6 GET load against the isolated Compose network; detail views record recent history
+    cmds:
+      - BASE_URL='{{.BASE_URL | default "http://lansurfer:8080"}}' SESSION_OFFSET='{{.SESSION_OFFSET | default "0"}}' SEED='{{.SEED | default "139"}}' bash tools/loadtest/report/run.sh http-read bash tools/loadtest/run-http.sh '{{.USERS | default "20"}}' '{{.DURATION | default "1m"}}'
 
   loadtest:writes:
     desc: Run authenticated create/join/leave/chat k6 load (CSRF-correct) against the isolated stack
     cmds:
-      - bash tools/loadtest/run-http.sh '{{.USERS | default "20"}}' '{{.DURATION | default "1m"}}' writes
+      - BASE_URL='{{.BASE_URL | default "http://lansurfer:8080"}}' SESSION_OFFSET='{{.SESSION_OFFSET | default "5"}}' SEED='{{.SEED | default "139"}}' bash tools/loadtest/report/run.sh http-writes bash tools/loadtest/run-http.sh '{{.USERS | default "20"}}' '{{.DURATION | default "1m"}}' writes
 
   loadtest:race:
     desc: Fire simultaneous CSRF-correct joins at one open Game Request and verify capacity/membership invariants
@@ -149,14 +166,66 @@ tasks:
       - go run ./tools/loadtest/race -request '{{.REQUEST}}' -joiners '{{.JOINERS | default "100"}}' -sessions "${LANSURFER_LOADTEST_SESSIONS_FILE:-$HOME/lansurfer-loadtest-sessions.jsonl}"
 
   loadtest:sse:
-    desc: "Test concurrent authenticated SSE connections on port 18080 (optional: REQUEST=<id> TRIGGER=20 REFRESH=1 RECONNECT=1)"
+    desc: Test concurrent authenticated SSE streams with optional event fan-out
     cmds:
-      - go run ./tools/loadtest/sse -clients '{{.USERS | default "20"}}' -duration '{{.DURATION | default "1m"}}' {{if .REQUEST}}-request '{{.REQUEST}}' -trigger '{{.TRIGGER | default "20"}}'{{end}} {{if eq (.REFRESH | default "") "1"}}-refresh{{end}} {{if eq (.RECONNECT | default "") "1"}}-allow-reconnect{{end}} -sessions "${LANSURFER_LOADTEST_SESSIONS_FILE:-$HOME/lansurfer-loadtest-sessions.jsonl}"
+      - go run ./tools/loadtest/sse -clients '{{.USERS | default "20"}}' -duration '{{.DURATION | default "1m"}}' {{if .REQUEST}}-request '{{.REQUEST}}' -trigger '{{.TRIGGER | default "20"}}'{{end}} -trigger-delay '{{.TRIGGER_DELAY | default "0s"}}' -refresh-mode '{{.MODE | default "off"}}' -base-url '{{.BASE_URL | default "http://127.0.0.1:18080"}}' -session-offset '{{.SESSION_OFFSET | default "0"}}' {{if eq (.RECONNECT | default "") "1"}}-allow-reconnect{{end}} {{if eq (.ALLOW_MISSING_EVENTS | default "") "1"}}-allow-missing-events{{end}} -sessions "${LANSURFER_LOADTEST_SESSIONS_FILE:-$HOME/lansurfer-loadtest-sessions.jsonl}"
+
+
+  loadtest:proxy:
+    desc: Start local fault proxy for the isolated load-test stack
+    cmds:
+      - go run ./tools/loadtest/proxy -delay '{{.DELAY | default "0s"}}' -drop-every '{{.DROP_EVERY | default "0"}}' -cut-after '{{.CUT_AFTER | default "0s"}}' -offline-for '{{.OFFLINE_FOR | default "0s"}}' {{if eq (.SSE_ONLY | default "") "1"}}-sse-only{{end}} -from-first-sse {{if eq (.RESET_SSE | default "") "1"}}-reset-sse{{end}}
+
+  loadtest:browser-calibration:
+    desc: Compare real Playwright refresh behavior with simulated SSE clients
+    requires:
+      vars: [REQUEST]
+    cmds:
+      - BASE_URL='{{.BASE_URL | default "http://127.0.0.1:18080"}}' REQUEST='{{.REQUEST}}' SIMULATED_USERS='{{.SIMULATED_USERS | default "120"}}' BROWSER_CLIENTS='{{.BROWSER_CLIENTS | default "5"}}' DURATION='{{.DURATION | default "75s"}}' TRIGGER='{{.TRIGGER | default "20"}}' TRIGGER_INTERVAL='{{.TRIGGER_INTERVAL | default "500ms"}}' TRIGGER_DELAY='{{.TRIGGER_DELAY | default "0s"}}' ALLOW_RECONNECT='{{.ALLOW_RECONNECT | default "0"}}' ALLOW_MISSING_EVENTS='{{.ALLOW_MISSING_EVENTS | default "0"}}' VIEW='{{.VIEW | default "mixed"}}' FILTER_GAME='{{.FILTER_GAME | default "Warcraft III"}}' node tools/loadtest/browser-calibration.mjs
+  loadtest:calibrate:
+    desc: Run the ordered 120/400 browser-like and worst-case calibration matrix
+    requires:
+      vars: [REQUEST]
+    cmds:
+      - bash tools/loadtest/guard-compose.sh
+      - docker compose -f tools/loadtest/compose.yaml -f tools/loadtest/compose.chaos.yaml up -d --build --wait proxy
+      - PHASE=calibrate REQUEST='{{.REQUEST}}' USERS='{{.USERS | default "120"}}' BROWSERS='{{.BROWSERS | default "5"}}' DURATION='{{.DURATION | default "90s"}}' MODE='{{.MODE}}' bash tools/loadtest/report/run.sh calibrate node tools/loadtest/run-phase2.mjs
+
+  loadtest:loss:
+    desc: Prove persistent state survives deliberately lost SSE signals
+    requires:
+      vars: [REQUEST]
+    cmds:
+      - bash tools/loadtest/guard-compose.sh
+      - docker compose -f tools/loadtest/compose.yaml -f tools/loadtest/compose.chaos.yaml up -d --build --wait proxy
+      - PHASE=loss REQUEST='{{.REQUEST}}' USERS='{{.USERS | default "120"}}' BROWSERS='{{.BROWSERS | default "5"}}' DURATION='{{.DURATION | default "90s"}}' bash tools/loadtest/report/run.sh loss node tools/loadtest/run-phase2.mjs
+
+  loadtest:chaos:
+    desc: Run cut, offline, delay, or packet-loss recovery scenarios through the isolated proxy
+    requires:
+      vars: [REQUEST, SCENARIO]
+    cmds:
+      - bash tools/loadtest/guard-compose.sh
+      - docker compose -f tools/loadtest/compose.yaml -f tools/loadtest/compose.chaos.yaml up -d --build --wait proxy
+      - REQUEST='{{.REQUEST}}' SCENARIO='{{.SCENARIO}}' USERS='{{.USERS | default "120"}}' BROWSERS='{{.BROWSERS | default "5"}}' DURATION='{{.DURATION | default "180s"}}' DELAY_MS='{{.DELAY_MS | default "200"}}' bash tools/loadtest/report/run.sh chaos node tools/loadtest/run-chaos.mjs
+
+  loadtest:soak:
+    desc: Run staged mixed HTTP writes, SSE streams, five-browser identities, profiling, cooldown, and audit
+    cmds:
+      - bash tools/loadtest/guard-compose.sh
+      - BROWSERS='{{.BROWSERS | default "5"}}' LANSURFER_LOADTEST_FIXTURES_FILE="${LANSURFER_LOADTEST_FIXTURES_FILE:-{{if eq (.DATASET | default "") "large"}}$HOME/lansurfer-loadtest-fixtures-large.json{{else}}$HOME/lansurfer-loadtest-fixtures.json{{end}}}" bash tools/loadtest/report/run.sh soak bash tools/loadtest/soak.sh '{{.USERS | default "120"}}' '{{.DURATION | default "2h"}}'
+
+  loadtest:scan:
+    desc: Count private session tokens or metrics keys in a report path without printing them
+    requires:
+      vars: [REPORT_PATH]
+    cmds:
+      - go run ./tools/loadtest/report -mode scan -sessions "${LANSURFER_LOADTEST_SESSIONS_FILE:-$HOME/lansurfer-loadtest-sessions.jsonl}" -metrics-key-file "$HOME/lansurfer-loadtest-metrics-key" -path '{{.REPORT_PATH}}'
 
   loadtest:report:
     desc: List local k6 summary reports
     cmds:
-      - ls -lh "${LANSURFER_LOADTEST_REPORT_DIR:-$HOME/lansurfer-loadtest-reports}"
+      - ls -lh "${LANSURFER_LOADTEST_REPORT_ROOT:-$HOME/lansurfer-loadtest-reports}"
 
   loadtest:down:
     desc: Stop the isolated load-test stack (keep its database volume)

@@ -21,6 +21,7 @@ import (
 	gamepostgres "github.com/convention-x-treme/lansurfer/internal/game/postgres"
 	"github.com/convention-x-treme/lansurfer/internal/gamerequest"
 	gamerequestpostgres "github.com/convention-x-treme/lansurfer/internal/gamerequest/postgres"
+	"github.com/convention-x-treme/lansurfer/tools/loadtest/internal/target"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -71,6 +72,8 @@ func planRequests(users, games []string, n int, seed uint64) []plannedRequest {
 type fixtureFile struct {
 	Games    []string            `json:"games"`
 	Requests map[string][]string `json:"requests"` // kind -> request IDs
+	Dataset  string              `json:"dataset,omitempty"`
+	Scale    *scaleProgress      `json:"scale_progress,omitempty"`
 }
 
 func main() {
@@ -78,7 +81,17 @@ func main() {
 	requests := flag.Int("requests", 60, "number of Game Requests")
 	sessions := flag.String("sessions", "", "sessions JSONL (only user_id is read)")
 	output := flag.String("output", "", "new fixtures JSON (request IDs only, mode 0600)")
+	extendFrom := flag.String("extend-from", "", "existing private fixture manifest")
+	dataset := flag.String("dataset", "", "fixture dataset identity (large-v1)")
+	messagesPerRequest := flag.Int("messages-per-request", 4, "marked messages per large-v1 request")
 	flag.Parse()
+	if *dataset != "" || *extendFrom != "" {
+		if err := runScale(*games, *requests, *messagesPerRequest, *sessions, *extendFrom, *output, *dataset); err != nil {
+			fmt.Fprintln(os.Stderr, "loadtest fixtures:", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if err := run(*games, *requests, *sessions, *output); err != nil {
 		fmt.Fprintln(os.Stderr, "loadtest fixtures:", err)
 		os.Exit(1)
@@ -92,16 +105,9 @@ func run(gameCount, requestCount int, sessionsPath, output string) error {
 	if sessionsPath == "" || output == "" {
 		return errors.New("-sessions and -output are required")
 	}
-	databaseURL := os.Getenv("LANSURFER_LOADTEST_DATABASE_URL")
-	if databaseURL == "" {
-		return errors.New("set LANSURFER_LOADTEST_DATABASE_URL explicitly; production LANSURFER_DATABASE_URL is ignored")
-	}
-	cfg, err := pgxpool.ParseConfig(databaseURL)
+	cfg, err := target.DatabaseConfig()
 	if err != nil {
-		return fmt.Errorf("parse load-test database URL: %w", err)
-	}
-	if cfg.ConnConfig.Database != "lansurfer_loadtest" {
-		return errors.New("refusing to write: database must be named exactly lansurfer_loadtest")
+		return err
 	}
 	users, err := readUserIDs(sessionsPath)
 	if err != nil {

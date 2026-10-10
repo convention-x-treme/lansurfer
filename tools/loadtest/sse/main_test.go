@@ -1,13 +1,57 @@
 package main
 
 import (
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
 
+func TestSelectSessionsAllowsTriggerToReuseExistingSession(t *testing.T) {
+	tokens := make([]string, 400)
+	for i := range tokens {
+		tokens[i] = fmt.Sprint(i + 1)
+	}
+	selected, trigger, err := selectSessions(tokens, 0, 400, true)
+	if err != nil || len(selected) != 400 || selected[399] != trigger {
+		t.Fatalf("selected=%d trigger=%q err=%v, want last client session as trigger", len(selected), trigger, err)
+	}
+}
+
+func TestFanoutMeasuresFromCompletedPost(t *testing.T) {
+	base := time.Unix(100, 0)
+	for _, tc := range []struct {
+		name  string
+		early bool
+		want  time.Duration
+	}{
+		{name: "event arrives before response", early: true, want: -time.Second},
+		{name: "event arrives after response", want: time.Second},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFanout("request", 1, time.Millisecond, "off", http.DefaultClient)
+			state := &clientState{received: make([]time.Time, 1)}
+			f.register(state)
+			eventAt := base.Add(time.Second)
+			completedAt := base.Add(2 * time.Second)
+			if tc.early {
+				f.observe(state, eventData{Type: "GameRequestJoined", RequestID: "request"}, eventAt)
+				f.completeMutation(0, completedAt)
+			} else {
+				f.completeMutation(0, eventAt)
+				f.observe(state, eventData{Type: "GameRequestJoined", RequestID: "request"}, completedAt)
+			}
+			if len(f.delays) != 1 || f.delays[0] != tc.want {
+				t.Fatalf("delays = %v, want [%v]", f.delays, tc.want)
+			}
+		})
+	}
+}
 func TestReadSessions(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sessions.jsonl")
 	input := "{\"session_token\":\"abc\"}\n{\"session_token\":\"xyz\"}\n"
@@ -30,12 +74,12 @@ func TestReadSessionsRejectsMissingToken(t *testing.T) {
 	}
 }
 
-func TestConsumeEventsCountsGameRequestOnly(t *testing.T) {
+func TestConsumeEventsCountsNamedGameRequestEvents(t *testing.T) {
 	var stats counters
-	input := ": connected\n\nevent: game-request\ndata: {}\n\nevent: other\ndata: foo\n\n"
+	input := ": connected\n\nevent: game-request\ndata: {}\n\nevent: game-request-chat\ndata: {}\n\nevent: other\ndata: foo\n\n"
 	_ = consumeEvents(strings.NewReader(input), &stats, nil)
-	if stats.events.Load() != 1 {
-		t.Fatalf("got %d, want 1 game-request event", stats.events.Load())
+	if stats.events.Load() != 2 {
+		t.Fatalf("got %d, want 2 named event frames", stats.events.Load())
 	}
 }
 
@@ -73,17 +117,63 @@ func seq(n int) []int {
 	return out
 }
 
-func TestConsumeEventsReportsGameRequestData(t *testing.T) {
+func TestConsumeEventsReportsNamedGameRequestData(t *testing.T) {
 	var stats counters
 	var got []eventData
 	input := "event: game-request\ndata: {\"type\":\"GameRequestJoined\",\"requestId\":\"r1\"}\n\n" +
 		"event: game-request-chat\ndata: {\"type\":\"GameRequestChatMessage\",\"requestId\":\"r1\"}\n\n" +
 		"event: game-request\ndata: not-json\n\n"
 	_ = consumeEvents(strings.NewReader(input), &stats, func(e eventData) { got = append(got, e) })
-	if len(got) != 1 || got[0].Type != "GameRequestJoined" || got[0].RequestID != "r1" {
-		t.Fatalf("observed %+v, want exactly the one valid game-request event", got)
+	if len(got) != 2 || got[0].Type != "GameRequestJoined" || got[0].RequestID != "r1" || got[1].Type != "GameRequestChatMessage" {
+		t.Fatalf("observed %+v, want valid list and chat events", got)
 	}
-	if stats.events.Load() != 2 {
-		t.Fatalf("events = %d, want 2 game-request events counted including the malformed one", stats.events.Load())
+	if stats.events.Load() != 3 || stats.malformed.Load() != 1 {
+		t.Fatalf("events=%d malformed=%d, want 3 and 1", stats.events.Load(), stats.malformed.Load())
+	}
+}
+
+func TestBrowserLikeRefreshCoalescesEventsWhileRequestActive(t *testing.T) {
+	entered := make(chan struct{}, 1)
+	release := make(chan struct{})
+	var requests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if requests.Add(1) == 1 {
+			entered <- struct{}{}
+			<-release
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	f := newFanout("", 0, time.Millisecond, "browser-like", server.Client())
+	f.baseURL = server.URL
+	state := &clientState{token: "test"}
+	f.observe(state, eventData{}, time.Now())
+	<-entered
+	for range 40 {
+		f.observe(state, eventData{}, time.Now())
+	}
+	close(release)
+	f.wg.Wait()
+	if got := requests.Load(); got != 2 {
+		t.Fatalf("refresh requests = %d, want first plus one trailing refresh", got)
+	}
+}
+
+func TestWorstCaseRefreshStartsOneRequestPerEvent(t *testing.T) {
+	var requests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	f := newFanout("", 0, time.Millisecond, "worst-case", server.Client())
+	f.baseURL = server.URL
+	state := &clientState{token: "test"}
+	for range 40 {
+		f.observe(state, eventData{}, time.Now())
+	}
+	f.wg.Wait()
+	if got := requests.Load(); got != 40 {
+		t.Fatalf("refresh requests = %d, want 40", got)
 	}
 }

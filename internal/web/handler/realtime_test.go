@@ -3,13 +3,17 @@ package handler
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/convention-x-treme/lansurfer/internal/gamerequest"
+	platformSSE "github.com/convention-x-treme/lansurfer/internal/platform/sse"
 	"github.com/convention-x-treme/lansurfer/internal/user"
 	webmiddleware "github.com/convention-x-treme/lansurfer/internal/web/middleware"
 )
@@ -113,6 +117,90 @@ func TestRealtimeLogsStreamLifecycle(t *testing.T) {
 				t.Errorf("stream close was not logged with reason %q and its count: %s", testCase.reason, logLines)
 			}
 		})
+	}
+}
+
+func TestRealtimeHandlerDropsSeventeenthEventBehindBlockedWriter(t *testing.T) {
+	broker := platformSSE.NewBroker()
+	writer := &blockedSSEWriter{
+		connected: make(chan struct{}),
+		blocked:   make(chan struct{}),
+		release:   make(chan struct{}),
+		writes:    make(chan string, 17),
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		NewRealtime(broker, nil).GameRequests(writer, httptest.NewRequest("GET", "/events/game-requests", nil).WithContext(ctx))
+		close(done)
+	}()
+	<-writer.connected
+	broker.Publish(gamerequest.Event{Type: gamerequest.EventJoined, RequestID: "in-flight"})
+	<-writer.blocked
+	for i := range 17 {
+		broker.Publish(gamerequest.Event{Type: gamerequest.EventJoined, RequestID: fmt.Sprintf("request-%02d", i)})
+	}
+	close(writer.release)
+	received := make([]string, 0, 17)
+	for range 17 {
+		received = append(received, <-writer.writes)
+	}
+	if !strings.Contains(received[0], `"requestId":"in-flight"`) {
+		t.Fatalf("first event = %q, want in-flight event", received[0])
+	}
+	for i, body := range received[1:] {
+		want := fmt.Sprintf(`"requestId":"request-%02d"`, i)
+		if !strings.Contains(body, want) {
+			t.Fatalf("buffered event %d = %q, want %s", i, body, want)
+		}
+	}
+	select {
+	case extra := <-writer.writes:
+		t.Fatalf("dropped seventeenth event was delivered: %q", extra)
+	case <-time.After(100 * time.Millisecond):
+	}
+	cancel()
+	<-done
+	if broker.Subscribers() != 0 {
+		t.Fatalf("subscribers after cancellation = %d, want 0", broker.Subscribers())
+	}
+}
+
+type blockedSSEWriter struct {
+	header    http.Header
+	connected chan struct{}
+	blocked   chan struct{}
+	release   chan struct{}
+	writes    chan string
+	mu        sync.Mutex
+	first     bool
+	flushed   bool
+}
+
+func (w *blockedSSEWriter) Header() http.Header {
+	if w.header == nil {
+		w.header = make(http.Header)
+	}
+	return w.header
+}
+func (*blockedSSEWriter) WriteHeader(int) {}
+func (w *blockedSSEWriter) Write(data []byte) (int, error) {
+	if strings.HasPrefix(string(data), "event:") {
+		if !w.first {
+			w.first = true
+			close(w.blocked)
+			<-w.release
+		}
+		w.mu.Lock()
+		w.writes <- string(data)
+		w.mu.Unlock()
+	}
+	return len(data), nil
+}
+func (w *blockedSSEWriter) Flush() {
+	if !w.flushed {
+		w.flushed = true
+		close(w.connected)
 	}
 }
 
