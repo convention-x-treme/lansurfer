@@ -136,6 +136,18 @@ tasks:
     cmds:
       - bash tools/loadtest/run-http.sh '{{.USERS | default "20"}}' '{{.DURATION | default "1m"}}'
 
+  loadtest:writes:
+    desc: Run authenticated create/join/leave/chat k6 load (CSRF-correct) against the isolated stack
+    cmds:
+      - bash tools/loadtest/run-http.sh '{{.USERS | default "20"}}' '{{.DURATION | default "1m"}}' writes
+
+  loadtest:race:
+    desc: Fire simultaneous CSRF-correct joins at one open Game Request and verify capacity/membership invariants
+    requires:
+      vars: [REQUEST]
+    cmds:
+      - go run ./tools/loadtest/race -request '{{.REQUEST}}' -joiners '{{.JOINERS | default "100"}}' -sessions "${LANSURFER_LOADTEST_SESSIONS_FILE:-$HOME/lansurfer-loadtest-sessions.jsonl}"
+
   loadtest:sse:
     desc: Test concurrent authenticated SSE connections on local port 18080
     cmds:
