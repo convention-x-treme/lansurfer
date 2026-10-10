@@ -31,8 +31,9 @@ func main() {
 	request := flag.String("request", "", "Game Request ID (UUID) to race on")
 	joiners := flag.Int("joiners", 100, "simultaneous joining players")
 	sessions := flag.String("sessions", "", "path to local test sessions JSONL")
+	repeat := flag.Int("repeat", 1, "identical simultaneous submissions per player (2+ tests double-submit)")
 	flag.Parse()
-	if err := run(*request, *joiners, *sessions); err != nil {
+	if err := run(*request, *joiners, *repeat, *sessions); err != nil {
 		fmt.Fprintln(os.Stderr, "loadtest race:", err)
 		os.Exit(1)
 	}
@@ -61,8 +62,8 @@ func verify(maxPlayers, before, joiners, joined, after, duplicates int) error {
 	return nil
 }
 
-func run(requestID string, joiners int, sessionsPath string) error {
-	if requestID == "" || sessionsPath == "" || joiners < 2 {
+func run(requestID string, joiners, repeat int, sessionsPath string) error {
+	if requestID == "" || sessionsPath == "" || joiners < 2 || repeat < 1 {
 		return errors.New("-request and -sessions are required and -joiners must be at least 2")
 	}
 	databaseURL := os.Getenv("LANSURFER_LOADTEST_DATABASE_URL")
@@ -162,31 +163,33 @@ func run(requestID string, joiners int, sessionsPath string) error {
 	joined, conflicts := 0, 0
 	other := map[string]int{}
 	for i := range racers {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			form := url.Values{"csrf_token": {tokens[i]}, "return_to": {"list"}}
-			req, _ := http.NewRequest(http.MethodPost, baseURL+"/game-requests/"+requestID+"/join", strings.NewReader(form.Encode()))
-			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-			req.Header.Set("HX-Request", "true")
-			<-start
-			resp, err := clients[i].Do(req)
-			mu.Lock()
-			defer mu.Unlock()
-			if err != nil {
-				other["transport error"]++
-				return
-			}
-			resp.Body.Close()
-			switch {
-			case resp.StatusCode == http.StatusOK && resp.Header.Get("HX-Retarget") == "#live-notices":
-				conflicts++
-			case resp.StatusCode == http.StatusOK:
-				joined++
-			default:
-				other[fmt.Sprintf("HTTP %d", resp.StatusCode)]++
-			}
-		}()
+		for range repeat {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				form := url.Values{"csrf_token": {tokens[i]}, "return_to": {"list"}}
+				req, _ := http.NewRequest(http.MethodPost, baseURL+"/game-requests/"+requestID+"/join", strings.NewReader(form.Encode()))
+				req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+				req.Header.Set("HX-Request", "true")
+				<-start
+				resp, err := clients[i].Do(req)
+				mu.Lock()
+				defer mu.Unlock()
+				if err != nil {
+					other["transport error"]++
+					return
+				}
+				resp.Body.Close()
+				switch {
+				case resp.StatusCode == http.StatusOK && resp.Header.Get("HX-Retarget") == "#live-notices":
+					conflicts++
+				case resp.StatusCode == http.StatusOK:
+					joined++
+				default:
+					other[fmt.Sprintf("HTTP %d", resp.StatusCode)]++
+				}
+			}()
+		}
 	}
 	close(start)
 	wg.Wait()
