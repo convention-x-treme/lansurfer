@@ -126,6 +126,11 @@ tasks:
     cmds:
       - go run ./tools/loadtest/seed -users '{{.USERS | default "400"}}' -output "${LANSURFER_LOADTEST_SESSIONS_FILE:-$HOME/lansurfer-loadtest-sessions.jsonl}"
 
+  loadtest:fixtures:
+    desc: Create local test Games, follows, Game Requests, and memberships (first run only)
+    cmds:
+      - go run ./tools/loadtest/fixtures -games '{{.GAMES | default "20"}}' -requests '{{.REQUESTS | default "60"}}' -sessions "${LANSURFER_LOADTEST_SESSIONS_FILE:-$HOME/lansurfer-loadtest-sessions.jsonl}" -output "${LANSURFER_LOADTEST_FIXTURES_FILE:-$HOME/lansurfer-loadtest-fixtures.json}"
+
   loadtest:run:
     desc: Run read-only k6 HTTP load against the isolated Compose network
     cmds:
