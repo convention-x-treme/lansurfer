@@ -64,8 +64,8 @@ func run(clients int, duration time.Duration, sessionsPath string) error {
 	ctx, cancel := context.WithTimeout(ctxSignal, duration)
 	defer cancel()
 	transport := &http.Transport{
-		Proxy:                  nil,
-		DialContext:            (&net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
+		Proxy:                 nil,
+		DialContext:           (&net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
 		MaxIdleConns:          clients,
 		MaxIdleConnsPerHost:   clients,
 		ResponseHeaderTimeout: 20 * time.Second,
