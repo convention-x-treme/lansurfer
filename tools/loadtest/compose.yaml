@@ -1,0 +1,34 @@
+# Disposable load-test stack. Never use production volumes or credentials.
+name: lansurfer-loadtest
+services:
+  postgres:
+    image: postgres:18.6-alpine
+    environment:
+      POSTGRES_DB: lansurfer_loadtest
+      POSTGRES_USER: lansurfer_loadtest
+      POSTGRES_PASSWORD: local-loadtest-only
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lansurfer_loadtest -d lansurfer_loadtest"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    ports:
+      - "127.0.0.1:55433:5432"
+    volumes:
+      - db:/var/lib/postgresql
+  lansurfer:
+    build:
+      context: ../..
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      LANSURFER_DATABASE_URL: postgres://lansurfer_loadtest:local-loadtest-only@postgres:5432/lansurfer_loadtest?sslmode=disable
+      LANSURFER_LISTEN_ADDR: :8080
+      LANSURFER_BASE_URL: http://localhost:18080
+      LANSURFER_IGDB_ENABLED: "false"
+    ports:
+      - "127.0.0.1:18080:8080"
+    init: true
+volumes:
+  db:
