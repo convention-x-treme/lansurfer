@@ -16,7 +16,6 @@ echo "memory_mib: $(awk '/MemTotal/ {printf "%d", $2/1024}' /proc/meminfo)"
 echo "go: $(go version | awk '{print $3}')"
 echo "docker: $(docker version --format '{{.Server.Version}}' 2>/dev/null || echo unknown)"
 echo "postgres_image: $(docker compose -f "$compose" ps postgres --format '{{.Image}}' 2>/dev/null || echo unknown)"
-echo "postgres_image: $(docker compose -f "$compose" images postgres --format '{{.Repository}}:{{.Tag}}' 2>/dev/null || echo unknown)"
 echo "--- container resources (docker stats, one sample) ---"
 docker stats --no-stream --format '{{.Name}} cpu={{.CPUPerc}} mem={{.MemUsage}} pids={{.PIDs}}' \
   $(docker compose -f "$compose" ps -q 2>/dev/null) 2>/dev/null || echo "stack not running"
