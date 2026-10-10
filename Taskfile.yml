@@ -115,3 +115,33 @@ tasks:
       vars: [USER_ID]
     cmds:
       - docker compose exec lansurfer /lansurfer admin promote --user-id '{{.USER_ID}}'
+
+  loadtest:up:
+    desc: Start the isolated local load-test stack (no production data)
+    cmds:
+      - docker compose -f tools/loadtest/compose.yaml up -d --build --wait
+
+  loadtest:seed:
+    desc: Create local test-only users and real browser sessions (first run only)
+    cmds:
+      - go run ./tools/loadtest/seed -users '{{.USERS | default "400"}}' -output "${LANSURFER_LOADTEST_SESSIONS_FILE:-$HOME/lansurfer-loadtest-sessions.jsonl}"
+
+  loadtest:run:
+    desc: Run read-only k6 HTTP load against the isolated Compose network
+    cmds:
+      - bash tools/loadtest/run-http.sh '{{.USERS | default "20"}}' '{{.DURATION | default "1m"}}'
+
+  loadtest:sse:
+    desc: Test concurrent authenticated SSE connections on local port 18080
+    cmds:
+      - go run ./tools/loadtest/sse -clients '{{.USERS | default "20"}}' -duration '{{.DURATION | default "1m"}}' -sessions "${LANSURFER_LOADTEST_SESSIONS_FILE:-$HOME/lansurfer-loadtest-sessions.jsonl}"
+
+  loadtest:report:
+    desc: List local k6 summary reports
+    cmds:
+      - ls -lh "${LANSURFER_LOADTEST_REPORT_DIR:-$HOME/lansurfer-loadtest-reports}"
+
+  loadtest:down:
+    desc: Stop the isolated load-test stack (keep its database volume)
+    cmds:
+      - docker compose -f tools/loadtest/compose.yaml down
