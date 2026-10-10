@@ -8,7 +8,7 @@ SELECT gr.id::text AS request_id,
        enrichment.platform_names,
        enrichment.first_release_date,
        gr.creator_id::text AS creator_id, u.game_nick AS creator_game_nick,
-       gr.max_players, gr.starts_at, gr.description, gr.status,
+       gr.max_players, gr.starts_at, gr.started_at, gr.description, gr.status,
        gr.created_at, gr.updated_at,
        count(m.user_id) AS member_count,
        bool_or(m.user_id = sqlc.arg(viewer_id)::uuid) AS viewer_joined,
@@ -53,7 +53,7 @@ SELECT gr.id::text AS request_id,
        -- page states it in full, and a list of rows has no room for it.
        enrichment.summary,
        gr.creator_id::text AS creator_id, u.game_nick AS creator_game_nick,
-       gr.max_players, gr.starts_at, gr.description, gr.status,
+       gr.max_players, gr.starts_at, gr.started_at, gr.description, gr.status,
        gr.created_at, gr.updated_at,
        count(m.user_id) AS member_count,
        bool_or(m.user_id = sqlc.arg(viewer_id)::uuid) AS viewer_joined,
@@ -180,7 +180,7 @@ SELECT EXISTS (SELECT 1 FROM game_requests WHERE creator_id = sqlc.arg(creator_i
 -- name: GetGameRequestSummary :one
 SELECT gr.id::text AS request_id, g.id::text AS game_id, g.name AS game_name,
        enrichment.cover_image_id,
-       gr.starts_at, gr.status, gr.max_players, count(m.user_id) AS member_count,
+       gr.starts_at, gr.started_at, gr.status, gr.max_players, count(m.user_id) AS member_count,
        u.game_nick AS creator_game_nick, gr.description
 FROM game_requests gr
 JOIN games g ON g.id = gr.game_id
@@ -189,6 +189,7 @@ LEFT JOIN game_request_members m ON m.game_request_id = gr.id
 LEFT JOIN game_igdb_enrichment enrichment ON enrichment.game_id = g.id
 WHERE gr.id = sqlc.arg(id)::uuid
 GROUP BY gr.id, g.id, g.name, enrichment.game_id, u.game_nick;
+
 
 -- ListRecentlyViewedGameRequests backs the navigation's "Recently viewed"
 -- list. It is per-viewer reading history, so it deliberately ignores status:
@@ -204,3 +205,16 @@ JOIN games g ON g.id = gr.game_id
 WHERE v.user_id = sqlc.arg(viewer_id)::uuid
 ORDER BY v.viewed_at DESC, gr.id
 LIMIT sqlc.arg(result_limit);
+-- ListDueStartReminders exposes only the currently persisted schedule.
+-- name: ListDueStartReminders :many
+SELECT gr.id::text AS game_request_id, gr.starts_at
+FROM game_requests gr
+WHERE gr.status = 'open'
+  AND gr.starts_at > sqlc.arg(now)::timestamptz
+  AND gr.starts_at <= sqlc.arg(now)::timestamptz + interval '15 minutes'
+  AND NOT EXISTS (
+      SELECT 1 FROM notification_start_reminder r
+      WHERE r.game_request_id = gr.id AND r.starts_at = gr.starts_at
+  )
+ORDER BY gr.starts_at, gr.id
+LIMIT LEAST(sqlc.arg(row_limit)::integer, 200);

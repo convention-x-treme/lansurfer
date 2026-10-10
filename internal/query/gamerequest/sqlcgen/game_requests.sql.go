@@ -78,7 +78,7 @@ SELECT gr.id::text AS request_id,
        -- page states it in full, and a list of rows has no room for it.
        enrichment.summary,
        gr.creator_id::text AS creator_id, u.game_nick AS creator_game_nick,
-       gr.max_players, gr.starts_at, gr.description, gr.status,
+       gr.max_players, gr.starts_at, gr.started_at, gr.description, gr.status,
        gr.created_at, gr.updated_at,
        count(m.user_id) AS member_count,
        bool_or(m.user_id = $1::uuid) AS viewer_joined,
@@ -113,6 +113,7 @@ type GetGameRequestRow struct {
 	CreatorGameNick  pgtype.Text
 	MaxPlayers       pgtype.Int4
 	StartsAt         pgtype.Timestamptz
+	StartedAt        pgtype.Timestamptz
 	Description      string
 	Status           string
 	CreatedAt        pgtype.Timestamptz
@@ -139,6 +140,7 @@ func (q *Queries) GetGameRequest(ctx context.Context, arg GetGameRequestParams) 
 		&i.CreatorGameNick,
 		&i.MaxPlayers,
 		&i.StartsAt,
+		&i.StartedAt,
 		&i.Description,
 		&i.Status,
 		&i.CreatedAt,
@@ -153,7 +155,7 @@ func (q *Queries) GetGameRequest(ctx context.Context, arg GetGameRequestParams) 
 const getGameRequestSummary = `-- name: GetGameRequestSummary :one
 SELECT gr.id::text AS request_id, g.id::text AS game_id, g.name AS game_name,
        enrichment.cover_image_id,
-       gr.starts_at, gr.status, gr.max_players, count(m.user_id) AS member_count,
+       gr.starts_at, gr.started_at, gr.status, gr.max_players, count(m.user_id) AS member_count,
        u.game_nick AS creator_game_nick, gr.description
 FROM game_requests gr
 JOIN games g ON g.id = gr.game_id
@@ -170,6 +172,7 @@ type GetGameRequestSummaryRow struct {
 	GameName        string
 	CoverImageID    pgtype.Text
 	StartsAt        pgtype.Timestamptz
+	StartedAt       pgtype.Timestamptz
 	Status          string
 	MaxPlayers      pgtype.Int4
 	MemberCount     int64
@@ -188,6 +191,7 @@ func (q *Queries) GetGameRequestSummary(ctx context.Context, id pgtype.UUID) (Ge
 		&i.GameName,
 		&i.CoverImageID,
 		&i.StartsAt,
+		&i.StartedAt,
 		&i.Status,
 		&i.MaxPlayers,
 		&i.MemberCount,
@@ -220,7 +224,7 @@ SELECT gr.id::text AS request_id,
        enrichment.platform_names,
        enrichment.first_release_date,
        gr.creator_id::text AS creator_id, u.game_nick AS creator_game_nick,
-       gr.max_players, gr.starts_at, gr.description, gr.status,
+       gr.max_players, gr.starts_at, gr.started_at, gr.description, gr.status,
        gr.created_at, gr.updated_at,
        count(m.user_id) AS member_count,
        bool_or(m.user_id = $1::uuid) AS viewer_joined,
@@ -273,6 +277,7 @@ type ListActiveGameRequestsRow struct {
 	CreatorGameNick  pgtype.Text
 	MaxPlayers       pgtype.Int4
 	StartsAt         pgtype.Timestamptz
+	StartedAt        pgtype.Timestamptz
 	Description      string
 	Status           string
 	CreatedAt        pgtype.Timestamptz
@@ -309,6 +314,7 @@ func (q *Queries) ListActiveGameRequests(ctx context.Context, arg ListActiveGame
 			&i.CreatorGameNick,
 			&i.MaxPlayers,
 			&i.StartsAt,
+			&i.StartedAt,
 			&i.Description,
 			&i.Status,
 			&i.CreatedAt,
@@ -317,6 +323,51 @@ func (q *Queries) ListActiveGameRequests(ctx context.Context, arg ListActiveGame
 			&i.ViewerJoined,
 			&i.ViewerSubscribed,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listDueStartReminders = `-- name: ListDueStartReminders :many
+SELECT gr.id::text AS game_request_id, gr.starts_at
+FROM game_requests gr
+WHERE gr.status = 'open'
+  AND gr.starts_at > $1::timestamptz
+  AND gr.starts_at <= $1::timestamptz + interval '15 minutes'
+  AND NOT EXISTS (
+      SELECT 1 FROM notification_start_reminder r
+      WHERE r.game_request_id = gr.id AND r.starts_at = gr.starts_at
+  )
+ORDER BY gr.starts_at, gr.id
+LIMIT LEAST($2::integer, 200)
+`
+
+type ListDueStartRemindersParams struct {
+	Now      pgtype.Timestamptz
+	RowLimit int32
+}
+
+type ListDueStartRemindersRow struct {
+	GameRequestID string
+	StartsAt      pgtype.Timestamptz
+}
+
+// ListDueStartReminders exposes only the currently persisted schedule.
+func (q *Queries) ListDueStartReminders(ctx context.Context, arg ListDueStartRemindersParams) ([]ListDueStartRemindersRow, error) {
+	rows, err := q.db.Query(ctx, listDueStartReminders, arg.Now, arg.RowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListDueStartRemindersRow
+	for rows.Next() {
+		var i ListDueStartRemindersRow
+		if err := rows.Scan(&i.GameRequestID, &i.StartsAt); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

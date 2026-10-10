@@ -257,7 +257,12 @@ templ GameRequestRow(request requestquery.Request, viewerID, highlightedID strin
 						<span class={ playerCountClass(request) } aria-label={ playerCountAccessible(request) }>{ playerCount(request) }</span>
 						<span class="data-text text-xs text-base-content/70" aria-hidden="true">players</span>
 					</span>
-					<time class={ startTimeClass(request.StartsAt) } datetime={ request.StartsAt.Format(time.RFC3339) } title={ components.AbsoluteTime(request.StartsAt) } data-local-time="start">{ components.StartLabel(request.StartsAt) }</time>
+					{{ presentation := components.RequestTime(request.Status, request.StartsAt, request.StartedAt, time.Now()) }}
+					if !presentation.At.IsZero() {
+						<time class={ startTimeClass(presentation.Urgency) } datetime={ presentation.At.Format(time.RFC3339) } title={ components.AbsoluteTime(presentation.At) } data-local-time="start">{ presentation.Label }</time>
+					} else if presentation.Label != "" {
+						<span class={ startTimeClass(presentation.Urgency) }>{ presentation.Label }</span>
+					}
 					if request.CreatorID != viewerID {
 						if request.ViewerJoined {
 							<span class="status-chip status-chip-joined">Joined</span>
@@ -631,7 +636,12 @@ templ GameRequestDetailContentWithSession(request requestquery.Request, viewerID
 						<strong class={ detailCountClass(request) }>{ playerCount(request) }</strong>
 						<span>players</span>
 						<span class="max-sm:hidden" aria-hidden="true">·</span>
-						<time class={ detailStartClass(request.StartsAt) } datetime={ request.StartsAt.Format(time.RFC3339) } title={ components.AbsoluteTime(request.StartsAt) } data-local-time="start">{ startLongLabel(request.StartsAt) }</time>
+					{{ presentation := components.RequestTime(request.Status, request.StartsAt, request.StartedAt, time.Now()) }}
+					if !presentation.At.IsZero() {
+						<time class={ detailStartClass(presentation.Urgency) } datetime={ presentation.At.Format(time.RFC3339) } title={ components.AbsoluteTime(presentation.At) } data-local-time="start">{ presentation.Label }</time>
+					} else if presentation.Label != "" {
+						<span class={ detailStartClass(presentation.Urgency) }>{ presentation.Label }</span>
+					}
 					</p>
 				</div>
 				<div class="detail-actions">
@@ -761,7 +771,7 @@ templ GameRequestDetailsEditor(request requestquery.Request, message GameRequest
 					@GameRequestStartFields(message.Form, ComposerMessage{Text: message.Text, Field: message.Field})
 				} else {
 					<div class="grid gap-2">
-						<p class="label-text font-medium">Start</p>
+						<p class="label-text font-medium">Planned start</p>
 						<time class="data-text" datetime={ request.StartsAt.Format(time.RFC3339) } title={ components.AbsoluteTime(request.StartsAt) } data-local-time="absolute">{ request.StartsAt.UTC().Format("2006-01-02 15:04") }</time>
 						<p class="text-xs text-base-content/70">Start time cannot be changed while the Game Request is Playing.</p>
 					</div>
@@ -1087,11 +1097,8 @@ func activityLabel(entry requestquery.Activity) string {
 	}
 }
 
-// startTimeClass warms a start time as it approaches and makes it loud once
-// there is no time left, on the shared thresholds. Anything further out stays
-// quiet, so a scanning eye only stops at the rounds that need it.
-func startTimeClass(startsAt time.Time) string {
-	switch components.StartUrgency(startsAt) {
+func startTimeClass(urgency string) string {
+	switch urgency {
 	case components.UrgencyStarting:
 		return "data-text text-xs font-bold count-last"
 	case components.UrgencySoon:
@@ -1101,13 +1108,8 @@ func startTimeClass(startsAt time.Time) string {
 	}
 }
 
-// detailStartClass is the same rule on the detail header's start sentence,
-// which inherits the quiet meta ink until the round is close.
-//
-// The meta line keeps its facts on one line each, which its own [&>span] rule
-// can no longer do for a <time>, so the class carries the wrap rule itself.
-func detailStartClass(startsAt time.Time) string {
-	switch components.StartUrgency(startsAt) {
+func detailStartClass(urgency string) string {
+	switch urgency {
 	case components.UrgencyStarting:
 		return "whitespace-nowrap font-semibold count-last"
 	case components.UrgencySoon:
@@ -1115,13 +1117,6 @@ func detailStartClass(startsAt time.Time) string {
 	default:
 		return "whitespace-nowrap"
 	}
-}
-
-func startLongLabel(startsAt time.Time) string {
-	if startsAt.Before(time.Now().Add(2 * time.Minute)) {
-		return "starts now"
-	}
-	return "starts " + components.StartLabel(startsAt)
 }
 
 // An unknown time is not rendered at all; an em dash in its place is a

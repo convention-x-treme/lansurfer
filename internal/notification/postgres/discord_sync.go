@@ -122,7 +122,8 @@ func (s *Store) GetGameRequestSummary(ctx context.Context, requestID string) (no
 	}
 	return notification.GameRequestSummary{
 		RequestID: summary.RequestID, GameID: summary.GameID, GameName: summary.GameName, CoverImageID: summary.CoverImageID,
-		StartsAt: summary.StartsAt, Status: string(summary.Status), MemberCount: summary.MemberCount,
+		StartedAt: summary.StartedAt,
+		StartsAt:  summary.StartsAt, Status: string(summary.Status), MemberCount: summary.MemberCount,
 		MaxPlayers: summary.MaxPlayers, CreatorGameNick: summary.CreatorGameNick, Description: summary.Description,
 	}, nil
 }

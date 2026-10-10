@@ -1066,6 +1066,27 @@ func TestPlayingRowKeepsPlayingIdentity(t *testing.T) {
 	}
 }
 
+func TestPlayingTimeUsesActualStartInRowAndDetail(t *testing.T) {
+	planned := time.Now().Add(-time.Hour)
+	started := time.Now().Add(-3 * time.Minute)
+	request := requestquery.Request{
+		ID: "request-1", Game: game.GamePresentation{Name: "Warcraft III"}, CreatorID: "host-1",
+		Status: gamerequest.StatusPlaying, StartsAt: planned, StartedAt: &started, MemberCount: 1,
+	}
+	for surface, body := range map[string]string{"row": renderRow(t, request, "user-2"), "detail": renderDetail(t, request, "user-2")} {
+		if !strings.Contains(body, "started 3 min ago") || strings.Contains(body, "starts now") || strings.Contains(body, "starts in") {
+			t.Errorf("%s time label does not match playing state: %s", surface, body)
+		}
+		if !strings.Contains(body, `datetime="`+started.Format(time.RFC3339)+`"`) ||
+			!strings.Contains(body, `title="`+components.AbsoluteTime(started)+`"`) {
+			t.Errorf("%s datetime or tooltip does not use actual start: %s", surface, body)
+		}
+		if strings.Contains(body, "nav-upcoming-item-now") || strings.Contains(body, "count-hot") {
+			t.Errorf("%s playing time has start urgency: %s", surface, body)
+		}
+	}
+}
+
 func TestPlayingDetailKeepsPlayingIdentityAndLastPlace(t *testing.T) {
 	limit := int32(3)
 	body := renderDetail(t, requestquery.Request{
@@ -1283,8 +1304,8 @@ func TestPlayingEditorCannotEditPlannedStart(t *testing.T) {
 	editor = editor[:strings.Index(editor, "</form>")]
 	if strings.Contains(editor, `name="start_date"`) || strings.Contains(editor, `name="start_time"`) ||
 		strings.Contains(editor, `name="timezone"`) || strings.Contains(editor, `name="start_preset"`) ||
-		!strings.Contains(editor, "Start") || !strings.Contains(editor, `datetime="2027-05-01T18:30:00Z"`) {
-		t.Errorf("playing start is not read-only: %s", editor)
+		!strings.Contains(editor, ">Planned start</p>") || !strings.Contains(editor, `datetime="2027-05-01T18:30:00Z"`) {
+		t.Errorf("playing start is not read-only and labeled as planned time: %s", editor)
 	}
 	if !strings.Contains(editor, "Start time cannot be changed while the Game Request is Playing.") {
 		t.Error("playing editor must explain why planned start is read-only")

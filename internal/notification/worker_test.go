@@ -239,3 +239,143 @@ func TestWorkerEligibilityErrorExhaustsWithoutSend(t *testing.T) {
 		t.Fatalf("final unknown eligibility: sends=%d exhausted=%d retry=%d suppressed=%d succeeded=%d", transport.sendCalls, repo.exhausted, repo.retryID, repo.suppressed, repo.succeeded)
 	}
 }
+
+type reminderWorkerRepo struct {
+	eligibilityRepo
+	reserved   bool
+	reserveErr error
+	order      []string
+}
+
+func (r *reminderWorkerRepo) DiscoverStartReminders(context.Context, time.Time, int) ([]StartReminder, error) {
+	return nil, nil
+}
+func (r *reminderWorkerRepo) MaterializeStartReminder(context.Context, StartReminder, []Target) error {
+	return nil
+}
+func (r *reminderWorkerRepo) ReserveStartReminderSend(context.Context, int64) (bool, error) {
+	r.order = append(r.order, "reserve")
+	return r.reserved, r.reserveErr
+}
+func (r *reminderWorkerRepo) RecordRetry(_ context.Context, id int64, when time.Time, reason string) error {
+	r.eligibilityRepo.RecordRetry(context.Background(), id, when, reason)
+	r.order = append(r.order, "retry")
+	return nil
+}
+func (r *reminderWorkerRepo) RecordSuppressed(context.Context, int64, string) error {
+	r.suppressed++
+	return nil
+}
+func (r *reminderWorkerRepo) RecordSuccess(context.Context, int64) error {
+	r.succeeded++
+	return nil
+}
+
+type reminderWorkerTransport struct {
+	materializationTransport
+	targets []Target
+	sent    bool
+	order   *[]string
+}
+
+func (t *reminderWorkerTransport) ReminderTargets(context.Context, StartReminder) ([]Target, error) {
+	return t.targets, nil
+}
+func (t *reminderWorkerTransport) SendReminder(ctx context.Context, _ StartReminder, _ Target, reserve func(context.Context) (bool, error)) SendResult {
+	reserved, err := reserve(ctx)
+	if err != nil {
+		return SendResult{Outcome: OutcomeRetryable, Err: err}
+	}
+	if !reserved {
+		return SendResult{Outcome: OutcomeAlreadyRecorded}
+	}
+	if t.order != nil {
+		*t.order = append(*t.order, "send")
+	}
+	t.sent = true
+	return SendResult{Outcome: OutcomeSucceeded}
+}
+
+func TestWorkerReminderReservesImmediatelyBeforeSend(t *testing.T) {
+	target := Target{Transport: "push", Key: "a"}
+	repo := &reminderWorkerRepo{reserved: true}
+	transport := &reminderWorkerTransport{materializationTransport: materializationTransport{name: "push"}, targets: []Target{target}, order: &repo.order}
+	repo.delivery = ClaimedDelivery{DeliveryID: 9, Target: target, StartReminder: &StartReminder{ID: 3}}
+	worker := NewWorker(repo, []Transport{transport}, nil, time.Now)
+	worker.processOne(t.Context(), repo.delivery)
+	if !transport.sent || repo.succeeded != 1 || len(repo.order) != 2 || repo.order[0] != "reserve" || repo.order[1] != "send" {
+		t.Fatalf("sent=%v succeeded=%d order=%v", transport.sent, repo.succeeded, repo.order)
+	}
+}
+
+func TestWorkerReminderReservationFailureNeverSends(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		reserved bool
+		err      error
+	}{
+		{name: "false"}, {name: "error", err: errors.New("storage")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			target := Target{Transport: "push", Key: "a"}
+			repo := &reminderWorkerRepo{reserved: tc.reserved, reserveErr: tc.err}
+			transport := &reminderWorkerTransport{materializationTransport: materializationTransport{name: "push"}, targets: []Target{target}, order: &repo.order}
+			delivery := ClaimedDelivery{DeliveryID: 9, Target: target, StartReminder: &StartReminder{ID: 3}}
+			worker := NewWorker(repo, []Transport{transport}, nil, func() time.Time { return time.Unix(10, 0) })
+			worker.jitter = func(d time.Duration) time.Duration { return d }
+			worker.processOne(t.Context(), delivery)
+			if transport.sent || repo.succeeded != 0 || (tc.err != nil) != (repo.retryID == 9) {
+				t.Fatalf("sent=%v succeeded=%d retry=%d", transport.sent, repo.succeeded, repo.retryID)
+			}
+		})
+	}
+}
+
+func TestWorkerReminderIneligibleTargetSuppressedBeforeReservation(t *testing.T) {
+	repo := &reminderWorkerRepo{}
+	transport := &reminderWorkerTransport{materializationTransport: materializationTransport{name: "push"}}
+	delivery := ClaimedDelivery{DeliveryID: 9, Target: Target{Transport: "push", Key: "a"}, StartReminder: &StartReminder{ID: 3}}
+	NewWorker(repo, []Transport{transport}, nil, time.Now).processOne(t.Context(), delivery)
+	if repo.suppressed != 1 || len(repo.order) != 0 || transport.sent {
+		t.Fatalf("suppressed=%d reserve=%v sent=%v", repo.suppressed, repo.order, transport.sent)
+	}
+}
+
+func (r *reminderWorkerRepo) RecordUncertain(context.Context, int64, string) error {
+	r.order = append(r.order, "uncertain")
+	return nil
+}
+
+func TestWorkerReminderUnknownAcceptanceRecordsUncertain(t *testing.T) {
+	target := Target{Transport: "push", Key: "a"}
+	repo := &reminderWorkerRepo{reserved: true}
+	transport := &reminderUnknownTransport{
+		reminderWorkerTransport: reminderWorkerTransport{
+			materializationTransport: materializationTransport{name: "push"},
+			targets:                  []Target{target},
+			order:                    &repo.order,
+		},
+	}
+	delivery := ClaimedDelivery{DeliveryID: 9, Target: target, StartReminder: &StartReminder{ID: 3}}
+	NewWorker(repo, []Transport{transport}, nil, time.Now).processOne(t.Context(), delivery)
+	if !transport.sent || len(repo.order) != 3 || repo.order[0] != "reserve" || repo.order[1] != "send" || repo.order[2] != "uncertain" {
+		t.Fatalf("sent=%v outcomes=%v", transport.sent, repo.order)
+	}
+}
+
+type reminderUnknownTransport struct{ reminderWorkerTransport }
+
+func (t *reminderUnknownTransport) SendReminder(ctx context.Context, _ StartReminder, _ Target, reserve func(context.Context) (bool, error)) SendResult {
+	reserved, err := reserve(ctx)
+	if err != nil {
+		return SendResult{Outcome: OutcomeRetryable, Err: err}
+	}
+	if !reserved {
+		return SendResult{Outcome: OutcomeAlreadyRecorded}
+	}
+	if t.order != nil {
+		*t.order = append(*t.order, "send")
+	}
+	t.sent = true
+	return SendResult{Outcome: OutcomeUncertain, Err: errors.New("unknown acceptance")}
+}

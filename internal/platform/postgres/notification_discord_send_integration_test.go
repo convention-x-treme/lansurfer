@@ -558,11 +558,11 @@ func TestDiscordSendEditsSameMessageWithRequestDetails(t *testing.T) {
 	edited := discordSendNextCall(t, calls)
 	discordSendAssertCall(t, edited, http.MethodPatch, "private-token", "message-42", request.ID)
 	if edited.field("Players") != "1/6 players (5 free)" ||
-		edited.field("Start") != "<t:"+fmt.Sprint(newStart.Unix())+":F>" ||
+		edited.field("Planned start") != "<t:"+fmt.Sprint(newStart.Unix())+":F>" ||
 		edited.payload.Embeds[0].Description != "Updated description" ||
 		edited.field("Status") != "open" {
-		t.Fatalf("request update rendered stale snapshot: players=%q start=%q description=%q",
-			edited.field("Players"), edited.field("Start"), edited.payload.Embeds[0].Description)
+		t.Fatalf("request update rendered stale snapshot: players=%q planned start=%q description=%q",
+			edited.field("Players"), edited.field("Planned start"), edited.payload.Embeds[0].Description)
 	}
 
 	sync, err := store.GetDiscordMessageSync(t.Context(), destination.ID, request.ID)

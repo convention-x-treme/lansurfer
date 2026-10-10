@@ -1194,7 +1194,7 @@ func TestNotificationRequestUpdatedMaterializesDiscordOnly(t *testing.T) {
 	}
 	queries := gamerequestquery.NewStore(pool)
 	followers := game.NewSubscriptionService(gamepostgres.NewStore(pool))
-	push := notification.NewWebPushTransport(store, store, store, followers, queries, pushSummaryReader{queries}, pushNickReader{users}, "https://lan.example", "Camp Nova", key, &fakePushSender{})
+	push := notification.NewWebPushTransport(store, store, store, followers, queries, pushSummaryReader{queries}, pushNickReader{users}, "https://lan.example", "Camp Nova", key, &fakePushSender{}, time.Now)
 	discord := notification.NewDiscordSendTransport(store, key, "https://lan.example", "Camp Nova", nil)
 
 	maximum := int32(4)
@@ -1209,10 +1209,10 @@ func TestNotificationRequestUpdatedMaterializesDiscordOnly(t *testing.T) {
 		t.Fatalf("InitializeBaseline() error = %v", err)
 	}
 
-	// A multi-field update synchronizes one current snapshot without personal Web Push.
+	// A capacity- and description-only update synchronizes one snapshot without personal Web Push.
 	newMaximum := int32(6)
 	input := gamerequest.UpdateDetailsInput{
-		MaxPlayers: &newMaximum, StartsAt: request.StartsAt.Add(time.Hour), Description: "Updated details",
+		MaxPlayers: &newMaximum, StartsAt: request.StartsAt, Description: "Updated details",
 	}
 	if err := fixture.requests.UpdateDetails(t.Context(), request.ID, fixture.host.ID, input); err != nil {
 		t.Fatalf("UpdateDetails() error = %v", err)

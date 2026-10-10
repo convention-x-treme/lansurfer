@@ -73,7 +73,7 @@ type NavigationState struct {
 	// itself lists.
 	Games int64
 	FollowedGames int64
-	// Upcoming is the viewer's own joined Game Requests, soonest first and
+	// Upcoming is the viewer's joined active Game Requests (`open` or `playing`),
 	// already bounded by the caller.
 	Upcoming []requestquery.Request
 	// RecentlyViewed is the viewer's own reading history, newest first.
@@ -306,24 +306,27 @@ templ NavigationLinks(state NavigationState) {
 	</ul>
 }
 
-// UpcomingGames lists the Game Requests the viewer has joined, soonest first,
-// as a shortcut back into a round that is about to start. A request whose
-// start time has arrived is marked urgent with the same sunset ink the request
-// list uses for "now", so the two screens agree about urgency.
+// UpcomingGames lists up to three active Game Requests the viewer has joined.
+// Lifecycle-aware time labels distinguish planned starts from actual starts.
 templ UpcomingGames(state NavigationState) {
 	if len(state.Upcoming) > 0 {
-		<section class="nav-section" aria-labelledby="nav-upcoming-heading">
-			<h2 class="nav-section-heading data-text" id="nav-upcoming-heading">
-				<span>Your next games</span>
+		<section class="nav-section" aria-labelledby="nav-active-games-heading">
+			<h2 class="nav-section-heading data-text" id="nav-active-games-heading">
+				<span>Your active games</span>
 				<span class="data-text ml-auto text-xs font-medium text-base-content/70">{ fmt.Sprint(len(state.Upcoming)) }</span>
 			</h2>
 			<ul class="grid gap-1.5">
 				for _, request := range state.Upcoming {
+					{{ presentation := RequestTime(request.Status, request.StartsAt, request.StartedAt, time.Now()) }}
 					<li>
-						<a class={ upcomingItemClass(request.StartsAt) } href={ templ.SafeURL("/game-requests/" + request.ID) }>
+						<a class={ upcomingItemClass(presentation.Urgency) } href={ templ.SafeURL("/game-requests/" + request.ID) }>
 							<span class="nav-upcoming-dot" aria-hidden="true"></span>
 							<span class="min-w-0 flex-1 truncate text-sm font-semibold">{ request.Game.Name }</span>
-							<time class="data-text flex-none text-xs font-bold" datetime={ request.StartsAt.Format(time.RFC3339) } title={ AbsoluteTime(request.StartsAt) } data-local-time="start">{ StartLabel(request.StartsAt) }</time>
+							if !presentation.At.IsZero() {
+								<time class="data-text flex-none text-xs font-bold" datetime={ presentation.At.Format(time.RFC3339) } title={ AbsoluteTime(presentation.At) } data-local-time="start">{ presentation.Label }</time>
+							} else if presentation.Label != "" {
+								<span class="data-text flex-none text-xs font-bold">{ presentation.Label }</span>
+							}
 						</a>
 					</li>
 				}
@@ -487,10 +490,8 @@ func navigationCountClass(active bool) string {
 	return "data-text ml-auto text-xs text-base-content/70"
 }
 
-// upcomingItemClass colours a joined round by how close its start is, on the
-// same two thresholds every start time in the product uses.
-func upcomingItemClass(startsAt time.Time) string {
-	switch StartUrgency(startsAt) {
+func upcomingItemClass(urgency string) string {
+	switch urgency {
 	case UrgencyStarting:
 		return "nav-upcoming-item nav-upcoming-item-now"
 	case UrgencySoon:
@@ -500,63 +501,14 @@ func upcomingItemClass(startsAt time.Time) string {
 	}
 }
 
-// The one place the product decides when a start time stops being a quiet
-// fact: Golden Hour once the round is inside a quarter of an hour, Sunset
-// once there is no time left to get there. Both screens that state a start
-// read these thresholds rather than keeping their own.
-const (
-	startsSoonWithin     = 15 * time.Minute
-	startsStartingWithin = 5 * time.Minute
-)
-
-// Urgency tiers for a Game Request start time, newest first.
 const (
 	UrgencyNone     = ""
 	UrgencySoon     = "soon"
 	UrgencyStarting = "starting"
 )
 
-// StartUrgency states which tier a start time falls in. A round that already
-// started is past the last threshold, so it stays Sunset rather than falling
-// back to quiet.
-func StartUrgency(startsAt time.Time) string {
-	switch remaining := time.Until(startsAt); {
-	case remaining <= startsStartingWithin:
-		return UrgencyStarting
-	case remaining <= startsSoonWithin:
-		return UrgencySoon
-	default:
-		return UrgencyNone
-	}
-}
-
-// startsNowWithin is the window inside which a Game Request reads as starting
-// "now" rather than counting down.
-const startsNowWithin = 2 * time.Minute
-
-// AbsoluteTime is the exact local time behind a relative label. Every
-// relative time in the product carries it as a hover title, so "in 12 min"
-// is never the only thing a player can read off the screen.
 func AbsoluteTime(value time.Time) string {
 	return value.UTC().Format("2006-01-02 15:04")
-}
-
-// StartLabel states when a Game Request starts, relative to now and coarse
-// enough to stay stable between renders. It lives here because both the
-// Game Request list and the navigation's "Your next games" state the same
-// thing and must not drift apart.
-func StartLabel(startsAt time.Time) string {
-	remaining := time.Until(startsAt)
-	if remaining <= startsNowWithin {
-		return "now"
-	}
-	if remaining < time.Hour {
-		return fmt.Sprintf("in %d min", max(1, int(remaining.Round(time.Minute)/time.Minute)))
-	}
-	if remaining < 24*time.Hour {
-		return fmt.Sprintf("in %d h", max(1, int(remaining.Round(time.Hour)/time.Hour)))
-	}
-	return startsAt.UTC().Format("Jan 2")
 }
 
 // ViewedAgoLabel states how long ago the viewer opened a Game Request, in the

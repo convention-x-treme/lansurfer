@@ -87,7 +87,69 @@ func TestGameRequestSummaryReturnsCurrentViewerIndependentSnapshot(t *testing.T)
 	if err := requests.Close(t.Context(), closed.ID, creator.ID); err != nil {
 		t.Fatalf("close request: %v", err)
 	}
-	assertSnapshot(closed, gamerequest.StatusClosed, 1, &two)
+	running := create("Started request projection", &two)
+	if err := requests.Start(t.Context(), running.ID, creator.ID); err != nil {
+		t.Fatalf("start projected request: %v", err)
+	}
+	actualStart := startsAt.Add(-45 * time.Minute)
+	if _, err := pool.Exec(t.Context(), `UPDATE game_requests SET started_at = $2 WHERE id = $1`, running.ID, actualStart); err != nil {
+		t.Fatalf("set distinct actual start: %v", err)
+	}
+	assertStartedAt := func(got *time.Time, want *time.Time, source string) {
+		t.Helper()
+		if (got == nil) != (want == nil) || (want != nil && !got.Equal(*want)) {
+			t.Fatalf("%s StartedAt = %v, want %v", source, got, want)
+		}
+	}
+	wantActual := &actualStart
+	listed, err := readStore.ListActive(t.Context(), creator.ID, gamerequestquery.Filter{})
+	if err != nil {
+		t.Fatalf("list active requests: %v", err)
+	}
+	found := false
+	for _, row := range listed {
+		if row.ID == running.ID {
+			found = true
+			assertStartedAt(row.StartedAt, wantActual, "ListActiveGameRequests")
+			if row.Status != gamerequest.StatusPlaying {
+				t.Fatalf("listed status = %q, want playing", row.Status)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("started request missing from ListActiveGameRequests")
+	}
+	detail, err := readStore.ByID(t.Context(), running.ID, creator.ID)
+	if err != nil {
+		t.Fatalf("get request detail: %v", err)
+	}
+	assertStartedAt(detail.StartedAt, wantActual, "GetGameRequest")
+	summary, err := readStore.GetGameRequestSummary(t.Context(), running.ID)
+	if err != nil {
+		t.Fatalf("get request summary: %v", err)
+	}
+	assertStartedAt(summary.StartedAt, wantActual, "GetGameRequestSummary")
+	pushSummary, err := (pushSummaryReader{store: readStore}).GetGameRequestSummary(t.Context(), running.ID)
+	if err != nil {
+		t.Fatalf("get push request summary: %v", err)
+	}
+	assertStartedAt(pushSummary.StartedAt, wantActual, "pushSummaryReader")
+	if pushSummary.Status != string(summary.Status) {
+		t.Fatalf("push summary status = %q, want %q", pushSummary.Status, summary.Status)
+	}
+	if _, err := pool.Exec(t.Context(), `UPDATE game_requests SET started_at = NULL WHERE id = $1`, closed.ID); err != nil {
+		t.Fatalf("set legacy NULL actual start: %v", err)
+	}
+	legacy, err := readStore.GetGameRequestSummary(t.Context(), closed.ID)
+	if err != nil {
+		t.Fatalf("get legacy summary: %v", err)
+	}
+	assertStartedAt(legacy.StartedAt, nil, "legacy GetGameRequestSummary")
+	legacyDetail, err := readStore.ByID(t.Context(), closed.ID, creator.ID)
+	if err != nil {
+		t.Fatalf("get legacy detail: %v", err)
+	}
+	assertStartedAt(legacyDetail.StartedAt, nil, "legacy GetGameRequest")
 
 	cancelled := create("Cancelled request description", &two)
 	if err := requests.Cancel(t.Context(), cancelled.ID, creator.ID); err != nil {
@@ -110,11 +172,11 @@ func TestGameRequestSummaryReturnsCurrentViewerIndependentSnapshot(t *testing.T)
 	if err != nil {
 		t.Fatalf("create provider request: %v", err)
 	}
-	summary, err := readStore.GetGameRequestSummary(t.Context(), providerRequest.ID)
+	providerSummary, err := readStore.GetGameRequestSummary(t.Context(), providerRequest.ID)
 	if err != nil {
 		t.Fatalf("get provider request summary: %v", err)
 	}
-	if summary.CoverImageID != "co1abc" {
-		t.Fatalf("provider Game cover = %q, want co1abc", summary.CoverImageID)
+	if providerSummary.CoverImageID != "co1abc" {
+		t.Fatalf("provider Game cover = %q, want co1abc", providerSummary.CoverImageID)
 	}
 }

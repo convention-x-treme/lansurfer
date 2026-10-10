@@ -28,29 +28,6 @@ func TestGameAbbreviation(t *testing.T) {
 	}
 }
 
-// A round that has already started must read as "now" on both the request list
-// and the sidebar, because one shared helper states it for both.
-func TestStartLabelStatesUrgencyThenCountsDown(t *testing.T) {
-	now := time.Now()
-	tests := []struct {
-		name     string
-		startsAt time.Time
-		want     string
-	}{
-		{name: "already started", startsAt: now.Add(-time.Minute), want: "now"},
-		{name: "inside the now window", startsAt: now.Add(90 * time.Second), want: "now"},
-		{name: "minutes away", startsAt: now.Add(15 * time.Minute), want: "in 15 min"},
-		{name: "hours away", startsAt: now.Add(3 * time.Hour), want: "in 3 h"},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			if got := StartLabel(test.startsAt); got != test.want {
-				t.Errorf("StartLabel = %q, want %q", got, test.want)
-			}
-		})
-	}
-}
-
 func TestViewedAgoLabel(t *testing.T) {
 	now := time.Now()
 	tests := []struct {
@@ -101,29 +78,6 @@ func TestNavigationRendersEveryCountAndMarksOnlyTheCurrentSection(t *testing.T) 
 
 // A count of zero is absent rather than rendered: "Games 0" states a fact the
 // empty screen already states better.
-// The two thresholds every start time in the product colours by. The
-// boundaries themselves belong to the warmer tier, and a round that already
-// started stays at the loudest one.
-func TestStartUrgencyCrossesAtFifteenAndFiveMinutes(t *testing.T) {
-	for _, test := range []struct {
-		name      string
-		remaining time.Duration
-		want      string
-	}{
-		{"an hour out is quiet", time.Hour, UrgencyNone},
-		{"just over a quarter hour is quiet", 15*time.Minute + time.Second, UrgencyNone},
-		{"a quarter hour warms", 15 * time.Minute, UrgencySoon},
-		{"just over five minutes stays warm", 5*time.Minute + time.Second, UrgencySoon},
-		{"five minutes is starting", 5 * time.Minute, UrgencyStarting},
-		{"already started is starting", -time.Hour, UrgencyStarting},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			if got := StartUrgency(time.Now().Add(test.remaining)); got != test.want {
-				t.Errorf("StartUrgency(%s) = %q, want %q", test.remaining, got, test.want)
-			}
-		})
-	}
-}
 
 func TestNavigationOmitsZeroCounts(t *testing.T) {
 	body := renderNavigation(t, NavigationState{
@@ -135,21 +89,29 @@ func TestNavigationOmitsZeroCounts(t *testing.T) {
 	}
 }
 
-func TestUpcomingGamesMarksAStartedRoundUrgent(t *testing.T) {
-	state := NavigationState{
+func TestUpcomingGamesUseLifecycleTime(t *testing.T) {
+	now := time.Now()
+	plan := now.Add(-time.Minute)
+	actual := now.Add(-3 * time.Minute)
+	body := renderNavigation(t, NavigationState{
 		Viewer: &Viewer{ID: "user-1", GameNick: "Ada", Role: "player"},
 		Upcoming: []requestquery.Request{
-			{ID: "request-1", Game: game.GamePresentation{Name: "Age of Empires II"}, StartsAt: time.Now().Add(-time.Minute)},
-			{ID: "request-2", Game: game.GamePresentation{Name: "Trackmania"}, StartsAt: time.Now().Add(15 * time.Minute)},
+			{ID: "playing", Game: game.GamePresentation{Name: "Age of Empires II"}, StartsAt: plan, StartedAt: &actual, Status: gamerequest.StatusPlaying},
+			{ID: "open", Game: game.GamePresentation{Name: "Trackmania"}, StartsAt: now.Add(15 * time.Minute), Status: gamerequest.StatusOpen},
+			{ID: "missing", Game: game.GamePresentation{Name: "Other"}, Status: gamerequest.StatusPlaying},
 		},
+	})
+	if !strings.Contains(body, "Your active games") || strings.Contains(body, "Your next games") {
+		t.Errorf("navigation must describe joined open and playing requests as active games: %s", body)
 	}
-	body := renderNavigation(t, state)
-
-	if strings.Count(body, "nav-upcoming-item-now") != 1 {
-		t.Errorf("only the started round should be urgent: %s", body)
+	if strings.Contains(body, "starts now") || !strings.Contains(body, "started 3 min ago") || !strings.Contains(body, "in 15 min") {
+		t.Errorf("navigation time labels do not match lifecycle: %s", body)
 	}
-	if !strings.Contains(body, "/game-requests/request-1") || !strings.Contains(body, "in 15 min") {
-		t.Errorf("upcoming rounds should link and state their start: %s", body)
+	if strings.Count(body, "nav-upcoming-item-now") != 0 {
+		t.Errorf("playing request must not inherit planned-start urgency: %s", body)
+	}
+	if strings.Contains(body, `datetime="0001-01-01`) {
+		t.Errorf("missing time must not render an invalid time element: %s", body)
 	}
 }
 

@@ -64,7 +64,7 @@ func notificationTransports(cfg config.Config, store *notificationpostgres.Store
 		}
 		transports = append(transports, notification.NewWebPushTransport(
 			store, store, store, followers, requests, notificationRequestSummaries{requests}, notificationGameNickReader{users},
-			cfg.BaseURL, instanceName, cfg.DataEncryptionKey, sender,
+			cfg.BaseURL, instanceName, cfg.DataEncryptionKey, sender, time.Now,
 		))
 	}
 	if cfg.DiscordDelivery != nil {
@@ -88,7 +88,8 @@ func (r notificationRequestSummaries) GetGameRequestSummary(ctx context.Context,
 	}
 	return notification.GameRequestSummary{
 		RequestID: summary.RequestID, GameID: summary.GameID, GameName: summary.GameName,
-		StartsAt: summary.StartsAt, Status: string(summary.Status), MemberCount: summary.MemberCount,
+		StartedAt: summary.StartedAt,
+		StartsAt:  summary.StartsAt, Status: string(summary.Status), MemberCount: summary.MemberCount,
 		MaxPlayers: summary.MaxPlayers, CreatorGameNick: summary.CreatorGameNick, Description: summary.Description,
 	}, nil
 }

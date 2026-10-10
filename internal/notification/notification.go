@@ -27,11 +27,13 @@ const (
 
 // Activity is a read-only snapshot of one live game_request_activity row.
 type Activity struct {
-	Sequence      int64
-	GameRequestID string
-	ActorID       string
-	Kind          ActivityKind
-	OccurredAt    time.Time
+	Sequence         int64
+	GameRequestID    string
+	ActorID          string
+	Kind             ActivityKind
+	OccurredAt       time.Time
+	PreviousStartsAt *time.Time
+	NewStartsAt      *time.Time
 }
 
 // Target names one external delivery target within one transport, for
@@ -52,8 +54,8 @@ const (
 	OutcomeRetryable
 	OutcomePermanent
 	OutcomeUncertain
-	// Discord only: no longer eligible is suppressed; already recorded means
-	// the exact claimed delivery was closed inside its sync transaction.
+	// No longer eligible is suppressed; already recorded means the Worker
+	// must not write another state transition for this delivery.
 	OutcomeNoLongerEligible
 	OutcomeAlreadyRecorded
 )
@@ -92,35 +94,56 @@ const (
 	StatusSuppressed DeliveryStatus = "suppressed"
 	StatusSuperseded DeliveryStatus = "superseded"
 )
+const StartReminderLead = 15 * time.Minute
+
+type StartReminder struct {
+	ID            int64
+	GameRequestID string
+	StartsAt      time.Time
+}
+
+type StartReminderRepository interface {
+	DiscoverStartReminders(context.Context, time.Time, int) ([]StartReminder, error)
+	MaterializeStartReminder(context.Context, StartReminder, []Target) error
+	ReserveStartReminderSend(context.Context, int64) (bool, error)
+}
+
+type StartReminderTransport interface {
+	ReminderTargets(context.Context, StartReminder) ([]Target, error)
+	SendReminder(context.Context, StartReminder, Target, func(context.Context) (bool, error)) SendResult
+}
 
 // ClaimedDelivery is one delivery row the Worker has just claimed, together
 // with enough of its Activity snapshot to call a Transport.
 type ClaimedDelivery struct {
-	DeliveryID   int64
-	Target       Target
-	AttemptCount int32
-	Activity     Activity
+	DeliveryID    int64
+	Target        Target
+	AttemptCount  int32
+	Activity      Activity
+	StartReminder *StartReminder
 }
 
 // ProblemDelivery is one row in a terminal problem state, for authorized
 // diagnostics.
 type ProblemDelivery struct {
-	DeliveryID   int64
-	Target       Target
-	Status       DeliveryStatus
-	AttemptCount int32
-	LastError    string
-	UpdatedAt    time.Time
-	Activity     Activity
+	DeliveryID    int64
+	Target        Target
+	Status        DeliveryStatus
+	AttemptCount  int32
+	LastError     string
+	UpdatedAt     time.Time
+	Activity      Activity
+	StartReminder *StartReminder
 }
 
 // DeliveryDetail is the minimal view Service needs to validate and reopen
 // one delivery for manual retry.
 type DeliveryDetail struct {
-	DeliveryID int64
-	Target     Target
-	Status     DeliveryStatus
-	Activity   Activity
+	DeliveryID    int64
+	Target        Target
+	Status        DeliveryStatus
+	Activity      Activity
+	StartReminder *StartReminder
 }
 
 var (

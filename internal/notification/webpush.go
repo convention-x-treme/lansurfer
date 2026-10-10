@@ -18,6 +18,7 @@ type GameRequestSummary struct {
 	GameName        string
 	CoverImageID    string
 	StartsAt        time.Time
+	StartedAt       *time.Time
 	Status          string
 	MemberCount     int64
 	MaxPlayers      *int32
@@ -65,17 +66,18 @@ type WebPushTransport struct {
 	instanceName  string
 	encryptionKey []byte
 	sender        WebPushSender
+	now           func() time.Time
 }
 
 func NewWebPushTransport(
 	subscriptions SubscriptionRepository, preferences PreferenceRepository, delivery DeliveryReadRepository,
 	followers GameFollowers, participants RequestParticipants, summaries GameRequestSummaryReader,
-	gameNicks GameNickReader, baseURL, instanceName string, encryptionKey []byte, sender WebPushSender,
+	gameNicks GameNickReader, baseURL, instanceName string, encryptionKey []byte, sender WebPushSender, now func() time.Time,
 ) *WebPushTransport {
 	return &WebPushTransport{
 		subscriptions: subscriptions, preferences: preferences, delivery: delivery,
 		followers: followers, participants: participants, summaries: summaries,
-		gameNicks: gameNicks, baseURL: baseURL, instanceName: instanceName, encryptionKey: encryptionKey, sender: sender,
+		gameNicks: gameNicks, baseURL: baseURL, instanceName: instanceName, encryptionKey: encryptionKey, sender: sender, now: now,
 	}
 }
 
@@ -83,13 +85,6 @@ func (t *WebPushTransport) Name() string { return "webpush" }
 
 func (t *WebPushTransport) Targets(ctx context.Context, activity Activity) ([]Target, error) {
 	var candidates []string
-	// trusted marks candidates ListUsersWithAudience already returned:
-	// DeliveryReadRepository.ListUsersWithAudience only returns users whose
-	// stored preference already has WebPushEnabled=true for AudienceAll, so
-	// re-fetching their preference below would be redundant (and, for a
-	// follower who is separately opted into "all", would just repeat the
-	// same lookup). Only candidates reached solely through followers/
-	// participants need their preference fetched to check WebPushEnabled.
 	trusted := map[string]bool{}
 	switch activity.Kind {
 	case ActivityCreated:
@@ -116,10 +111,21 @@ func (t *WebPushTransport) Targets(ctx context.Context, activity Activity) ([]Ta
 		}
 		candidates = dedupeExcept(participants, activity.ActorID)
 	case ActivityUpdated:
-		// Request edits synchronize Discord's message only, never personal Web Push.
-		return nil, nil
-	default:
-		return nil, nil
+		if !validPlannedStartChange(activity) {
+			return nil, nil
+		}
+		summary, err := t.summaries.GetGameRequestSummary(ctx, activity.GameRequestID)
+		if err != nil {
+			return nil, fmt.Errorf("get game request summary: %w", err)
+		}
+		if summary.Status != "open" || !summary.StartsAt.Equal(*activity.NewStartsAt) {
+			return nil, nil
+		}
+		participants, err := t.participants.ListParticipants(ctx, activity.GameRequestID)
+		if err != nil {
+			return nil, fmt.Errorf("list game request participants: %w", err)
+		}
+		candidates = dedupeExcept(participants, activity.ActorID)
 	}
 
 	var targets []Target
@@ -138,11 +144,16 @@ func (t *WebPushTransport) Targets(ctx context.Context, activity Activity) ([]Ta
 			return nil, fmt.Errorf("list subscriptions for %s: %w", userID, err)
 		}
 		for _, sub := range subs {
-			key := encodeWebPushTarget(sub.ID, userID)
-			targets = append(targets, Target{Transport: "webpush", Key: key})
+			targets = append(targets, Target{Transport: "webpush", Key: encodeWebPushTarget(sub.ID, userID)})
 		}
 	}
 	return targets, nil
+}
+
+func validPlannedStartChange(activity Activity) bool {
+	return activity.PreviousStartsAt != nil && activity.NewStartsAt != nil &&
+		!activity.PreviousStartsAt.IsZero() && !activity.NewStartsAt.IsZero() &&
+		!activity.PreviousStartsAt.Equal(*activity.NewStartsAt)
 }
 
 func (t *WebPushTransport) actorGameNick(ctx context.Context, activity Activity) (string, error) {
@@ -185,14 +196,14 @@ func decodeWebPushTarget(key string) (int64, string, error) {
 	return subscriptionID, string(userIDBytes), nil
 }
 
-// WebPushSender isolates provider I/O for Web Push delivery.
 type WebPushSender interface {
 	Send(ctx context.Context, endpoint, p256dh, auth string, payload []byte, ttlSeconds int) WebPushSendOutcome
 }
 
 type WebPushSendOutcome struct {
-	Outcome    Outcome
-	RetryAfter *time.Duration
-	Err        error
-	Expired    bool
+	Outcome           Outcome
+	RetryAfter        *time.Duration
+	Err               error
+	Expired           bool
+	AcceptanceUnknown bool
 }

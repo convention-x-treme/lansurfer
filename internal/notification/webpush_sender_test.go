@@ -33,20 +33,21 @@ func TestWebPushSenderMapsProviderOutcomes(t *testing.T) {
 	auth := base64.RawURLEncoding.EncodeToString(make([]byte, 16))
 	p256dh := base64.RawURLEncoding.EncodeToString(clientKey.PublicKey().Bytes())
 	for _, tc := range []struct {
-		name       string
-		status     int
-		retryAfter string
-		network    bool
-		outcome    Outcome
-		expired    bool
+		name              string
+		status            int
+		retryAfter        string
+		network           bool
+		outcome           Outcome
+		expired           bool
+		acceptanceUnknown bool
 	}{
-		{"accepted", 201, "", false, OutcomeSucceeded, false},
-		{"expired", 410, "", false, OutcomePermanent, true},
-		{"invalid", 404, "", false, OutcomePermanent, true},
-		{"rate limited", 429, "900", false, OutcomeRetryable, false},
-		{"temporary", 503, "", false, OutcomeRetryable, false},
-		{"network", 0, "", true, OutcomeRetryable, false},
-		{"other 4xx", 403, "", false, OutcomePermanent, false},
+		{"accepted", 201, "", false, OutcomeSucceeded, false, false},
+		{"expired", 410, "", false, OutcomePermanent, true, false},
+		{"invalid", 404, "", false, OutcomePermanent, true, false},
+		{"rate limited", 429, "900", false, OutcomeRetryable, false, false},
+		{"temporary", 503, "", false, OutcomeRetryable, false, false},
+		{"network", 0, "", true, OutcomeRetryable, false, true},
+		{"other 4xx", 403, "", false, OutcomePermanent, false, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			calls := 0
@@ -64,8 +65,8 @@ func TestWebPushSenderMapsProviderOutcomes(t *testing.T) {
 				t.Fatal(err)
 			}
 			result := sender.Send(context.Background(), "https://push.example/subscription-secret", p256dh, auth, []byte(`{"title":"Test"}`), 3600)
-			if calls != 1 || result.Outcome != tc.outcome || result.Expired != tc.expired {
-				t.Fatalf("calls=%d outcome=%+v, want outcome=%v expired=%v", calls, result, tc.outcome, tc.expired)
+			if calls != 1 || result.Outcome != tc.outcome || result.Expired != tc.expired || result.AcceptanceUnknown != tc.acceptanceUnknown {
+				t.Fatalf("calls=%d outcome=%+v, want outcome=%v expired=%v acceptanceUnknown=%v", calls, result, tc.outcome, tc.expired, tc.acceptanceUnknown)
 			}
 			if tc.outcome == OutcomeRetryable && tc.retryAfter != "" && (result.RetryAfter == nil || *result.RetryAfter != 900*time.Second) {
 				t.Fatalf("Retry-After = %v, want 900 seconds", result.RetryAfter)

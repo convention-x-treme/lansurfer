@@ -244,10 +244,12 @@ function absolute(date: Date): string {
   return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}`;
 }
 
-// Only the trailing clock or date is replaced, so a server prefix such as
-// "created " survives, and relative text (never ending in either) is untouched.
 const clockSuffix = /\d{2}:\d{2}(:\d{2})?$/;
-const daySuffix = /[A-Z][a-z]{2} \d{1,2}$/;
+// Replace only absolute date-and-clock suffixes; relative labels stay server-rendered.
+const startSuffix = /[A-Z][a-z]{2} \d{1,2}(?: at \d{2}:\d{2})?$/;
+const localStartFormat = new Intl.DateTimeFormat("en-US", {
+  month: "short", day: "numeric", ...clockParts,
+});
 
 function localizeTime(element: HTMLElement): void {
   const date = new Date(element.getAttribute("datetime") ?? "");
@@ -259,7 +261,7 @@ function localizeTime(element: HTMLElement): void {
     const format = clockSuffix.exec(text)?.[1] ? clockSecondsFormat : clockFormat;
     element.textContent = text.replace(clockSuffix, format.format(date));
   } else if (kind === "start") {
-    element.textContent = text.replace(daySuffix, dayFormat.format(date));
+    if (startSuffix.test(text)) element.textContent = text.replace(startSuffix, localStartFormat.format(date).replace(",", " at"));
   } else if (kind === "absolute") {
     element.textContent = absolute(date);
   }

@@ -293,6 +293,8 @@ test("Host edits open details, then only capacity and description while Playing"
   await expect(page.locator("input[name='start_date'], input[name='start_time']")).toHaveCount(0);
   const playingStart = await page.locator("form[action$='/details'] time[data-local-time='absolute']").getAttribute("datetime");
   expect(playingStart).toBe(expectedStart);
+  const actualStart = await page.locator("#game-request-detail time[data-local-time='start']").getAttribute("datetime");
+  expect(actualStart).not.toBe(expectedStart);
 
   await page.getByLabel("Max players").fill("5");
   await page.getByLabel("Description").fill("Playing update");
@@ -300,7 +302,7 @@ test("Host edits open details, then only capacity and description while Playing"
   await expect(page.locator("#game-request-edit-dialog")).toBeHidden();
   await expect(page.locator("#game-request-detail")).toContainText("1/5");
   await expect(page.locator("#game-request-detail")).toContainText("Playing update");
-  await expect(page.locator("#game-request-detail time[data-local-time='start']")).toHaveAttribute("datetime", expectedStart);
+  await expect(page.locator("#game-request-detail time[data-local-time='start']")).toHaveAttribute("datetime", actualStart!);
 
   await page.getByRole("link", { name: "Edit" }).click();
   await expect(page.locator("#game-request-edit-dialog")).toBeVisible();

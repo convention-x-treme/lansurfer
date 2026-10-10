@@ -44,6 +44,7 @@ type Request struct {
 	CreatorGameNick  string
 	MaxPlayers       *int32
 	StartsAt         time.Time
+	StartedAt        *time.Time
 	Description      string
 	Status           domain.Status
 	CreatedAt        time.Time
@@ -143,6 +144,7 @@ type RequestSummary struct {
 	GameName        string
 	CoverImageID    string
 	StartsAt        time.Time
+	StartedAt       *time.Time
 	Status          domain.Status
 	MemberCount     int64
 	MaxPlayers      *int32
@@ -163,6 +165,25 @@ func NewStore(pool *pgxpool.Pool) *Store {
 // delivery uses it after acquiring its destination/request advisory lock.
 func NewStoreWithTx(tx pgx.Tx) *Store {
 	return &Store{queries: sqlcgen.New(tx), now: time.Now}
+}
+
+type StartReminderCandidate struct {
+	GameRequestID string
+	StartsAt      time.Time
+}
+
+func (s *Store) ListDueStartReminders(ctx context.Context, now time.Time, limit int) ([]StartReminderCandidate, error) {
+	rows, err := s.queries.ListDueStartReminders(ctx, sqlcgen.ListDueStartRemindersParams{
+		Now: pgtype.Timestamptz{Time: now, Valid: true}, RowLimit: int32(limit),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list due start reminders: %w", err)
+	}
+	result := make([]StartReminderCandidate, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, StartReminderCandidate{GameRequestID: row.GameRequestID, StartsAt: row.StartsAt.Time})
+	}
+	return result, nil
 }
 
 func (s *Store) ListActive(ctx context.Context, viewerID string, filter Filter) ([]Request, error) {
@@ -193,6 +214,7 @@ func (s *Store) ListActive(ctx context.Context, viewerID string, filter Filter) 
 			Game:      gamePresentationFromRow(row.GameName, row.GameSlug, row.GameType, row.CoverImageID, row.PlatformNames, row.FirstReleaseDate),
 			CreatorID: row.CreatorID, CreatorGameNick: row.CreatorGameNick.String,
 			MaxPlayers: row.MaxPlayers, StartsAt: row.StartsAt, Description: row.Description, Status: row.Status,
+			StartedAt: row.StartedAt,
 			CreatedAt: row.CreatedAt, MemberCount: row.MemberCount, ViewerJoined: row.ViewerJoined, ViewerSubscribed: row.ViewerSubscribed,
 		}))
 	}
@@ -224,6 +246,7 @@ func (s *Store) ByID(ctx context.Context, id, viewerID string) (Request, error) 
 		Game:      presentation,
 		CreatorID: row.CreatorID, CreatorGameNick: row.CreatorGameNick.String,
 		MaxPlayers: row.MaxPlayers, StartsAt: row.StartsAt, Description: row.Description, Status: row.Status,
+		StartedAt: row.StartedAt,
 		CreatedAt: row.CreatedAt, MemberCount: row.MemberCount, ViewerJoined: row.ViewerJoined, ViewerSubscribed: row.ViewerSubscribed,
 	})
 	members, err := s.queries.ListGameRequestMembers(ctx, databaseID)
@@ -345,7 +368,8 @@ func (s *Store) GetGameRequestSummary(ctx context.Context, gameRequestID string)
 	}
 	return RequestSummary{
 		RequestID: row.RequestID, GameID: row.GameID, GameName: row.GameName, CoverImageID: textValue(row.CoverImageID),
-		StartsAt: row.StartsAt.Time, Status: domain.Status(row.Status),
+		StartedAt: timestamptzPointer(row.StartedAt),
+		StartsAt:  row.StartsAt.Time, Status: domain.Status(row.Status),
 		MemberCount: row.MemberCount, MaxPlayers: int4Pointer(row.MaxPlayers),
 		CreatorGameNick: row.CreatorGameNick.String, Description: row.Description,
 	}, nil
@@ -406,6 +430,7 @@ type requestFields struct {
 	CreatorGameNick  string
 	MaxPlayers       pgtype.Int4
 	StartsAt         pgtype.Timestamptz
+	StartedAt        pgtype.Timestamptz
 	Description      string
 	Status           string
 	CreatedAt        pgtype.Timestamptz
@@ -418,6 +443,7 @@ func requestFromFields(fields requestFields) Request {
 	return Request{
 		ID: fields.ID, GameID: fields.GameID, Game: fields.Game,
 		CreatorID: fields.CreatorID, CreatorGameNick: fields.CreatorGameNick,
+		StartedAt:  timestamptzPointer(fields.StartedAt),
 		MaxPlayers: int4Pointer(fields.MaxPlayers), StartsAt: fields.StartsAt.Time, Description: fields.Description,
 		Status: domain.Status(fields.Status), CreatedAt: fields.CreatedAt.Time, MemberCount: fields.MemberCount,
 		ViewerJoined: fields.ViewerJoined, ViewerSubscribed: fields.ViewerSubscribed,

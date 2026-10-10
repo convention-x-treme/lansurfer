@@ -117,11 +117,13 @@ func newFixture() *fixture {
 	state.seed("Quake III Arena", 0, 5, gamerequest.StatusOpen)
 	// A request somebody else already started that still has one free place:
 	// the viewer is a participant candidate here, never its Host.
-	state.seed("Age of Empires II", 4, 3, gamerequest.StatusPlaying)
+	request := state.seed("Age of Empires II", 4, 3, gamerequest.StatusPlaying)
+	startedAt := time.Now().Add(-3 * time.Minute)
+	request.request.StartedAt = &startedAt
 	return state
 }
 
-func (f *fixture) seed(gameName string, maxPlayers int32, members int64, status gamerequest.Status) {
+func (f *fixture) seed(gameName string, maxPlayers int32, members int64, status gamerequest.Status) *fixtureRequest {
 	f.next++
 	id := fmt.Sprintf("00000000-0000-0000-0000-00000000000%d", f.next)
 	request := requestquery.Request{
@@ -134,7 +136,7 @@ func (f *fixture) seed(gameName string, maxPlayers int32, members int64, status 
 		limit := maxPlayers
 		request.MaxPlayers = &limit
 	}
-	f.requests[id] = &fixtureRequest{
+	entry := &fixtureRequest{
 		request: request,
 		members: map[string]bool{request.CreatorID: true},
 		activity: []requestquery.Activity{{
@@ -142,7 +144,9 @@ func (f *fixture) seed(gameName string, maxPlayers int32, members int64, status 
 			ActorGameNick: "Host", OccurredAt: request.CreatedAt,
 		}},
 	}
+	f.requests[id] = entry
 	f.order = append(f.order, id)
+	return entry
 }
 
 // --- authentication -------------------------------------------------------
@@ -355,8 +359,12 @@ func (f *fixture) transition(requestID, userID string, from, to gamerequest.Stat
 		}
 		return gamerequest.ErrNotOpen
 	}
+	now := time.Now()
+	if to == gamerequest.StatusPlaying {
+		entry.request.StartedAt = &now
+	}
 	entry.request.Status = to
-	entry.activity = append(entry.activity, requestquery.Activity{Kind: kind, ActorID: userID, ActorGameNick: "Ada Player", OccurredAt: time.Now()})
+	entry.activity = append(entry.activity, requestquery.Activity{Kind: kind, ActorID: userID, ActorGameNick: "Ada Player", OccurredAt: now})
 	f.broker.Publish(gamerequest.Event{Type: event, RequestID: requestID})
 	return nil
 }
@@ -672,6 +680,36 @@ func (f *fixture) controlPlane() http.Handler {
 			f.delay = time.Duration(milliseconds) * time.Millisecond
 		}
 		f.mu.Unlock()
+		w.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("/__test__/lifecycle", func(w http.ResponseWriter, r *http.Request) {
+		status := gamerequest.Status(r.URL.Query().Get("status"))
+		startsAt, err := time.Parse(time.RFC3339, r.URL.Query().Get("starts_at"))
+		if err != nil {
+			http.Error(w, "invalid starts_at", http.StatusBadRequest)
+			return
+		}
+		var startedAt *time.Time
+		if value := r.URL.Query().Get("started_at"); value != "" {
+			parsed, parseErr := time.Parse(time.RFC3339, value)
+			if parseErr != nil {
+				http.Error(w, "invalid started_at", http.StatusBadRequest)
+				return
+			}
+			startedAt = &parsed
+		}
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		entry := f.requests["00000000-0000-0000-0000-000000000003"]
+		entry.request.Status = status
+		entry.request.StartsAt = startsAt
+		if r.URL.Query().Get("joined") == "1" && !entry.members[viewerID] {
+			entry.members[viewerID] = true
+			entry.request.ViewerJoined = true
+			entry.request.MemberCount++
+			entry.request.Members = append(entry.request.Members, requestquery.Member{ID: viewerID, GameNick: "Ada Player", JoinedAt: time.Now()})
+		}
+		entry.request.StartedAt = startedAt
 		w.WriteHeader(http.StatusNoContent)
 	})
 	mux.HandleFunc("/__test__/reset", func(w http.ResponseWriter, _ *http.Request) {

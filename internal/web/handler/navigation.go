@@ -9,15 +9,15 @@ import (
 	webmiddleware "github.com/convention-x-treme/lansurfer/internal/web/middleware"
 )
 
-// upcomingJoinedLimit bounds the navigation's "Your next games" list. Past
+// upcomingJoinedLimit bounds the navigation's "Your active games" list. Past
 // that, the Game Requests screen itself is the place to look, so the sidebar
 // stays a shortcut rather than a second list.
 const upcomingJoinedLimit = 3
 
 // NavigationQueries is the sidebar's own read-only view of the Game Request
 // read model: the installation-wide active count (`open` or `playing`) beside
-// "Game Requests", the viewer's joined requests for "Your next games", and
-// their reading history for "Recently viewed".
+// "Game Requests", the viewer's joined active requests for "Your active games",
+// and their reading history for "Recently viewed".
 type NavigationQueries interface {
 	CountActive(context.Context) (int64, error)
 	ListActive(context.Context, string, requestquery.Filter) ([]requestquery.Request, error)
@@ -111,8 +111,8 @@ func (n *Navigation) For(r *http.Request, section string) components.NavigationS
 }
 
 // upcoming lists the active (`open` or `playing`) Game Requests the viewer has
-// joined, soonest first. The read model already orders by start time, so this
-// only bounds the list.
+// joined, soonest planned start first. The read model already orders them, so
+// this only bounds the list.
 func (n *Navigation) upcoming(r *http.Request, viewerID string) []requestquery.Request {
 	joined, err := n.queries.ListActive(r.Context(), viewerID, requestquery.Filter{Scope: requestquery.ScopeJoined})
 	if err != nil {
