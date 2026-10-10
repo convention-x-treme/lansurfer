@@ -40,4 +40,4 @@ docker run --rm --user "$(id -u):$(id -g)" \
   --mount "type=bind,src=$root/tools/loadtest/http.js,dst=/work/http.js,readonly" \
   --mount "type=bind,src=$(realpath "$reports"),dst=/reports" \
   -e "USERS=$users" -e "DURATION=$duration" \
-  grafana/k6:latest run --summary-export "/reports/$output" /work/http.js
+  grafana/k6:1.8.1 run --summary-export "/reports/$output" /work/http.js
