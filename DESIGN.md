@@ -44,7 +44,7 @@ typography:
   row-title:
     fontFamily: "Schibsted Grotesk, ui-sans-serif, system-ui, sans-serif"
     fontSize: "16px"
-    fontWeight: 700
+    fontWeight: 600
     letterSpacing: "normal"
   body:
     fontFamily: "Schibsted Grotesk, ui-sans-serif, system-ui, sans-serif"
@@ -59,12 +59,12 @@ typography:
   button:
     fontFamily: "Schibsted Grotesk, ui-sans-serif, system-ui, sans-serif"
     fontSize: "15px"
-    fontWeight: 500
+    fontWeight: 600
     letterSpacing: "normal"
   navigation-item:
     fontFamily: "Schibsted Grotesk, ui-sans-serif, system-ui, sans-serif"
     fontSize: "15px"
-    fontWeight: 500
+    fontWeight: 400
     letterSpacing: "normal"
   counter:
     fontFamily: "JetBrains Mono, ui-monospace, monospace"
@@ -217,9 +217,10 @@ Sunset is not a `--color-*` entry in the DaisyUI theme; consume it through the c
 Use **Schibsted Grotesk** (SIL Open Font License 1.1) throughout the interface:
 
 - 900 Black: all titles and the wordmark
-- 600 Bold: strong emphasis and buttons
-- 500 Semibold: light emphasis and active navigation
-- 400 Regular: every piece of running text
+- 700 Bold: active navigation and emphasized labels
+- 600 Semibold: buttons, row titles, and strong emphasis
+- 500 Medium: light emphasis
+- 400 Regular: every piece of running text and inactive navigation
 
 No other weights are used. Italic is reserved for the LANsurfer wordmark and never appears in UI copy, titles, or taglines.
 
@@ -235,11 +236,11 @@ Use **JetBrains Mono** (SIL Open Font License 1.1) for compact data where aligne
 | Screen title | Schibsted Grotesk | 30 px | 900 | −0.02em |
 | Section title | Schibsted Grotesk | 22 px | 900 | −0.02em |
 | Card title | Schibsted Grotesk | 17 px | 900 | normal |
-| Row title | Schibsted Grotesk | 16 px | 700 | normal |
+| Row title | Schibsted Grotesk | 16 px | 600 | normal |
 | Body | Schibsted Grotesk | 15 px | 400 | normal |
 | Body small | Schibsted Grotesk | 14 px | 400 | normal |
-| Button | Schibsted Grotesk | 15 px | 500 | normal |
-| Navigation item | Schibsted Grotesk | 15 px | 500 | normal |
+| Button | Schibsted Grotesk | 15 px | 600 | normal |
+| Navigation item | Schibsted Grotesk | 15 px | 400, active 700 | normal |
 | Counter | JetBrains Mono | 16 px | 700 | normal |
 | Meta and badge | JetBrains Mono | 13 px | 500–700 | 0.12em caps |
 

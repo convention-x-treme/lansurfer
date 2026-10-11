@@ -72,7 +72,7 @@ Product and domain language stays plain: Game, Game Request, Player, Game Nick, 
 
 ## 5. Product Boundaries
 
-LANsurfer is deliberately small. Beyond the boundaries stated in the sections below, the product has no Clans, tournaments, ratings, teams, federation, moderation system, waitlists, or ready checks; its UI is English-only; IGDB is the only external catalog provider; and it runs as a single instance.
+LANsurfer is deliberately small. Beyond the boundaries stated in the sections below, the product has no Clans, tournaments, ratings, teams, federation, moderation system, waitlists, or ready checks; its UI is English-only; IGDB is the only external catalog provider; and it runs as a single instance. Anything this document does not describe is not part of the product.
 
 Do not create generic abstractions merely to make absent features easier later. A proposal to change a boundary is raised as a GitHub Issue and changes the product only through an approved update to this document.
 
