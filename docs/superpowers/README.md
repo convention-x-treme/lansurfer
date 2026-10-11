@@ -33,8 +33,4 @@ A feature branch is therefore allowed to carry extensive specs/tasks for ChatGPT
 
 Retain a design record only when it contains durable rationale that is still useful and is not duplicated by the canonical docs. Mark retained records clearly as historical/supporting material and remove execution instructions, stale status, and unchecked task lists.
 
-## Naming
-
-Historical files may still contain the former Track A–G planning labels. Do not use those labels for new artifacts; use capability names from `docs/TERMINOLOGY.md`.
-
 The repository-root `.superpowers/` directory is ignored by Git and can also be used for purely local execution state that never needs branch collaboration.

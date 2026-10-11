@@ -15,7 +15,7 @@ Hundreds of players. Dozens of games. And somewhere in the room, someone else is
 
 [The idea](#-what-is-lansurfer) · [How it works](#-how-it-works) · [Project status](#-project-status) · [Get involved](#-get-involved)
 
-> 🚧 **Pre-1.0:** the single-event Game Request core, Game Nick/authentication, and IGDB discovery capabilities are implemented on `main`. Instance identity/PWA validation, durable notification validation, production distribution/operations, remaining UI-system work, and pilot/release validation still remain before stable 1.0.
+> 🚧 **Under active development:** there is no stable release yet. The design and database may still change.
 
 ## 🎮 What is LANsurfer?
 
@@ -29,7 +29,7 @@ The original use case is **CXT**, a LAN party with around **400 participants**. 
 
 ## 🏄 How it works
 
-The completed prototype establishes a simple browser-based flow:
+LANsurfer keeps the flow simple and runs in the browser:
 
 1. **Follow your games.** Pick the games you'd like to play and find them again with the **Followed only** filter on Games.
 2. **Find players.** Create a Game Request with a start time, an optional player limit, and a short description.
@@ -55,7 +55,7 @@ Once the group is ready, it's time to launch the game.
 
 - **Your LAN, your instance.** Organizers can host LANsurfer on their own infrastructure and maintain the games available at their event.
 - **A place for the classics.** The local game catalog can include the games your community actually plays, including the less obvious ones.
-- **Easy to join in.** The first release targets desktop and mobile browsers, with quick, readable game requests.
+- **Easy to join in.** LANsurfer works in desktop and mobile browsers, with quick, readable game requests.
 - **Built in the open.** Players, organizers, designers, and developers can help shape the project.
 
 ## 🦦 Meet the LANsurfer Otter
@@ -70,7 +70,7 @@ The [design system](DESIGN.md) defines the palette, typography, icons, mascot us
 
 ## 🗺️ Project status
 
-LANsurfer is under active development: **one LANsurfer installation serves one LAN party or gaming event context**. The design and database may still change before a stable release.
+**One LANsurfer installation serves one LAN party or gaming event context.**
 
 - [Product definition](docs/PRODUCT.md): what LANsurfer does and where its boundaries are.
 - [Architecture](docs/ARCHITECTURE.md), [terminology](docs/TERMINOLOGY.md), and [design system](DESIGN.md): the other canonical references.

@@ -68,42 +68,13 @@ Avoid features and abstractions that require disproportionate technical complexi
 
 Product and domain language stays plain: Game, Game Request, Player, Game Nick, Join and Leave, Follow Game and My Games. Surf metaphors are reserved for branding and marketing copy such as the tagline; players never need a surf vocabulary to operate LANsurfer.
 
-[TERMINOLOGY.md](TERMINOLOGY.md) owns the canonical vocabulary, including the terms that must not be used. Event and Clan are not current product concepts (see [Product Boundaries](#5-product-boundaries)).
+[TERMINOLOGY.md](TERMINOLOGY.md) owns the canonical vocabulary, including the terms that must not be used. Event and Clan are not current product concepts (see [Single-Event Instance Model](#8-single-event-instance-model) and [Product Boundaries](#5-product-boundaries)).
 
 ## 5. Product Boundaries
 
-LANsurfer is deliberately small. The following are not part of the product. They are current product behavior, not a backlog: none of them is scheduled or promised by being named here.
+LANsurfer is deliberately small. Beyond the boundaries stated in the sections below, the product has no Clans, tournaments, ratings, teams, federation, moderation system, waitlists, or ready checks; its UI is English-only; IGDB is the only external catalog provider; and it runs as a single instance.
 
-Instance and community model:
-
-- multiple Events in one installation, Event membership, invitations, managers, seats, venue maps, ticket claims, Event lifecycle/history, and Open Play
-- Game Requests scoped to an Event, Clan, or any other parent, and a generic polymorphic Game Request context/parent framework
-- Clans, Clan ownership, rosters, invitations, primary-Clan identity, Clan posts, Clan chat, private Clan LFG, and custom roles
-- tournaments, ratings, teams, and federation
-- multi-instance or high-availability operation
-
-Players and accounts:
-
-- guest accounts, passkeys, and local passwords
-- authentication providers beyond generic OIDC, Discord, and Twitch
-- player biographies, per-Game player handles, richer public profile pages, and avatar uploads
-- generic reports, suspensions, and complex moderation
-
-Game Requests and notifications:
-
-- waitlists, ready checks, a separate ready-to-play state, and comments apart from the request-local Lobby chat
-- curated quick-info tags and tag-based filtering
-- a persistent in-app notification inbox or history
-- per-Event notification settings or more than one Discord destination
-
-Presentation and platform:
-
-- localization: the product UI is English-only and has no localization framework
-- an administrator-managed branding editor, uploaded instance logos or icons, white-labeling, or custom theming
-- external catalog providers other than IGDB
-- WebSockets and native applications
-
-Do not create generic abstractions merely to make any of these easier later. A proposal to change a boundary is raised as a GitHub Issue and changes the product only through an approved update to this document.
+Do not create generic abstractions merely to make absent features easier later. A proposal to change a boundary is raised as a GitHub Issue and changes the product only through an approved update to this document.
 
 ## 6. Players and Authentication
 

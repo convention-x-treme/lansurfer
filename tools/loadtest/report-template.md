@@ -1,13 +1,13 @@
 # Load-test report
 
-Copy this file, fill every field from real output, and attach it to the relevant issue or PR (#139 for harness rehearsals, #140/#93 for the pilot-equivalent run). Aggregate numbers only: never paste session tokens, cookies, or the credentials file.
+Copy this file, fill every field from real output, and attach it to the relevant issue or PR. Aggregate numbers only: never paste session tokens, cookies, or the credentials file.
 
 ## Classification
 
 - [ ] Local rehearsal (workstation, load generator on the same machine)
 - [ ] Representative run (pilot-equivalent hardware, proxy, network; generator elsewhere)
 
-A local rehearsal is not capacity evidence and passes no #93 gate.
+A local rehearsal is not capacity evidence.
 
 ## Environment (`bash tools/loadtest/collect-env.sh`)
 

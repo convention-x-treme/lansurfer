@@ -51,22 +51,6 @@ LANsurfer branding may use surf-related visuals and marketing language, but prod
 - Use explicit domain names in code and the database.
 - Say **places** for available spots and **Max players** for the field. "Seat" is not used.
 
-## Planning vocabulary
-
-The historical **Track A–G** names were planning labels used during the pre-1.0 build-out. They are deprecated for new code, durable documentation, and new issue titles.
-
-Use capability language instead, for example:
-
-- Game Request core/discovery/activity
-- authentication and Game Nick
-- Game catalog and IGDB discovery
-- PWA and instance identity
-- notifications and delivery
-- distribution and operations
-- brand and UI system
-
-Historical PRs, commits, retained design records, and closed issues do not need to be rewritten merely to remove Track terminology.
-
 ## Source-of-truth rule
 
 - Durable product behavior, approved scope, and product boundaries: `docs/PRODUCT.md`

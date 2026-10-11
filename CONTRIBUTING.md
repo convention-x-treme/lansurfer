@@ -289,7 +289,7 @@ Database migrations run automatically before HTTP startup. A migration failure p
 ## Making changes
 
 - Keep pull requests focused on one concrete problem.
-- Work only on scheduled capability work whose declared dependencies are satisfied; do not implement blocked integration work or unscheduled future candidates for completeness.
+- Work on a scheduled issue whose declared dependencies are satisfied; do not implement blocked work or open proposals for completeness.
 - Inspect existing code and the relevant product/architecture sections before designing new structures.
 - Add tests where regressions would matter.
 - Do not add dependencies for hypothetical future flexibility.

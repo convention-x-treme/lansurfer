@@ -35,8 +35,7 @@ await cp(new URL("../docs/mascot/web/otter.webp", import.meta.url), new URL("ima
 await cp(new URL("../docs/mascot/web/otter-sad.webp", import.meta.url), new URL("images/otter-sad.webp", output));
 await cp(new URL("../docs/mascot/web/mascot-welcome-pose.webp", import.meta.url), new URL("images/mascot-welcome-pose.webp", output));
 
-// Temporary PWA icon (see docs/superpowers/pwa/2026-09-20-track-d-instance-pwa-design.md).
-// These are finished, pre-generated renditions, copied verbatim like the
+// PWA icons. These are finished, pre-generated renditions, copied verbatim like the
 // mascot above — no image-processing dependency runs during the build.
 for (const name of [
   "icon-192.png",
