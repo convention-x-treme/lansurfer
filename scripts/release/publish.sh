@@ -54,10 +54,25 @@ elif ! grep -Eiq 'not found|manifest unknown|name unknown|404' "$tmp/probe-error
   exit 1
 fi
 
+# Stable release notes must cover everything since the preceding stable
+# release, not just changes after a release candidate. On the first stable
+# version, excluding local prerelease tags makes GoReleaser include all history.
+# This produces a temporary OSS config (no Git ref changes, no Pro features).
+notes_config="$tmp/goreleaser-notes.yaml"
+previous_stable="$(python3 "$root/scripts/release/notes_config.py" \
+  "$tag" "$root/.goreleaser.yaml" "$notes_config")"
+if [[ -n "$previous_stable" ]]; then
+  export GORELEASER_PREVIOUS_TAG="$previous_stable"
+  echo "Changelog base (previous reachable stable release): $previous_stable"
+else
+  unset GORELEASER_PREVIOUS_TAG
+  echo "Changelog base: no previous stable release, or normal prerelease mode"
+fi
+
 # GoReleaser uploads a GitHub DRAFT, Linux archives and checksums, then pushes
 # the exact-version multi-arch container image. The GitHub Release remains
 # unpublished until downstream verification and alias promotion finish.
-goreleaser release --clean --fail-fast
+goreleaser release --config "$notes_config" --clean --fail-fast
 
 test -s dist/checksums.txt
 (cd dist && sha256sum --check checksums.txt)
