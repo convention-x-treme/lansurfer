@@ -1,0 +1,78 @@
+name: Release snapshot
+
+# No tags, publication credentials, GHCR login, or deployment in this workflow.
+on:
+  pull_request:
+    paths:
+      - .goreleaser.yaml
+      - Dockerfile.release
+      - .github/workflows/release-snapshot.yml
+      - scripts/release/**
+      - Taskfile.yml
+      - .gitignore
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-snapshot-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  snapshot:
+    name: GoReleaser snapshot and changelog fixtures
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Check out source and full history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up QEMU for arm64 smoke builds
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Install pinned GoReleaser OSS on PATH
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        with:
+          distribution: goreleaser
+          version: v2.18.3
+          install-only: true
+
+      - name: Check release configuration
+        run: goreleaser check
+
+      - name: Validate release-note groups with synthetic history
+        shell: bash
+        run: bash scripts/release/test-changelog.sh
+
+      - name: Build all snapshot artifacts and local Docker images
+        run: goreleaser release --snapshot --clean
+
+      - name: Verify snapshot artifacts
+        shell: bash
+        run: |
+          test -s dist/checksums.txt
+          (cd dist && sha256sum --check checksums.txt)
+          jq -e '[.[] | select(.type == "Archive")] | length == 2' dist/artifacts.json
+          jq -e '[.[] | select(.type == "Archive") | .goarch] | sort == ["amd64", "arm64"]' dist/artifacts.json
+
+      - name: Upload reviewable snapshot archives
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: lansurfer-release-snapshot
+          path: |
+            dist/*.tar.gz
+            dist/checksums.txt
+          retention-days: 7

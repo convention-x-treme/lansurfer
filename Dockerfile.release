@@ -1,0 +1,15 @@
+# syntax=docker/dockerfile:1
+# Production container reuses the binaries already compiled by GoReleaser.
+# Keep the non-root scratch runtime consistent with the development Dockerfile.
+FROM golang:1.27.1-alpine AS runtime-files
+RUN mkdir -p /out/covers
+
+FROM scratch
+ARG TARGETPLATFORM
+COPY --from=runtime-files /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY ${TARGETPLATFORM}/lansurfer /lansurfer
+# Docker volumes mounted on the covers directory inherit its non-root owner.
+COPY --from=runtime-files --chown=65532:65532 /out/covers /var/cache/lansurfer/covers
+USER 65532:65532
+EXPOSE 8080
+ENTRYPOINT ["/lansurfer"]
