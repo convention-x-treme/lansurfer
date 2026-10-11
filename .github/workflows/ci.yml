@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_call:
   workflow_dispatch:
 
 permissions:
@@ -29,6 +30,10 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+
+      - name: Test PR title validator
+        shell: bash
+        run: bash .github/scripts/test-validate-pr-title.sh
 
       - name: Check formatting
         shell: bash
