@@ -4,6 +4,7 @@
 !.env.example
 
 # Build and test output
+/dist/
 /bin/
 /coverage.out
 *.test
