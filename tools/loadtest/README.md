@@ -14,7 +14,7 @@ What it provides:
 8. **Lost-signal proof**: a proxy drops one SSE frame while PostgreSQL keeps the change (`loadtest:loss`).
 9. **Chaos**: stream cut, offline window, `tc netem` delay, and 2 % packet loss inside the test proxy container only (`loadtest:chaos`).
 10. **Soak**: 120 participants (115 streams/writers + 5 real browsers), 10-minute profile windows, cooldown and database audit (`loadtest:soak`).
-11. **Private run bundles**: every scenario task writes a `0700` directory with a `0600` manifest, console log and artifacts; `loadtest:scan` counts secrets in them.
+11. **Private run bundles**: orchestrated HTTP, write, profile, calibration, lost-signal, chaos and soak runs use `0700` directories and `0600` manifests/logs; `loadtest:scan` counts secrets in them.
 
 Out of scope: notification delivery, Grafana dashboards, pilot-equivalent hardware, and 600-client stress.
 
@@ -134,7 +134,7 @@ These scenarios start `compose.chaos.yaml` (a Go reverse proxy with `NET_ADMIN`,
 
 Calibration launches 5–10 separate Chromium processes, observes EventSource `open`/`error` and named events, HTMX before/after/swap, busy and disabled state, and compares visible DOM with an authoritative server fragment. The final diagnostic fetch is excluded from refresh counts. Synthetic clients refresh the same filtered list as the pages (`-refresh-query`). `browser-like` coalesces to one in-flight refresh plus one trailing refresh per client; `worst-case` refreshes once per event. Synthetic streams reuse the browser identities in the 400-stream runs, so 400 streams plus five browsers are 400 identities, not 405.
 
-Every scenario task writes `$HOME/lansurfer-loadtest-reports/<UTC>-<scenario>/` (mode `0700`) with `manifest.json` (SHA, dirty flag, image IDs/creation, container limits, versions, parameters, exit code, actual duration), `console.log`, and artifacts (`0600`). Run `task loadtest:scan REPORT_PATH=<dir>` before publishing; it prints only the number of session-token or metrics-key hits.
+Orchestrated tasks (`loadtest:run`, `writes`, `profile`, `calibrate`, `loss`, `chaos`, `soak`) create `$HOME/lansurfer-loadtest-reports/<UTC>-<scenario>/` (mode `0700`) with `manifest.json` (SHA, dirty flag, image IDs/creation, container limits, versions, parameters, exit code, actual duration), `console.log`, and artifacts (`0600`). Direct diagnostics such as `loadtest:race`, `loadtest:sse`, and `loadtest:browser` print to the terminal and do not create a run manifest. Run `task loadtest:scan REPORT_PATH=<dir>` on a generated report bundle before publishing; it prints only the number of session-token or metrics-key hits.
 
 ### Measured local results (WSL2, not capacity evidence)
 
@@ -209,7 +209,7 @@ The harness keeps these private local files outside the repository:
 | `$HOME/lansurfer-loadtest-fixtures-large.json` | `loadtest:fixtures:large` | large-v1 manifest |
 | `$HOME/lansurfer-loadtest-control.json` | `loadtest:prepare` | control Game Request ID |
 | `$HOME/lansurfer-loadtest-metrics-key` | `loadtest:prepare` | metrics access key (secret) |
-| `$HOME/lansurfer-loadtest-reports/` | every scenario task | run bundles and logs |
+| `$HOME/lansurfer-loadtest-reports/` | orchestrated scenario tasks | run bundles and logs |
 
 `LANSURFER_LOADTEST_SESSIONS_FILE`, `LANSURFER_LOADTEST_FIXTURES_FILE`, `LANSURFER_LOADTEST_LARGE_FIXTURES_FILE`, and `LANSURFER_LOADTEST_REPORT_ROOT` move the respective path; reset the paths you actually used.
 
