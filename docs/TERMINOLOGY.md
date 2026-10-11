@@ -1,6 +1,6 @@
 # LANsurfer terminology
 
-This file defines project vocabulary that is easy to confuse in code, documentation, issues, and agent prompts. Product behavior remains authoritative in [PRODUCT.md](PRODUCT.md); technical ownership remains authoritative in [ARCHITECTURE.md](ARCHITECTURE.md); the design system remains authoritative in [DESIGN.md](../DESIGN.md).
+This file defines project vocabulary that is easy to confuse in code, documentation, issues, and agent prompts. Product behavior remains authoritative in [PRODUCT.md](../PRODUCT.md); technical ownership remains authoritative in [ARCHITECTURE.md](ARCHITECTURE.md); the design system remains authoritative in [DESIGN.md](../DESIGN.md).
 
 Use these terms consistently. Do not invent synonyms for domain concepts unless the product definition changes.
 
@@ -53,7 +53,7 @@ LANsurfer branding may use surf-related visuals and marketing language, but prod
 
 ## Source-of-truth rule
 
-- Durable product behavior, approved scope, and product boundaries: `docs/PRODUCT.md`
+- Durable product behavior, approved scope, and product boundaries: `PRODUCT.md`
 - Durable technical decisions and ownership: `docs/ARCHITECTURE.md`
 - Terminology: this file
 - Design system: `DESIGN.md`; specific screen compositions and interactions: `docs/ui-kit/`

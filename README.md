@@ -72,7 +72,7 @@ The [design system](DESIGN.md) defines the palette, typography, icons, mascot us
 
 **One LANsurfer installation serves one LAN party or gaming event context.**
 
-- [Product definition](docs/PRODUCT.md): what LANsurfer does and where its boundaries are.
+- [Product definition](PRODUCT.md): what LANsurfer does and where its boundaries are.
 - [Architecture](docs/ARCHITECTURE.md), [terminology](docs/TERMINOLOGY.md), and [design system](DESIGN.md): the other canonical references.
 - [GitHub Issues](https://github.com/convention-x-treme/lansurfer/issues) and [milestones](https://github.com/convention-x-treme/lansurfer/milestones): current development work and proposals. There is no separate roadmap file.
 

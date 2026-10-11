@@ -2,7 +2,7 @@
 
 This document is the durable product contract: what LANsurfer is, how it behaves for players, administrators, and operators, and which boundaries are part of the product. It is written in the present tense and carries no schedule, priority, implementation status, or release-gate evidence. Software-development planning lives in GitHub Issues and milestones; a proposal there becomes part of this contract only when an approved change updates this document.
 
-Related authorities: [ARCHITECTURE.md](ARCHITECTURE.md) for technical decisions, [TERMINOLOGY.md](TERMINOLOGY.md) for vocabulary, and [DESIGN.md](../DESIGN.md) for the design system.
+Related authorities: [ARCHITECTURE.md](docs/ARCHITECTURE.md) for technical decisions, [TERMINOLOGY.md](docs/TERMINOLOGY.md) for vocabulary, and [DESIGN.md](DESIGN.md) for the design system.
 
 ## 1. Product Summary
 
@@ -68,7 +68,7 @@ Avoid features and abstractions that require disproportionate technical complexi
 
 Product and domain language stays plain: Game, Game Request, Player, Game Nick, Join and Leave, Follow Game and My Games. Surf metaphors are reserved for branding and marketing copy such as the tagline; players never need a surf vocabulary to operate LANsurfer.
 
-[TERMINOLOGY.md](TERMINOLOGY.md) owns the canonical vocabulary, including the terms that must not be used. Event and Clan are not current product concepts (see [Single-Event Instance Model](#8-single-event-instance-model) and [Product Boundaries](#5-product-boundaries)).
+[TERMINOLOGY.md](docs/TERMINOLOGY.md) owns the canonical vocabulary, including the terms that must not be used. Event and Clan are not current product concepts (see [Single-Event Instance Model](#8-single-event-instance-model) and [Product Boundaries](#5-product-boundaries)).
 
 ## 5. Product Boundaries
 
@@ -432,7 +432,7 @@ The product is called **LANsurfer**. Its tagline is:
 
 > Find your crew. Catch the next game.
 
-The fixed visual system uses the canonical LANsurfer design and bundled application assets. [DESIGN.md](../DESIGN.md) owns that design system; this section owns what a deployment may and may not change.
+The fixed visual system uses the canonical LANsurfer design and bundled application assets. [DESIGN.md](DESIGN.md) owns that design system; this section owns what a deployment may and may not change.
 
 LANsurfer does **not** provide a full administrator-managed branding surface. In particular, the current product model does not include configurable welcome text, contact link, uploaded logo, uploaded app icon, custom colors, fonts, CSS, white-labeling, or theme editing.
 
@@ -465,4 +465,4 @@ TLS and the reverse proxy remain operator responsibilities. The project document
 
 ## 15. Product Decisions Left to Implementation
 
-Layout, copy, pagination, route shape, migration mechanics, exact browser versions used as validation evidence, exact provider-index schema, stale-state thresholds, and validation helpers are implementation details unless an approved product-scope change makes them product requirements. GitHub Issues may schedule development work or validation but do not silently redefine product scope. Follow the [approval rules](../AGENTS.md#changes-requiring-approval) for changes to technology, security, module boundaries, deployment, domain terminology, or approved product scope.
+Layout, copy, pagination, route shape, migration mechanics, exact browser versions used as validation evidence, exact provider-index schema, stale-state thresholds, and validation helpers are implementation details unless an approved product-scope change makes them product requirements. GitHub Issues may schedule development work or validation but do not silently redefine product scope. Follow the [approval rules](AGENTS.md#changes-requiring-approval) for changes to technology, security, module boundaries, deployment, domain terminology, or approved product scope.

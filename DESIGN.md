@@ -111,7 +111,7 @@ This file is the authoritative reference for LANsurfer's design system: brand fo
 
 - The checked-in `DESIGN.md` wins over any external design project, export, or snapshot, including the Claude Design project [LANsurfer UI Kit](https://claude.ai/design/p/c259a8f4-c239-427e-8e18-32443502b873) from which the palette and typography were derived. An external change becomes part of the design system only when a pull request updates this file.
 - If this file and the UI kit appear to conflict, preserve this file's semantic tokens, accessibility rules, and equal dark/light support while following the UI kit's represented composition and interaction model. Resolve a genuine conflict by updating both together.
-- A design source never redefines product behavior, domain terminology, technology, or module ownership. [PRODUCT.md](docs/PRODUCT.md), [TERMINOLOGY.md](docs/TERMINOLOGY.md), [ARCHITECTURE.md](docs/ARCHITECTURE.md), and [AGENTS.md](AGENTS.md) own those concerns. A frame, token, or component in a design source is not evidence that a behavior belongs to the product.
+- A design source never redefines product behavior, domain terminology, technology, or module ownership. [PRODUCT.md](PRODUCT.md), [TERMINOLOGY.md](docs/TERMINOLOGY.md), [ARCHITECTURE.md](docs/ARCHITECTURE.md), and [AGENTS.md](AGENTS.md) own those concerns. A frame, token, or component in a design source is not evidence that a behavior belongs to the product.
 
 ### Brand foundation
 
@@ -129,7 +129,7 @@ Dark mode is the primary event-floor presentation, and light mode is an equal su
 
 - Surf Blue remains the primary interactive accent in both themes; the filled primary action is Deep Blue in the light theme (see [Colors](#colors)).
 - Semantic meanings for Golden Hour, Sunset, and Coral remain identical across themes.
-- Theme choice is a presentation preference, not configurable instance branding ([PRODUCT.md](docs/PRODUCT.md#13-instance-identity-branding-and-pwa)).
+- Theme choice is a presentation preference, not configurable instance branding ([PRODUCT.md](PRODUCT.md#13-instance-identity-branding-and-pwa)).
 
 ## Colors
 
@@ -334,7 +334,7 @@ The same component hierarchy is used for in-browser live updates and for the Web
 - **Do** keep both themes complete. **Don't** ship a state, action, or piece of information in only one theme.
 - **Do** reuse the established components and tokens for new screens. **Don't** build a parallel component or visual system.
 - **Do** keep surf personality in imagery and marketing copy. **Don't** rename product concepts with surf vocabulary; [TERMINOLOGY.md](docs/TERMINOLOGY.md#brand-voice-boundary) owns that rule.
-- **Don't** let a design frame, token, or component introduce or imply product behavior that [PRODUCT.md](docs/PRODUCT.md) does not define.
+- **Don't** let a design frame, token, or component introduce or imply product behavior that [PRODUCT.md](PRODUCT.md) does not define.
 
 ## Icons
 
@@ -355,7 +355,7 @@ Set the wordmark in Schibsted Grotesk italic: 900 for `LAN`, 600 for `surfer`, t
 - Do not use the mascot as a substitute favicon or signet.
 - Keep at least the height of the wordmark's capital `L` as clear space around a lockup.
 - Do not redraw, crop, recolor, or substitute the supplied logo and icon without updating this file and the bundled product assets together.
-- Keep the fixed **Powered by Convention-X-Treme** operator attribution visible. It is not an instance-identity field ([PRODUCT.md](docs/PRODUCT.md#13-instance-identity-branding-and-pwa)).
+- Keep the fixed **Powered by Convention-X-Treme** operator attribution visible. It is not an instance-identity field ([PRODUCT.md](PRODUCT.md#13-instance-identity-branding-and-pwa)).
 
 ### Application icons
 

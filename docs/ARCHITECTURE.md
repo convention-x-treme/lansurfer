@@ -43,7 +43,7 @@ PostgreSQL
 
 No Redis, queue, separate frontend runtime, or object storage is required.
 
-This document records the current technical architecture and durable invariants. Product behavior and approved scope belong in [PRODUCT.md](PRODUCT.md); the design system belongs in [DESIGN.md](../DESIGN.md); software-development work, dependencies, and validation status belong in GitHub Issues and milestones.
+This document records the current technical architecture and durable invariants. Product behavior and approved scope belong in [PRODUCT.md](../PRODUCT.md); the design system belongs in [DESIGN.md](../DESIGN.md); software-development work, dependencies, and validation status belong in GitHub Issues and milestones.
 
 ---
 

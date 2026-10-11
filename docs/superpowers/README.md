@@ -4,7 +4,7 @@ This directory may contain temporary specs and designs that help humans and codi
 
 Canonical sources are:
 
-- product behavior and approved scope: `docs/PRODUCT.md`
+- product behavior and approved scope: `PRODUCT.md`
 - technical architecture and durable invariants: `docs/ARCHITECTURE.md`
 - terminology: `docs/TERMINOLOGY.md`
 - design system: `DESIGN.md`

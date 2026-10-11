@@ -7,7 +7,7 @@ Describe the change and why it is needed.
 - [ ] `task lint`
 - [ ] `task test`
 - [ ] `task test:integration` when database behavior changes
-- [ ] Canonical docs are updated when their subject changes: behavior (`docs/PRODUCT.md`), architecture (`docs/ARCHITECTURE.md`), vocabulary (`docs/TERMINOLOGY.md`), design system (`DESIGN.md`)
+- [ ] Canonical docs are updated when their subject changes: behavior (`PRODUCT.md`), architecture (`docs/ARCHITECTURE.md`), vocabulary (`docs/TERMINOLOGY.md`), design system (`DESIGN.md`)
 
 ## Architecture check
 

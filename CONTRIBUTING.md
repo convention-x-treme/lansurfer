@@ -2,7 +2,7 @@
 
 Thanks for helping make LANsurfer useful and maintainable.
 
-This guide is the starting point for a new developer. Before changing code, read [AGENTS.md](AGENTS.md). Consult the relevant GitHub issue/milestone entry for current work and dependencies, plus the sections of [the architecture](docs/ARCHITECTURE.md), [product definition](docs/PRODUCT.md), [terminology guide](docs/TERMINOLOGY.md), and [design system](DESIGN.md) relevant to your task.
+This guide is the starting point for a new developer. Before changing code, read [AGENTS.md](AGENTS.md). Consult the relevant GitHub issue/milestone entry for current work and dependencies, plus the sections of [the architecture](docs/ARCHITECTURE.md), [product definition](PRODUCT.md), [terminology guide](docs/TERMINOLOGY.md), and [design system](DESIGN.md) relevant to your task.
 
 ## Development prerequisites
 
@@ -150,14 +150,14 @@ The repository is a modular Go monolith. These are the most useful entry points 
 - `internal/query/`: read models for UI queries that cross module boundaries
 - `internal/platform/`: PostgreSQL, configuration, SSE, and other technical infrastructure
 - `web/`: frontend source files used to generate embedded production assets
-- `docs/PRODUCT.md`: durable product behavior, approved scope, and product boundaries
+- `PRODUCT.md`: durable product behavior, approved scope, and product boundaries
 - `docs/TERMINOLOGY.md`: canonical domain/project terminology
 - `DESIGN.md`: design system; `docs/ui-kit/` for specific screen compositions and interactions
 - `docs/ARCHITECTURE.md`: technical decisions and module boundaries
 - `AGENTS.md`: repository-wide development rules and approval boundaries
 - `Taskfile.yml`: authoritative development commands
 
-Planning lives in GitHub Issues and milestones, not in a repository roadmap file. Use them for software development only: proposals, bugs, tests, build/release tooling, and technical documentation. Live deployment, event preparation, and release approvals are not tracked there. An open proposal is not approved product scope until `docs/PRODUCT.md` changes.
+Planning lives in GitHub Issues and milestones, not in a repository roadmap file. Use them for software development only: proposals, bugs, tests, build/release tooling, and technical documentation. Live deployment, event preparation, and release approvals are not tracked there. An open proposal is not approved product scope until `PRODUCT.md` changes.
 
 Check the current GitHub issue/milestone status and the existing code before designing a change.
 

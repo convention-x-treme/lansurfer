@@ -27,5 +27,5 @@ body:
     attributes:
       label: Scope check
       options:
-        - label: I checked the product boundaries in docs/PRODUCT.md and existing GitHub issues/milestones.
+        - label: I checked the product boundaries in PRODUCT.md and existing GitHub issues/milestones.
           required: true

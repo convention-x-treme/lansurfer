@@ -7,7 +7,7 @@ LANsurfer is a self-hosted Looking-for-Group web application and a modular Go mo
 Use the smallest authoritative source that answers the task:
 
 - `README.md`: what LANsurfer is and how to run it.
-- `docs/PRODUCT.md`: durable product contract — user-visible behavior, approved scope, and product boundaries. It carries no schedule or implementation status.
+- `PRODUCT.md`: durable product contract — user-visible behavior, approved scope, and product boundaries. It carries no schedule or implementation status.
 - `docs/ARCHITECTURE.md`: technical architecture, module ownership, and durable invariants.
 - `docs/TERMINOLOGY.md`: canonical project vocabulary and distinctions that agents/contributors must preserve.
 - `DESIGN.md`: authoritative design system — brand, colors, typography, icons, themes, accessibility, components, logo, and mascot. It wins over external design projects.
