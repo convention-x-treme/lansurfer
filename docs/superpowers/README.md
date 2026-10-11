@@ -4,10 +4,11 @@ This directory may contain temporary specs and designs that help humans and codi
 
 Canonical sources are:
 
-- product behavior and approved scope: `docs/PRODUCT.md`
+- product behavior and approved scope: `PRODUCT.md`
 - technical architecture and durable invariants: `docs/ARCHITECTURE.md`
 - terminology: `docs/TERMINOLOGY.md`
-- current work/status/validation/release gates: GitHub Issues and the 1.0 milestone
+- design system: `DESIGN.md`
+- current development work/status/validation: GitHub Issues and milestones
 - repository workflow: `AGENTS.md`
 
 ## Recommended lifecycle
@@ -20,6 +21,7 @@ Canonical sources are:
    - product behavior/scope → `PRODUCT.md`
    - technical decisions/invariants → `ARCHITECTURE.md`
    - vocabulary → `TERMINOLOGY.md`
+   - design-system rules → `DESIGN.md`
    - remaining work → GitHub Issues
    - useful non-automated evidence → the relevant GitHub Issue or PR
 6. Remove temporary plans/tasks/prompts from the final tree. Remove the design/spec too once its durable decisions are represented canonically, unless it contains genuinely useful rationale that cannot be expressed there.
@@ -30,9 +32,5 @@ A feature branch is therefore allowed to carry extensive specs/tasks for ChatGPT
 ## What may remain
 
 Retain a design record only when it contains durable rationale that is still useful and is not duplicated by the canonical docs. Mark retained records clearly as historical/supporting material and remove execution instructions, stale status, and unchecked task lists.
-
-## Naming
-
-Historical files may still contain the former Track A–G planning labels. Do not use those labels for new artifacts; use capability names from `docs/TERMINOLOGY.md`.
 
 The repository-root `.superpowers/` directory is ignored by Git and can also be used for purely local execution state that never needs branch collaboration.

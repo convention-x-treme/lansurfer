@@ -42,7 +42,7 @@ func (s *Store) BeginGeneration(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("delete inactive IGDB generations: %w", err)
 	}
 
-	// A leftover 'syncing' row can only be abandoned: single-instance 1.0
+	// A leftover 'syncing' row can only be abandoned: single-instance operation
 	// and IGDBSyncService.TryStart's in-process mutex mean this call is
 	// never racing a still-running sync, so any 'syncing' row found here is
 	// a previous process incarnation that exited before completing or
@@ -268,7 +268,7 @@ func (s *Store) Search(ctx context.Context, userID, search string, limit int, in
 }
 
 // FindLocal is the read-only composer lookup for DiscoveryRepository
-// (Task 5, GameSelection.LocalGameID): one active local Game by ID, its
+// (GameSelection.LocalGameID): one active local Game by ID, its
 // retained last-known-good enrichment, and the given viewer's own Follow
 // state. It never sets Reference -- like the existing local Browse/MyGames
 // projections, a local ID lookup does not surface the local Game's provider
@@ -301,7 +301,7 @@ func (s *Store) FindLocal(ctx context.Context, userID, localGameID string) (game
 }
 
 // FindProvider is the read-only composer lookup for DiscoveryRepository
-// (Task 5, GameSelection.Reference): the provider row must belong to the
+// (GameSelection.Reference): the provider row must belong to the
 // active generation. If it already maps to an active local Game, this
 // returns that Game's own presentation and the viewer's Follow state
 // (Materialized=true); otherwise it returns the active generation's own

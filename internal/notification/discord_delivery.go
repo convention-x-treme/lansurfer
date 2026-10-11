@@ -2,7 +2,7 @@ package notification
 
 import "time"
 
-// Discord-specific recovery signals are not ordinary E1 outcomes: send
+// Discord-specific recovery signals are not ordinary delivery outcomes: send
 // orchestration must act on them before reporting a delivery to the worker.
 type discordDeliveryKind uint8
 

@@ -21,7 +21,7 @@ const (
 	// discordWebhookScope is the only scope this client ever requests.
 	// Discord delivery must never request identify, guilds, bot, or
 	// applications.commands: those belong to Discord login or a bot/gateway
-	// integration, neither of which is part of E3.
+	// integration, neither of which is part of Discord delivery.
 	discordWebhookScope    = "webhook.incoming"
 	discordWebhookGrant    = "authorization_code"
 	discordTokenBodyLimit  = 1 << 20

@@ -28,7 +28,7 @@ type Brand struct {
 	Assets  Assets
 }
 
-// Colors contains the semantic palette documented in docs/BRANDING.md.
+// Colors contains the semantic palette documented in DESIGN.md.
 type Colors struct {
 	DeepOcean  string
 	OceanDepth string
@@ -67,7 +67,7 @@ type Assets struct {
 
 // Icons contains the public paths for the bundled application-icon
 // renditions the manifest and HTML head reference. These are fixed bundled
-// assets, not instance-configurable state: docs/BRANDING.md records how they
+// assets, not instance-configurable state: DESIGN.md records how they
 // are rendered from docs/logo/icon.png.
 type Icons struct {
 	Any192        string

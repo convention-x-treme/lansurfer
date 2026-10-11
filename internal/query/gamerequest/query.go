@@ -101,7 +101,7 @@ func ParseScope(value string) Scope {
 	}
 }
 
-// Filter carries the stable 1.0 Game Request discovery filters. Scope selects
+// Filter carries the Game Request discovery filters. Scope selects
 // the audience; free places is a separate toggle because it narrows any of
 // them.
 type Filter struct {

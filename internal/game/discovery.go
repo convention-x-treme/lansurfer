@@ -17,7 +17,7 @@ const discoveryProviderRowLimit = 50
 // DiscoveryPage is one page of Browse results: the player-visible, already
 // ranked and bounded cards; whether a row past this page exists; whether the
 // search itself was too short to reach the repository at all; and the
-// provider status a player-facing affordance can render from (Task 4).
+// provider status a player-facing affordance can render from.
 type DiscoveryPage struct {
 	Items          []DiscoveryItem
 	HasMore        bool
@@ -140,7 +140,7 @@ func (s *DiscoveryService) Resolve(ctx context.Context, ref ProviderReference) (
 	return s.materializer.Materialize(ctx, normalized)
 }
 
-// Select is a read-only composer lookup (Task 5) for one already-presented
+// Select is a read-only composer lookup for one already-presented
 // Game: it never materializes, regardless of which identity the selection
 // carries -- unlike Follow/Resolve, it never calls the materializer, so a
 // player can review an unmaterialized provider choice (e.g. in a Game
@@ -225,8 +225,8 @@ func (s *DiscoveryService) Unfollow(ctx context.Context, userID, gameID string) 
 	return s.subscriptions.Unfollow(ctx, userID, gameID)
 }
 
-// ListFollowers returns the user IDs following gameID, for Track E2's
-// notification recipient materialization (Task 4): the composition root
+// ListFollowers returns the user IDs following gameID, for Web Push's
+// notification recipient materialization: the composition root
 // wires the notification module's Game-followers dependency to this method.
 func (s *DiscoveryService) ListFollowers(ctx context.Context, gameID string) ([]string, error) {
 	return s.subscriptions.ListFollowers(ctx, gameID)

@@ -24,7 +24,7 @@ type discordCredentialEnvelope struct {
 }
 
 // EncryptDiscordCredential seals credential's webhook ID and token together
-// as one versioned AES-256-GCM blob under key, the operator's Track E
+// as one versioned AES-256-GCM blob under key, the operator's
 // data-encryption key. Only the returned ciphertext is meant to be
 // persisted; credential itself must never be logged or stored in the
 // clear.

@@ -14,9 +14,8 @@ type manifestIcon struct {
 	Purpose string `json:"purpose"`
 }
 
-// webManifest is the web app manifest body. Field set is fixed by the
-// approved Track D contract: no orientation, categories, shortcuts, or
-// screenshots. See docs/superpowers/pwa/2026-09-20-track-d-instance-pwa-design.md.
+// webManifest is the web app manifest body. The field set is deliberately
+// fixed: no orientation, categories, shortcuts, or screenshots.
 type webManifest struct {
 	Name            string         `json:"name"`
 	ShortName       string         `json:"short_name"`

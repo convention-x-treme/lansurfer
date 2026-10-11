@@ -271,7 +271,7 @@ func TestDiscoveryBrowseDisabledProviderStillUsesUnifiedLocalSearch(t *testing.T
 // TestDiscoveryBrowseReturnsProviderStatusUnchanged proves DiscoveryPage
 // carries whatever ProviderStatusSource reports, verbatim, on both the
 // short-circuited local-only path and the repository-backed path, so a
-// player-facing "why is this all I see" affordance (Task 4) can render it
+// player-facing "why is this all I see" affordance can render it
 // without DiscoveryService reinterpreting or dropping fields.
 func TestDiscoveryBrowseReturnsProviderStatusUnchanged(t *testing.T) {
 	status := ProviderStatus{State: ProviderStale, RecordCount: 42, CatalogAvailable: true}

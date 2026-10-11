@@ -43,7 +43,7 @@ PostgreSQL
 
 No Redis, queue, separate frontend runtime, or object storage is required.
 
-This document records the current technical architecture and durable invariants. Product behavior and approved scope belong in [PRODUCT.md](PRODUCT.md); current work, dependencies, validation status, and release gates belong in GitHub Issues and milestones.
+This document records the current technical architecture and durable invariants. Product behavior and approved scope belong in [PRODUCT.md](../PRODUCT.md); the design system belongs in [DESIGN.md](../DESIGN.md); software-development work, dependencies, and validation status belong in GitHub Issues and milestones.
 
 ---
 
@@ -148,13 +148,13 @@ Delivery state distinguishes retryable failure, permanent failure, exhaustion, a
 
 LANsurfer's own retry schedule uses capped exponential backoff with jitter and a six-attempt automatic round. Its computed backoff never exceeds five minutes. An explicit provider `Retry-After` is authoritative and is honored in full even when it exceeds that cap. External transport failure never fails or reverses the originating Game Request action.
 
-The event publishing abstraction should remain replaceable so PostgreSQL `LISTEN/NOTIFY` can be considered later if multiple application instances are ever approved. Multi-instance/high-availability operation is not part of the current supported deployment model.
+The event publishing abstraction stays replaceable. Multi-instance/high-availability operation is not part of the supported deployment model.
 
 WebSockets are not part of the initial architecture. Introducing them requires approval and a meaningful bidirectional use case.
 
 ### Web Push
 
-Web Push uses VAPID behind a narrow adapter around the approved `github.com/marknefedov/go-webpush/v2` dependency and extends PWA/instance identity capability's single existing service worker with push/click behavior rather than registering another worker. E2 adds no offline shell or fetch caching. Manual validation evidence belongs on the relevant GitHub issues and pull requests rather than in this durable architecture document.
+Web Push uses VAPID behind a narrow adapter around the approved `github.com/marknefedov/go-webpush/v2` dependency and extends PWA/instance identity capability's single existing service worker with push/click behavior rather than registering another worker. Web Push adds no offline shell or fetch caching.
 
 Store multiple labeled subscriptions per user. Browser permission, active subscription/device state, LANsurfer enablement, and new-request audience preference remain separate. New Game Requests use followed/My Games by default or all new requests through explicit opt-in. Join/leave/start/close/cancel notify current request participants independently of that creation-audience setting. The activity actor is excluded from their own personal push. A `request_updated` activity creates Web Push targets only when planned start changed; delivery rechecks that the request remains open at the new time. Capacity/description-only updates create no personal push.
 
@@ -319,7 +319,7 @@ The Game Request lifecycle is `open -> playing -> closed` or `open -> cancelled`
 
 `request_updated` is a durable activity kind and therefore also notification-handoff work. One successful Host Save creates at most one such row even when several editable details change. Typed metadata records only changed dimensions: nullable `previous_max_players`/`new_max_players` (where `NULL` means unlimited), nullable `previous_starts_at`/`new_starts_at`, and `description_changed boolean`. A check constraint requires at least one real changed dimension and requires every other activity kind to leave these metadata values empty/false. A previous finite maximum may be the legacy value 1; a new finite maximum must be at least 2. Description text itself is not duplicated into activity. No generic JSON metadata or patch payload exists. The notification path treats `request_updated` as ordinary work that resolves Discord targets, so the synchronized message edits to the current request snapshot, while Web Push resolves zero targets. Trending's activity-kind filter is unchanged and excludes it.
 
-One table, `game_request_activity`, currently serves both of those responsibilities. Every successful change writes its entry inside the same transaction as the change itself, so a rolled-back mutation leaves neither the change nor a notification intent, and a committed one survives a restart before delivery. A second table would duplicate the same write for the same guarantee. notification capability1's implementation confirmed this design: the `notification` module consumes this table asynchronously and keeps its own `notification_work`/`notification_delivery` state, with no second write into `gamerequest`'s tables or transactions. Splitting the notification record out remains the expected change only if a future track demonstrates delivery-specific state that does not belong here.
+One table, `game_request_activity`, currently serves both of those responsibilities. Every successful change writes its entry inside the same transaction as the change itself, so a rolled-back mutation leaves neither the change nor a notification intent, and a committed one survives a restart before delivery. A second table would duplicate the same write for the same guarantee. The `notification` module consumes this table asynchronously and keeps its own `notification_work`/`notification_delivery` state, with no second write into `gamerequest`'s tables or transactions.
 
 Two rules govern how a consumer reads it:
 
@@ -348,9 +348,9 @@ The singleton Discord destination row has a separate UUID identity for each succ
 
 The notification module consumes durable Game Request outbox work asynchronously; it does not own or write Game Requests, and Game Request capability never writes into `notification`'s tables. Discovery uses a `NOT EXISTS` anti-join against `game_request_activity.sequence` plus a unique constraint on `notification_work.activity_sequence`, not a high-watermark cursor, so a row committed late is never silently skipped. A one-time, idempotent baseline pass materializes all pre-existing `origin=live` activity as never-deliverable "baseline" work before the worker starts; `origin=backfill` rows are excluded from discovery entirely. Delivery claiming uses `FOR UPDATE SKIP LOCKED` with a 60-second lease so a crashed worker's claim becomes eligible again automatically, with no in-process mutex and no additional required runtime service. The worker re-checks target eligibility against the owning transport before every send, including retries. A proven loss of eligibility marks the delivery `suppressed`; a failed eligibility read instead records the ordinary retry/backoff without calling the provider.
 
-E1 exposes authorized diagnostics and manual retry as `lansurfer admin notifications problems|retry|retry-uncertain` — a CLI surface, not an HTTP page. `lansurfer admin notifications generate-secrets` is an operator helper that prints fresh VAPID keys and a data-encryption key to stdout without loading configuration or persisting anything. brand/UI capability owns any future in-app presentation.
+The `notification` module exposes authorized diagnostics and manual retry as `lansurfer admin notifications problems|retry|retry-uncertain` — a CLI surface, not an HTTP page. `lansurfer admin notifications generate-secrets` is an operator helper that prints fresh VAPID keys and a data-encryption key to stdout without loading configuration or persisting anything.
 
-E2 stores each PushSubscription endpoint, `p256dh`, and `auth` encrypted at rest with AES-256-GCM and uses a keyed endpoint fingerprint for uniqueness/ownership lookup. `/account/notifications` manages permission/subscription, audience preference, and devices; logout removes the current browser's subscription. The Web Push transport materializes eligible recipients, rechecks eligibility before sends, and uses a dedicated HTTPS-only outbound client that validates every DNS answer at dial time, dials only public IP addresses, disables proxies, and never follows redirects. E3 registers its separate Discord transport and supports connected, broken, replaced, and disconnected destinations; retries do not repeat ambiguous CREATEs. Manual validation status and device-specific evidence live on the relevant GitHub issues and pull requests rather than in this architecture document.
+Web Push stores each PushSubscription endpoint, `p256dh`, and `auth` encrypted at rest with AES-256-GCM and uses a keyed endpoint fingerprint for uniqueness/ownership lookup. `/account/notifications` manages permission/subscription, audience preference, and devices; logout removes the current browser's subscription. The Web Push transport materializes eligible recipients, rechecks eligibility before sends, and uses a dedicated HTTPS-only outbound client that validates every DNS answer at dial time, dials only public IP addresses, disables proxies, and never follows redirects. Discord delivery registers its separate Discord transport and supports connected, broken, replaced, and disconnected destinations; retries do not repeat ambiguous CREATEs. Manual validation status and device-specific evidence live on the relevant GitHub issues and pull requests rather than in this architecture document.
 
 A module must not directly update another module's tables merely because they are in the same database.
 
@@ -459,9 +459,11 @@ LANsurfer User
       +-- Identity: OIDC provider / subject
       |
       +-- Identity: Discord provider / subject
+      |
+      +-- Identity: Twitch provider / subject
 ```
 
-LANsurfer supports provider-neutral generic OIDC and Discord OAuth2 authorization-code login as independent providers.
+LANsurfer supports provider-neutral generic OIDC, Discord OAuth2 authorization-code login, and Twitch as independent providers.
 
 The initial deployment may use Keycloak, but application/domain code must not assume Keycloak.
 
@@ -543,13 +545,23 @@ Do not introduce a config file format unless a concrete requirement appears.
 
 ## 16. Branding and Installable Web Shell Architecture
 
-LANsurfer keeps a fixed, accessible visual system and bundled application branding. Templates consume centralized branding values instead of repeating constants. Bundle approved logos/mascot/font assets with the application; do not add a runtime font or branding CDN.
+LANsurfer keeps a fixed, accessible visual system and bundled application branding. Templates consume centralized branding values instead of repeating constants. Bundle approved logos/mascot/font assets with the application; do not add a runtime font or branding CDN, and do not link Google Fonts stylesheets. [DESIGN.md](../DESIGN.md) owns the visual values and usage rules; this section owns how they are implemented.
+
+The fixed brand definition lives near the web composition layer (`internal/web/branding`) as one small value containing the product name, tagline, semantic colors, the operating community's name and public URL used by the **Powered by …** attribution, and built-in asset paths. Tailwind/DaisyUI theme values, CSS custom properties, and templ components derive from that definition or its generated/static stylesheet rather than introducing parallel constants. Every **Powered by …** credit renders from the operator name and URL in that definition, so changing the credited community is a single-value change there, not a template edit or administrator setting.
+
+Fixed brand values and the operator attribution are not environment configuration or mutable PostgreSQL state. Minimum instance identity is separate product state and stays deliberately small rather than becoming a branding editor.
+
+The bounded IGDB cover and provider-avatar proxies are content exceptions, not branding exceptions. They do not permit remote logos, icons, fonts, theme assets, or arbitrary images.
 
 LANsurfer does not provide PostgreSQL-backed administrator-managed welcome text, contact link, uploaded logo, uploaded application icon, white-labeling, or theme controls. A deployment may expose only the minimum instance identity required to distinguish the installation, plus the operator legal identity described in §15.
 
 Serve a manifest with a stable application identity/start URL and bundled/default presentation. A minimal service worker supports installation and Web Push; it does not promise offline application behavior.
 
 PWA/instance identity capability owns service-worker registration, lifecycle, and update behavior. notification capability attaches Web Push behavior to that contract rather than creating a competing service worker or registration path.
+
+A new service worker activates immediately (`skipWaiting`, `clients.claim`). There is no update banner, refresh-to-update flow, update polling, or custom install prompt.
+
+The worker handles no `fetch` events and owns no cache or user state; `/service-worker.js` and `/manifest.webmanifest` are served `no-store`. Because the worker is neutral, logout does not unregister it. An authenticated page restored from the back/forward cache reloads, so a frozen DOM is never treated as current after a session change.
 
 ---
 
@@ -589,6 +601,7 @@ When enabled:
 - synchronize lightweight search/classification metadata for all IGDB game records; do not filter game types at ingestion
 - keep enough provider data to search/disambiguate by name/alias, provider ID, type/category, useful relationships, platform/release context, and cover reference metadata
 - do not mirror the full provider graph or bulk-download cover images; cover bytes are cached on demand only for cover IDs LANsurfer already knows
+- rebuild a complete generation on every synchronization instead of applying incremental changes; a full rebuild detects deletions and isolates a partial baseline without change cursors
 - do not expose partially synchronized IGDB results during the first baseline sync
 - after the first successful baseline, run automatic refresh once per day and offer global administrators **Sync now**
 - retry failures independently of core request traffic
@@ -634,7 +647,7 @@ The bounded proxy core (validation hook, store, negative cache, singleflight, ad
 
 ## 18. Frontend Architecture
 
-`templ` renders full pages and HTMX fragments. DaisyUI provides the stable base component vocabulary; Tailwind handles layout/local variations. Avoid another UI framework.
+`templ` renders full pages and HTMX fragments. DaisyUI provides the stable base component vocabulary; Tailwind handles layout/local variations. Avoid another UI framework. Design references such as `docs/ui-kit/index.html` are not production code or a runtime dependency; translate them into this templ/HTMX, Tailwind, and DaisyUI frontend.
 Icons are the Phosphor webfonts (Regular default, Fill for emphasized state), consumed as plain CSS classes in templ markup with `currentColor`; TypeScript does not manage icons.
 
 TypeScript handles only browser-specific progressive enhancement such as SSE connection handling, toast/dialog helpers, installability/service-worker registration, and Web Push permission/subscription behavior. Do not implement domain decisions in TypeScript.
@@ -672,9 +685,9 @@ Request logging records an `outcome` of `completed`, `client-aborted`, or `timed
 
 The production Compose example pins the LANsurfer image, does not publish PostgreSQL to the host, and retains only application + database as required services. TLS and reverse proxy remain operator responsibilities.
 
-Migrations remain forward-only. Final supported `main`-revision upgrade, backup/restore, and key-backup validation belong to release integration after persistent migrations settle.
+Migrations remain forward-only.
 
-Supported production deployment must preserve required HTTP behavior through the chosen proxy/deployment path, including normal regression coverage for core interactions. Issue #15's reported hang is not an open architecture investigation requirement.
+Supported production deployment must preserve required HTTP behavior through the chosen proxy/deployment path, including normal regression coverage for core interactions.
 
 ### Prometheus metrics
 

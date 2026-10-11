@@ -96,7 +96,7 @@ func TestDiscordSend10008RecoversWithOneReplacementMessage(t *testing.T) {
 
 // A replacement create Discord accepted, followed by a lost sync
 // transaction (simulated by terminating the backend holding the advisory
-// lock), must retain the E3-19/E3-18 durable reservation exactly like an
+// lock), must retain the durable reservation exactly like an
 // initial create: no automatic replay creates a second replacement even
 // after the claim's lease expires.
 func TestDiscordSend10008ReplacementCreateNeverReplaysAfterLostSync(t *testing.T) {

@@ -177,8 +177,8 @@ func (s *SubscriptionService) Unfollow(ctx context.Context, userID, gameID strin
 	return s.repository.Unfollow(ctx, userID, gameID)
 }
 
-// ListFollowers returns the user IDs following gameID, for Track E2's
-// notification recipient materialization (Task 4).
+// ListFollowers returns the user IDs following gameID, for Web Push's
+// notification recipient materialization.
 func (s *SubscriptionService) ListFollowers(ctx context.Context, gameID string) ([]string, error) {
 	return s.repository.ListFollowers(ctx, gameID)
 }

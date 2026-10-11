@@ -9,7 +9,7 @@ import "github.com/a-h/templ"
 import templruntime "github.com/a-h/templ/runtime"
 
 // NoticeTone picks the feedback colour for a completed action, following
-// docs/BRANDING.md "Action feedback". Failures are not notices: they render
+// DESIGN.md "Action feedback". Failures are not notices: they render
 // as role="alert" alert-error next to the control.
 type NoticeTone string
 

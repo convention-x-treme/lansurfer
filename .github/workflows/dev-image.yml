@@ -65,5 +65,5 @@ jobs:
             echo "- \`${{ steps.image.outputs.immutable_tag }}\`"
             echo "- \`${{ steps.image.outputs.moving_tag }}\`"
             echo
-            echo "This is an amd64 development image only. It is not a Track F release artifact."
+            echo "This is an amd64 development image only. It is not a release artifact."
           } >> "${GITHUB_STEP_SUMMARY}"

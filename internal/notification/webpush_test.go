@@ -77,7 +77,7 @@ func (f *fakeWebPushSubscriptionSource) ListUsersWithAudience(ctx context.Contex
 }
 
 // GetSubscriptionByID is unused by Targets; it exists only so this fake
-// satisfies DeliveryReadRepository in full. Task 5's Send tests exercise it
+// satisfies DeliveryReadRepository in full. The Send tests exercise it
 // for real.
 func (f *fakeWebPushSubscriptionSource) GetSubscriptionByID(ctx context.Context, id int64) (PushSubscriptionRecord, error) {
 	return PushSubscriptionRecord{}, nil

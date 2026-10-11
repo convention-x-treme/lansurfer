@@ -1,6 +1,6 @@
 import { expect, test, type Page, type Worker } from "@playwright/test";
 
-// Track D's service-worker contract is deliberately narrow: install/activate
+// The service-worker contract is deliberately narrow: install/activate
 // only, registered once at root scope, swallowing its own failures. These
 // tests cover exactly the interaction-hardening behavior no Go test can
 // reach — the compiled bundle's own content (no fetch handler, headers,

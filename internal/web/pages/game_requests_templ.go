@@ -1267,16 +1267,16 @@ func GameRequestRow(request requestquery.Request, viewerID, highlightedID string
 	})
 }
 
-// NewGameRequest is the Game Request composer (Task 7): discovery-first,
-// exactly like /games (Task 4), rather than a dropdown of pre-existing
+// NewGameRequest is the Game Request composer: discovery-first,
+// exactly like /games, rather than a dropdown of pre-existing
 // Games. It never materializes a provider Game itself -- selected already
-// carries whatever discovery.Select found (page.SearchTooShort/HasMore rules
-// from Task 3), and only the final validated Create POST ever calls
+// carries whatever discovery.Select found (page.SearchTooShort/HasMore rules),
+// and only the final validated Create POST ever calls
 // GameResolver.Resolve.
 //
 // showDetails controls #game-request-details independently of selected:
 // New() only ever shows it once selected != nil, but a failed Create POST
-// (Task 7 Step 9) keeps every already-typed request detail visible (and
+// keeps every already-typed request detail visible (and
 // showDetails true) even when the previously selected provider Game just
 // became unavailable and selected is nil again, so the player can pick a
 // replacement without retyping max players/start/description.
@@ -1916,7 +1916,7 @@ func GameRequestDetailsFields(form GameRequestForm, message ComposerMessage) tem
 }
 
 // GameRequestDiscoverySearchForm is the composer's search box, reusing
-// Games' live-search interaction model (Task 4's GameSearchForm) rather
+// Games' live-search interaction model (GameSearchForm) rather
 // than reinventing it: the same 300ms debounce, no submit button to press,
 // and the composer's already-typed request details riding along as hidden
 // transport state so a result's plain href still preserves them.
@@ -1979,7 +1979,7 @@ func GameRequestDiscoverySearchForm(search string, form GameRequestForm) templ.C
 }
 
 // GameRequestDiscovery renders the composer's pick list, with the same
-// page-state/copy rules as Games' GameCatalogResults (Task 4) -- reused
+// page-state/copy rules as Games' GameCatalogResults -- reused
 // rather than reinvented. Every card is a plain full-page link back to the
 // composer, exactly like Games' "Find Players" action.
 func GameRequestDiscovery(page game.DiscoveryPage, search string, viewer *components.Viewer, form GameRequestForm) templ.Component {
@@ -3997,7 +3997,7 @@ func joinButtonClass(request requestquery.Request) string {
 }
 
 // detailJoinButtonClass carries the same action level as the list row. Sea Foam
-// is a label colour in docs/BRANDING.md, not an action fill.
+// is a label colour in DESIGN.md, not an action fill.
 func detailJoinButtonClass(request requestquery.Request) string {
 	if lastPlace(request) {
 		return "btn btn-urgent"

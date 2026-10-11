@@ -7,7 +7,7 @@ import (
 
 // Service exposes authorized diagnostics and manual retry over durable
 // notification state. It performs no authorization itself: the caller
-// (currently the admin CLI in internal/app, see Task 9) is responsible for
+// (currently the admin CLI in internal/app) is responsible for
 // only reaching Service through an already-authorized path.
 type Service struct {
 	repo             DiagnosticsRepository

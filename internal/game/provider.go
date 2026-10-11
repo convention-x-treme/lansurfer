@@ -129,7 +129,7 @@ type DiscoverySearchResult struct {
 // being disabled did before this contract existed, but through the same
 // ranked query rather than a separate local-only code path.
 //
-// FindLocal and FindProvider (Task 5) are targeted single-row read-only
+// FindLocal and FindProvider are targeted single-row read-only
 // lookups for the Game Request composer, each keyed by its own precise
 // identity (a local Game ID, or one provider reference) rather than
 // deduplicating across a ranked candidate set the way Search does. FindLocal

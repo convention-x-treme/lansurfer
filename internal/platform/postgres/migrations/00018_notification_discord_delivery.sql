@@ -6,7 +6,7 @@
 --
 -- The webhook ID and token are never stored in the clear: they live only
 -- inside credential_ciphertext, one versioned AES-GCM blob encrypted with
--- the operator's Track E data-encryption key (see internal/platform/crypto
+-- the operator's data-encryption key (see internal/platform/crypto
 -- and internal/notification/discord_credentials.go). guild_id, channel_id,
 -- webhook_name, state, and the timestamps below are safe, queryable
 -- metadata that administrators may see directly.

@@ -57,7 +57,7 @@ type GameResolver interface {
 }
 
 // GameRequestDiscovery is the composer's own narrow read-only view of the
-// shared Game discovery service (Task 3/5): Browse renders the "Find your
+// shared Game discovery service: Browse renders the "Find your
 // game"/"Change game" search, and Select looks up an already-chosen local or
 // provider Game for display only. Neither call ever materializes a provider
 // Game -- that only ever happens through GameResolver.Resolve, and only at
@@ -172,7 +172,7 @@ func (h *GameRequests) RefreshList(w http.ResponseWriter, r *http.Request) {
 	render(w, r, http.StatusOK, pages.GameRequestListContent(h.brand, requests, filter, navigation.Viewer, r.URL.Query().Get("highlight"), true, trending, ""))
 }
 
-// discoveryFilter reads the stable 1.0 Game Request discovery filters. An
+// discoveryFilter reads the Game Request discovery filters. An
 // unknown or absent value simply leaves the list unfiltered.
 func discoveryFilter(r *http.Request) requestquery.Filter {
 	query := r.URL.Query()
@@ -239,7 +239,7 @@ func (h *GameRequests) firstRequest(r *http.Request, viewerID string) bool {
 	return !created
 }
 
-// Discovery is the composer's live-search fragment (Task 7 Step 6): it
+// Discovery is the composer's live-search fragment: it
 // calls the same read-only browsePicker as New and never materializes
 // anything. The search form carries the composer's request details as
 // hidden transport fields, so the cards this fragment renders keep them in
@@ -312,7 +312,7 @@ func (h *GameRequests) Create(w http.ResponseWriter, r *http.Request) {
 // renderComposerError re-renders the composer after a Create failure,
 // keeping every posted request-detail value (max players, start, description)
 // and, when the previously selected Game is still valid, keeping it selected
-// too (Task 7 Step 9). It never re-resolves a provider reference -- only the
+// too. It never re-resolves a provider reference -- only the
 // read-only discovery.Select -- so re-rendering a failed submission can never
 // itself materialize anything.
 func (h *GameRequests) renderComposerError(w http.ResponseWriter, r *http.Request, form pages.GameRequestForm, status int, message pages.ComposerMessage) {

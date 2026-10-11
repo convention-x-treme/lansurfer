@@ -8,13 +8,12 @@ import (
 
 var errDiscordSendAborted = errors.New("discord send transaction intentionally rolled back")
 
-// errDiscordCreateUnrecorded means an earlier automatic create (including an
-// E3-19 replacement create) may have reached Discord without a durable
+// errDiscordCreateUnrecorded means an earlier automatic create (including a
+// replacement create) may have reached Discord without a durable
 // message ID. Creating again could duplicate.
 var errDiscordCreateUnrecorded = errors.New("discord create already attempted without recorded outcome")
 
-// NewDiscordSendTransport is the isolated E3-18 transport constructor. Runtime
-// registration remains E3-21. The repository must use the same PostgreSQL
+// NewDiscordSendTransport constructs the Discord transport. The repository must use the same PostgreSQL
 // transaction for every callback read and write, including the current snapshot.
 func NewDiscordSendTransport(store DiscordMessageSyncRepository, key []byte, baseURL, instanceName string, client *http.Client) *DiscordTransport {
 	return &DiscordTransport{
@@ -24,7 +23,7 @@ func NewDiscordSendTransport(store DiscordMessageSyncRepository, key []byte, bas
 	}
 }
 
-// Send retains the E1 Transport contract. A zero delivery ID is resolved
+// Send retains the Transport contract. A zero delivery ID is resolved
 // against the unique durable (activity sequence, target) claim under the lock;
 // Worker passes the exact claimed delivery to SendClaimed instead.
 func (t *DiscordTransport) Send(ctx context.Context, activity Activity, target Target) SendResult {
@@ -87,8 +86,8 @@ func (t *DiscordTransport) SendClaimed(ctx context.Context, delivery ClaimedDeli
 	// createCurrent renders the latest current Game Request snapshot (never
 	// historical/intermediate activity, and freshly resolved rather than
 	// reused from a failed edit's snapshot) and creates exactly one
-	// replacement message under the same E3-18 durable pre-send reservation
-	// used by a fresh create: an E3-19 10008-recovery create is externally
+	// replacement message under the same durable pre-send reservation
+	// used by a fresh create: a 10008-recovery create is externally
 	// non-idempotent exactly like the initial create, so it must not bypass
 	// that protection or introduce a second reservation mechanism.
 	createCurrent := func(repo DiscordMessageSyncRepository, claimID int64, credential DiscordWebhookCredential) error {
@@ -170,7 +169,7 @@ func (t *DiscordTransport) SendClaimed(ctx context.Context, delivery ClaimedDeli
 			version = sync.AppliedVersion
 		}
 		// Equal version with an empty message slot is not "already applied":
-		// an E3-19 compare-and-clear recovery may have cleared the reference
+		// a compare-and-clear recovery may have cleared the reference
 		// at this exact version without yet creating its replacement (an
 		// uncertain outcome, a lost commit, or a crash between the two). That
 		// pending recovery must still reach the create branch below, never
@@ -267,7 +266,7 @@ func releaseDiscordCreate(ctx context.Context, repo DiscordMessageSyncRepository
 // discordDeliveryRecoverMessage (10008) and discordDeliveryBrokenDestination
 // (10015) are always intercepted before reaching here, since both require
 // mutating destination/sync state under the same serialization boundary
-// (E3-19 recovery, E3-20 broken-destination transition).
+// (recovery, broken-destination transition).
 func discordSendResult(classified discordDeliveryResult) SendResult {
 	switch classified.Kind {
 	case discordDeliverySucceeded:

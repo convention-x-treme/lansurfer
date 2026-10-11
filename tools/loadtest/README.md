@@ -1,6 +1,6 @@
 # LANsurfer local load-test harness
 
-Part of #139. Everything here targets only the isolated Compose project `lansurfer-loadtest` (database `lansurfer_loadtest`, `127.0.0.1:18080`, PostgreSQL on `127.0.0.1:55433`). It never reads `LANSURFER_DATABASE_URL`, never touches the development stack, and needs no Keycloak/OIDC/Discord account.
+Everything here targets only the isolated Compose project `lansurfer-loadtest` (database `lansurfer_loadtest`, `127.0.0.1:18080`, PostgreSQL on `127.0.0.1:55433`). It never reads `LANSURFER_DATABASE_URL`, never touches the development stack, and needs no Keycloak/OIDC/Discord account.
 
 What it provides:
 
@@ -222,7 +222,7 @@ rm -f "$HOME/lansurfer-loadtest-sessions.jsonl" "$HOME/lansurfer-loadtest-fixtur
       "$HOME/lansurfer-loadtest-fixtures-large.json" "$HOME/lansurfer-loadtest-control.json" \
       "$HOME/lansurfer-loadtest-metrics-key"
 unset LANSURFER_LOADTEST_DATABASE_URL
-# 3. Optional: reports are evidence. Archive what #139/#140 still need, then delete by hand.
+# 3. Optional: reports are evidence. Archive what you still need, then delete by hand.
 #    rm -rf "$HOME/lansurfer-loadtest-reports"
 ```
 
@@ -232,4 +232,4 @@ Double-check the project name and Compose file path before running `down -v`. Ne
 
 ## Interpretation
 
-A local WSL result measures your workstation and the load generator together, so it is a development rehearsal, not pilot capacity evidence. For the #140/#93 run, repeat on pilot-equivalent hardware, proxy, and network, ideally with the load generator on another machine, and record revision, resources, workload, p95/p99, server/database metrics, SSE behavior, failures, and recovery. A passing local run closes no #93 checkbox.
+A local WSL result measures your workstation and the load generator together, so it is a development rehearsal, not pilot capacity evidence. For a representative run, repeat on pilot-equivalent hardware, proxy, and network, ideally with the load generator on another machine, and record revision, resources, workload, p95/p99, server/database metrics, SSE behavior, failures, and recovery.

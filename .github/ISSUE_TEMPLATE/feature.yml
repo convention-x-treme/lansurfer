@@ -7,7 +7,7 @@ body:
     id: problem
     attributes:
       label: Problem
-      description: Which real user or operator problem should this solve?
+      description: Which real user or operator problem should this solve? Issues track software development only, not event operations or release approvals.
     validations:
       required: true
   - type: textarea
@@ -27,5 +27,5 @@ body:
     attributes:
       label: Scope check
       options:
-        - label: I checked the current product scope and existing GitHub issues/milestone.
+        - label: I checked the product boundaries in PRODUCT.md and existing GitHub issues/milestones.
           required: true

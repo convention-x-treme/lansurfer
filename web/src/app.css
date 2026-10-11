@@ -17,7 +17,7 @@
    [data-theme="lansurfer-light"] override cannot see that last case, which is
    why the light corrections used to leak dark values onto a light desktop.
 
-   Each level of the action hierarchy in docs/BRANDING.md owns one surface, so a
+   Each level of the action hierarchy in DESIGN.md owns one surface, so a
    filled Surf Blue button keeps meaning exactly one thing: this moves you
    forward. Ratios in the comments are measured against the surface each token
    actually lands on. */
@@ -424,7 +424,7 @@
     padding: 1.5rem 1rem 3rem;
   }
 
-  /* Screen title, per the type scale in docs/BRANDING.md. The top bar used to
+  /* Screen title, per the type scale in DESIGN.md. The top bar used to
      carry two lines of 13 px mono and no title at all. */
   .app-title {
     font-size: 1.5rem;
@@ -941,7 +941,7 @@
     border-color: color-mix(in srgb, var(--brand-sunset) 70%, var(--border-raised));
   }
 
-  /* Screen title per the type scale in docs/BRANDING.md: the Game names the
+  /* Screen title per the type scale in DESIGN.md: the Game names the
      page, so it is set larger here than the top bar's own title. */
   .detail-title {
     min-width: 0;
