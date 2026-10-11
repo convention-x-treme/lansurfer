@@ -1,0 +1,95 @@
+name: Publish release
+
+# Only an explicit, immutable SemVer tag starts publishing. Never publish from
+# pull requests, main pushes, scheduled jobs, or a workflow_dispatch action.
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate source tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out exact tagged revision and all branch refs
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate SemVer tag and maintained source branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF#refs/tags/}"
+          python3 scripts/release/release_policy.py validate "$tag"
+          test "${GITHUB_REF}" = "refs/tags/$tag"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse "refs/tags/$tag^{commit}")"
+
+          # A tag can be cut from main or a supported release/vN branch.
+          # Never release an arbitrary feature-branch-only commit.
+          if ! git for-each-ref --contains HEAD --format='%(refname:short)' refs/remotes/origin |
+              grep -Eq '^origin/(main|release/v(0|[1-9][0-9]*))$'; then
+            echo "::error::Tag source must be reachable from main or release/vN" >&2
+            exit 1
+          fi
+
+  test:
+    name: Validate tag revision through full CI
+    needs: validate
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
+  publish:
+    name: Publish GitHub Release and GHCR image
+    needs: [validate, test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    # Serializes all tag publishers: a slower older-major backport must never
+    # race a newer version when promoting vX, vX.Y and latest.
+    concurrency:
+      group: lansurfer-release-publisher
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      packages: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out exact tagged revision and full history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up QEMU for arm64
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Install pinned GoReleaser OSS
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        with:
+          distribution: goreleaser
+          version: v2.18.3
+          install-only: true
+
+      - name: Publish only after exact-tag CI and verify before announcing
+        shell: bash
+        run: bash scripts/release/publish.sh
