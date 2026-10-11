@@ -689,6 +689,12 @@ Migrations remain forward-only.
 
 Supported production deployment must preserve required HTTP behavior through the chosen proxy/deployment path, including normal regression coverage for core interactions.
 
+### Release and distribution
+
+The release source of truth is an immutable SemVer `vX.Y.Z` Git tag on a reviewed `main` or maintained `release/vN` commit. The tag workflow reuses the complete CI at that exact source revision before granting publication rights to a separate job. GoReleaser OSS builds the Linux amd64/arm64 archives and checksums, and `dockers_v2` packages those same binaries in a non-root `scratch` image with required CA certificates. Main-branch development images remain separate from official releases.
+
+Official GitHub Releases begin as **drafts**. Only after validating release artifacts, exact source revision and the multi-architecture GHCR image does the publisher promote safe mutable aliases and make the GitHub Release visible. Stable `vN.M`, `vN`, `latest` and GitHub's latest-release marker must never move to an older semantic version when supported major lines release out of order. Prereleases move no stable aliases. GitHub Releases, registry images and aliases cannot be published as one atomic transaction; failures require explicit draft/registry reconciliation, never moving or silently rebuilding an existing published version tag. Implementation, maintainer commands and failure recovery are documented in [CONTRIBUTING.md](../CONTRIBUTING.md#creating-and-recovering-official-releases).
+
 ### Prometheus metrics
 
 `internal/platform/metrics` owns one instance-local Prometheus registry, standard
