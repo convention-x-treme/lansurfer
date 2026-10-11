@@ -105,12 +105,29 @@ class AliasPlanTest(unittest.TestCase):
         result = plan_aliases("v1.4.10", [release("v1.4.9")])
         self.assertEqual(result["aliases"], ["v1.4", "v1", "latest"])
 
-    def test_drafts_and_prereleases_do_not_count_as_stable(self):
+    def test_newer_draft_blocks_latest_after_partial_publish(self):
+        # A v2 draft may already have moved GHCR latest before a failure.
         result = plan_aliases(
             "v1.5.0", [release("v2.0.0", draft=True),
                        release("v2.0.0-rc.1", prerelease=True)]
         )
-        self.assertEqual(result["aliases"], ["v1.5", "v1", "latest"])
+        self.assertEqual(result["aliases"], ["v1.5", "v1"])
+        self.assertFalse(result["make_latest"])
+
+    def test_newer_draft_blocks_major_and_minor_downgrades(self):
+        result = plan_aliases(
+            "v1.4.1", [release("v1.4.2", draft=True)]
+        )
+        self.assertEqual(result["aliases"], [])
+        self.assertFalse(result["make_latest"])
+
+    def test_current_draft_does_not_block_its_own_version_aliases(self):
+        result = plan_aliases("v1.0.0", [release("v1.0.0", draft=True)])
+        self.assertEqual(result["aliases"], ["v1.0", "v1", "latest"])
+
+    def test_prerelease_does_not_block_new_stable_aliases(self):
+        result = plan_aliases("v1.0.0", [release("v2.0.0-rc.1", prerelease=True)])
+        self.assertEqual(result["aliases"], ["v1.0", "v1", "latest"])
 
     def test_ignore_unrelated_tags(self):
         result = plan_aliases("v1.5.0", [release("legacy-2026"), release("v1.5.0+meta")])
