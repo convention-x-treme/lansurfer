@@ -43,23 +43,22 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
-      - name: Check release configuration
+      - name: Install pinned GoReleaser OSS on PATH
         uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:
           distribution: goreleaser
           version: v2.18.3
-          args: check
+          install-only: true
+
+      - name: Check release configuration
+        run: goreleaser check
 
       - name: Validate release-note groups with synthetic history
         shell: bash
         run: bash scripts/release/test-changelog.sh
 
       - name: Build all snapshot artifacts and local Docker images
-        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
-        with:
-          distribution: goreleaser
-          version: v2.18.3
-          args: release --snapshot --clean
+        run: goreleaser release --snapshot --clean
 
       - name: Verify snapshot artifacts
         shell: bash
