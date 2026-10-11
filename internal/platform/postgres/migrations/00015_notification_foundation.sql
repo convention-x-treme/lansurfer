@@ -1,6 +1,6 @@
 -- +goose Up
 -- A singleton marker: at most one row, and it can only ever be `true`. Its
--- presence means E1's one-time baseline materialization has already run, so
+-- presence means the one-time baseline materialization has already run, so
 -- a later restart never re-scans and never risks delivering pre-upgrade
 -- history. See internal/notification/postgres/store.go InitializeBaseline.
 CREATE TABLE notification_baseline (
@@ -8,7 +8,7 @@ CREATE TABLE notification_baseline (
     initialized_at timestamptz NOT NULL DEFAULT now()
 );
 
--- One row per game_request_activity row Track E has consumed. The UNIQUE
+-- One row per game_request_activity row the notification module has consumed. The UNIQUE
 -- constraint on activity_sequence is what makes repeated discovery harmless:
 -- INSERT ... ON CONFLICT (activity_sequence) DO NOTHING is the only
 -- durability guarantee this module needs, in place of a global cursor.

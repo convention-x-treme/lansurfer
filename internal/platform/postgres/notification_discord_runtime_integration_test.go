@@ -11,7 +11,7 @@ import (
 	notificationpostgres "github.com/convention-x-treme/lansurfer/internal/notification/postgres"
 )
 
-// TestDiscordRuntimeConstructedTransportDeliversWork proves E3-21's runtime
+// TestDiscordRuntimeConstructedTransportDeliversWork proves runtime
 // registration through the exact production combination
 // (notification.NewDiscordSendTransport feeding notification.NewWorker),
 // which is all internal/app.newNotificationWorker/notificationTransports
@@ -55,11 +55,11 @@ func TestDiscordRuntimeConstructedTransportDeliversWork(t *testing.T) {
 }
 
 // TestDiscordRuntimeDisabledConfigurationNeverConstructsOrDelivers proves
-// the other half of E3-21's gating: with no Discord transport registered
+// the other half of that gating: with no Discord transport registered
 // (the disabled-configuration case internal/app's unit tests prove at the
 // construction layer), the worker discovers and materializes live activity
 // as always, but a Discord target never appears and no delivery is ever
-// attempted, exactly like before E3 existed.
+// attempted, exactly as if Discord delivery did not exist.
 func TestDiscordRuntimeDisabledConfigurationNeverConstructsOrDelivers(t *testing.T) {
 	pool := newTestPool(t)
 	if err := Migrate(t.Context(), pool, testLogger()); err != nil {

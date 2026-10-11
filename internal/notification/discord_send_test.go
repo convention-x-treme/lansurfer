@@ -42,7 +42,7 @@ type discordSendStore struct {
 	reserveErr       error
 	reservationOwner int64
 	releasePending   bool
-	// E3-20 broken-destination/suppression tracking.
+	// Broken-destination/suppression tracking.
 	markBrokenErr       error
 	markBrokenMismatch  bool
 	brokenReason        string

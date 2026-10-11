@@ -31,7 +31,7 @@ var (
 
 // DiscordSetupService creates and atomically consumes the one-use OAuth
 // setup state that binds one "configure Discord destination" attempt to
-// its initiating administrator and browser/session, per the approved E3
+// its initiating administrator and browser/session, per the
 // setup-flow security design. It mirrors internal/auth's OAuthService
 // state/browser-binding pattern but stays inside the notification module:
 // this flow never creates or touches a Discord authentication identity.

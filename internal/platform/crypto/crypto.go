@@ -1,5 +1,5 @@
-// Package crypto provides the narrow AES-GCM/HMAC primitives Track E uses to
-// store external credentials (Web Push subscription material, later Discord
+// Package crypto provides the narrow AES-GCM/HMAC primitives the notification module uses to
+// store external credentials (Web Push subscription material, Discord
 // webhook tokens) at rest, and to derive a stable, non-reversible fingerprint
 // for enforcing endpoint uniqueness without persisting the raw endpoint.
 package crypto

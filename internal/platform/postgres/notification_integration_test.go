@@ -927,7 +927,7 @@ func TestNotificationRestartRedeliversPendingAndRetryScheduledWorkAfterProcessRe
 
 	// "Restart" the process: close this pool, open a fresh one against the
 	// same schema, and build a new Store/Worker, exactly as
-	// TestCommittedActivitySurvivesRestartBeforeDelivery does for Track A.
+	// TestCommittedActivitySurvivesRestartBeforeDelivery does for Game Request activity.
 	schemaName := currentSchema(t, pool)
 	pool.Close()
 	restartedPool := reopenTestPool(t, schemaName)

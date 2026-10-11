@@ -1,7 +1,7 @@
 -- name: FailAbandonedIGDBGenerations :exec
 -- Before staging a new generation, retire any leftover 'syncing' row left
 -- behind by a process that exited before calling CompleteIGDBGeneration or
--- FailIGDBGeneration. LANsurfer 1.0 is single-instance only and
+-- FailIGDBGeneration. LANsurfer is single-instance only and
 -- IGDBSyncService.TryStart already keeps at most one sync running per
 -- process (spec: "Automatic/manual sync cannot overlap in one process"), so
 -- a still-'syncing' row observed here can only be a leftover from a
@@ -320,8 +320,8 @@ JOIN igdb_provider_state state
 WHERE provider_game.igdb_id = sqlc.arg(igdb_id);
 
 -- name: FindLocalDiscoveryGame :one
--- Read-only composer selection by local Game ID (Task 5,
--- GameSelection.LocalGameID). Targets one precise row by primary key -- not
+-- Read-only composer selection by local Game ID
+-- (GameSelection.LocalGameID). Targets one precise row by primary key -- not
 -- the ranked/deduplicated Search query -- so it never inherits Search's
 -- DISTINCT ON tie-break nondeterminism. Returns the active local Game's own
 -- current name/slug, its retained last-known-good game_igdb_enrichment
@@ -347,8 +347,8 @@ WHERE g.id = sqlc.arg(game_id)::uuid
   AND g.active;
 
 -- name: FindProviderDiscoveryGame :one
--- Read-only composer selection by IGDB provider reference (Task 5,
--- GameSelection.Reference). The provider row must belong to the ACTIVE
+-- Read-only composer selection by IGDB provider reference
+-- (GameSelection.Reference). The provider row must belong to the ACTIVE
 -- generation, exactly like ActiveIGDBProviderGame/Search's provider_matches
 -- CTE: a still-syncing or already-retired generation is invisible, so an
 -- absent row here (empty provider_row) means ErrProviderRecordNotFound to
@@ -365,7 +365,7 @@ WHERE g.id = sqlc.arg(game_id)::uuid
 --     player-visible (supported Game Type, no version_parent) and NO
 --     non-archived mapping exists at all (independent of any local
 --     Game's active state, same as Search's unmaterialized_provider_rows
---     exclusion, Track C fix c2cea97). It returns the active generation's own provider
+--     exclusion). It returns the active generation's own provider
 --     presentation directly.
 -- A mapping that exists but points only at a deactivated local Game
 -- therefore satisfies neither arm: materialized_row's active-Game join
@@ -599,7 +599,7 @@ SET cover_image_id = COALESCE(NULLIF(EXCLUDED.cover_image_id, ''), game_igdb_enr
 -- filtered to player-visible Game Types without a version_parent and
 -- excluded whenever a non-archived game_external_ids mapping already exists
 -- for it, independent
--- of the mapped local Game's active state (Track C fix, commit c2cea97): an
+-- of the mapped local Game's active state: an
 -- admin deactivating that Game must not make its provider record reappear
 -- here as if it were new. Combined with the materialized-candidate active
 -- requirement above, a provider record mapped to a deactivated local Game

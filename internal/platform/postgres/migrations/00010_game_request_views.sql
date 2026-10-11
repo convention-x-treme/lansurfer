@@ -6,7 +6,7 @@
 -- needs no pruning to stay short.
 --
 -- This is deliberately not game_request_activity. That table is request-local
--- domain history and Track E's notification-intent handoff; a page view is
+-- domain history and the notification module's notification-intent handoff; a page view is
 -- neither, and must never be delivered as a notification.
 CREATE TABLE game_request_views (
     user_id uuid NOT NULL REFERENCES users (id) ON DELETE CASCADE,

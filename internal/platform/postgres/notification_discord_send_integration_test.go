@@ -208,7 +208,7 @@ func TestDiscordSendCreatesLatestSnapshotThenEditsSameMessage(t *testing.T) {
 	if err != nil || syncState.MessageID != "message-42" || syncState.AppliedVersion != claimed[0].Activity.Sequence {
 		t.Fatalf("create sync = %+v, %v", syncState, err)
 	}
-	// The create renders current state but records only its own E1 activity
+	// The create renders current state but records only its own activity
 	// sequence. The later joined delivery must still advance that marker.
 	newTestWorker(store, []notification.Transport{transport}).Tick(t.Context())
 	joined := discordSendNextCall(t, calls)

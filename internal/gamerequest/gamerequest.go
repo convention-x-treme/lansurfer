@@ -231,7 +231,7 @@ func (s *Service) UpdateDetails(ctx context.Context, requestID, userID string, i
 // RecordView notes that a player opened a Game Request, which is what the
 // navigation's "Recently viewed" list reads back. It publishes no event: a
 // view is private reading history, not a change to the Game Request, and must
-// never reach the realtime stream or Track E's notification handoff.
+// never reach the realtime stream or the notification module's notification handoff.
 func (s *Service) RecordView(ctx context.Context, requestID, userID string) error {
 	return s.repository.RecordView(ctx, requestID, userID)
 }

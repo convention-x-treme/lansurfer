@@ -5,7 +5,7 @@ export interface ServiceWorkerRegistrationResult {
 
 // The one service-worker registration path LANsurfer has. Normal startup
 // (app.ts) and the admin diagnostics page both import this function instead
-// of calling navigator.serviceWorker themselves — Track E's later
+// of calling navigator.serviceWorker themselves — the
 // push-permission UI does the same. The in-flight/settled promise is
 // memoized so concurrent callers on the same page (app.ts's window "load"
 // listener and the admin diagnostics module both run on /admin/pwa) share

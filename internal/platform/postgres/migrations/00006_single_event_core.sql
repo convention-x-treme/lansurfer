@@ -1,12 +1,12 @@
 -- +goose Up
--- Track A: the LANsurfer installation itself is the 1.0 event context, so a
+-- The LANsurfer installation itself is the event context, so a
 -- Game Request no longer belongs to an Event. Existing requests keep their id,
 -- creator, members, status, description, and timestamps; only the Event
 -- association is removed.
 --
 -- Legacy Event data is deliberately left untouched in the `events` table. It is
 -- no longer read by the application and no longer referenced by any row, but
--- dropping it would destroy operator data that a 1.0 upgrade never promised to
+-- dropping it would destroy operator data that an upgrade never promised to
 -- discard. A later release may remove the table once operators have exported it.
 DROP INDEX game_requests_active_event_idx;
 ALTER TABLE game_requests DROP COLUMN event_id;
@@ -14,8 +14,8 @@ CREATE INDEX game_requests_open_idx
     ON game_requests (starts_at, created_at) WHERE status = 'open';
 
 -- Durable request-local activity. This is the chronological record of
--- successful lifecycle changes, and it is also Track A's transactional handoff
--- point to Track E: a row exists exactly when the domain change it describes
+-- successful lifecycle changes, and it is also the Game Request module's transactional handoff
+-- point to the notification module: a row exists exactly when the domain change it describes
 -- committed, so a rolled-back mutation leaves no notification intent behind.
 --
 -- `sequence` identifies a row and orders the history of one Game Request. It is

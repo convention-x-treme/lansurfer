@@ -864,11 +864,11 @@ func TestIGDBActivationPreservesNewerSyncingGenerationAndCleansRetiredGeneration
 		t.Fatalf("store first generation: %v", err)
 	}
 	// The newer generation is started with the raw BeginIGDBGeneration
-	// statement rather than store.BeginGeneration: LANsurfer 1.0 is
+	// statement rather than store.BeginGeneration: LANsurfer is
 	// single-instance only and IGDBSyncService.TryStart's in-process mutex
 	// mean the store-level API never calls BeginGeneration while a sync it
 	// started is still running, so store.BeginGeneration now retires any
-	// leftover 'syncing' row first (Task 9 hardening, see
+	// leftover 'syncing' row first (see
 	// TestIGDBBeginGenerationFailsAbandonedSyncingGeneration). Going
 	// through the raw statement here still proves this test's real
 	// invariant -- that activating an OLDER generation never corrupts an
@@ -916,7 +916,7 @@ func TestIGDBLatestAttemptOutcomeRemainsCorrelated(t *testing.T) {
 		}
 		// The newer generation is started with the raw BeginIGDBGeneration
 		// statement rather than store.BeginGeneration: a second
-		// store.BeginGeneration call would run the Task 9 abandoned-generation
+		// store.BeginGeneration call would run the abandoned-generation
 		// cleanup first and retire olderID to 'failed' before this test's own
 		// FailGeneration(olderID) call below, corrupting the exact scenario
 		// this test protects (an older attempt failing after a newer one is
@@ -956,7 +956,7 @@ func TestIGDBLatestAttemptOutcomeRemainsCorrelated(t *testing.T) {
 		}
 		// See the sibling subtest above: the newer generation is started with
 		// the raw BeginIGDBGeneration statement rather than
-		// store.BeginGeneration so the Task 9 abandoned-generation cleanup
+		// store.BeginGeneration so the abandoned-generation cleanup
 		// does not retire olderID to 'failed' before this test's later
 		// ActivateGeneration(olderID) call, which needs olderID to still be
 		// 'syncing'.
@@ -1220,7 +1220,7 @@ func TestIGDBDisappearanceArchivesIdentityWithoutDeletingLocalGameThenReappearan
 	}
 }
 
-// TestIGDBMaterializationPersistsEnrichment covers Task 1's baseline case:
+// TestIGDBMaterializationPersistsEnrichment covers the baseline case:
 // materializing a provider record copies its full presentation snapshot
 // (cover, type, platforms, release date, provider-updated-at) into
 // game_igdb_enrichment, keyed by the local Game it just materialized.
@@ -1441,7 +1441,7 @@ func TestIGDBDisappearanceKeepsEnrichmentAndReappearanceRefreshesIt(t *testing.T
 }
 
 // TestGamePresentationEnrichmentPersistsThroughLocalBrowseAndMyGames covers
-// Task 2: the local Browse and My Games paths must read the last-known-good
+// the local Browse and My Games paths must read the last-known-good
 // game_igdb_enrichment snapshot for a materialized-via-IGDB Game, not just
 // the provider-search path. The test never deactivates or otherwise touches
 // provider data after materialization, so the assertions can only be
@@ -1528,10 +1528,10 @@ func TestGamePresentationEnrichmentPersistsThroughLocalBrowseAndMyGames(t *testi
 	assertPresentation(t, "MyGames", myGame.GamePresentation)
 }
 
-// TestGameRequestPresentationIncludesLocalEnrichment covers Task 6: the
+// TestGameRequestPresentationIncludesLocalEnrichment covers the
 // Game Request read model's Game field must carry the same last-known-good
-// game_igdb_enrichment snapshot /games already shows (Task 2's
-// game.GamePresentation), for both ListActive and ByID. Enrichment is
+// game_igdb_enrichment snapshot /games already shows
+// (game.GamePresentation), for both ListActive and ByID. Enrichment is
 // touched only through materialization, never written by the gamerequest
 // module itself, proving the join reads the game module's own snapshot
 // rather than gamerequest owning a copy of it.
@@ -1612,7 +1612,7 @@ func TestGameRequestPresentationIncludesLocalEnrichment(t *testing.T) {
 	}
 }
 
-// TestGetGameRequestSummaryHasNoViewer covers Track E2's system-caller read:
+// TestGetGameRequestSummaryHasNoViewer covers Web Push's system-caller read:
 // the notification worker resolves a Game Request's summary with no viewer
 // in play, unlike GetGameRequest/ByID which require one for personalization.
 func TestGetGameRequestSummaryHasNoViewer(t *testing.T) {
@@ -2364,7 +2364,7 @@ func TestDiscoverySearchPostgreSQL(t *testing.T) {
 }
 
 // TestDiscoverySelectPostgreSQL covers the read-only composer selection
-// DiscoveryService.Select adds in Task 5: it never materializes (no
+// DiscoveryService.Select adds: it never materializes (no
 // Materialize call anywhere in this test), only reads through
 // DiscoveryRepository.FindLocal/FindProvider.
 func TestDiscoverySelectPostgreSQL(t *testing.T) {
@@ -3088,11 +3088,11 @@ func TestIGDBMaterializationUnsynchronizedRacers(t *testing.T) {
 
 // beginRawIGDBGeneration inserts a new 'syncing' generation and points
 // igdb_provider_state.latest_attempt_generation_id at it using exactly the
-// statement store.BeginGeneration issues internally, but skips the Task 9
+// statement store.BeginGeneration issues internally, but skips the
 // abandoned-generation cleanup that now precedes it. It exists only so a
 // test can construct two simultaneously-'syncing' generations -- a state
 // store.BeginGeneration itself will no longer produce, since single-instance
-// 1.0 and IGDBSyncService's in-process mutex mean that method is never
+// operation and IGDBSyncService's in-process mutex mean that method is never
 // called while a sync it started is still running.
 func beginRawIGDBGeneration(t *testing.T, pool *pgxpool.Pool) string {
 	t.Helper()
@@ -3286,8 +3286,8 @@ func TestGameSubscriptionPersistence(t *testing.T) {
 	}
 }
 
-// TestGameListFollowers covers Task 1 of Track E2 Delivery: the recipient
-// materialization step (Task 4) needs the set of user IDs following a Game
+// TestGameListFollowers covers Web Push delivery: the recipient
+// materialization step needs the set of user IDs following a Game
 // to fan a notification out to. It must return exactly the followers of the
 // given Game, never a user who followed a different Game.
 func TestGameListFollowers(t *testing.T) {
@@ -3955,7 +3955,7 @@ func TestForwardMigrationIntroducesGameNickAndAuthFlows(t *testing.T) {
 	}
 
 	if err := migrateFS(t.Context(), pool, migrationFS, testLogger()); err != nil {
-		t.Fatalf("migrate to Track B schema: %v", err)
+		t.Fatalf("migrate to Game Nick schema: %v", err)
 	}
 
 	var gameNick *string
@@ -4161,7 +4161,7 @@ func assertNoEventAssociation(t *testing.T, pool *pgxpool.Pool) {
 }
 
 // Durable activity is written in the same transaction as the change it
-// describes, which is what makes it usable as Track E's notification intent: a
+// describes, which is what makes it usable as the notification module's notification intent: a
 // rejected mutation leaves neither the change nor an entry, and a committed one
 // survives a restart because it is only ever read back from PostgreSQL.
 func TestGameRequestActivityDiscoveryAndTrending(t *testing.T) {
@@ -4441,7 +4441,7 @@ func TestCommittedActivitySurvivesRestartBeforeDelivery(t *testing.T) {
 	if !slices.Equal(before, after) {
 		t.Fatalf("activity after restart = %#v, want %#v", after, before)
 	}
-	// Track E replays from `sequence`, so the order and the cursor values
+	// The notification module replays from `sequence`, so the order and the cursor values
 	// themselves have to be the same ones it would have seen before the restart.
 	for index := 1; index < len(after); index++ {
 		if after[index].sequence <= after[index-1].sequence {

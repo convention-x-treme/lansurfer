@@ -72,7 +72,7 @@ func TestDiscordSendLeaseExpiryNeverReplaysAcceptedCreate(t *testing.T) {
 }
 
 // discordSendMakeUncertainWithReservation drives one Discord create to the
-// exact ambiguous-outcome state E3-18 leaves behind: Discord accepted the
+// exact ambiguous-outcome state a lost sync transaction leaves behind: Discord accepted the
 // create, the sync transaction was lost before recording it, and an
 // automatic lease-expiry reclaim already proved it cannot replay the create
 // while the reservation stands. It returns the transport/service ready for
@@ -135,7 +135,7 @@ func discordSendMakeUncertainWithReservation(t *testing.T) (pgxPool *pgxpool.Poo
 	return pool, store, transport, destination, request.ID, claims[0].DeliveryID, key
 }
 
-// This is the explicit administrator override E1 defines as
+// This is the explicit administrator override the notification module defines as
 // ManualRetryUncertain: it knowingly risks a duplicate externally visible
 // Discord message, unlike every automatic path (lease expiry, worker
 // reclaim, restart), which must never clear this reservation. Proving that

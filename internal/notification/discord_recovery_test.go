@@ -201,7 +201,7 @@ func TestDiscordSendClaimedOlderVersionCannotFillNewerEmptySlot(t *testing.T) {
 
 // A replacement create is externally non-idempotent exactly like an
 // initial create: an ambiguous outcome (no definitive HTTP response) must
-// retain the E3-18 durable reservation and never auto-replay.
+// retain the durable reservation and never auto-replay.
 func TestDiscordSendClaimedRecoveryAmbiguousCreateRetainsReservationAndNeverReplays(t *testing.T) {
 	store, delivery, key := discordSendFixture(t)
 	store.sync = DiscordMessageSync{DestinationID: discordSendDestinationID, GameRequestID: discordSendRequestID, MessageID: "message-deleted", AppliedVersion: 41}

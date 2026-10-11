@@ -12,8 +12,8 @@ var ErrInvalidGameSelection = errors.New("invalid game selection")
 
 // GameSelection identifies exactly one Game -- either an already-
 // authoritative local Game by ID, or an IGDB provider record that may or
-// may not be materialized yet -- for a read-only composer lookup (Task 5:
-// DiscoveryService.Select). Exactly one of LocalGameID or Reference must be
+// may not be materialized yet -- for a read-only composer lookup
+// (DiscoveryService.Select). Exactly one of LocalGameID or Reference must be
 // set; the zero value of both, or both set together, is invalid.
 type GameSelection struct {
 	LocalGameID string

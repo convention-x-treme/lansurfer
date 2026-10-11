@@ -1,5 +1,5 @@
 -- +goose Up
--- `suppressed` is a general terminal E1 delivery state: an originally
+-- `suppressed` is a general terminal delivery state: an originally
 -- materialized delivery is intentionally not sent because current
 -- eligibility no longer permits it (the target/user/destination became
 -- ineligible after materialization). It is not a provider failure, is never

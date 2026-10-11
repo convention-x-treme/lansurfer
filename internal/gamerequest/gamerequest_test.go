@@ -58,7 +58,7 @@ func TestValidateCreateInputFiniteMinimum(t *testing.T) {
 }
 
 // Creating a Game Request needs an active Game and nothing else: the
-// installation itself is the 1.0 event context.
+// installation itself is the event context.
 func TestCreateRequiresActiveGameOnly(t *testing.T) {
 	startsAt := time.Now()
 	if _, err := NewService(&recordingRepository{}, staticGames(false), nil).Create(

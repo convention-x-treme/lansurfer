@@ -617,7 +617,7 @@ func (*fixture) Browse(context.Context, string, string) (game.DiscoveryPage, err
 	return game.DiscoveryPage{Items: []game.DiscoveryItem{{LocalGameID: "game-1", Name: "Warcraft III", Slug: "warcraft-3", Materialized: true}}}, nil
 }
 
-// Select is the Game Request composer's read-only lookup (Task 7). Browser
+// Select is the Game Request composer's read-only lookup. Browser
 // tests only ever select an already-local Game by ID; the provider path is
 // unreachable here for the same reason Follow's provider path is.
 func (*fixture) Select(_ context.Context, _ string, selection game.GameSelection) (game.DiscoveryItem, error) {

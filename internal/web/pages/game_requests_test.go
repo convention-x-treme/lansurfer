@@ -516,7 +516,7 @@ func TestGameRequestDetailContentMarksLastPlace(t *testing.T) {
 }
 
 // The composer's initial unselected state is discovery-first, exactly like
-// /games (Task 4): it shows the shared "Find your game" heading and
+// /games: it shows the shared "Find your game" heading and
 // discovery list/LAN list rather than a dropdown of pre-existing Games.
 func TestNewGameRequestShowsDiscoveryBeforeSelection(t *testing.T) {
 	page := game.DiscoveryPage{Items: []game.DiscoveryItem{{
@@ -576,7 +576,7 @@ func TestNewGameRequestSelectedStateRendersIdentityAndHiddenFields(t *testing.T)
 }
 
 // Request-local fields (max players/start/description) do not exist at all
-// before a Game is selected, and appear once one is (Task 7 Step 8).
+// before a Game is selected, and appear once one is.
 func TestNewGameRequestDetailFieldsAppearOnlyAfterSelection(t *testing.T) {
 	form := GameRequestForm{StartPreset: "now"}
 

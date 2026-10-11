@@ -9,7 +9,7 @@ import { expect, test } from "@playwright/test";
 import { htmxCounters, instrumentHtmx, resetFixture, waitForRealtime } from "./helpers";
 
 // SSE updates arriving around an htmx swap were one of the suspected causes in
-// issue #15, and Track A widened that surface: the list refresh now carries the
+// issue #15, and discovery filtering widened that surface: the list refresh now carries the
 // active discovery filters, and the Trending rail is swapped out of band during
 // the same refresh.
 

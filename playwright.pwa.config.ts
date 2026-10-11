@@ -1,6 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 
-// Track D's own focused PWA browser suite: service-worker registration,
+// The focused PWA browser suite: service-worker registration,
 // lifecycle, scope, controller behavior, failure degradation, and the bfcache
 // authenticated-reload guard. Deliberately separate from playwright.config.ts
 // (task test:browser) rather than folded into it, and on its own port so both

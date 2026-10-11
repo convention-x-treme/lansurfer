@@ -56,7 +56,7 @@ func TestDiscordDeliveryClassification(t *testing.T) {
 }
 
 // An explicit 5xx CREATE response is a definitive Discord outcome, not an
-// ambiguous one; any Retry-After it carries must reach E1 unchanged. Edit's
+// ambiguous one; any Retry-After it carries must reach the worker unchanged. Edit's
 // 5xx handling is unaffected by this CREATE-specific correction.
 func TestDiscordDeliveryClassificationCreatePreservesRetryAfterOn5xx(t *testing.T) {
 	delay := 30 * time.Second
