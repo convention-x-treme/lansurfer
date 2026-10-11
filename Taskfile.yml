@@ -174,7 +174,7 @@ tasks:
   loadtest:sse:
     desc: Test concurrent authenticated SSE streams with optional event fan-out
     cmds:
-      - go run ./tools/loadtest/sse -clients '{{.USERS | default "20"}}' -duration '{{.DURATION | default "1m"}}' {{if .REQUEST}}-request '{{.REQUEST}}' -trigger '{{.TRIGGER | default "20"}}'{{end}} -trigger-mode '{{.TRIGGER_MODE | default "join-leave"}}' -trigger-delay '{{.TRIGGER_DELAY | default "0s"}}' -refresh-mode '{{.MODE | default "off"}}' -base-url '{{.BASE_URL | default "http://127.0.0.1:18080"}}' -session-offset '{{.SESSION_OFFSET | default "0"}}' {{if eq (.RECONNECT | default "") "1"}}-allow-reconnect{{end}} {{if eq (.ALLOW_MISSING_EVENTS | default "") "1"}}-allow-missing-events{{end}} -sessions "${LANSURFER_LOADTEST_SESSIONS_FILE:-$HOME/lansurfer-loadtest-sessions.jsonl}"
+      - go run ./tools/loadtest/sse -clients '{{.USERS | default "20"}}' -duration '{{.DURATION | default "1m"}}' {{if .REQUEST}}-request '{{.REQUEST}}' -trigger '{{.TRIGGER | default "20"}}'{{end}} -trigger-delay '{{.TRIGGER_DELAY | default "0s"}}' -refresh-mode '{{.MODE | default "off"}}' -base-url '{{.BASE_URL | default "http://127.0.0.1:18080"}}' -session-offset '{{.SESSION_OFFSET | default "0"}}' {{if eq (.RECONNECT | default "") "1"}}-allow-reconnect{{end}} {{if eq (.ALLOW_MISSING_EVENTS | default "") "1"}}-allow-missing-events{{end}} -sessions "${LANSURFER_LOADTEST_SESSIONS_FILE:-$HOME/lansurfer-loadtest-sessions.jsonl}"
 
 
   loadtest:proxy:
