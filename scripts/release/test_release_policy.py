@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from release_policy import Version, check_new, load_releases, parse_tag, plan_aliases
+from release_policy import Version, check_new, load_releases, lookup_release, parse_tag, plan_aliases
 
 
 def release(tag: str, *, draft: bool = False, prerelease: bool = False) -> dict:
@@ -44,6 +44,40 @@ class PreflightTest(unittest.TestCase):
     def test_reuse_of_draft_version_rejected(self):
         with self.assertRaisesRegex(ValueError, "already has"):
             check_new("v1.2.0", [release("v1.2.0", draft=True)])
+
+
+class DraftLookupTest(unittest.TestCase):
+    def test_unpublished_draft_is_found_by_tag(self):
+        draft = {**release("v0.1.0-rc.1", draft=True, prerelease=True),
+                 "id": 409839769}
+        self.assertEqual(
+            lookup_release("v0.1.0-rc.1", [release("v0.1.0"), draft]),
+            draft,
+        )
+
+    def test_paginated_draft_is_found_without_by_tag_endpoint(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "releases.json"
+            draft = {**release("v0.1.0-rc.1", draft=True), "id": 42}
+            path.write_text(
+                json.dumps([[release("v0.1.0")], [draft]]),
+                encoding="utf-8",
+            )
+            self.assertEqual(
+                lookup_release("v0.1.0-rc.1", load_releases(str(path)))["id"], 42,
+            )
+
+    def test_missing_tag_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "got 0"):
+            lookup_release("v0.1.0-rc.1", [release("v0.1.0")])
+
+    def test_duplicate_tag_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "got 2"):
+            lookup_release(
+                "v0.1.0-rc.1",
+                [release("v0.1.0-rc.1", draft=True),
+                 release("v0.1.0-rc.1")],
+            )
 
 
 class AliasPlanTest(unittest.TestCase):

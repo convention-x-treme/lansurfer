@@ -60,6 +60,22 @@ def check_new(tag: str, releases: list[dict]) -> None:
         )
 
 
+def lookup_release(tag: str, releases: list[dict]) -> dict:
+    """Find exactly one GitHub Release, including an unpublished draft.
+
+    GitHub may return 404 for /releases/tags/{tag} while the draft is
+    unpublished. The paginated /releases collection includes the draft.
+    """
+    parse_tag(tag)
+    matches = [release for release in releases if release.get("tag_name") == tag]
+    if len(matches) != 1:
+        raise ValueError(
+            f"Expected exactly one GitHub Release for {tag}, got {len(matches)}; "
+            "refusing to guess a draft ID"
+        )
+    return matches[0]
+
+
 def plan_aliases(tag: str, releases: list[dict]) -> dict:
     candidate, prerelease = parse_tag(tag)
     # 0.x is LANsurfer's internal/pilot line: publish only the exact tag.
@@ -98,7 +114,7 @@ def plan_aliases(tag: str, releases: list[dict]) -> dict:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("validate", "check-new", "plan"))
+    parser.add_argument("command", choices=("validate", "check-new", "lookup", "plan"))
     parser.add_argument("tag")
     parser.add_argument("releases_json", nargs="?")
     args = parser.parse_args()
@@ -109,11 +125,13 @@ def main() -> int:
             print(f"Valid release tag: {args.tag}")
             return 0
         if not args.releases_json:
-            parser.error("check-new and plan require releases_json")
+            parser.error("check-new, lookup and plan require releases_json")
         releases = load_releases(args.releases_json)
         if args.command == "check-new":
             check_new(args.tag, releases)
             print(f"No existing release for {args.tag}")
+        elif args.command == "lookup":
+            print(json.dumps(lookup_release(args.tag, releases), separators=(",", ":")))
         else:
             print(json.dumps(plan_aliases(args.tag, releases), separators=(",", ":")))
     except (ValueError, OSError, json.JSONDecodeError) as exc:

@@ -64,7 +64,11 @@ test -s dist/checksums.txt
 jq -e '[.[] | select(.type == "Archive") | .goarch] | sort == ["amd64","arm64"]' dist/artifacts.json
 
 verify_source_tag
-gh api "repos/$repo/releases/tags/$tag" > "$tmp/release.json"
+# GitHub's /releases/tags/{tag} lookup can return HTTP 404 for an unpublished
+# DRAFT even though it exists. Find the exact version in the paginated release
+# collection instead; fail closed if missing or duplicated.
+gh api --paginate --slurp "repos/$repo/releases?per_page=100" > "$tmp/releases.json"
+python3 "$policy" lookup "$tag" "$tmp/releases.json" > "$tmp/release.json"
 if [[ "$tag" == *-* ]]; then
   expected_prerelease=true
 else
