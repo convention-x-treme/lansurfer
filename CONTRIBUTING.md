@@ -350,16 +350,20 @@ Official tag-driven releases are developed in #84. **Do not create the first rea
 
 ### Maintainer-controlled release
 
-Only an intentional **pushed version tag** activates `.github/workflows/release.yml` (not PRs, merges to `main`, workflow dispatch or Dependabot). Accepted tags are exactly:
+Only an intentional **pushed version tag** activates `.github/workflows/release.yml` (not PRs, merges to `main`, workflow dispatch or Dependabot). Accepted tags include:
 
 ```text
+v0.1.0-rc.1
+v0.1.0
+v0.1.1
+v1.0.0
 v1.4.2
-v2.0.0
 v2.1.0-rc.1
-v2.1.0-beta.2
 ```
 
 No leading-zero version components, build metadata (`+...`), arbitrary prerelease names or retagging. **The maintainer chooses the SemVer number**, not Conventional Commits or automated version bumping.
+
+**Pre-1.0 pilot releases:** Start the private pilot with `v0.1.0-rc.1` as a controlled end-to-end release test, then use `v0.1.0` when its artifacts and behavior have been verified. All `v0.x.y` versions, including otherwise stable `v0.1.0`, publish **only their exact GitHub Release and GHCR image version**, never `v0`, `v0.1`, `latest`, or GitHub's "latest" release marker. GitHub labels `-rc.N` as a prerelease; an unqualified `v0.1.0` is still a SemVer release even though its major version denotes initial development. The public 1.0 release is a separate, deliberate milestone.
 
 A tag must point to a commit reachable from `main` or an existing `release/vN` maintenance branch. The exact tagged revision runs the existing quality/unit, PostgreSQL, browser and build/Compose CI **before** the publisher receives write permissions. The publisher is serialized across all versions.
 
@@ -369,15 +373,15 @@ Once the right reviewed commit is on the appropriate branch, the maintainer can 
 git fetch origin --tags
 git switch main
 git pull --ff-only
-git tag -a v1.4.2 -m "LANsurfer v1.4.2"
-git push origin refs/tags/v1.4.2
+git tag -a v0.1.0-rc.1 -m "LANsurfer v0.1.0-rc.1"
+git push origin refs/tags/v0.1.0-rc.1
 ```
 
 Use a different approved version number as required. Never issue a tag push from a temporary feature branch, move or delete an existing published tag, or create/rewrite a release by rerunning a previously published version.
 
 **What the automation does:** first reject invalid/previously used tags; confirm the GitHub tag object still matches the checkout; confirm no GitHub Release (including a draft) and no GHCR exact-version image exists. GoReleaser OSS then creates an **unpublished GitHub draft**, Linux amd64/arm64 archives and checksums, and an exact-version multi-architecture GHCR image. Before the GitHub draft goes public, the workflow checks the archives/checksums, release assets, image architectures and source tag again. It updates stable aliases only when they would not regress, then publishes the GitHub Release. Prereleases publish only their exact version tag, stay flagged as prereleases, and never change stable aliases or the GitHub "latest" badge.
 
-**Aliases:** stable `v1.4.2` may promote `v1.4`, `v1` and `latest`. If `v2.0.0` is already published, a later `v1.4.3` backport only promotes `v1.4` and (if no newer `v1.x`) `v1`; it never changes `latest`. If a newer patch already exists on the same line, the older version cannot move that line's aliases. GitHub's latest-release marker uses the same numerical ordering instead of publication time. Only release automation should manage these mutable GHCR aliases.
+**Aliases:** `v0.1.0` and all other pre-1.0 releases promote **none**. Beginning with `v1.0.0`, stable versions such as `v1.4.2` may promote `v1.4`, `v1` and `latest`. If `v2.0.0` is already published, a later `v1.4.3` backport only promotes `v1.4` and (if no newer `v1.x`) `v1`; it never changes `latest`. If a newer patch already exists on the same line, the older version cannot move that line's aliases. GitHub's latest-release marker uses the same numerical ordering instead of publication time. Only release automation should manage these mutable GHCR aliases.
 
 For a local review without publishing:
 
