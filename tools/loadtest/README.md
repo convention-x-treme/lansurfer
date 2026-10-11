@@ -10,7 +10,7 @@ What it provides:
 4. **Join race** against a nearly-full request, verifying capacity and membership in the database (`loadtest:race`).
 5. **SSE** streams, fan-out, `browser-like` and `worst-case` refresh models, and reconnect recovery (`loadtest:sse`).
 6. **Profiling**: authenticated Prometheus scrape, PostgreSQL activity/locks/WAL/table/statement-family deltas, and container CPU/RAM (`loadtest:profile`).
-7. **Browser calibration** with 5–10 separate real Chromium processes against 120/400 simulated streams (`loadtest:calibrate`).
+7. **Browser smoke** against the isolated app (`loadtest:browser`), then calibration with 5–10 real Chromium processes against 120/400 simulated streams (`loadtest:calibrate`).
 8. **Lost-signal proof**: a proxy drops one SSE frame while PostgreSQL keeps the change (`loadtest:loss`).
 9. **Chaos**: stream cut, offline window, `tc netem` delay, and 2 % packet loss inside the test proxy container only (`loadtest:chaos`).
 10. **Soak**: 120 participants (115 streams/writers + 5 real browsers), 10-minute profile windows, cooldown and database audit (`loadtest:soak`).
@@ -20,7 +20,17 @@ Out of scope: notification delivery, Grafana dashboards, pilot-equivalent hardwa
 
 ## Requirements (WSL2)
 
-WSL2/Linux with Docker Desktop integration, Docker Compose, Go 1.27.1 (go.mod), and Task 3.x. Keep the repository on the WSL Linux filesystem. All commands run from the repository root on branch `test/load-testing`.
+WSL2/Linux with Docker Desktop integration, Docker Compose v2, Go 1.27.1 (go.mod), Task 3.x, and Node.js 24/npm (see [CONTRIBUTING.md](../../CONTRIBUTING.md)). Keep the repository on the WSL Linux filesystem and run commands from its root. Use the branch containing the harness (or `main` after it is merged).
+
+The browser smoke, calibration, chaos, lost-signal, and soak scenarios launch Node.js and Playwright Chromium **on the host**; a container build alone does not install these. On a fresh checkout, run:
+
+```sh
+task loadtest:deps   # npm ci + npx playwright install --with-deps chromium
+```
+
+Installing Chromium's Linux system dependencies may request `sudo` access. Re-run `loadtest:deps` if the npm lockfile or browser version changes. Browser scenarios are not part of `task test:browser`, which exercises a separate product fixture.
+
+All load-test scenario entry points are Task commands. An initial database URL export, control-request ID selection, and deliberate outage/restart actions still require shell commands as documented below. None of these commands target the regular development database.
 
 ## 1. Start isolated LANsurfer
 
@@ -60,7 +70,6 @@ task loadtest:writes USERS=20 DURATION=1m
 task loadtest:writes USERS=100 DURATION=2m
 task loadtest:writes USERS=200 DURATION=2m
 task loadtest:writes USERS=400 DURATION=2m SESSION_OFFSET=0
-
 ```
 
 Each player keeps its session and CSRF cookies across iterations (`noCookiesReset: true`); LANsurfer issues `lansurfer_csrf` on a normal page GET, and the script submits it as `csrf_token`. Per iteration: create 5%, join 35%, leave 15%, chat 42%, and a 3% negative check that a POST without a token gets `403`. Outcomes are `ok`, `conflict` (expected refusal such as full, already a member, not a member, chat rate limit), or `unexpected`. The first unexpected responses per player log status, redirect, HTMX retarget, and a CSRF-rejection boolean; never log credentials.
@@ -69,32 +78,29 @@ Each player keeps its session and CSRF cookies across iterations (`noCookiesRese
 
 ## 5. Concurrent joins
 
-Pick an open request with free places that none of the racing players hosts, then:
+Pick a fresh open request UUID from your private fixture manifest that still has free places and is not hosted by any of the racing players. Replace the example UUID before running:
 
 ```sh
-task loadtest:race REQUEST=<request-id> JOINERS=100
+REQ='replace-with-an-open-request-uuid'
+task loadtest:race REQUEST="$REQ" JOINERS=100 REPEAT=3
 ```
 
-All joiners get a CSRF token first, wait on a barrier, and POST `/join` at once. Sessions stay distinct; existing members may submit duplicate joins and count as expected conflicts. The command then checks PostgreSQL: members never exceed capacity, no memberships duplicate, every success is stored, and every free place is filled when joiners suffice. Each run consumes free places of its request; pick another request for the next run.
-
-```sh
-go run ./tools/loadtest/race -request <id> -joiners 100 -repeat 3 -sessions "$HOME/lansurfer-loadtest-sessions.jsonl"
-```
-
-Each run consumes free places of its request; pick another request for the next run.
+`REPEAT=3` sends three simultaneous duplicate submissions per player; omit it for the default single attempt. All joiners first obtain CSRF tokens and then POST `/join` together. The command checks PostgreSQL capacity, duplicates, successful joins, and whether available places were filled. **Each run consumes free places**, so choose a new suitable request before rerunning.
 
 ## 6. SSE, fan-out, and recovery
 
 ```sh
 task loadtest:sse USERS=20 DURATION=45s
 task loadtest:sse USERS=400 DURATION=1m
-# mutation-to-stream delay and browser refresh amplification:
-task loadtest:sse USERS=400 DURATION=2m REQUEST=<request-id> TRIGGER=20 MODE=browser-like
-# restart/reconnect (restart the app from another terminal while this runs):
+# Mutation-to-stream delay and browser-like refresh amplification:
+task loadtest:prepare
+REQ=$(node -p "require('$HOME/lansurfer-loadtest-control.json').request_id")
+task loadtest:sse USERS=120 DURATION=2m REQUEST="$REQ" TRIGGER=20 MODE=browser-like
+# Restart/reconnect (restart the app from another terminal while this runs):
 task loadtest:sse USERS=400 DURATION=75s RECONNECT=1
 ```
 
-`TRIGGER=N` alternates join and leave; an odd N leaves the trigger player joined, while an even N restores prior membership. Use an open request with free capacity that the last seeded player neither hosts nor has joined. `TRIGGER_DELAY` waits after every stream connects. Events are matched against POST completions; delay can be negative when SSE arrives first. `MODE=browser-like` models client refresh coalescing; `MODE=worst-case` refreshes once per event. `ALLOW_MISSING_EVENTS=1` records expected losses instead of failing the harness.
+`TRIGGER=N` alternates join and leave; an odd N leaves the trigger player joined, while an even N restores prior membership. Use an open request with free capacity that the last seeded player neither hosts nor has joined. `TRIGGER_DELAY` waits after every stream connects. Events are matched against POST completions; delay can be negative when SSE arrives first. `MODE=browser-like` models client refresh coalescing; `MODE=worst-case` refreshes once per event. `ALLOW_MISSING_EVENTS=1` records expected losses instead of failing the harness. Chat-specific signal-loss and browser-convergence checks are part of `loadtest:loss`, not a general all-subscriber chat fan-out measurement.
 
 Recovery scenarios against the isolated stack only:
 
@@ -111,14 +117,20 @@ Run `loadtest:writes` or the SSE command during the outage and again afterwards;
 Use `task loadtest:prepare` first; it creates (or safely reuses) one control Game Request that random writers never touch, and resets the trigger player through the normal `Leave` service. Its ID is in `$HOME/lansurfer-loadtest-control.json`. Never reuse a control request that is full; archive its file and prepare a new one.
 
 ```sh
+task loadtest:browser                        # isolated authenticated list + native SSE smoke
 REQ=$(node -p "require('$HOME/lansurfer-loadtest-control.json').request_id")
-task loadtest:calibrate REQUEST=$REQ USERS=120      # 4 cells, idle and 100 writers, plus 115+5, bursts, refresh faults
-task loadtest:calibrate REQUEST=$REQ USERS=400
-task loadtest:loss REQUEST=$REQ                     # final SSE frame dropped; PostgreSQL keeps the change
-task loadtest:chaos REQUEST=$REQ SCENARIO=cut|offline|delay|loss USERS=120|400 [DELAY_MS=200|500]
+task loadtest:calibrate REQUEST="$REQ" USERS=120  # browser-like vs worst-case matrix
+task loadtest:calibrate REQUEST="$REQ" USERS=400
+task loadtest:loss REQUEST="$REQ" USERS=120   # a final SSE signal is dropped; DB keeps the change
+task loadtest:chaos REQUEST="$REQ" SCENARIO=cut USERS=120 DURATION=180s
+task loadtest:chaos REQUEST="$REQ" SCENARIO=delay USERS=120 DURATION=180s DELAY_MS=500
 ```
 
-Both start `compose.chaos.yaml` (a Go reverse proxy with `NET_ADMIN`, bound to `127.0.0.1:18081`/`18082` only). `POST :18082/control` accepts only fixed modes with bounded fields: `normal`, `hold-refresh`, `fail-refresh`, `cut-streams`, `offline`, `drop-sse`, `delay`, `loss`. `tc netem` runs only inside the proxy container and is removed afterwards. If `NET_ADMIN` or netem is unavailable the packet scenarios exit 2 as "not executed".
+For `loadtest:chaos`, set `SCENARIO` to **one of** `cut`, `offline`, `delay`, or `loss`; `USERS` is 120 or 400 and `DELAY_MS` is 200 or 500 for the delay scenario. Do not paste the alternatives as shell pipes. Some `loadtest:loss` experiments deliberately exit nonzero when they reproduce an unsolved product convergence failure.
+
+`loadtest:calibrate`, `loadtest:loss` and `loadtest:chaos` automatically start the Compose proxy. To start it separately, run `task loadtest:proxy` after `task loadtest:up`; this only starts the isolated container, it does not inject faults. Faults are controlled by each scenario through the proxy's local `/control` API. This replaces the old, unsupported standalone `go run ./tools/loadtest/proxy` flags.
+
+These scenarios start `compose.chaos.yaml` (a Go reverse proxy with `NET_ADMIN`, bound to `127.0.0.1:18081`/`18082` only). `POST :18082/control` accepts only fixed modes with bounded fields: `normal`, `hold-refresh`, `fail-refresh`, `cut-streams`, `offline`, `drop-sse`, `delay`, `loss`. `tc netem` runs only inside the proxy container and is removed afterwards. If `NET_ADMIN` or netem is unavailable the packet scenarios exit 2 as "not executed".
 
 Calibration launches 5–10 separate Chromium processes, observes EventSource `open`/`error` and named events, HTMX before/after/swap, busy and disabled state, and compares visible DOM with an authoritative server fragment. The final diagnostic fetch is excluded from refresh counts. Synthetic clients refresh the same filtered list as the pages (`-refresh-query`). `browser-like` coalesces to one in-flight refresh plus one trailing refresh per client; `worst-case` refreshes once per event. Synthetic streams reuse the browser identities in the 400-stream runs, so 400 streams plus five browsers are 400 identities, not 405.
 
@@ -126,7 +138,7 @@ Every scenario task writes `$HOME/lansurfer-loadtest-reports/<UTC>-<scenario>/` 
 
 ### Measured local results (WSL2, not capacity evidence)
 
-Commit `411d094` plus uncommitted harness changes; app image built before this PR's harness changes (product code unchanged).
+Historical WSL2 measurement set from earlier harness revisions around `411d094`; these are exploratory results, not a fresh run of the final PR code. See PR #144 for the later verification of the reviewed version.
 
 | 120 identities, 90 s, 20 mutations / 500 ms | Browser refresh p50 / p95 | Refresh per event | Deliveries | Result |
 | --- | --- | --- | --- | --- |
