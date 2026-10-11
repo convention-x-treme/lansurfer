@@ -4,6 +4,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { chromium } from "@playwright/test";
+import { calibrationFailures, waitForIdle } from "./outcomes.mjs";
 
 process.umask(0o077);
 
@@ -192,6 +193,7 @@ try {
 
   const results = await Promise.all(players.map(async ({ page, stats, view, initialState, refreshURL }, index) => {
     const measured = {
+      active: stats.active,
       started: stats.started,
       completed: stats.completed,
       failed: stats.failed,
@@ -219,6 +221,9 @@ try {
       if (!response) {
         return { status: 0, fetchError, stateMatches: false, mismatchedEntries: 1, visibleState: {}, authoritativeState: {}, events: window.__loadtest.events, eventTypes: window.__loadtest.eventTypes, eventTimeline: window.__loadtest.eventTimeline, opens: window.__loadtest.opens, sseErrors: window.__loadtest.sseErrors || 0, htmx: { before: window.__loadtest.htmxBefore || 0, after: window.__loadtest.htmxAfter || 0, swaps: window.__loadtest.htmxSwap || 0, errors: window.__loadtest.errors || 0 }, swapTimeline: window.__loadtest.swapTimeline, busy: 0, disabledActions: 0 };
       }
+      // An in-flight request is not a stuck page: give loading state a bounded chance to clear.
+      const residual = () => document.querySelectorAll("[aria-busy='true'], .htmx-request, form button:disabled, form input:disabled").length;
+      for (let waited = 0; waited < 5000 && residual() > 0; waited += 100) await new Promise((resolveWait) => setTimeout(resolveWait, 100));
       const fragmentDocument = new DOMParser().parseFromString(html, "text/html");
       const viewState = (root) => currentView === "lobby" ? root.querySelectorAll("#game-request-lobby li").length : currentView === "detail" ? root.querySelector(".detail-shell .place-counter")?.textContent?.trim() || "" : [...root.querySelectorAll("#game-request-list [data-game-request-id]")].map((row) => [row.dataset.gameRequestId, row.querySelector(".request-places .place-counter")?.textContent?.trim() || ""]);
       const visibleState = viewState(window.document);
@@ -256,6 +261,7 @@ try {
       visibilityRecovery,
       mismatchedEntries: state.mismatchedEntries,
       refreshes: measured.started,
+      active: measured.active,
       completed: measured.completed,
       failed: measured.failed,
       peakConcurrent: measured.peakConcurrent,
@@ -291,6 +297,7 @@ try {
     runnerExitCode,
     runnerError,
     idleError,
+    failures: [],
     totals: {
       events: totalEvents,
       opens: results.reduce((sum, item) => sum + item.opens, 0),
@@ -304,11 +311,15 @@ try {
     },
     browsers: results,
   };
+  summary.failures = calibrationFailures(summary, browserClients);
   await mkdir(reportDir, { recursive: true, mode: 0o700 });
   const reportPath = join(reportDir, `browser-calibration-${new Date().toISOString().replaceAll(/[-:]/g, "").replace(/\.\d+Z$/, "Z")}.json`);
   await writeFile(reportPath, `${JSON.stringify(summary, null, 2)}\n`, { mode: 0o600, flag: "wx" });
   console.log(JSON.stringify({ ...summary, reportPath }, null, 2));
-  if (runnerExitCode !== 0 || summary.totals.failed > 0 || results.some((item) => Object.keys(item.statuses).some((status) => Number(status) !== 200)) || summary.totals.convergedBrowsers !== browserClients) process.exitCode = 1;
+  if (summary.failures.length > 0) {
+    for (const failure of summary.failures) console.error(`browser calibration failed: ${failure}`);
+    process.exitCode = 1;
+  }
 } finally {
   if (runner) runner.kill("SIGTERM");
   await Promise.all(contexts.map((context) => context.close()));
@@ -338,14 +349,6 @@ async function collect(stream) {
   let value = "";
   for await (const chunk of stream) value += chunk;
   return value;
-}
-
-async function waitForIdle(statsList, timeoutMs) {
-  const deadline = Date.now() + timeoutMs;
-  while (statsList.some((stats) => stats.active > 0)) {
-    if (Date.now() >= deadline) throw new Error("browser refresh requests did not settle");
-    await new Promise((resolveWait) => setTimeout(resolveWait, 50));
-  }
 }
 
 async function recoverVisibility(page, refreshURL, view) {

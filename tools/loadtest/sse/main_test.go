@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"testing/iotest"
 	"time"
 )
 
@@ -175,5 +177,21 @@ func TestWorstCaseRefreshStartsOneRequestPerEvent(t *testing.T) {
 	f.wg.Wait()
 	if got := requests.Load(); got != 40 {
 		t.Fatalf("refresh requests = %d, want 40", got)
+	}
+}
+
+type roundTrip func(*http.Request) (*http.Response, error)
+
+func (f roundTrip) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func TestRefreshCountsTruncatedOKBodyAsFailure(t *testing.T) {
+	client := &http.Client{Transport: roundTrip(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(iotest.ErrReader(io.ErrUnexpectedEOF))}, nil
+	})}
+	f := newFanout("", 0, time.Millisecond, "worst-case", client)
+	f.baseURL = "http://loadtest.invalid"
+	f.observe(&clientState{token: "test"}, eventData{}, time.Now())
+	if _, failures := f.report(1); failures != 1 || f.refreshes2xx != 0 {
+		t.Fatalf("truncated 200: failures=%d ok=%d, want 1 failure and 0 ok", failures, f.refreshes2xx)
 	}
 }

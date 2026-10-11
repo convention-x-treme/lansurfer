@@ -36,3 +36,22 @@ func TestBytesLinesHandlesJSONLWithoutFinalNewline(t *testing.T) {
 		t.Fatalf("lines = %q, want [one two]", got)
 	}
 }
+
+func TestAuditFailsForMissingOrInvalidControlRequest(t *testing.T) {
+	for name, tc := range map[string]struct {
+		controlRows, badControl int
+		failed                  bool
+	}{
+		"valid":   {1, 0, false},
+		"invalid": {1, 1, true},
+		"missing": {0, 0, true},
+	} {
+		result := auditResult(0, 0, 0, tc.controlRows, tc.badControl)
+		if got := auditFailed(result); got != tc.failed {
+			t.Errorf("%s control request: failed=%v, want %v (%v)", name, got, tc.failed, result)
+		}
+	}
+	if !auditFailed(auditResult(1, 0, 0, 1, 0)) || !auditFailed(auditResult(0, 1, 0, 1, 0)) || !auditFailed(auditResult(0, 0, 1, 1, 0)) {
+		t.Error("capacity, duplicate, or host violations no longer fail the audit")
+	}
+}

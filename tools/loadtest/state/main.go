@@ -283,31 +283,44 @@ func writeSnapshot(ctx context.Context, pool *pgxpool.Pool, requestID, viewerID 
 }
 
 func audit(ctx context.Context, pool *pgxpool.Pool, requestID string) error {
-	var badCapacity, duplicates, missingHosts, badControl int
-	queries := []struct {
-		sql  string
-		dest *int
-	}{
-		{`SELECT count(*) FROM game_requests r WHERE r.max_players>0 AND (SELECT count(*) FROM game_request_members m WHERE m.game_request_id=r.id)>r.max_players`, &badCapacity},
-		{`SELECT count(*) FROM (SELECT game_request_id,user_id FROM game_request_members GROUP BY 1,2 HAVING count(*)>1) d`, &duplicates},
-		{`SELECT count(*) FROM game_requests r WHERE NOT EXISTS(SELECT 1 FROM game_request_members m WHERE m.game_request_id=r.id AND m.user_id=r.creator_id)`, &missingHosts},
-		{`SELECT count(*) FROM game_requests r WHERE r.id=$1 AND (NOT EXISTS(SELECT 1 FROM game_request_members m WHERE m.game_request_id=r.id AND m.user_id=r.creator_id) OR r.max_players<>8 OR r.status<>'open' OR r.description<>'loadtest phase2 control')`, &badControl},
+	var badCapacity, duplicates, missingHosts, controlRows, badControl int
+	queries := []string{
+		`SELECT count(*) FROM game_requests r WHERE r.max_players>0 AND (SELECT count(*) FROM game_request_members m WHERE m.game_request_id=r.id)>r.max_players`,
+		`SELECT count(*) FROM (SELECT game_request_id,user_id FROM game_request_members GROUP BY 1,2 HAVING count(*)>1) d`,
+		`SELECT count(*) FROM game_requests r WHERE NOT EXISTS(SELECT 1 FROM game_request_members m WHERE m.game_request_id=r.id AND m.user_id=r.creator_id)`,
 	}
-	for _, q := range queries {
-		var args []any
-		if q.dest == &badControl {
-			args = append(args, requestID)
-		}
-		if err := pool.QueryRow(ctx, q.sql, args...).Scan(q.dest); err != nil {
+	for i, dest := range []*int{&badCapacity, &duplicates, &missingHosts} {
+		if err := pool.QueryRow(ctx, queries[i]).Scan(dest); err != nil {
 			return errors.New("database invariant audit query failed")
 		}
 	}
-	result := map[string]int{"capacity_violations": badCapacity, "duplicate_memberships": duplicates, "missing_host_memberships": missingHosts, "control_host_violations": badControl}
+	// Count the control row itself too: zero violations among zero rows is not a pass.
+	if err := pool.QueryRow(ctx, `SELECT count(*), count(*) FILTER (WHERE NOT EXISTS(SELECT 1 FROM game_request_members m WHERE m.game_request_id=r.id AND m.user_id=r.creator_id) OR r.max_players<>8 OR r.status<>'open' OR r.description<>'loadtest phase2 control') FROM game_requests r WHERE r.id=$1`, requestID).Scan(&controlRows, &badControl); err != nil {
+		return errors.New("database invariant audit query failed")
+	}
+	result := auditResult(badCapacity, duplicates, missingHosts, controlRows, badControl)
 	if err := json.NewEncoder(os.Stdout).Encode(result); err != nil {
 		return errors.New("cannot encode audit result")
 	}
-	if badCapacity+duplicates+missingHosts+badControl > 0 {
+	if auditFailed(result) {
 		return errors.New("database invariant audit failed")
 	}
 	return nil
+}
+
+func auditResult(badCapacity, duplicates, missingHosts, controlRows, badControl int) map[string]int {
+	missingControl := 0
+	if controlRows != 1 {
+		missingControl = 1
+	}
+	return map[string]int{"capacity_violations": badCapacity, "duplicate_memberships": duplicates, "missing_host_memberships": missingHosts, "control_host_violations": badControl, "control_request_missing": missingControl}
+}
+
+func auditFailed(result map[string]int) bool {
+	for _, violations := range result {
+		if violations > 0 {
+			return true
+		}
+	}
+	return false
 }

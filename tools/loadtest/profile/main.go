@@ -7,6 +7,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -264,8 +265,14 @@ func scrape(client *http.Client, key string) (map[string]float64, error) {
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("metrics scrape returned status %d", resp.StatusCode)
 	}
+	return parseMetrics(resp.Body)
+}
+
+// parseMetrics sums plain samples per family and keeps HTTP histograms per
+// method and chi route template for the bounded set in profiledRoutes.
+func parseMetrics(body io.Reader) (map[string]float64, error) {
 	parser := expfmt.NewTextParser(model.LegacyValidation)
-	families, err := parser.TextToMetricFamilies(resp.Body)
+	families, err := parser.TextToMetricFamilies(body)
 	if err != nil {
 		return nil, errors.New("metrics response could not be parsed")
 	}
@@ -292,11 +299,11 @@ func scrape(client *http.Client, key string) (map[string]float64, error) {
 				for _, label := range m.Label {
 					labels[label.GetName()] = label.GetValue()
 				}
-				route := labels["route"]
-				if route == "" || !allowedRoute(route) {
+				method, route := labels["method"], labels["route"]
+				if !profiledRoutes[method+" "+route] {
 					continue
 				}
-				base := name + "{route=" + route + "}"
+				base := name + "{method=" + method + ",route=" + route + "}"
 				result[base+"_count"] += float64(m.Histogram.GetSampleCount())
 				result[base+"_sum"] += m.Histogram.GetSampleSum()
 				for _, bucket := range m.Histogram.Bucket {
@@ -307,13 +314,27 @@ func scrape(client *http.Client, key string) (map[string]float64, error) {
 	}
 	return result, nil
 }
-func allowedRoute(route string) bool {
-	switch route {
-	case "/", "/games/", "/game-requests", "/game-requests/{requestID}", "/metrics", "/readyz", "/healthz":
-		return true
-	default:
-		return false
-	}
+
+// profiledRoutes is the fixed set of method + chi route template pairs the
+// load tests exercise. Values must equal the labels LANsurfer exports; the
+// fixed set also bounds the number of keys per sample.
+var profiledRoutes = map[string]bool{
+	"GET /":                                  true,
+	"GET /games":                             true,
+	"GET /game-requests":                     true,
+	"GET /game-requests/new":                 true,
+	"GET /game-requests/refresh":             true,
+	"POST /game-requests":                    true,
+	"GET /game-requests/{requestID}":         true,
+	"GET /game-requests/{requestID}/refresh": true,
+	"GET /game-requests/{requestID}/lobby":   true,
+	"POST /game-requests/{requestID}/join":   true,
+	"POST /game-requests/{requestID}/leave":  true,
+	"POST /game-requests/{requestID}/chat":   true,
+	"GET /events/game-requests":              true,
+	"GET /metrics":                           true,
+	"GET /readyz":                            true,
+	"GET /healthz":                           true,
 }
 
 func readDB(ctx context.Context, pool *pgxpool.Pool) (dbSample, error) {

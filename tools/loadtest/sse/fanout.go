@@ -201,7 +201,9 @@ func (f *fanout) refreshList(token string) {
 	f.mu.Unlock()
 	resp, err := f.client.Do(req)
 	if err == nil {
-		_, _ = io.Copy(io.Discard, resp.Body)
+		// A 200 header does not prove the fragment arrived: a connection dropped
+		// mid-body is a failed refresh.
+		_, err = io.Copy(io.Discard, resp.Body)
 		_ = resp.Body.Close()
 	}
 	elapsed := time.Since(start)

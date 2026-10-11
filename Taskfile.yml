@@ -228,6 +228,8 @@ tasks:
       - ls -lh "${LANSURFER_LOADTEST_REPORT_ROOT:-$HOME/lansurfer-loadtest-reports}"
 
   loadtest:down:
-    desc: Stop the isolated load-test stack (keep its database volume)
+    desc: Stop the isolated load-test stack including the chaos proxy (keep its database volume)
     cmds:
-      - docker compose -f tools/loadtest/compose.yaml down
+      # The proxy comes from compose.chaos.yaml, so it is an orphan of this
+      # project here; --remove-orphans is scoped to project lansurfer-loadtest.
+      - docker compose -p lansurfer-loadtest -f tools/loadtest/compose.yaml down --remove-orphans

@@ -14,7 +14,7 @@ import http from 'k6/http';
 import { check, sleep, randomSeed } from 'k6';
 import { SharedArray } from 'k6/data';
 import { Counter, Rate } from 'k6/metrics';
-import { classifyHtmx } from './outcomes.mjs';
+import { classifyHtmx, isCsrfRejection } from './outcomes.mjs';
 
 const BASE_URL = __ENV.BASE_URL || 'http://lansurfer:8080';
 const SESSION_OFFSET = Number(__ENV.SESSION_OFFSET || '0');
@@ -119,9 +119,6 @@ function post(action, path, fields, htmx, withToken) {
   return http.post(BASE_URL + path, body, { headers, redirects: 0, timeout: '20s', tags: { endpoint: action } });
 }
 
-function isCsrfRejection(res) {
-  return res.status === 403 && res.body.trim() === 'invalid CSRF token';
-}
 
 function classifyAction(res, action, plannedConflict = false) {
   if (action !== 'csrf_negative' && isCsrfRejection(res)) jar.delete(BASE_URL, 'lansurfer_csrf');
@@ -185,7 +182,7 @@ function doCreate() {
 function doCsrfNegative() {
   const res = post('csrf_negative', '/game-requests/' + pick(joinable) + '/join', { return_to: 'list' }, true, false);
   const refused = classifyAction(res, 'csrf_negative') === 'csrf_403';
-  check(res, { 'missing CSRF token is refused with 403': () => refused });
+  check(res, { 'missing CSRF token is refused as invalid CSRF token': () => refused });
   record('csrf_negative', refused ? 'ok' : 'unexpected', res);
 }
 
