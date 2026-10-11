@@ -236,7 +236,7 @@ tasks:
       - go run ./tools/loadtest/report -mode scan -sessions "${LANSURFER_LOADTEST_SESSIONS_FILE:-$HOME/lansurfer-loadtest-sessions.jsonl}" -metrics-key-file "$HOME/lansurfer-loadtest-metrics-key" -path '{{.REPORT_PATH}}'
 
   loadtest:report:
-    desc: List local k6 summary reports
+    desc: List private load-test reports and run bundles
     cmds:
       - ls -lh "${LANSURFER_LOADTEST_REPORT_ROOT:-$HOME/lansurfer-loadtest-reports}"
 
