@@ -15,8 +15,6 @@ colors:
   golden-hour: "#F4D35E"
   sunset: "#FF6B35"
   coral: "#FF3F73"
-  ink-62: "#8DA9BF"
-  ink-84: "#C7DCEA"
 typography:
   page-title:
     fontFamily: "Schibsted Grotesk, ui-sans-serif, system-ui, sans-serif"
@@ -39,39 +37,25 @@ typography:
   card-title:
     fontFamily: "Schibsted Grotesk, ui-sans-serif, system-ui, sans-serif"
     fontSize: "17px"
-    fontWeight: 900
-    letterSpacing: "normal"
-  row-title:
+    fontWeight: 900  row-title:
     fontFamily: "Schibsted Grotesk, ui-sans-serif, system-ui, sans-serif"
     fontSize: "16px"
-    fontWeight: 600
-    letterSpacing: "normal"
-  body:
+    fontWeight: 600  body:
     fontFamily: "Schibsted Grotesk, ui-sans-serif, system-ui, sans-serif"
     fontSize: "15px"
-    fontWeight: 400
-    letterSpacing: "normal"
-  body-small:
+    fontWeight: 400  body-small:
     fontFamily: "Schibsted Grotesk, ui-sans-serif, system-ui, sans-serif"
     fontSize: "14px"
-    fontWeight: 400
-    letterSpacing: "normal"
-  button:
+    fontWeight: 400  button:
     fontFamily: "Schibsted Grotesk, ui-sans-serif, system-ui, sans-serif"
     fontSize: "15px"
-    fontWeight: 600
-    letterSpacing: "normal"
-  navigation-item:
+    fontWeight: 600  navigation-item:
     fontFamily: "Schibsted Grotesk, ui-sans-serif, system-ui, sans-serif"
     fontSize: "15px"
-    fontWeight: 400
-    letterSpacing: "normal"
-  counter:
+    fontWeight: 400  counter:
     fontFamily: "JetBrains Mono, ui-monospace, monospace"
     fontSize: "16px"
-    fontWeight: 700
-    letterSpacing: "normal"
-  meta:
+    fontWeight: 700  meta:
     fontFamily: "JetBrains Mono, ui-monospace, monospace"
     fontSize: "13px"
     fontWeight: 500
@@ -127,7 +111,7 @@ Always write the product name as `LANsurfer`, including the lowercase `surfer`. 
 
 Dark mode is the primary event-floor presentation, and light mode is an equal supported presentation for daylight, office, projector, and accessibility contexts. Neither mode may lose information or actions.
 
-- Surf Blue remains the primary interactive accent in both themes; the filled primary action is Deep Blue in the light theme (see [Colors](#colors)).
+- The primary interactive accent is Surf Blue in the dark theme and Deep Blue in the light theme (see [Colors](#colors)).
 - Semantic meanings for Golden Hour, Sunset, and Coral remain identical across themes.
 - Theme choice is a presentation preference, not configurable instance branding ([PRODUCT.md](PRODUCT.md#13-instance-identity-branding-and-pwa)).
 
@@ -166,7 +150,7 @@ Muted inks are blends of White Sand and Deep Ocean for screen use, not palette c
 | Ink 62% | `#8DA9BF` | 26 · 12 · 0 · 25 | Meta text, labels, inactive navigation |
 | Ink 84% | `#C7DCEA` | 15 · 6 · 0 · 8 | Body copy inside cards |
 
-Implementations produce them through the theme's own text colour (for example `color-mix` against `--color-base-content`) so both themes stay correct, rather than hardcoding the hexadecimal values.
+The hexadecimal values are the dark-theme reference, not tokens. Implementations produce muted inks through the theme's own text colour (for example `color-mix` against `--color-base-content`) so both themes stay correct, rather than hardcoding the hexadecimal values.
 
 Deep Ocean is a blue dark, so it loses contrast faster than a neutral grey as it is diluted. On light surfaces, muted ink stops at 65% of the text colour, and ordinary meta text uses 70%; below that it fails 4.5:1 against Sea Mist. Use 80% for quiet headings.
 
@@ -176,15 +160,15 @@ Deep Ocean is a blue dark, so it loses contrast faster than a neutral grey as it
 
 ### One job per colour
 
-The palette is large because print, merchandise, and key visuals need it. On screen every colour carries exactly one job, so a player can read a screen by colour alone.
+The palette is large because print, merchandise, and key visuals need it. On screen every colour carries exactly one job, so a colour means the same thing wherever it appears.
 
 | Colour | Screen job |
 | --- | --- |
 | Deep Ocean | Page background (dark), text on bright fills |
 | Ocean Depth | Cards, rows, navigation |
 | Harbour | Raised quiet surfaces: supporting buttons, borders, member avatars, skeletons |
-| Deep Blue | Primary action in the light theme, key-visual gradients |
-| Surf Blue | Primary action in the dark theme, selection, active navigation |
+| Deep Blue | Primary action, selection, and active navigation in the light theme; key-visual gradients |
+| Surf Blue | Primary action, selection, and active navigation in the dark theme |
 | Aqua Wave | Counters, links, joined state |
 | Sea Foam | Labels on dark surfaces, ink on quiet buttons, body of the light quiet button |
 | Sea Mist | Page background and recessed fields (light) |
@@ -281,7 +265,7 @@ Corner radii are deliberately tighter than the UI-kit snapshot: selectors `0.25r
 
 ### Action hierarchy
 
-Buttons carry the same six levels everywhere. The level, not the page, decides the colour; one filled Surf Blue action per view keeps "this moves you forward" readable at a glance.
+Buttons carry the same six levels everywhere. The level, not the page, decides the colour; one filled primary action per view keeps "this moves you forward" readable at a glance.
 
 | Level | Class | Treatment | Examples |
 | --- | --- | --- | --- |
