@@ -344,6 +344,81 @@ Inspect `dist/` for archives and checksums after a successful snapshot; the dire
 
 GoReleaser's changelog reads the reachable Git history of the version being released. New squash-merge titles drive normal user-facing groups; nonconforming legacy commit subjects remain in **Other changes** rather than being rewritten. Stable tags, branch selection and GHCR alias promotion are implemented separately in #84.
 
+## Creating and recovering official releases
+
+Official tag-driven releases are developed in #84. **Do not create the first real tag until the publishing workflow has been reviewed and its GitHub/GHCR permissions are configured.** A public repository, public GHCR image and release-tag protection are separate GitHub settings tracked in #150.
+
+### Maintainer-controlled release
+
+Only an intentional **pushed version tag** activates `.github/workflows/release.yml` (not PRs, merges to `main`, workflow dispatch or Dependabot). Accepted tags are exactly:
+
+```text
+v1.4.2
+v2.0.0
+v2.1.0-rc.1
+v2.1.0-beta.2
+```
+
+No leading-zero version components, build metadata (`+...`), arbitrary prerelease names or retagging. **The maintainer chooses the SemVer number**, not Conventional Commits or automated version bumping.
+
+A tag must point to a commit reachable from `main` or an existing `release/vN` maintenance branch. The exact tagged revision runs the existing quality/unit, PostgreSQL, browser and build/Compose CI **before** the publisher receives write permissions. The publisher is serialized across all versions.
+
+Once the right reviewed commit is on the appropriate branch, the maintainer can use:
+
+```sh
+git fetch origin --tags
+git switch main
+git pull --ff-only
+git tag -a v1.4.2 -m "LANsurfer v1.4.2"
+git push origin refs/tags/v1.4.2
+```
+
+Use a different approved version number as required. Never issue a tag push from a temporary feature branch, move or delete an existing published tag, or create/rewrite a release by rerunning a previously published version.
+
+**What the automation does:** first reject invalid/previously used tags; confirm the GitHub tag object still matches the checkout; confirm no GitHub Release (including a draft) and no GHCR exact-version image exists. GoReleaser OSS then creates an **unpublished GitHub draft**, Linux amd64/arm64 archives and checksums, and an exact-version multi-architecture GHCR image. Before the GitHub draft goes public, the workflow checks the archives/checksums, release assets, image architectures and source tag again. It updates stable aliases only when they would not regress, then publishes the GitHub Release. Prereleases publish only their exact version tag, stay flagged as prereleases, and never change stable aliases or the GitHub "latest" badge.
+
+**Aliases:** stable `v1.4.2` may promote `v1.4`, `v1` and `latest`. If `v2.0.0` is already published, a later `v1.4.3` backport only promotes `v1.4` and (if no newer `v1.x`) `v1`; it never changes `latest`. If a newer patch already exists on the same line, the older version cannot move that line's aliases. GitHub's latest-release marker uses the same numerical ordering instead of publication time. Only release automation should manage these mutable GHCR aliases.
+
+For a local review without publishing:
+
+```sh
+task release:check
+task release:policy:test
+task release:notes:test
+task release:snapshot
+```
+
+The tag and alias validation logic can be exercised with `python3 scripts/release/release_policy.py` against locally saved GitHub release-list fixtures; it does not write to GitHub/GHCR. The PR snapshot CI runs these policy tests and cannot publish.
+
+### Maintaining an older major version
+
+When developing a new major on `main`, create a `release/vN` branch **only if that older major needs maintenance** (usually from its latest stable release). Cherry-pick applicable fixes onto the maintenance branch, open and squash-merge a properly titled PR there, run that branch's tests, then tag the reviewed maintenance-branch revision:
+
+```sh
+git fetch origin --tags
+git switch -c release/v1 v1.4.2    # Only when first opening v1 maintenance
+git push -u origin release/v1
+# For each backport: cherry-pick on a short-lived branch, open a PR to release/v1.
+# Once the reviewed backport is merged:
+git switch release/v1
+git pull --ff-only
+git tag -a v1.4.3 -m "LANsurfer v1.4.3"
+git push origin refs/tags/v1.4.3
+```
+
+Do not create a permanent branch per minor version. Avoid bypassing review just because the target is a maintenance branch.
+
+### Failure or partial publication
+
+There is **no atomic transaction** across GitHub draft creation, release-asset upload, the GHCR exact-version image and mutable aliases. A failed run may leave a **draft**, **exact-version image**, or a partially promoted alias.
+
+- **Before a version exists:** fix the problem and create a *new* version tag if the earlier tag was published/partially used. Do not move an existing version tag.
+- **Draft or registry image already exists:** the automatic workflow intentionally **fails closed** rather than overwriting it. Inspect the exact source revision, archive checksums, GHCR manifest architectures and alias state. Only a maintainer should decide whether to finish a fully verified draft manually or to issue a new version after correcting the problem. Do not delete or replace a published exact-version image to make a rerun pass.
+- **Alias promotion fails:** avoid marking a release successful. Verify or repair the mutable aliases with the semver policy; don't point `latest` or `vN` to an older release.
+- **After the GitHub Release is public:** preserve the tag/artifacts; fixes get a new SemVer version.
+
+During the private-repository phase, GitHub branch/tag rulesets may be unavailable; #150 tracks enforcing them after going public. Until then, maintainers must avoid manual tag movement or bypassing these conventions. The workflow checks for moved refs but cannot guarantee protection from out-of-band administrative changes.
+
 ## Making changes
 
 - Keep pull requests focused on one concrete problem.
