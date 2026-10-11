@@ -37,6 +37,12 @@ tasks:
     cmds:
       - goreleaser check
 
+  release:policy:test:
+    desc: Verify SemVer parsing and monotonic GHCR alias planning (no publishing)
+    cmds:
+      - python3 -m unittest discover -s scripts/release -p 'test_release_policy.py' -v
+      - bash -n scripts/release/publish.sh
+
   release:notes:test:
     desc: Verify automated release notes with disposable Git history (no publishing)
     cmds:

@@ -25,7 +25,7 @@ Use Taskfile workflows, not Makefiles; run `task --list` for the authoritative t
 - `task dev`: build and run the Compose stack.
 - `task run`: run the Go application with environment configuration.
 - `task build`: build `bin/lansurfer`.
-- `task release:check`, `task release:notes:test`, `task release:snapshot`: validate the GoReleaser OSS config, test generated changelogs against synthetic history, and build local unpublished release artifacts. See [CONTRIBUTING.md](CONTRIBUTING.md#validating-release-artifacts-locally).
+- `task release:check`, `task release:policy:test`, `task release:notes:test`, `task release:snapshot`: validate the GoReleaser OSS config, test generated changelogs against synthetic history, and build local unpublished release artifacts. See [CONTRIBUTING.md](CONTRIBUTING.md#validating-release-artifacts-locally).
 - `task test`: run race-enabled unit tests.
 - `task test:integration`: run PostgreSQL integration tests in an isolated container.
 - `task test:browser`: run Chromium interaction-hardening regression tests.
