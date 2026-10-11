@@ -60,9 +60,6 @@ jobs:
     permissions:
       contents: write
       packages: write
-    env:
-      GH_TOKEN: ${{ github.token }}
-      GITHUB_TOKEN: ${{ github.token }}
     steps:
       - name: Check out exact tagged revision and full history
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -92,4 +89,7 @@ jobs:
 
       - name: Publish only after exact-tag CI and verify before announcing
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: bash scripts/release/publish.sh
