@@ -207,6 +207,34 @@ The integration-test Compose stack uses host port `55432` and tears itself down 
 
 Run `task generate` before final verification when your change affects generated files. Continuous integration also checks formatting, Go modules, `go vet`, generated sqlc code, unit tests, PostgreSQL integration tests, browser interaction tests, the Go build, and a Compose startup smoke test.
 
+## Local load and reliability testing
+
+The optional load-test harness uses **only** the isolated Compose project `lansurfer-loadtest` (database `lansurfer_loadtest`, HTTP `127.0.0.1:18080`, PostgreSQL `127.0.0.1:55433`). It does not use the development/production database, Keycloak, or real notification accounts. Run it on WSL2/Linux with Docker Compose, Go, Task, Node.js/npm and Playwright Chromium. Read the [complete load-test guide](tools/loadtest/README.md) for the workloads, safeguards, report handling, and reset procedure.
+
+From the repository root, bootstrap the browser tools, start the isolated stack, and initialize its test data:
+
+```sh
+task loadtest:deps             # npm ci and Playwright Chromium (first time)
+task loadtest:up
+export LANSURFER_LOADTEST_DATABASE_URL='postgres://lansurfer_loadtest:local-loadtest-only@127.0.0.1:55433/lansurfer_loadtest?sslmode=disable'
+task loadtest:seed USERS=400    # first time on a fresh test DB only
+task loadtest:fixtures GAMES=20 REQUESTS=60  # first time only
+task loadtest:prepare          # control request and private metrics key
+```
+
+Run a small smoke test and then stop the isolated stack without deleting its database:
+
+```sh
+task loadtest:browser
+task loadtest:run USERS=20 DURATION=30s
+task loadtest:soak USERS=20 DURATION=2m BROWSERS=5
+task loadtest:down
+```
+
+A soak also performs a five-minute cooldown before the final audit. Seed sessions, fixture files, reports, and the metrics key are private local files; **never commit or share them**. Do not repeat seed/fixture creation against an existing database.
+
+Additional Task entry points cover writes, join races, SSE fan-out and chat, profiling, browser calibration, lost signals, and proxy/network chaos; some require a prepared Game Request ID. See `task --list` and the [load-test guide](tools/loadtest/README.md) for exact parameters. The load-test `task loadtest:browser` is **not** the product's `task test:browser`. Known product failures reproduced by chaos tests are tracked separately and do not indicate that the isolated harness is unsafe.
+
 ## Useful development commands
 
 | Command | Purpose |
@@ -223,6 +251,11 @@ Run `task generate` before final verification when your change affects generated
 | `task test:integration` | Run isolated PostgreSQL integration tests |
 | `task test:browser` | Run Chromium interaction-hardening regression tests |
 | `task build` | Build `bin/lansurfer` |
+| `task loadtest:deps` | Install Node dependencies and Chromium for load-test browser scenarios |
+| `task loadtest:up` / `task loadtest:down` | Start/stop the separate load-test Compose stack (retain its DB volume) |
+| `task loadtest:run` / `task loadtest:writes` | Run isolated HTTP read/write profiles |
+| `task loadtest:browser` | Run the isolated Playwright smoke test (not the product browser suite) |
+| `task loadtest:soak` | Run mixed HTTP/SSE/browser load, profiling, cooldown, and audit |
 | `task admin:users` | List users in the running Compose application |
 | `task admin:promote USER_ID=<UUID>` | Promote a local Compose user to administrator |
 
