@@ -459,9 +459,11 @@ LANsurfer User
       +-- Identity: OIDC provider / subject
       |
       +-- Identity: Discord provider / subject
+      |
+      +-- Identity: Twitch provider / subject
 ```
 
-LANsurfer supports provider-neutral generic OIDC and Discord OAuth2 authorization-code login as independent providers.
+LANsurfer supports provider-neutral generic OIDC, Discord OAuth2 authorization-code login, and Twitch as independent providers.
 
 The initial deployment may use Keycloak, but application/domain code must not assume Keycloak.
 
@@ -557,6 +559,10 @@ Serve a manifest with a stable application identity/start URL and bundled/defaul
 
 PWA/instance identity capability owns service-worker registration, lifecycle, and update behavior. notification capability attaches Web Push behavior to that contract rather than creating a competing service worker or registration path.
 
+A new service worker activates immediately (`skipWaiting`, `clients.claim`). There is no update banner, refresh-to-update flow, update polling, or custom install prompt.
+
+The worker handles no `fetch` events and owns no cache or user state; `/service-worker.js` and `/manifest.webmanifest` are served `no-store`. Because the worker is neutral, logout does not unregister it. An authenticated page restored from the back/forward cache reloads, so a frozen DOM is never treated as current after a session change.
+
 ---
 
 ## 17. Game Catalog and IGDB Architecture
@@ -595,6 +601,7 @@ When enabled:
 - synchronize lightweight search/classification metadata for all IGDB game records; do not filter game types at ingestion
 - keep enough provider data to search/disambiguate by name/alias, provider ID, type/category, useful relationships, platform/release context, and cover reference metadata
 - do not mirror the full provider graph or bulk-download cover images; cover bytes are cached on demand only for cover IDs LANsurfer already knows
+- rebuild a complete generation on every synchronization instead of applying incremental changes; a full rebuild detects deletions and isolates a partial baseline without change cursors
 - do not expose partially synchronized IGDB results during the first baseline sync
 - after the first successful baseline, run automatic refresh once per day and offer global administrators **Sync now**
 - retry failures independently of core request traffic
