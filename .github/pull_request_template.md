@@ -1,3 +1,5 @@
+<!-- Title: type(scope): short imperative summary, or type(scope)!: summary for breaking changes. See CONTRIBUTING.md. -->
+
 ## Summary
 
 Describe the change and why it is needed.
