@@ -75,6 +75,6 @@ dockers_v2:
       - linux/amd64
       - linux/arm64
     annotations:
-      'index,manifest:org.opencontainers.image.source': 'https://github.com/convention-x-treme/lansurfer'
-      'index,manifest:org.opencontainers.image.revision': '{{ .FullCommit }}'
-      'index,manifest:org.opencontainers.image.version': '{{ .Tag }}'
+      'manifest:org.opencontainers.image.source': 'https://github.com/convention-x-treme/lansurfer'
+      'manifest:org.opencontainers.image.revision': '{{ .FullCommit }}'
+      'manifest:org.opencontainers.image.version': '{{ .Tag }}'
