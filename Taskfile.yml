@@ -32,6 +32,22 @@ tasks:
       - mkdir -p bin
       - go build -trimpath -o bin/lansurfer ./cmd/lansurfer
 
+  release:check:
+    desc: Check the GoReleaser OSS configuration (no publishing)
+    cmds:
+      - goreleaser check
+
+  release:notes:test:
+    desc: Verify automated release notes with disposable Git history (no publishing)
+    cmds:
+      - bash scripts/release/test-changelog.sh
+
+  release:snapshot:
+    desc: Build Linux archives and local multi-arch snapshot images without publishing
+    cmds:
+      - goreleaser check
+      - goreleaser release --snapshot --clean
+
   test:
     desc: Run unit tests with the race detector
     cmds:
