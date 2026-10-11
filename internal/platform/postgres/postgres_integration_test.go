@@ -3946,7 +3946,7 @@ func TestForwardMigrationIntroducesGameNickAndAuthFlows(t *testing.T) {
 	`, userID, issuer); err != nil {
 		t.Fatalf("insert prototype identity: %v", err)
 	}
-	sessionHash := sha256.Sum256([]byte("pre-track-b-session"))
+	sessionHash := sha256.Sum256([]byte("pre-game-nick-session"))
 	if _, err := pool.Exec(t.Context(), `
 		INSERT INTO auth_sessions (id_hash, user_id, expires_at)
 		VALUES ($1, $2, now() + interval '1 day')
