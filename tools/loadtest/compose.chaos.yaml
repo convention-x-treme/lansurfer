@@ -1,0 +1,14 @@
+services:
+  proxy:
+    build:
+      context: ../..
+      dockerfile: tools/loadtest/proxy/Dockerfile
+    ports:
+      - "127.0.0.1:18081:8080"
+      - "127.0.0.1:18082:8081"
+    networks: [default]
+    cap_add: [NET_ADMIN]
+networks:
+  default:
+    name: lansurfer-loadtest_default
+    external: true

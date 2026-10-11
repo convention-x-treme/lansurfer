@@ -324,6 +324,8 @@ Have you organized a LAN? Spent half the evening trying to find a fourth player?
 
 You can help with interface design, development, documentation, bug reports, and testing at LAN events. Share a concrete use case in an [issue](https://github.com/convention-x-treme/lansurfer/issues), or start with the [contributing guide](CONTRIBUTING.md).
 
+To reproduce load, browser-recovery, and network-fault scenarios locally, see the [isolated load-test harness](tools/loadtest/README.md). It runs separately from the normal development stack and provides Task commands for setup, test runs, and cleanup.
+
 For the technical side, LANsurfer is a modular Go monolith with server-rendered pages and PostgreSQL. The [architecture](docs/ARCHITECTURE.md) explains the choices; [development rules](AGENTS.md) cover repository conventions and commands.
 
 ## 📜 License

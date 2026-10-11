@@ -1,6 +1,7 @@
 package sse
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -64,5 +65,31 @@ func TestBrokerCountsOpenSubscribers(t *testing.T) {
 	second()
 	if got := broker.Subscribers(); got != 0 {
 		t.Errorf("Subscribers() after all released = %d", got)
+	}
+}
+
+func TestBrokerDropsSeventeenthUndrainedEvent(t *testing.T) {
+	broker := NewBroker()
+	events, unsubscribe := broker.Subscribe()
+	for i := range 17 {
+		broker.Publish(gamerequest.Event{Type: gamerequest.EventJoined, RequestID: fmt.Sprintf("request-%02d", i)})
+	}
+	for i := range 16 {
+		got := <-events
+		want := fmt.Sprintf("request-%02d", i)
+		if got.RequestID != want {
+			t.Fatalf("event %d = %q, want %q", i, got.RequestID, want)
+		}
+	}
+	if got := len(events); got != 0 {
+		t.Fatalf("buffer has %d events after drain, want 0", got)
+	}
+	broker.Publish(gamerequest.Event{Type: gamerequest.EventJoined, RequestID: "after-drain"})
+	if got := (<-events).RequestID; got != "after-drain" {
+		t.Fatalf("post-drain event = %q", got)
+	}
+	unsubscribe()
+	if _, open := <-events; open {
+		t.Fatal("subscriber remains open after overflow and unsubscribe")
 	}
 }
