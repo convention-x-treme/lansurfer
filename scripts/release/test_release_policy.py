@@ -47,6 +47,30 @@ class PreflightTest(unittest.TestCase):
 
 
 class AliasPlanTest(unittest.TestCase):
+    def test_first_pilot_release_has_no_aliases(self):
+        self.assertEqual(
+            plan_aliases("v0.1.0", []),
+            {"tag": "v0.1.0", "aliases": [], "make_latest": False},
+        )
+
+    def test_pilot_patch_has_no_aliases_or_github_latest(self):
+        self.assertEqual(
+            plan_aliases("v0.1.1", [release("v0.1.0")]),
+            {"tag": "v0.1.1", "aliases": [], "make_latest": False},
+        )
+
+    def test_pilot_release_candidate_has_no_aliases(self):
+        self.assertEqual(
+            plan_aliases("v0.1.0-rc.1", []),
+            {"tag": "v0.1.0-rc.1", "aliases": [], "make_latest": False},
+        )
+
+    def test_first_v1_release_can_promote_latest_after_v0(self):
+        self.assertEqual(
+            plan_aliases("v1.0.0", [release("v0.9.5")]),
+            {"tag": "v1.0.0", "aliases": ["v1.0", "v1", "latest"], "make_latest": True},
+        )
+
     def test_first_stable_release(self):
         result = plan_aliases("v1.0.0", [])
         self.assertEqual(result["aliases"], ["v1.0", "v1", "latest"])
