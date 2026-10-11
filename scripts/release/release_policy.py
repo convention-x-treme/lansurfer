@@ -62,7 +62,9 @@ def check_new(tag: str, releases: list[dict]) -> None:
 
 def plan_aliases(tag: str, releases: list[dict]) -> dict:
     candidate, prerelease = parse_tag(tag)
-    if prerelease:
+    # 0.x is LANsurfer's internal/pilot line: publish only the exact tag.
+    # No stable GHCR aliases or GitHub's "latest" marker until 1.0.
+    if prerelease or candidate.major == 0:
         return {"tag": tag, "aliases": [], "make_latest": False}
 
     existing_stable = []
