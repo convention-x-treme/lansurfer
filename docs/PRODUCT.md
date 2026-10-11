@@ -1,5 +1,9 @@
 # LANsurfer Product
 
+This document is the durable product contract: what LANsurfer is, how it behaves for players, administrators, and operators, and which boundaries are part of the product. It is written in the present tense and carries no schedule, priority, implementation status, or release-gate evidence. Software-development planning lives in GitHub Issues and milestones; a proposal there becomes part of this contract only when an approved change updates this document.
+
+Related authorities: [ARCHITECTURE.md](ARCHITECTURE.md) for technical decisions, [TERMINOLOGY.md](TERMINOLOGY.md) for vocabulary, and [DESIGN.md](../DESIGN.md) for the design system.
+
 ## 1. Product Summary
 
 LANsurfer is an open-source, self-hosted Looking-for-Group application for LAN parties and gaming events.
@@ -14,11 +18,12 @@ LANsurfer should answer that question with as little friction as possible. It is
 
 ## 2. Core Product Flow
 
-1. A player signs in through generic OIDC or Discord and chooses a public Game Nick.
+1. A player signs in through a configured provider (generic OIDC, Discord, or Twitch) and chooses a public Game Nick.
 2. They find or follow Games they are interested in.
 3. They create a Game Request.
 4. Other relevant players see the request in the browser or through an enabled notification transport.
 5. Players join and then start playing together.
+
 Following remains an explicit action on the Games surface. The Game Request detail page does not expose Follow Game. Viewing, creating, or joining a Game Request never follows its Game implicitly.
 
 The LANsurfer installation itself provides the event context. Players do not need to select or join an Event, Clan, Open Play space, or other parent context before using Game Requests.
@@ -45,7 +50,7 @@ LANsurfer should work especially well when the people using an installation alre
 
 ### Low-friction onboarding
 
-An event must not require every attendee to already have an account with the operator's identity provider. Generic OIDC and Discord are independent login choices.
+An event must not require every attendee to already have an account with the operator's identity provider. Generic OIDC, Discord, and Twitch are independent login choices.
 
 ### Self-hosted and open
 
@@ -61,90 +66,44 @@ Avoid features and abstractions that require disproportionate technical complexi
 
 ## 4. Terminology
 
-LANsurfer branding may use surf-related visuals and marketing language, but product and domain terminology remains simple.
+Product and domain language stays plain: Game, Game Request, Player, Game Nick, Join and Leave, Follow Game and My Games. Surf metaphors are reserved for branding and marketing copy such as the tagline; players never need a surf vocabulary to operate LANsurfer.
 
-Use:
+[TERMINOLOGY.md](TERMINOLOGY.md) owns the canonical vocabulary, including the terms that must not be used. Event and Clan are not current product concepts (see [Product Boundaries](#5-product-boundaries)).
 
-- Game
-- Game Request
-- Player
-- Game Nick
-- Join and Leave
-- Follow Game and My Games
+## 5. Product Boundaries
 
-Do not use Wave, Crew, Spot, Space, or a generic Context as required product/domain concepts. “Crew” may remain in marketing copy such as the tagline.
+LANsurfer is deliberately small. The following are not part of the product. They are current product behavior, not a backlog: none of them is scheduled or promised by being named here.
 
-Use explicit domain names in code and the database. Surf metaphors are reserved for branding and marketing copy.
+Instance and community model:
 
-Event and Clan terminology may be introduced only when concrete product work is approved and scheduled.
+- multiple Events in one installation, Event membership, invitations, managers, seats, venue maps, ticket claims, Event lifecycle/history, and Open Play
+- Game Requests scoped to an Event, Clan, or any other parent, and a generic polymorphic Game Request context/parent framework
+- Clans, Clan ownership, rosters, invitations, primary-Clan identity, Clan posts, Clan chat, private Clan LFG, and custom roles
+- tournaments, ratings, teams, and federation
+- multi-instance or high-availability operation
 
-## 5. Release Scope
+Players and accounts:
 
-### Completed prototype baseline
-
-The web-only prototype implemented:
-
-- generic OIDC login and local users
-- global user/administrator roles and revocable PostgreSQL sessions
-- Event and local Game administration
-- Game aliases, external-ID storage, search, and subscriptions
-- Game Requests with concurrency-safe joining, leaving, cancellation, and expiration
-- server-side rendered templ/HTMX pages and SSE live updates
-- responsive UI feedback, embedded production assets, migrations, and Compose-based development deployment
-
-The prototype is an input to the 1.0 migration path. Prototype relationships and interfaces are not automatically part of the final 1.0 product model.
-
-### Planned stable 1.0 scope
-
-The stable 1.0 release scope includes:
-
-- a focused single-event operating model in which Game Requests are instance-wide rather than scoped through Event membership
-- a unique public Game Nick as the player identity
-- independent generic OIDC and Discord authentication with explicit account linking
-- an authoritative local Game catalog plus an optional synchronized IGDB discovery provider
-- request discovery by Game name/aliases, followed/My Games and open capacity, a compact request-based Trending view, and durable request-local activity history
-- Game Request coordination from forming through active play and completion, including dynamic participation/capacity while playing, ordinary participant-only structured session information, and lightweight request-local participant chat
-- fixed LANsurfer branding with only the minimum instance identity needed for a recognizable deployment, plus an installable PWA/service-worker shell
-- durable Web Push and one instance-level Discord delivery integration without a persistent inbox
-- production release artifacts, operational documentation, and a tested upgrade path from a populated earlier `main` revision to 1.0
-
-The 1.0 product UI is English-only. Internationalization/localization is not a stable-1.0 prerequisite.
-
-This section owns approved 1.0 product scope. GitHub Issues and the 1.0 milestone own scheduling, dependencies, current status, validation, and release gates. A feature is not implemented merely because it is described here.
-
-### Explicitly deferred beyond 1.0
-
-The following may be useful later but are not stable-1.0 requirements:
-
-- English/German localization or a general localization framework
-- curated Game Request quick-info tags and tag-based filtering
-- player biographies, per-Game player handles, and richer public profile pages
-- a full administrator-managed branding editor, uploaded instance logos/icons, white-labeling, or custom theming
-
-### Future candidates — not scheduled
-
-These are possible directions, not commitments to a particular release:
-
-- multiple Events in one installation, Event membership, invitations, managers, seats, lifecycle/history, and Open Play
-- Game Requests scoped to an Event, Clan, or another concrete parent when a real use case justifies it
-- Clans, Clan ownership, rosters, invitations, and primary-Clan identity
-- additional authentication providers beyond OIDC, Discord, and Twitch
-- per-Event notification settings or multiple Discord destinations
-
-Do not create generic abstractions merely to make these possibilities easier later.
-
-### Explicitly not planned
-
-- a generic polymorphic Game Request context/parent framework
-- persistent in-app notification inbox/history
+- guest accounts, passkeys, and local passwords
+- authentication providers beyond generic OIDC, Discord, and Twitch
+- player biographies, per-Game player handles, richer public profile pages, and avatar uploads
 - generic reports, suspensions, and complex moderation
-- Clan posts, chat, private Clan LFG, and custom roles
-- Game Request waitlists, ready checks, and comments
-- guest accounts, passkeys, and account self-deletion
-- full theme customization or white-label branding
+
+Game Requests and notifications:
+
+- waitlists, ready checks, a separate ready-to-play state, and comments apart from the request-local Lobby chat
+- curated quick-info tags and tag-based filtering
+- a persistent in-app notification inbox or history
+- per-Event notification settings or more than one Discord destination
+
+Presentation and platform:
+
+- localization: the product UI is English-only and has no localization framework
+- an administrator-managed branding editor, uploaded instance logos or icons, white-labeling, or custom theming
 - external catalog providers other than IGDB
-- multi-instance/high-availability architecture
-- WebSockets, native applications, tournaments, ratings, teams, and federation
+- WebSockets and native applications
+
+Do not create generic abstractions merely to make any of these easier later. A proposal to change a boundary is raised as a GitHub Issue and changes the product only through an approved update to this document.
 
 ## 6. Players and Authentication
 
@@ -166,7 +125,7 @@ A visitor who is sent to login from a page, or who clicks a landing tile, return
 
 ### Public player identity
 
-- Every player must choose a unique, case-insensitive public **Game Nick** after first login. Existing prototype users complete this once after upgrade.
+- Every player must choose a unique, case-insensitive public **Game Nick** after first login. An existing account without a Game Nick chooses one at its next sign-in.
 - The Game Nick is the public identity used in Game Request participant lists, request activity, Discord request messages, and other public player references.
 - A Discord display name may be offered as an initial suggestion, but LANsurfer owns Game Nick validation and uniqueness.
 - Provider name and email are visible only to the account owner, not to other players or global administrators through normal product UI.
@@ -184,7 +143,7 @@ A visitor who is sent to login from a page, or who clicks a landing tile, return
 
 - Generic OpenID Connect remains provider-neutral.
 - Discord OAuth2 authorization-code login is a separate supported provider with its own callback.
-- An account may be OIDC-only, Discord-only, or explicitly linked to both.
+- An account may use a single provider identity or be explicitly linked to several.
 - Linking and unlinking require an explicit signed-in account flow.
 - At least one identity must remain linked.
 - Never merge identities or accounts based only on email.
@@ -243,7 +202,7 @@ A LANsurfer installation represents one LAN party or gaming event context.
 - There is no Event switcher, Event invitation model, Event roster, seat assignment, Event lifecycle/history access model, or Event-scoped authorization.
 - A minimum instance display identity may distinguish the deployment, but LANsurfer does not provide a branding-management surface.
 
-The prototype contained Event data and Game Request/Event relationships. The forward migration removed the association while preserving every existing Game Request, its creator, members, status, and timestamps; legacy Event rows are kept in the database but are no longer read. Administrators no longer manage Events, and no user needs to understand or satisfy a hidden Event model.
+Game Requests have no Event association. Legacy Event rows from earlier versions may remain in the database but are never read. Administrators do not manage Events, and no user needs to understand or satisfy a hidden Event model.
 
 Do not introduce a generic `context`, polymorphic parent, or similar abstraction solely to preserve future flexibility.
 
@@ -364,7 +323,7 @@ A started request is not cancelled; it is closed when finished. Existing histori
 
 Time presentation follows lifecycle state. Open requests show planned time and may use relative countdown and urgency. Playing requests show a valid actual start time when available; otherwise, they show no time. Playing requests never show planned-time countdown or urgency. Closed requests show actual start when recorded; legacy closed requests and cancelled requests show planned time as history. Historical time uses explicit labels so it cannot read as a future start.
 
-Stable 1.0 coordination continues while a request is `playing`:
+Coordination continues while a request is `playing`:
 
 - players may join or leave while capacity permits; the Host remains a member and cannot leave;
 - the Host may change the maximum player count while `open` or `playing`, but never below current participation (see [Capacity](#capacity));
@@ -383,7 +342,7 @@ Stable 1.0 coordination continues while a request is `playing`:
 The Game Request detail page presents participant chat and durable Game Request activity together in the **Lobby**. Current members may read Lobby history in every lifecycle state; leaving removes read access immediately. Nonmembers cannot read it. Chat posting remains limited to current members while the request is `open` or `playing`; terminal Lobbies are read-only. The Lobby shows the latest 200 combined entries in chronological order. Historical backfill appears as history but is never delivered as notification.
 
 Secret presentation protects against shoulder-surfing, not database access, server compromise, or an authorized participant inspecting browser tools.
-Request-local chat is not a general messaging subsystem: there are no direct messages, global rooms, threads, reactions, attachments, read receipts, typing indicators, or presence in the stable 1.0 scope.
+Request-local chat is not a general messaging subsystem: there are no direct messages, global rooms, threads, reactions, attachments, read receipts, typing indicators, or presence.
 
 The primary UI should show Game, player count/capacity, start time, short description, and the Join action without forcing the player through a detail page. While a request is `playing`, the list and detail page keep the same Join, Leave, and Full states as an `open` one.
 
@@ -420,7 +379,7 @@ Discovery includes practical filtering without requiring a tag taxonomy:
 
 The scope is a single exclusive choice rather than four combinable toggles, because asking for requests a player created *and* requests for Games they follow at the same time has no useful answer. Free places is a separate toggle, since it narrows capacity inside any scope.
 
-Additional filters beyond these are not automatically part of approved product scope merely because they appear in an issue proposal.
+Additional filters are not part of the product merely because they appear in an issue proposal.
 
 ### Trending
 
@@ -494,46 +453,35 @@ The durable notification system has Web Push and Discord transports. External de
 - Stored webhook identifiers/tokens are encrypted and never displayed back to an operator. OAuth access/refresh tokens are not retained after successful destination setup.
 - Disconnecting or replacing a destination does not delete already-posted Discord messages and never replays historical notification work.
 
-Per-Event Discord destinations and Event-scoped notification preferences are future candidates, not current product behavior.
+Per-Event Discord destinations and Event-scoped notification preferences are not part of the product.
 
-## 13. Future Social and Multi-Event Features
-
-Multi-Event operation and persistent social/community structures are intentionally outside the current product model.
-
-Possible future work may include:
-
-- scheduled Events and Open Play
-- Event membership, managers, invitations, rosters, seats, lifecycle/history, and access boundaries
-- Event-scoped Game Requests
-- Clans with ownership, membership, invitations, rosters, and primary-Clan display
-- Clan-aware Game Request discovery or scoping when a concrete need exists
-- authentication providers beyond OIDC, Discord, and Twitch
-
-These features must not shape the current architecture through speculative generic abstractions. If they become scheduled, their concrete domain model should be designed against the actual use case at that time.
-
-## 14. Instance Identity, Branding, and PWA
+## 13. Instance Identity, Branding, and PWA
 
 The product is called **LANsurfer**. Its tagline is:
 
 > Find your crew. Catch the next game.
 
-The fixed visual system uses the canonical LANsurfer design and bundled application assets. See the [Branding guide](BRANDING.md).
+The fixed visual system uses the canonical LANsurfer design and bundled application assets. [DESIGN.md](../DESIGN.md) owns that design system; this section owns what a deployment may and may not change.
 
-LANsurfer does **not** provide a full administrator-managed branding surface. In particular, the current product model does not include configurable welcome text, contact link, uploaded logo, uploaded app icon, custom colors, white-labeling, or theme editing.
+LANsurfer does **not** provide a full administrator-managed branding surface. In particular, the current product model does not include configurable welcome text, contact link, uploaded logo, uploaded app icon, custom colors, fonts, CSS, white-labeling, or theme editing.
 
 Operator legal identity is the one configurable exception: legal entity name, postal address, contact email, and an optional external imprint URL are operator configuration, because each deployment is its own data controller. LANsurfer serves a public Terms of Service (`/terms`) and Privacy Policy (`/privacy`) filled from these values, links them and the imprint from the footer of every screen (the contact/reporting details live in the Terms), and states on the login screen that logging in accepts the Terms. Support, abuse, Discord, and data requests go to the contact email; software bugs go to the project's issue tracker. This does not reintroduce welcome text, logos, colors, or free-form legal text as configuration.
 
-A deployment may expose the minimum configurable instance identity needed to distinguish a LANsurfer installation. The application otherwise uses fixed/default LANsurfer branding and bundled assets.
+A deployment may expose the minimum configurable instance identity needed to distinguish a LANsurfer installation. The application otherwise uses fixed/default LANsurfer branding and bundled assets. Minimum instance identity is not Event-specific and does not grow into a second branding system.
+
+The **Powered by Convention-X-Treme** operator attribution is fixed and always visible. It is not an instance-identity field and is not administrator-editable.
+
+Dark and light presentations are equally supported, and neither loses information or actions. Theme choice is a per-browser presentation preference, not instance branding: it is remembered in a preference cookie and rendered into the document, so a navigation never paints the other theme first.
 
 The web app manifest uses a stable application identity and start URL, and the minimal service-worker shell supports installation plus Web Push integration. Installation does not imply offline application support.
 
 The IGDB cover and provider-avatar proxies concern catalog and player content and do not permit remote instance branding or broader theme customization.
 
-## 15. Self-Hosting and Release Experience
+## 14. Self-Hosting and Release Experience
 
 The supported production deployment requires only LANsurfer and PostgreSQL as local runtime services. Migrations run before HTTP startup and a migration failure prevents startup. DOWN migrations never run automatically.
 
-The stable 1.0 distribution includes:
+A release distribution includes:
 
 - Linux amd64 and arm64 binaries
 - a matching multi-architecture GHCR image
@@ -542,27 +490,8 @@ The stable 1.0 distribution includes:
 - version, healthcheck, encryption-key-generation, and Web Push key-generation commands
 - configuration, reverse-proxy/TLS, administrator bootstrap, backup/restore, key backup, and upgrade documentation
 
-TLS and the reverse proxy remain operator responsibilities. The project documents each release's supported upgrade path rather than guaranteeing arbitrary direct upgrades across all 1.x versions. Migrations are forward-only, and an upgrade from a populated earlier `main` revision to 1.0 is tested. Feature-branch databases are disposable prototype state, not supported upgrade sources.
+TLS and the reverse proxy remain operator responsibilities. The project documents each release's supported upgrade path rather than guaranteeing arbitrary direct upgrades across all 1.x versions. Migrations are forward-only. Feature-branch databases are disposable prototype state, not supported upgrade sources.
 
-Pilot-specific validation requirements are tracked in GitHub issue #93. They do not redefine the durable product model in this document.
+## 15. Product Decisions Left to Implementation
 
-## 16. 1.0 Success Criteria
-
-LANsurfer 1.0 succeeds when an operator can reliably run one self-hosted LAN/event instance and players can use it without any shared-service or multi-Event concepts.
-
-Operators can reliably install, configure, back up, restore, and upgrade LANsurfer, and signed-in players can:
-
-1. use a unique public Game Nick without exposing authentication-provider data
-2. authenticate through either generic OIDC or Discord, with explicit account linking when desired
-3. discover local/provider Games and instance-wide Game Requests without joining or selecting an Event/Clan/context
-4. create and join capacity-safe Game Requests from desktop and mobile browsers
-5. use My Games/open-capacity discovery, 6-hour request-based Trending, and durable request-local activity
-6. start and continue a Game Request as an active playing session, including dynamic participation, ordinary participant-only session information, and lightweight request-local chat; #103 adds secret presentation privacy
-7. receive only the durable notifications they have enabled and are eligible to receive
-8. continue core workflows when optional external providers are unavailable
-
-A 1.0 release must not require Event switching, Open Play, Clans, a generic Game Request context framework, rich profiles, a branding editor, localization, or curated request tags.
-
-## 17. Product Decisions Left to Implementation
-
-Layout, copy, pagination, route shape, migration mechanics, exact browser versions used as validation evidence, exact provider-index schema, stale-state thresholds, and validation helpers are implementation details unless an approved product-scope change makes them product requirements. GitHub Issues may schedule work or validation but do not silently redefine product scope. Follow the [approval rules](../AGENTS.md#changes-requiring-approval) for changes to technology, security, module boundaries, deployment, domain terminology, or approved release scope.
+Layout, copy, pagination, route shape, migration mechanics, exact browser versions used as validation evidence, exact provider-index schema, stale-state thresholds, and validation helpers are implementation details unless an approved product-scope change makes them product requirements. GitHub Issues may schedule development work or validation but do not silently redefine product scope. Follow the [approval rules](../AGENTS.md#changes-requiring-approval) for changes to technology, security, module boundaries, deployment, domain terminology, or approved product scope.

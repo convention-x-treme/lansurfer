@@ -1,6 +1,6 @@
 # LANsurfer terminology
 
-This file defines project vocabulary that is easy to confuse in code, documentation, issues, and agent prompts. Product behavior remains authoritative in [PRODUCT.md](PRODUCT.md); technical ownership remains authoritative in [ARCHITECTURE.md](ARCHITECTURE.md).
+This file defines project vocabulary that is easy to confuse in code, documentation, issues, and agent prompts. Product behavior remains authoritative in [PRODUCT.md](PRODUCT.md); technical ownership remains authoritative in [ARCHITECTURE.md](ARCHITECTURE.md); the design system remains authoritative in [DESIGN.md](../DESIGN.md).
 
 Use these terms consistently. Do not invent synonyms for domain concepts unless the product definition changes.
 
@@ -17,7 +17,7 @@ Use these terms consistently. Do not invent synonyms for domain concepts unless 
 - **Followed only**: the filter on the Games surface that restricts Games to those the current user follows.
 - **My Games**: the Game Request discovery audience for requests whose Games the current user follows. It is not a replacement label for the Games screen's **Followed only** filter.
 - **Game Request**: an instance-wide looking-for-group request for one Game. Its active lifecycle distinguishes a group still forming (`open`) from a session the Host explicitly started (`playing`).
-- **Host**: the creator/owner of a Game Request for its lifetime. Host ownership is not transferable in the stable 1.0 model.
+- **Host**: the creator/owner of a Game Request for its lifetime. Host ownership is not transferable.
 - **Playing**: the active Game Request state entered only by the Host's explicit **Start game** action. It is the authoritative signal that the session actually started; a playing request remains active until it is closed.
 - **Edit Game Request**: the Host-only detail-page action for mutable coordination details. While `open`, it may change Max players, planned start, and description; while `playing`, only Max players and description remain editable. Game, Host, lifecycle state, and actual `started_at` are never editable through this flow.
 - **Capacity / Max players**: the optional maximum number of members of a Game Request, the Host included. "Capacity" names the concept and "Max players" is the form field. A finite value is a whole number from `2` to `999`; a legacy request may still hold `1`. Only the Host changes it through **Edit Game Request**, while the request is `open` or `playing`, and never below the current member count.
@@ -38,8 +38,18 @@ Use these terms consistently. Do not invent synonyms for domain concepts unless 
 - **Discord notification delivery**: the separately configured instance-level incoming-webhook destination. Do not couple it to Discord authentication.
 - **Instance / installation / deployment**: one running LANsurfer installation. The current product model treats the installation itself as the LAN party or gaming-event context.
 - **Instance identity**: the small operator-configurable identity needed to distinguish an installation, such as its instance name.
-- **LANsurfer brand**: the fixed product brand, tokens, typography, themes, icons, and bundled brand assets. Instance identity must not mutate it.
+- **LANsurfer brand**: the fixed product brand, tokens, typography, themes, icons, and bundled brand assets, defined in [DESIGN.md](../DESIGN.md). Instance identity must not mutate it.
 - **Event**: a legacy prototype domain concept. The current product model does not use Event selection or membership for Game Requests. Do not reintroduce an Event/context abstraction without an approved scope change.
+
+## Brand voice boundary
+
+LANsurfer branding may use surf-related visuals and marketing language, but product and domain terminology stays plain. Users must not learn a surf vocabulary to operate LANsurfer.
+
+- Use Game, Game Request, Player, Game Nick, Join and Leave, Follow Game, and My Games.
+- Do not use Wave, Crew, Spot, Space, or a generic Context as product or domain concepts. Do not rename Game Requests to Waves, Players to Crew, available places to Spots, or Join to Catch in navigation, controls, code, or persistence.
+- Brand personality may appear in marketing headlines and occasional supporting copy. "Crew" may remain in marketing copy such as the tagline.
+- Use explicit domain names in code and the database.
+- Say **places** for available spots and **Max players** for the field. "Seat" is not used.
 
 ## Planning vocabulary
 
@@ -59,9 +69,9 @@ Historical PRs, commits, retained design records, and closed issues do not need 
 
 ## Source-of-truth rule
 
-- Durable product behavior and release scope: `docs/PRODUCT.md`
+- Durable product behavior, approved scope, and product boundaries: `docs/PRODUCT.md`
 - Durable technical decisions and ownership: `docs/ARCHITECTURE.md`
 - Terminology: this file
-- Brand/UI rules: `docs/BRANDING.md` and `docs/ui-kit/`
-- Current work, priorities, validation status, and release gates: GitHub Issues and the active release milestone
+- Design system: `DESIGN.md`; specific screen compositions and interactions: `docs/ui-kit/`
+- Software-development work, priorities, and validation status: GitHub Issues and milestones. There is no repository roadmap file.
 - Feature-branch specs/plans/tasks: temporary working artifacts; see `docs/superpowers/README.md`

@@ -7,7 +7,8 @@ Canonical sources are:
 - product behavior and approved scope: `docs/PRODUCT.md`
 - technical architecture and durable invariants: `docs/ARCHITECTURE.md`
 - terminology: `docs/TERMINOLOGY.md`
-- current work/status/validation/release gates: GitHub Issues and the 1.0 milestone
+- design system: `DESIGN.md`
+- current development work/status/validation: GitHub Issues and milestones
 - repository workflow: `AGENTS.md`
 
 ## Recommended lifecycle
@@ -20,6 +21,7 @@ Canonical sources are:
    - product behavior/scope → `PRODUCT.md`
    - technical decisions/invariants → `ARCHITECTURE.md`
    - vocabulary → `TERMINOLOGY.md`
+   - design-system rules → `DESIGN.md`
    - remaining work → GitHub Issues
    - useful non-automated evidence → the relevant GitHub Issue or PR
 6. Remove temporary plans/tasks/prompts from the final tree. Remove the design/spec too once its durable decisions are represented canonically, unless it contains genuinely useful rationale that cannot be expressed there.

@@ -43,7 +43,7 @@ PostgreSQL
 
 No Redis, queue, separate frontend runtime, or object storage is required.
 
-This document records the current technical architecture and durable invariants. Product behavior and approved scope belong in [PRODUCT.md](PRODUCT.md); current work, dependencies, validation status, and release gates belong in GitHub Issues and milestones.
+This document records the current technical architecture and durable invariants. Product behavior and approved scope belong in [PRODUCT.md](PRODUCT.md); the design system belongs in [DESIGN.md](../DESIGN.md); software-development work, dependencies, and validation status belong in GitHub Issues and milestones.
 
 ---
 
@@ -543,7 +543,13 @@ Do not introduce a config file format unless a concrete requirement appears.
 
 ## 16. Branding and Installable Web Shell Architecture
 
-LANsurfer keeps a fixed, accessible visual system and bundled application branding. Templates consume centralized branding values instead of repeating constants. Bundle approved logos/mascot/font assets with the application; do not add a runtime font or branding CDN.
+LANsurfer keeps a fixed, accessible visual system and bundled application branding. Templates consume centralized branding values instead of repeating constants. Bundle approved logos/mascot/font assets with the application; do not add a runtime font or branding CDN, and do not link Google Fonts stylesheets. [DESIGN.md](../DESIGN.md) owns the visual values and usage rules; this section owns how they are implemented.
+
+The fixed brand definition lives near the web composition layer (`internal/web/branding`) as one small value containing the product name, tagline, semantic colors, the operating community's name and public URL used by the **Powered by …** attribution, and built-in asset paths. Tailwind/DaisyUI theme values, CSS custom properties, and templ components derive from that definition or its generated/static stylesheet rather than introducing parallel constants. Every **Powered by …** credit renders from the operator name and URL in that definition, so changing the credited community is a single-value change there, not a template edit or administrator setting.
+
+Fixed brand values and the operator attribution are not environment configuration or mutable PostgreSQL state. Minimum instance identity is separate product state and stays deliberately small rather than becoming a branding editor.
+
+The bounded IGDB cover and provider-avatar proxies are content exceptions, not branding exceptions. They do not permit remote logos, icons, fonts, theme assets, or arbitrary images.
 
 LANsurfer does not provide PostgreSQL-backed administrator-managed welcome text, contact link, uploaded logo, uploaded application icon, white-labeling, or theme controls. A deployment may expose only the minimum instance identity required to distinguish the installation, plus the operator legal identity described in §15.
 
@@ -634,7 +640,7 @@ The bounded proxy core (validation hook, store, negative cache, singleflight, ad
 
 ## 18. Frontend Architecture
 
-`templ` renders full pages and HTMX fragments. DaisyUI provides the stable base component vocabulary; Tailwind handles layout/local variations. Avoid another UI framework.
+`templ` renders full pages and HTMX fragments. DaisyUI provides the stable base component vocabulary; Tailwind handles layout/local variations. Avoid another UI framework. Design references such as `docs/ui-kit/index.html` are not production code or a runtime dependency; translate them into this templ/HTMX, Tailwind, and DaisyUI frontend.
 Icons are the Phosphor webfonts (Regular default, Fill for emphasized state), consumed as plain CSS classes in templ markup with `currentColor`; TypeScript does not manage icons.
 
 TypeScript handles only browser-specific progressive enhancement such as SSE connection handling, toast/dialog helpers, installability/service-worker registration, and Web Push permission/subscription behavior. Do not implement domain decisions in TypeScript.

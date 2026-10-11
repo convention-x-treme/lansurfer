@@ -3,7 +3,7 @@
 Audit date: 2026-09-16. Branch: `feat/adopt-design-kit`, at commit `5f18dfe`.
 Remediation: 2026-09-17, branch `feat/impeccable-recommendations`.
 
-This document records the presentation defects found in LANsurfer's dark theme and the remediation derived from them. It is a historical presentation-audit working document, not a design authority: [`BRANDING.md`](BRANDING.md) and [`docs/ui-kit`](ui-kit/README.md) remain the joint design authority, and this audit only measures the implementation against them. **Every finding below was fixed and the remediation backlog is empty; finding 9 has since been partly reopened by the kit, as recorded under it.** The document is kept until a fresh audit replaces its score; it is retired once that audit is recorded.
+This document records the presentation defects found in LANsurfer's dark theme and the remediation derived from them. It is a historical presentation-audit working document, not a design authority: [`DESIGN.md`](../DESIGN.md) (formerly `docs/BRANDING.md`) and [`docs/ui-kit`](ui-kit/README.md) remain the design authority, and this audit only measures the implementation against them. **Every finding below was fixed and the remediation backlog is empty; finding 9 has since been partly reopened by the kit, as recorded under it.** The document is kept until a fresh audit replaces its score; it is retired once that audit is recorded.
 
 ## Method
 
@@ -44,13 +44,13 @@ Each entry keeps its original measurement and records what replaced it. Ratios i
 2. **Form fields were not identifiable in dark mode.** DaisyUI's border resolved to Ink 20% — 1.87:1 against the panel. Failed SC 1.4.11.
    **Resolved.** `--input-border` overrides `--input-color` on `.input`, `.select`, `.textarea`, and `.file-input`: 4.41:1 against the field fill and 3.84:1 against the card in dark mode, 3.70:1 and 4.19:1 in light. The field's focus ring is now the system's 3 px `--focus-ring` rather than the 2 px outline DaisyUI derives from the same border colour.
 3. **One action, two colours.** `detailJoinButtonClass` returned `btn btn-success`.
-   **Resolved.** Returns `btn btn-primary`, matching the list row and the commit level in `BRANDING.md`.
+   **Resolved.** Returns `btn btn-primary`, matching the list row and the commit level in `DESIGN.md`.
 4. **The live-notice stack covered the right rail.** Fixed at `right-4 top-20`, landing on the 18.5 rem rail from 1280 px up; the connection alert was not dismissible.
    **Resolved.** The stack anchors bottom-right in every viewport, so the mobile-only override is gone, and every live notice — including the connection alert — is built by one `liveNotice()` helper that always adds a Dismiss control. The oob sweep no longer expires the connection alert; reopening the stream clears it.
 5. **Mobile carried state by colour alone.** Below 48 rem the row hid every status chip.
    **Resolved.** The chip wraps onto a second line inside the row instead of being hidden, so Host, Joined, Last place, and Full stay readable as text.
 6. **Heading structure.** The Game Request list had no `h1`; administration used `<h1 class="data-text count-open text-xs">` as a breadcrumb.
-   **Resolved.** An `.app-title` screen title per the `BRANDING.md` type scale on the Game Request list, Games, My Games, the composer, both administration pages, and the error surfaces. Alert headings inside those pages are no longer `h1`.
+   **Resolved.** An `.app-title` screen title per the `DESIGN.md` type scale on the Game Request list, Games, My Games, the composer, both administration pages, and the error surfaces. Alert headings inside those pages are no longer `h1`.
 
 ### P2
 

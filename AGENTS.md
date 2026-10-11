@@ -7,12 +7,12 @@ LANsurfer is a self-hosted Looking-for-Group web application and a modular Go mo
 Use the smallest authoritative source that answers the task:
 
 - `README.md`: what LANsurfer is and how to run it.
-- `docs/PRODUCT.md`: intended user-visible behavior and approved release scope.
+- `docs/PRODUCT.md`: durable product contract — user-visible behavior, approved scope, and product boundaries. It carries no schedule or implementation status.
 - `docs/ARCHITECTURE.md`: technical architecture, module ownership, and durable invariants.
 - `docs/TERMINOLOGY.md`: canonical project vocabulary and distinctions that agents/contributors must preserve.
-- GitHub Issues + the active release milestone: current work, priorities, dependencies, validation status, and release gates.
-- `docs/ROADMAP.md`: stable planning landing page only; do not put mutable checklists/status back into it.
-- `docs/BRANDING.md` and `docs/ui-kit/`: approved presentation system.
+- `DESIGN.md`: authoritative design system — brand, colors, typography, icons, themes, accessibility, components, logo, and mascot. It wins over external design projects.
+- `docs/ui-kit/`: reference for specific screen compositions and interactions.
+- GitHub Issues + milestones: software-development work only — proposals, priorities, dependencies, bugs, tests, tooling, and technical documentation. There is no repository roadmap file; do not add one. Live deployment, event preparation, provider administration, and go/no-go approvals are not tracked there.
 - `Taskfile.yml`: authoritative development commands.
 - `docs/superpowers/`: feature-branch working specs/designs/plans when useful. They never override canonical docs and normally do not survive the final merge.
 
@@ -65,18 +65,18 @@ Run the checks relevant to the files and behavior changed. Do not substitute bro
 ## Scope and workflow
 
 - Inspect existing implementation and tests before designing a change.
-- Use GitHub Issues and the active release milestone for current status, dependencies, validation, and release gates. Do not infer scheduled work from an old spec or historical branch artifact.
+- Use GitHub Issues and milestones for current development status, dependencies, and validation. Do not infer scheduled work from an old spec or historical branch artifact, and do not treat an open proposal as approved product scope.
 - Prefer one coherent branch/PR per feature, fix, or cross-capability contract. Coordinate a shared schema, route, template, or composition-root contract before parallel changes touch it.
-- PRODUCT owns durable behavior/scope; ARCHITECTURE owns durable technical decisions; TERMINOLOGY owns shared vocabulary. Keep those documents aligned when a change affects more than one authority.
+- PRODUCT owns durable behavior/scope; ARCHITECTURE owns durable technical decisions; TERMINOLOGY owns shared vocabulary; DESIGN owns the design system. Keep those documents aligned when a change affects more than one authority, and state each rule once in its owning document.
 - Specifications/designs are for bounded decisions that need more detail during implementation. Plans/tasks/prompts are execution aids, not permanent status documents.
-- Specs, designs, plans, and task lists may be committed on a feature branch when that improves human/agent collaboration. Before merge, harvest durable behavior into PRODUCT, durable technical decisions into ARCHITECTURE, vocabulary into TERMINOLOGY, remaining work and manual validation evidence into the relevant GitHub Issue or PR; then remove temporary working artifacts from the final tree.
+- Specs, designs, plans, and task lists may be committed on a feature branch when that improves human/agent collaboration. Before merge, harvest durable behavior into PRODUCT, durable technical decisions into ARCHITECTURE, vocabulary into TERMINOLOGY, design-system rules into DESIGN, remaining work and manual validation evidence into the relevant GitHub Issue or PR; then remove temporary working artifacts from the final tree.
 - Prefer squash merging branches that contained temporary planning artifacts so those intermediate files do not become part of the mainline commit history.
 - Historical Track A–G labels are deprecated for new code/docs/issues. Use capability terminology from TERMINOLOGY; do not rewrite old PR/commit history solely for naming consistency.
 - Summarize implementation decisions, verification performed/omitted, and any affected cross-capability contract in the PR.
 
 ## Changes requiring approval
 
-Stop and request explicit approval before changing the technology stack, module boundaries, domain relationships/data ownership/invariants in the database model, authentication/session or security model, deployment model, public domain terminology, approved product/release scope, or license.
+Stop and request explicit approval before changing the technology stack, module boundaries, domain relationships/data ownership/invariants in the database model, authentication/session or security model, deployment model, public domain terminology, approved product scope, or license.
 
 Implementing schema, indexes, constraints, and migrations that realize an already-approved persistence design does not require renewed approval when the approved domain relationships, ownership, and invariants stay unchanged. Changing those semantics does require approval.
 

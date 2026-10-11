@@ -3997,7 +3997,7 @@ func joinButtonClass(request requestquery.Request) string {
 }
 
 // detailJoinButtonClass carries the same action level as the list row. Sea Foam
-// is a label colour in docs/BRANDING.md, not an action fill.
+// is a label colour in DESIGN.md, not an action fill.
 func detailJoinButtonClass(request requestquery.Request) string {
 	if lastPlace(request) {
 		return "btn btn-urgent"
