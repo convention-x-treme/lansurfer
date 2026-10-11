@@ -69,7 +69,10 @@ def plan_aliases(tag: str, releases: list[dict]) -> dict:
 
     existing_stable = []
     for release in releases:
-        if release.get("draft") or release.get("prerelease"):
+        # Include stable-version drafts conservatively: an interrupted newer
+        # release may already have promoted GHCR aliases before publication.
+        # Blocking old versions here avoids overwriting those aliases.
+        if release.get("prerelease"):
             continue
         old_tag = release.get("tag_name")
         if not isinstance(old_tag, str):
