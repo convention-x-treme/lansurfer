@@ -159,6 +159,8 @@ task loadtest:soak USERS=120 DURATION=10m BROWSERS=5
 task loadtest:soak USERS=120 DURATION=2h BROWSERS=5
 ```
 
+Profile samples keep HTTP latency histograms per method and chi route template for the load-tested routes only, keyed exactly like the exported labels, e.g. `lansurfer_http_request_duration_seconds{method=GET,route=/game-requests/refresh}_count`. List and create share the template `/game-requests` and differ by method.
+
 `loadtest:soak` runs 70 % browsing / 3 % create / 10 % join / 5 % leave / 12 % chat with 2–8 s think time through `runWriteAction`, `USERS-BROWSERS` SSE streams (browser-like refresh of a filtered list), `BROWSERS` real pages holding their identities, profiling in 10-minute window files, a 5-minute cooldown, and a final database audit. `BROWSERS` identities are rows 0..N-1 and are never writers.
 
 Soak results: the 20-participant 2-minute soak and the 120-participant 10-minute soak exited 0. The 10-minute soak had 0 unexpected responses over 7,531 iterations, 5/5 browsers converged, and a clean audit. Its 115 browser-like refreshers (14,677 refreshes, 0 failed) saw p50 4.7 s / p95 5.2 s and the write requests p95 5.7 s, so refresh amplification dominates latency even with a filtered list. Earlier, before refresh was enabled in the soak, a two-hour run (120 writers + 120 streams) completed 465,766 requests with 0 unexpected outcomes, p95 6.2 ms, and 20.8 million events; peak RSS/heap 3.7/3.0 GB. These runs are not comparable and are not pilot-capacity evidence.
@@ -176,14 +178,45 @@ Fill `tools/loadtest/report-template.md` from the real bundle and attach it to t
 ## 10. Stop and dispose
 
 ```sh
-task loadtest:down                        # keep the test DB volume
-# DESTRUCTIVE: deletes only the dedicated isolated test DB!
-docker compose -f tools/loadtest/compose.yaml down -v
-rm -f "$HOME/lansurfer-loadtest-sessions.jsonl" "$HOME/lansurfer-loadtest-fixtures.json"
-unset LANSURFER_LOADTEST_DATABASE_URL
+task loadtest:down                        # stops app, PostgreSQL and the chaos proxy; keeps the test DB volume
+docker ps -a --filter label=com.docker.compose.project=lansurfer-loadtest   # expect no rows
 ```
 
-`down -v` destroys everything in the load-test stack only. Double-check the Compose file path before running it.
+`loadtest:down` runs `down --remove-orphans` for Compose project `lansurfer-loadtest` only, so the proxy started by `loadtest:calibrate`, `loadtest:loss`, or `loadtest:chaos` goes away with it and the project network is removed. Other Compose projects are not touched. Seeded data, sessions, and the metrics key stay valid for the next `task loadtest:up`.
+
+### Full reset
+
+Nothing below runs automatically. Run it only when you want a fresh environment; each step is destructive for load-test data only.
+
+The harness keeps these private local files outside the repository:
+
+| Path | Written by | Contains |
+| --- | --- | --- |
+| `$HOME/lansurfer-loadtest-sessions.jsonl` | `loadtest:seed` | session tokens (secret) |
+| `$HOME/lansurfer-loadtest-fixtures.json` | `loadtest:fixtures` | Game and Game Request IDs |
+| `$HOME/lansurfer-loadtest-fixtures-large.json` | `loadtest:fixtures:large` | large-v1 manifest |
+| `$HOME/lansurfer-loadtest-control.json` | `loadtest:prepare` | control Game Request ID |
+| `$HOME/lansurfer-loadtest-metrics-key` | `loadtest:prepare` | metrics access key (secret) |
+| `$HOME/lansurfer-loadtest-reports/` | every scenario task | run bundles and logs |
+
+`LANSURFER_LOADTEST_SESSIONS_FILE`, `LANSURFER_LOADTEST_FIXTURES_FILE`, `LANSURFER_LOADTEST_LARGE_FIXTURES_FILE`, and `LANSURFER_LOADTEST_REPORT_ROOT` move the respective path; reset the paths you actually used.
+
+```sh
+task loadtest:down
+# 1. DESTRUCTIVE: deletes only the dedicated isolated test DB volume (lansurfer-loadtest_db).
+docker compose -p lansurfer-loadtest -f tools/loadtest/compose.yaml down -v --remove-orphans
+# 2. Every manifest and key points into that database, so remove them together with it.
+rm -f "$HOME/lansurfer-loadtest-sessions.jsonl" "$HOME/lansurfer-loadtest-fixtures.json" \
+      "$HOME/lansurfer-loadtest-fixtures-large.json" "$HOME/lansurfer-loadtest-control.json" \
+      "$HOME/lansurfer-loadtest-metrics-key"
+unset LANSURFER_LOADTEST_DATABASE_URL
+# 3. Optional: reports are evidence. Archive what #139/#140 still need, then delete by hand.
+#    rm -rf "$HOME/lansurfer-loadtest-reports"
+```
+
+Remove the volume and the five files together. `loadtest:seed` and `loadtest:prepare` never overwrite an existing sessions file, control manifest, or metrics key, so leftovers from an old database block the next setup instead of being silently replaced. The reverse also holds: deleting only the metrics key leaves a key in the database that cannot be read back, and `loadtest:prepare` refuses to rotate it, so the volume has to go as well.
+
+Double-check the project name and Compose file path before running `down -v`. Never point these commands at the development stack (`compose.yaml` in the repository root) or its volumes.
 
 ## Interpretation
 
