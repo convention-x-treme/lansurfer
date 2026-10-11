@@ -37,25 +37,32 @@ typography:
   card-title:
     fontFamily: "Schibsted Grotesk, ui-sans-serif, system-ui, sans-serif"
     fontSize: "17px"
-    fontWeight: 900  row-title:
+    fontWeight: 900
+  row-title:
     fontFamily: "Schibsted Grotesk, ui-sans-serif, system-ui, sans-serif"
     fontSize: "16px"
-    fontWeight: 600  body:
+    fontWeight: 600
+  body:
     fontFamily: "Schibsted Grotesk, ui-sans-serif, system-ui, sans-serif"
     fontSize: "15px"
-    fontWeight: 400  body-small:
+    fontWeight: 400
+  body-small:
     fontFamily: "Schibsted Grotesk, ui-sans-serif, system-ui, sans-serif"
     fontSize: "14px"
-    fontWeight: 400  button:
+    fontWeight: 400
+  button:
     fontFamily: "Schibsted Grotesk, ui-sans-serif, system-ui, sans-serif"
     fontSize: "15px"
-    fontWeight: 600  navigation-item:
+    fontWeight: 600
+  navigation-item:
     fontFamily: "Schibsted Grotesk, ui-sans-serif, system-ui, sans-serif"
     fontSize: "15px"
-    fontWeight: 400  counter:
+    fontWeight: 400
+  counter:
     fontFamily: "JetBrains Mono, ui-monospace, monospace"
     fontSize: "16px"
-    fontWeight: 700  meta:
+    fontWeight: 700
+  meta:
     fontFamily: "JetBrains Mono, ui-monospace, monospace"
     fontSize: "13px"
     fontWeight: 500
