@@ -31,6 +31,20 @@ archives:
 checksum:
   name_template: checksums.txt
 
+# GoReleaser uploads artifacts to a DRAFT GitHub Release. Only the guarded
+# publishing script may make it public after checksums, images and aliases pass.
+# Do not replace/reuse a draft or overwrite already-published version artifacts.
+release:
+  draft: true
+  prerelease: auto
+  make_latest: false
+  replace_existing_draft: false
+  use_existing_draft: false
+  preflight:
+    fail_on_error: true
+  footer: |
+    **Source revision:** [{{ .FullCommit }}](https://github.com/convention-x-treme/lansurfer/commit/{{ .FullCommit }})
+
 # Use local git history so older release branches do not depend on GitHub's
 # cross-branch compare API. Never rewrite historical subjects for the first tag.
 changelog:
