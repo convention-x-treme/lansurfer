@@ -5,7 +5,9 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
+from notes_config import plan_notes, write_config
 from release_policy import Version, check_new, load_releases, lookup_release, parse_tag, plan_aliases
 
 
@@ -78,6 +80,77 @@ class DraftLookupTest(unittest.TestCase):
                 [release("v0.1.0-rc.1", draft=True),
                  release("v0.1.0-rc.1")],
             )
+
+
+class StableNotesTest(unittest.TestCase):
+    def test_first_stable_after_rc_includes_all_history(self):
+        ignored, previous = plan_notes(
+            "v0.1.0", ["v0.1.0-rc.1", "v0.1.0-rc.2", "v0.1.0"],
+        )
+        self.assertEqual(ignored, ["v0.1.0-rc.1", "v0.1.0-rc.2"])
+        self.assertIsNone(previous)
+
+    def test_stable_uses_last_reachable_stable_not_latest_rc(self):
+        ignored, previous = plan_notes(
+            "v0.2.0", ["v0.1.0", "v0.2.0-rc.1", "v0.2.0-rc.2", "v0.2.0"],
+        )
+        self.assertEqual(ignored, ["v0.2.0-rc.1", "v0.2.0-rc.2"])
+        self.assertEqual(previous, "v0.1.0")
+
+    def test_maintenance_branch_uses_reachable_tags_only(self):
+        # git tag --merged HEAD excludes v2.0.0 and v2.0.0-rc.1
+        # when the released commit is on the separate release/v1 branch.
+        ignored, previous = plan_notes(
+            "v1.4.3", ["v1.4.1", "v1.4.2", "v1.4.3-rc.1", "v1.4.3"],
+        )
+        self.assertEqual(ignored, ["v1.4.3-rc.1"])
+        self.assertEqual(previous, "v1.4.2")
+
+    def test_prerelease_keeps_default_go_releaser_comparison(self):
+        self.assertEqual(
+            plan_notes("v1.5.0-rc.2", ["v1.4.0", "v1.5.0-rc.1"]),
+            ([], None),
+        )
+
+    def test_newer_reachable_stable_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "Unexpected reachable stable"):
+            plan_notes("v1.4.1", ["v1.5.0", "v1.4.1"])
+
+    def test_non_release_tags_are_ignored(self):
+        self.assertEqual(
+            plan_notes("v1.1.0", ["experimental", "v1.0.0", "v1.1.0"]),
+            ([], "v1.0.0"),
+        )
+
+    def test_generated_config_ignores_exact_rc_tags_without_git_changes(self):
+        def fake_git(*args):
+            if args[0] == "tag":
+                return "v0.1.0-rc.1\nv0.1.0"
+            return "a" * 40
+
+        with tempfile.TemporaryDirectory() as folder:
+            base, output = Path(folder) / "base.yaml", Path(folder) / "notes.yaml"
+            base.write_text("version: 2\n", encoding="utf-8")
+            with patch("notes_config.git", side_effect=fake_git) as mocked:
+                self.assertIsNone(write_config("v0.1.0", base, output))
+            self.assertIn('    - "v0.1.0-rc.1"', output.read_text())
+            self.assertIn("git:\n  ignore_tags:\n", output.read_text())
+            self.assertTrue(
+                all(call.args[0] in ("rev-parse", "tag") for call in mocked.call_args_list)
+            )
+
+    def test_prerelease_does_not_generate_git_exclusions(self):
+        def fake_git(*args):
+            if args[0] == "tag":
+                return "v1.0.0-rc.1\nv1.0.0-rc.2"
+            return "b" * 40
+
+        with tempfile.TemporaryDirectory() as folder:
+            base, output = Path(folder) / "base.yaml", Path(folder) / "notes.yaml"
+            base.write_text("version: 2\n", encoding="utf-8")
+            with patch("notes_config.git", side_effect=fake_git):
+                self.assertIsNone(write_config("v1.0.0-rc.2", base, output))
+            self.assertEqual(output.read_text(), base.read_text())
 
 
 class AliasPlanTest(unittest.TestCase):
