@@ -231,9 +231,9 @@ task loadtest:soak USERS=20 DURATION=2m BROWSERS=5
 task loadtest:down
 ```
 
-A soak also performs a five-minute cooldown before the final audit. Seed sessions, fixture files, reports, and the metrics key are private local files; **never commit or share them**. Do not repeat seed/fixture creation against an existing database.
+A soak also performs a five-minute cooldown before the final audit. Seed session tokens and the metrics key are secrets: **never commit or share them**. Keep fixture manifests and reports private; only share reviewed, sanitized report excerpts after checking for token/key leakage with `task loadtest:scan`. Do not repeat seed/fixture creation against an existing database.
 
-Additional Task entry points cover writes, join races, SSE fan-out and chat, profiling, browser calibration, lost signals, and proxy/network chaos; some require a prepared Game Request ID. See `task --list` and the [load-test guide](tools/loadtest/README.md) for exact parameters. The load-test `task loadtest:browser` is **not** the product's `task test:browser`. Known product failures reproduced by chaos tests are tracked separately and do not indicate that the isolated harness is unsafe.
+Additional Task entry points cover writes, join races, SSE join/leave fan-out, chat lost-signal checks, profiling, browser calibration, and proxy/network chaos; some require a prepared Game Request ID. See `task --list` and the [load-test guide](tools/loadtest/README.md) for exact parameters. The load-test `task loadtest:browser` is **not** the product's `task test:browser`. Known product failures reproduced by chaos tests are tracked separately and do not indicate that the isolated harness is unsafe.
 
 ## Useful development commands
 
