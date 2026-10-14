@@ -40,6 +40,9 @@ test("detail layout spans hero and contains Player rows across responsive widths
   await expect(page.locator(".member-row .status-chip-host")).toHaveCount(1);
   await expect(page.locator(".member-time").filter({ hasText: /^created \d{2}:\d{2}$/ })).toHaveCount(1);
   await expect(page.locator(".member-time").filter({ hasText: /^joined \d{2}:\d{2}$/ })).toHaveCount(1);
+  await expect.poll(() => page.evaluate(() => document.fonts.status)).toBe("loaded");
+
+  // Measure layout, not paint; frame scheduling must not gate geometry checks.
 
   const viewports = [
     { width: 390, height: 844 },
@@ -55,9 +58,7 @@ test("detail layout spans hero and contains Player rows across responsive widths
   for (const viewport of viewports) {
     await page.setViewportSize(viewport);
     for (const longNicks of [false, true]) {
-      await page.evaluate(async (replaceNicks) => {
-        await document.fonts.ready;
-        await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      await page.evaluate((replaceNicks) => {
         for (const nick of document.querySelectorAll<HTMLElement>(".member-row > span.truncate")) {
           if (replaceNicks) {
             nick.dataset.originalNick ??= nick.textContent ?? "";
