@@ -22,7 +22,7 @@ Read only the sections relevant to the task. An open issue or retained implement
 
 Use Taskfile workflows, not Makefiles; run `task --list` for the authoritative task list.
 
-- `task dev`: build and run the Compose stack.
+- `task dev`: generate and run LANsurfer locally with managed or external PostgreSQL.
 - `task run`: run the Go application with environment configuration.
 - `task build`: build `bin/lansurfer`.
 - `task release:check`, `task release:policy:test`, `task release:notes:test`, `task release:snapshot`: validate the GoReleaser OSS config, test generated changelogs against synthetic history, and build local unpublished release artifacts. See [CONTRIBUTING.md](CONTRIBUTING.md#validating-release-artifacts-locally).

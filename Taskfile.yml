@@ -15,10 +15,30 @@ tasks:
       - task --list
 
   dev:
-    desc: Build and run LANsurfer with PostgreSQL
+    desc: Generate and run LANsurfer locally with managed or external PostgreSQL
     deps: [generate]
     cmds:
-      - docker compose up --build
+      - |
+        set -eu
+        if [ -n "${LANSURFER_DATABASE_URL:-}" ]; then
+          printf 'Using external PostgreSQL from LANSURFER_DATABASE_URL.\n'
+          LANSURFER_OIDC_ISSUER="${LANSURFER_OIDC_ISSUER:-https://auth.convention-x-treme.de/realms/local-dev}" \
+          LANSURFER_OIDC_CLIENT_ID="${LANSURFER_OIDC_CLIENT_ID:-lansurfer}" \
+            exec go run ./cmd/lansurfer
+        fi
+
+        task db:up
+        postgres_port="${LANSURFER_POSTGRES_PORT:-5432}"
+        printf 'Using managed PostgreSQL at 127.0.0.1:%s.\n' "$postgres_port"
+        LANSURFER_DATABASE_URL="postgres://lansurfer:lansurfer@127.0.0.1:${postgres_port}/lansurfer?sslmode=disable" \
+        LANSURFER_OIDC_ISSUER="${LANSURFER_OIDC_ISSUER:-https://auth.convention-x-treme.de/realms/local-dev}" \
+        LANSURFER_OIDC_CLIENT_ID="${LANSURFER_OIDC_CLIENT_ID:-lansurfer}" \
+          exec go run ./cmd/lansurfer
+
+  dev:test:
+    desc: Test task dev database selection without Docker or PostgreSQL
+    cmds:
+      - bash tools/task/test-dev.sh
 
   run:
     desc: Run LANsurfer with configuration from the environment and optional .env
@@ -122,21 +142,21 @@ tasks:
       - docker compose up -d --wait postgres
 
   db:down:
-    desc: Stop development services
+    desc: Stop development Compose services without removing database data
     cmds:
       - docker compose down
 
   admin:users:
-    desc: List local LANsurfer users in the running Compose stack
+    desc: List local LANsurfer users from the configured or local development database
     cmds:
-      - docker compose exec lansurfer /lansurfer admin users
+      - LANSURFER_DATABASE_URL="${LANSURFER_DATABASE_URL:-postgres://lansurfer:lansurfer@127.0.0.1:${LANSURFER_POSTGRES_PORT:-5432}/lansurfer?sslmode=disable}" go run ./cmd/lansurfer admin users
 
   admin:promote:
-    desc: Promote a local user to admin in the running Compose stack
+    desc: Promote a local user to admin in the configured or local development database
     requires:
       vars: [USER_ID]
     cmds:
-      - docker compose exec lansurfer /lansurfer admin promote --user-id '{{.USER_ID}}'
+      - LANSURFER_DATABASE_URL="${LANSURFER_DATABASE_URL:-postgres://lansurfer:lansurfer@127.0.0.1:${LANSURFER_POSTGRES_PORT:-5432}/lansurfer?sslmode=disable}" go run ./cmd/lansurfer admin promote --user-id '{{.USER_ID}}'
 
   loadtest:up:
     desc: Start the isolated local load-test stack (no production data)
