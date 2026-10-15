@@ -1,0 +1,8 @@
+# A Docker-network-local probe for the existing production-like Compose stack.
+services:
+  smoke:
+    build:
+      context: .
+      dockerfile: tools/ci/Dockerfile
+      target: smoke
+    entrypoint: ["/bin/sh", "/ci/smoke.sh"]
