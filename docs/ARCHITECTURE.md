@@ -519,10 +519,7 @@ LANSURFER_TWITCH_CLIENT_SECRET
 LANSURFER_TWITCH_AUTH_ENABLED
 LANSURFER_IGDB_ENABLED
 LANSURFER_COVER_CACHE_DIR
-LANSURFER_LEGAL_ENTITY_NAME
-LANSURFER_LEGAL_ADDRESS
-LANSURFER_LEGAL_CONTACT_EMAIL
-LANSURFER_IMPRINT_URL
+LANSURFER_IMPRINT_ENABLED
 ```
 
 `LANSURFER_OIDC_CLIENT_SECRET` is optional for public clients using PKCE and required when the provider configures LANsurfer as a confidential client.
@@ -537,7 +534,9 @@ Provider credentials, the 32-byte data-encryption key, VAPID private key, and Di
 
 Minimum instance identity, if configurable, is deployment/product state with a deliberately small surface. Do not introduce an administrator-managed welcome-text/contact/logo/icon branding surface through configuration indirection.
 
-Operator legal identity (`LANSURFER_LEGAL_ENTITY_NAME`, `LANSURFER_LEGAL_ADDRESS`, `LANSURFER_LEGAL_CONTACT_EMAIL`, `LANSURFER_IMPRINT_URL`) is the one contact-bearing exception: it fills the fixed Terms/Privacy text and footer, travels to templates through request-context middleware like the instance name, and is required (entity name and contact email) whenever Discord login is configured.
+Legal texts are the one contact-bearing exception. The Terms of Service, Privacy Policy, and Imprint are Markdown rows in `legal_documents`, owned by `internal/platform/legal` (instance-operator content, like the metrics key, not a business module) and edited only by administrators at `/admin/legal`. Migration `00031` seeds generic samples flagged `sample`; the public page states it is a sample until an administrator saves it. Rendering uses goldmark defaults (raw HTML omitted, dangerous link schemes dropped); bodies are trimmed, non-empty, and at most 20,000 characters, enforced by the store and a database CHECK, sized to the 64 KiB form limit. `/terms` and `/privacy` are always public; `/imprint` exists only with `LANSURFER_IMPRINT_ENABLED`, which reaches the footer through request-context middleware like the instance name. This is not a general content/branding surface.
+
+Browser state is necessary-only: the HttpOnly cookies `lansurfer_session`, `lansurfer_csrf`, `lansurfer_auth_binding`, `lansurfer_return`, and `lansurfer_device`, plus the script-written `lansurfer_theme` preference; no localStorage, sessionStorage, IndexedDB, or Cache Storage, and no analytics. The README lists purpose and lifetime. Any optional storage or tracking requires a consent and legal review before it ships.
 
 Do not introduce a config file format unless a concrete requirement appears.
 

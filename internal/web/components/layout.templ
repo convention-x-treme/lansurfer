@@ -298,6 +298,11 @@ templ NavigationLinks(state NavigationState) {
 				</li>
 			}
 			<li>
+				<a class={ navigationSubLinkClass(state.Section == "administration-legal") } href="/admin/legal" aria-current={ navigationCurrent(state.Section == "administration-legal") }>
+					<i class="ph ph-scales" aria-hidden="true"></i><span>Legal texts</span>
+				</a>
+			</li>
+			<li>
 				<a class={ navigationSubLinkClass(state.Section == "administration-metrics") } href="/admin/metrics" aria-current={ navigationCurrent(state.Section == "administration-metrics") }>
 					<i class="ph ph-chart-line" aria-hidden="true"></i><span>Metrics</span>
 				</a>
@@ -436,7 +441,7 @@ templ FontPreloads(brand branding.Brand) {
 	<link rel="preload" as="font" type="font/woff2" crossorigin="anonymous" href={ templ.SafeURL(brand.Assets.DataFont) }/>
 }
 
-// Footer links the Terms and Privacy surfaces on every
+// Footer links the Terms, Privacy, and (when enabled) Imprint surfaces on every
 // shell. It is ordinary flow content, not fixed or sticky: each shell is a
 // full-height flex column, so it rests at the viewport bottom on short pages
 // without covering content or the live-notice toasts on long ones.
@@ -447,9 +452,9 @@ templ Footer(brand branding.Brand) {
 				<a class="link link-hover" href="/terms">Terms</a>
 				<span aria-hidden="true">·</span>
 				<a class="link link-hover" href="/privacy">Privacy</a>
-				if imprint := webmiddleware.LegalInfo(ctx).ImprintURL; imprint != "" {
+				if webmiddleware.ImprintEnabled(ctx) {
 					<span aria-hidden="true">·</span>
-					<a class="link link-hover" href={ templ.URL(imprint) } target="_blank" rel="noopener noreferrer">Imprint</a>
+					<a class="link link-hover" href="/imprint">Imprint</a>
 				}
 			</nav>
 			<div class="flex items-center gap-3 font-medium">

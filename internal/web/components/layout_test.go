@@ -183,11 +183,11 @@ func TestLayoutSecondaryInstanceLabelInAuthenticatedShell(t *testing.T) {
 	}
 }
 
-// legalContext returns a request context carrying the given legal identity,
-// the way NewRouter's Legal middleware does in production.
-func legalContext(identity webmiddleware.LegalIdentity) context.Context {
+// imprintContext returns a request context carrying the imprint flag, the
+// way NewRouter's Imprint middleware does in production.
+func imprintContext(enabled bool) context.Context {
 	var carried context.Context
-	webmiddleware.Legal(identity)(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+	webmiddleware.Imprint(enabled)(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		carried = r.Context()
 	})).ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil))
 	return carried
@@ -205,14 +205,14 @@ func TestEveryShellLinksLegalPages(t *testing.T) {
 	for name, shell := range shells {
 		t.Run(name, func(t *testing.T) {
 			var rendered bytes.Buffer
-			ctx := legalContext(webmiddleware.LegalIdentity{ImprintURL: "https://club.example.test/impressum"})
+			ctx := imprintContext(true)
 			if err := shell.Render(ctx, &rendered); err != nil {
 				t.Fatalf("render: %v", err)
 			}
 			body := rendered.String()
 			for _, want := range []string{
 				`<footer`, `href="/terms"`, `href="/privacy"`,
-				`href="https://club.example.test/impressum" target="_blank" rel="noopener noreferrer"`,
+				`href="/imprint"`,
 			} {
 				if !strings.Contains(body, want) {
 					t.Errorf("shell does not contain %q", want)
@@ -222,20 +222,20 @@ func TestEveryShellLinksLegalPages(t *testing.T) {
 	}
 }
 
-func TestFooterOmitsImprintWhenUnset(t *testing.T) {
+func TestFooterOmitsImprintWhenDisabled(t *testing.T) {
 	var rendered bytes.Buffer
-	if err := Footer(branding.Default()).Render(legalContext(webmiddleware.LegalIdentity{}), &rendered); err != nil {
+	if err := Footer(branding.Default()).Render(imprintContext(false), &rendered); err != nil {
 		t.Fatalf("render Footer: %v", err)
 	}
 	if strings.Contains(rendered.String(), "Imprint") {
-		t.Error("footer renders an Imprint link without a configured imprint URL")
+		t.Error("footer renders an Imprint link while the imprint is disabled")
 	}
 }
 
 func TestAuthenticatedLayoutCreditsOperatorOnlyInFooter(t *testing.T) {
 	var rendered bytes.Buffer
 	navigation := NavigationState{Viewer: &Viewer{ID: "u1", GameNick: "Ada"}}
-	if err := Layout(branding.Default(), "Game Requests", navigation).Render(legalContext(webmiddleware.LegalIdentity{}), &rendered); err != nil {
+	if err := Layout(branding.Default(), "Game Requests", navigation).Render(imprintContext(false), &rendered); err != nil {
 		t.Fatalf("render Layout: %v", err)
 	}
 	if got := strings.Count(rendered.String(), "Powered by"); got != 1 {
@@ -245,7 +245,7 @@ func TestAuthenticatedLayoutCreditsOperatorOnlyInFooter(t *testing.T) {
 
 func TestFooterUsesFullViewportWidth(t *testing.T) {
 	var rendered bytes.Buffer
-	if err := Footer(branding.Default()).Render(legalContext(webmiddleware.LegalIdentity{}), &rendered); err != nil {
+	if err := Footer(branding.Default()).Render(imprintContext(false), &rendered); err != nil {
 		t.Fatalf("render Footer: %v", err)
 	}
 	body := rendered.String()

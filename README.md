@@ -198,25 +198,39 @@ Brave disables its push service by default. Brave users must turn on "Use Google
 messaging" in `brave://settings/privacy` and restart Brave before they can enable Web Push; the
 notification settings page tells them so when subscribing fails.
 
-### Configure legal identity
+### Legal texts (Terms, Privacy, Imprint)
 
 ```sh
-LANSURFER_LEGAL_ENTITY_NAME=
-LANSURFER_LEGAL_ADDRESS=
-LANSURFER_LEGAL_CONTACT_EMAIL=
-LANSURFER_IMPRINT_URL=
+LANSURFER_IMPRINT_ENABLED=false
 ```
 
 LANsurfer serves a public Terms of Service at `/terms` and Privacy Policy at `/privacy`, linked
-from the footer of every screen. These values fill in the operator (data controller) on both
-pages; unset values show as "not configured" and the imprint link is hidden. Entity name and
-address are single-line (200 and 300 characters), the contact email must be a bare address, and
-the imprint must be an absolute `http(s)` URL. **Discord login requires the entity name and
-contact email**; LANsurfer refuses to start without them, because Discord requires a privacy
-policy with a responsible contact. Register `<base URL>/terms` and `<base URL>/privacy` in the
-Discord Developer Portal. The page text describes the reference deployment (30-day log retention,
-self-operated server in a colocation data center); another operator edits
-`internal/web/pages/legal.templ` to match theirs and has both texts legally reviewed.
+from the footer of every screen and from the login screen. With `LANSURFER_IMPRINT_ENABLED=true`
+it also serves `/imprint` and links it from the footer; otherwise `/imprint` is 404. Register
+`<base URL>/terms` and `<base URL>/privacy` in the Discord Developer Portal.
+
+The texts are Markdown stored in the database and edited by an administrator at **Administration
+→ Legal texts** (`/admin/legal`). A new instance starts with generic sample texts containing
+bracketed placeholders (operator, address, contact, hosting, log retention, supervisory
+authority, liability). Until an administrator saves a document, its public page states that it
+is LANsurfer's sample text and does not describe this installation. Replace every placeholder
+with your deployment's facts and have the texts legally reviewed. Raw HTML in the Markdown is
+not rendered and `javascript:` links are dropped. Each text may have up to 20,000 characters.
+
+LANsurfer uses only necessary cookies and no other browser storage, so it shows no consent
+banner. The sample Privacy Policy lists them:
+
+| Cookie | Purpose | Lifetime |
+|---|---|---|
+| `lansurfer_session` | Signed-in session (HttpOnly) | Until session expiry (7 days) or logout |
+| `lansurfer_csrf` | CSRF double-submit token (HttpOnly) | 7 days |
+| `lansurfer_auth_binding` | Binds an OAuth login to the starting browser (HttpOnly) | 30 minutes |
+| `lansurfer_return` | Same-origin return path through login (HttpOnly) | 15 minutes |
+| `lansurfer_device` | Identifies this browser's Web Push subscription (HttpOnly) | 400 days |
+| `lansurfer_theme` | Light/dark theme choice, written by the page script | 1 year |
+
+All are `Path=/`, `SameSite=Lax`, and `Secure` on HTTPS. Adding analytics, marketing, remote
+embeds, or other optional storage requires a new consent and legal review first.
 
 ### Promote the first administrator
 

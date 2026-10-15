@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/a-h/templ"
+	"github.com/convention-x-treme/lansurfer/internal/platform/legal"
 	requestquery "github.com/convention-x-treme/lansurfer/internal/query/gamerequest"
 	"github.com/convention-x-treme/lansurfer/internal/web/assets"
 	"github.com/convention-x-treme/lansurfer/internal/web/branding"
@@ -120,9 +121,12 @@ type RouterDependencies struct {
 	// InstanceName is the raw, already-trimmed config.Config.InstanceName
 	// value. Empty means unset; NewRouter resolves the display fallback.
 	InstanceName string
-	// Legal is the operator's legal identity from config.Config.Legal,
-	// rendered by the footer and the Terms/Privacy pages.
-	Legal webmiddleware.LegalIdentity
+	// LegalDocuments backs /terms, /privacy, /imprint and /admin/legal; nil
+	// leaves those routes unregistered.
+	LegalDocuments handler.LegalDocuments
+	// ImprintEnabled is config.Config.ImprintEnabled: serve /imprint and
+	// link it from the footer.
+	ImprintEnabled bool
 	// BaseURL is config.Config.BaseURL, used only by /admin/pwa diagnostics
 	// (manifest/worker URLs and the expected secure-context status).
 	BaseURL string
@@ -150,7 +154,7 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 	discordDeliveryConfigured := dependencies.DiscordSetup != nil && dependencies.DiscordAuthorization != nil &&
 		dependencies.DiscordConnector != nil && dependencies.DiscordLifecycle != nil && dependencies.DiscordStatus != nil
 	navigation := handler.NewNavigation(dependencies.NavigationQueries, dependencies.NavigationCatalog, dependencies.ViewerAvatars, discordDeliveryConfigured)
-	legalHandler := handler.NewLegal(navigation, brand)
+	legalHandler := handler.NewLegal(dependencies.LegalDocuments, navigation, brand)
 	accountHandler := handler.NewAccount(dependencies.Identities, dependencies.IdentityUnlinker, dependencies.AvatarSelector, dependencies.GameNickClaims, dependencies.AccountDeleter, dependencies.Authentication, navigation, brand, dependencies.SecureCookies)
 	administrationHandler := handler.NewAdministration(
 		dependencies.Games, dependencies.ProviderSync, navigation, brand,
@@ -188,7 +192,7 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 	// reach the layouts as empty, or the secondary instance label renders the
 	// brand name a second time beside the wordmark on every screen.
 	router.Use(webmiddleware.Instance(dependencies.InstanceName))
-	router.Use(webmiddleware.Legal(dependencies.Legal))
+	router.Use(webmiddleware.Imprint(dependencies.ImprintEnabled))
 
 	var metricsHandler *handler.Metrics
 	if dependencies.MetricsKeys != nil && dependencies.Metrics != nil {
@@ -217,8 +221,13 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 		authenticated.Get("/", rootHandler(brand, dependencies.Landing))
 		// Public: no RequireAuthentication, but the session is resolved so a
 		// signed-in player keeps the application shell.
-		authenticated.Get("/terms", legalHandler.Terms)
-		authenticated.Get("/privacy", legalHandler.Privacy)
+		if dependencies.LegalDocuments != nil {
+			authenticated.Get("/terms", legalHandler.Document(legal.Terms))
+			authenticated.Get("/privacy", legalHandler.Document(legal.Privacy))
+			if dependencies.ImprintEnabled {
+				authenticated.Get("/imprint", legalHandler.Document(legal.Imprint))
+			}
+		}
 		authenticated.Get("/help", legalHandler.Help)
 		authenticated.Get("/auth/login", authenticationHandler.Login)
 		authenticated.Get("/auth/oidc", authenticationHandler.BeginFor("oidc"))
@@ -307,12 +316,16 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 		if dependencies.Realtime != nil {
 			authenticated.With(handler.RequireAuthentication(dependencies.SecureCookies), handler.RequireGameNick).Get("/events/game-requests", realtimeHandler.GameRequests)
 		}
-		if dependencies.Games != nil || discordDeliveryHandler != nil || metricsHandler != nil {
+		if dependencies.Games != nil || discordDeliveryHandler != nil || metricsHandler != nil || dependencies.LegalDocuments != nil {
 			authenticated.Route("/admin", func(admin chi.Router) {
 				admin.Use(handler.RequireAdmin, handler.RequireGameNick)
 				if metricsHandler != nil {
 					admin.Get("/metrics", metricsHandler.Show)
 					admin.Post("/metrics/key", metricsHandler.Rotate)
+				}
+				if dependencies.LegalDocuments != nil {
+					admin.Get("/legal", legalHandler.Admin)
+					admin.Post("/legal/{kind}", legalHandler.Save)
 				}
 				if dependencies.Games != nil {
 					admin.Get("/games", administrationHandler.Games)
