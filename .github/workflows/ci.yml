@@ -26,6 +26,14 @@ jobs:
         with:
           persist-credentials: false
 
+      # Exercise the exact title-container launch used by pull_request_target,
+      # not just the title regex unit tests executed by the quality container.
+      - name: Smoke-test PR title validation container
+        shell: bash
+        env:
+          PR_TITLE: "ci(runner): verify title check container"
+        run: bash tools/ci/runner.sh title
+
       - name: Run quality and unit tests in Go container
         shell: bash
         run: bash tools/ci/runner.sh quality
