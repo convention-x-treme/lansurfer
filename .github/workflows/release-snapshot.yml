@@ -39,6 +39,11 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Set up Python for release-policy tooling
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+
       - name: Set up QEMU for arm64 smoke builds
         uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
 
