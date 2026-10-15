@@ -195,8 +195,8 @@ document.addEventListener("session-information-mutated", () => {
 // choice into <html>, and without one the stylesheet follows the operating
 // system. Setting it from script on load would repaint the page after the
 // deferred bundle runs, which is the theme flash this avoids.
-const themeCookieName = "lansurfer_theme";
-const themeCookieMaxAge = 60 * 60 * 24 * 365;
+// The server sets the choice as an HttpOnly cookie (Twitch Developer Services
+// Agreement, Schedule 1, A), so script only reports it.
 const darkTheme = "lansurfer-dark";
 const lightTheme = "lansurfer-light";
 
@@ -208,9 +208,15 @@ function currentTheme(): Theme {
   return window.matchMedia("(prefers-color-scheme: light)").matches ? lightTheme : darkTheme;
 }
 
-function rememberTheme(theme: Theme): void {
-  const secure = window.location.protocol === "https:" ? "; Secure" : "";
-  document.cookie = `${themeCookieName}=${theme}; path=/; max-age=${themeCookieMaxAge}; SameSite=Lax${secure}`;
+function rememberTheme(theme: Theme, button: HTMLButtonElement): void {
+  const csrf = button.form?.elements.namedItem("csrf_token");
+  if (!(csrf instanceof HTMLInputElement)) return;
+  void fetch("/theme", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ csrf_token: csrf.value, theme }),
+  }).catch(() => undefined);
 }
 
 function describeToggles(theme: Theme): void {
@@ -337,7 +343,7 @@ document.addEventListener(
 document.querySelectorAll<HTMLButtonElement>("[data-theme-toggle]").forEach((button) => {
   button.addEventListener("click", () => {
     const nextTheme = currentTheme() === darkTheme ? lightTheme : darkTheme;
-    rememberTheme(nextTheme);
+    rememberTheme(nextTheme, button);
     document.documentElement.dataset.theme = nextTheme;
     describeToggles(nextTheme);
   });

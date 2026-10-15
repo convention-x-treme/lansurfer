@@ -2,6 +2,7 @@ package mediaproxy
 
 import (
 	"container/list"
+	"strings"
 	"sync"
 )
 
@@ -50,6 +51,27 @@ func (m *MemoryStore) Put(size, id string, image []byte) error {
 	}
 	m.entries[key] = m.order.PushFront(memoryEntry{key: key, image: image})
 	m.used += len(image)
+	return nil
+}
+
+func (m *MemoryStore) IDs(bucket string) ([]string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var ids []string
+	for key := range m.entries {
+		if id, ok := strings.CutPrefix(key, bucket+"/"); ok {
+			ids = append(ids, id)
+		}
+	}
+	return ids, nil
+}
+
+func (m *MemoryStore) Delete(bucket, id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if element, ok := m.entries[bucket+"/"+id]; ok {
+		m.remove(element)
+	}
 	return nil
 }
 

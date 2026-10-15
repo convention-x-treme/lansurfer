@@ -24,4 +24,13 @@ test("the theme toggle swaps its icon and keeps its accessible name", async ({ p
   await expect(toggle).toHaveAttribute("title", "Use dark theme");
   await expect(icon).toHaveClass(/\bph-sun\b/);
   await expect(icon).not.toHaveClass(/\bph-moon\b/);
+
+  // The server stores the choice as an HttpOnly cookie (Twitch Developer
+  // Services Agreement cookie rules), so the next document renders it.
+  await expect.poll(async () => (await page.context().cookies()).find((cookie) => cookie.name === "lansurfer_theme")).toMatchObject({
+    value: "lansurfer-light",
+    httpOnly: true,
+  });
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "lansurfer-light");
 });
