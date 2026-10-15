@@ -17,9 +17,9 @@ services:
       test:
         - CMD-SHELL
         - >-
-          PGPASSWORD="${POSTGRES_PASSWORD}"
-          psql -h 127.0.0.1 -U "${POSTGRES_USER}"
-          -d "${POSTGRES_DB}" -Atqc 'SELECT 1' >/dev/null
+          PGPASSWORD="$${POSTGRES_PASSWORD}"
+          psql -h 127.0.0.1 -U "$${POSTGRES_USER}"
+          -d "$${POSTGRES_DB}" -Atqc 'SELECT 1' >/dev/null
       interval: 5s
       timeout: 3s
       retries: 15
