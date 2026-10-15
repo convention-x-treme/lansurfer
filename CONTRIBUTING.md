@@ -104,6 +104,8 @@ cp .env.example .env
 
 `.env` is ignored by Git and optional. Task loads it automatically; shell variables take precedence. The database URL in `.env.example` is commented out, so `task dev` selects managed PostgreSQL unless you configure an external URL. To use an external database, set `LANSURFER_DATABASE_URL` in `.env` or the shell.
 
+If you copied `.env` from an older `.env.example`, it may still contain the active default `LANSURFER_DATABASE_URL`. `task dev` treats any configured URL as an external database and will not start managed PostgreSQL. Remove or comment out that line to use managed PostgreSQL, or keep it when you intend to use an external database.
+
 `task run` remains independent: it runs the Go application but does not start containers or supply a database URL fallback. Configure `LANSURFER_DATABASE_URL` before running it. Direct `go run ./cmd/lansurfer` and the built binary read process environment only; production does not load `.env`.
 
 `task generate` prepares generated code and assets. `task dev` runs it automatically; `task run` does not.
