@@ -39,10 +39,13 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Set up Python for release-policy tooling
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: "3.13"
+      - name: Verify system Python for release tooling
+        # setup-python does not ship prebuilt Python for every self-hosted OS (e.g. Debian 13).
+        # Both Debian 13 and GitHub-hosted Ubuntu provide an appropriate system Python.
+        shell: bash
+        run: |
+          python3 --version
+          python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else "Python 3.10 or newer is required")'
 
       - name: Set up QEMU for arm64 smoke builds
         uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
