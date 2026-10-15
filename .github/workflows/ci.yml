@@ -1,3 +1,4 @@
+# Private repository CI uses Patrick's isolated runner; public repositories use GitHub-hosted runners for untrusted contributions.
 name: CI
 
 on:
@@ -17,7 +18,7 @@ concurrency:
 jobs:
   quality:
     name: Quality and unit tests
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(github.event.repository.private && '["self-hosted","linux","x64","lansurfer-ci"]' || '"ubuntu-latest"') }}
     timeout-minutes: 15
     steps:
       - name: Check out repository
@@ -65,7 +66,7 @@ jobs:
 
   integration:
     name: PostgreSQL integration tests
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(github.event.repository.private && '["self-hosted","linux","x64","lansurfer-ci"]' || '"ubuntu-latest"') }}
     timeout-minutes: 15
     services:
       postgres:
@@ -100,7 +101,7 @@ jobs:
 
   browser:
     name: Browser interaction tests
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(github.event.repository.private && '["self-hosted","linux","x64","lansurfer-ci"]' || '"ubuntu-latest"') }}
     timeout-minutes: 15
     steps:
       - name: Check out repository
@@ -160,7 +161,7 @@ jobs:
   build:
     name: Build and Compose smoke test
     needs: [quality, integration, browser]
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(github.event.repository.private && '["self-hosted","linux","x64","lansurfer-ci"]' || '"ubuntu-latest"') }}
     timeout-minutes: 20
     steps:
       - name: Check out repository
