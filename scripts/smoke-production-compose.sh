@@ -25,7 +25,16 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# Resolve both release references from the single checked-in example instead of
+# duplicating version or digest pins in CI. Explicitly clear host overrides.
+unset LANSURFER_IMAGE POSTGRES_IMAGE
+image_refs="$(grep -E '^(LANSURFER_IMAGE|POSTGRES_IMAGE)=' "$root/deploy/production.env.example")"
+[[ "$(printf '%s\n' "$image_refs" | wc -l)" -eq 2 ]] || {
+  echo 'Production image references are missing from production.env.example' >&2
+  exit 1
+}
 cat > "$config_file" <<EOF
+$image_refs
 POSTGRES_PASSWORD=$(openssl rand -hex 32)
 LANSURFER_BASE_URL=https://lansurfer.example.invalid
 LANSURFER_HTTP_PORT=18081

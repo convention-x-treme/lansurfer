@@ -184,6 +184,9 @@ jobs:
           export LANSURFER_DISCORD_CLIENT_SECRET=ci-fixture
           export LANSURFER_LEGAL_ENTITY_NAME="CI fixture"
           export LANSURFER_LEGAL_CONTACT_EMAIL=ci@example.invalid
+          # Keep image choices external to Compose; example values are the tested baseline.
+          grep -Fq 'image: ${LANSURFER_IMAGE:?Set LANSURFER_IMAGE in deploy/production.env}' deploy/compose.production.yaml
+          grep -Fq 'image: ${POSTGRES_IMAGE:?Set POSTGRES_IMAGE in deploy/production.env}' deploy/compose.production.yaml
           docker compose --env-file deploy/production.env.example \
             -f deploy/compose.production.yaml config --format json |
             python3 scripts/test-production-compose.py --test-mutations

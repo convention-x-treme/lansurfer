@@ -1,6 +1,6 @@
 # Self-hosted production Compose
 
-This is a **separate, release-based** Docker Compose deployment for a single LANsurfer instance. Unlike root `compose.yaml` (development), it does not build from a checkout, uses the verified `v0.1.0` GHCR image pinned to its multi-architecture digest, keeps PostgreSQL internal, and binds the application only to Docker-host loopback. PostgreSQL data and the media cache use named volumes. No proxy, identity provider or monitoring service is added to the Compose stack.
+This is a **separate, release-based** Docker Compose deployment for a single LANsurfer instance. Unlike root `compose.yaml` (development), it does not build from a checkout, reads **both immutable image references from `deploy/production.env`**, keeps PostgreSQL internal, and binds the application only to Docker-host loopback. The example env file starts with the previously verified `v0.1.0` image; the Compose template is not tied to that release. PostgreSQL data and the media cache use named volumes. No proxy, identity provider or monitoring service is added to the Compose stack.
 
 This is a deployment example, **not** evidence that backup/restore or upgrades have been validated; those remaining regression tests belong to [#29](https://github.com/convention-x-treme/lansurfer/issues/29).
 
@@ -18,9 +18,9 @@ Put the newly generated **64-character** hex string in `POSTGRES_PASSWORD` in `d
 
 `deploy/production.env` must remain outside version control and be readable only by trusted operators. Docker administrators can inspect container environment values and `docker compose config` reveals interpolated secrets; avoid pasting its output into issues or logs. Treat the generated password and notification encryption keys as backup-sensitive secrets.
 
-Both the application image and the official PostgreSQL 18.6 image are referenced by **immutable multi-architecture digests**. Updating either version or digest is an explicit change, ideally after a fresh isolated startup test. PostgreSQL 18 uses `/var/lib/postgresql` as the correct persistent volume path. Do not change its major version by editing an image reference without a data-migration plan.
+**Image version management:** `deploy/compose.production.yaml` contains no LANsurfer or PostgreSQL version. `deploy/production.env` selects `LANSURFER_IMAGE` and `POSTGRES_IMAGE`; the example pins the verified `v0.1.0` LANsurfer and PostgreSQL `18.6-alpine` with immutable multi-architecture digests. An operator can update either reference *without editing Compose*. `docker compose pull` alone never selects a newer digest, and deployments do not upgrade automatically. To upgrade LANsurfer, verify the desired published release's multi-architecture digest, update only `LANSURFER_IMAGE` in your private env file, review the release notes and data/backup compatibility, then run the documented preflight, pull and up commands. For a rollback, restore the prior exact image reference only when its database-schema compatibility is confirmed; rollback is not guaranteed. PostgreSQL image updates are independent: PostgreSQL 18 uses `/var/lib/postgresql` as the persistent mount, and a major-version change requires a dedicated database migration/restore plan.
 
-The release image may require authentication while the GHCR package is private. An operator with package read access can run `docker login ghcr.io` before starting the stack. The pinned digest deliberately requires an explicit change for each future release.
+The release image may require authentication while the GHCR package is private. An operator with package read access can run `docker login ghcr.io` before starting the stack. The private `production.env` preserves the operator's version choice even if the example template is updated for a future release. The pinned digest deliberately requires an explicit change to `LANSURFER_IMAGE` when an operator adopts a new release.
 
 ## Start and inspect
 
@@ -75,4 +75,4 @@ A normal `down` preserves both named volumes. **Do not use `down --volumes` or `
 
 The isolated [Production Compose runtime smoke workflow](../.github/workflows/production-compose-smoke.yml) runs the **published digest-pinned image** in a uniquely named disposable project, tests authenticated database readiness and an explicit dependency restart, then recreates the stack and checks a synthetic record survives. It does not touch an operator's deployment or replace the separately planned full backup/restore tests in #29.
 
-This example does not include automatic historical-version upgrade or rollback testing. Updating the pinned tag/digest, PostgreSQL version, or database schema needs explicit release-specific assessment and a verified backup, never an unreviewed moving `latest` tag.
+This example does not include automatic historical-version upgrade or rollback testing. Updating image references in `deploy/production.env` or the database schema needs explicit release-specific assessment and a verified backup, never an unreviewed moving `latest` tag. Future releases may publish their own tested env example without forcing edits to existing operators' Compose files.

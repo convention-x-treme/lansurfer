@@ -129,6 +129,8 @@ def test_mutations(valid):
         "public application": lambda x: x["services"]["lansurfer"]["ports"][0].update(host_ip="0.0.0.0"),
         "mutable application": lambda x: x["services"]["lansurfer"].update(image="ghcr.io/convention-x-treme/lansurfer:latest"),
         "mutable database": lambda x: x["services"]["postgres"].update(image="postgres:18.6-alpine"),
+        "missing application image": lambda x: x["services"]["lansurfer"].update(image=""),
+        "missing database image": lambda x: x["services"]["postgres"].update(image=""),
         "weak password": lambda x: x["services"]["postgres"]["environment"].update(POSTGRES_PASSWORD="password"),
         "insecure origin": lambda x: x["services"]["lansurfer"]["environment"].update(LANSURFER_BASE_URL="http://lansurfer.example.org"),
         "missing database volume": lambda x: x["services"]["postgres"].update(volumes=[]),
