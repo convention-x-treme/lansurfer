@@ -49,85 +49,82 @@ The first generator or build run may download Go modules, npm packages, templ, a
 
 ## Choose a local development mode
 
-There are two supported development patterns. The full Compose stack is the quickest way to get the application running. Running the Go process directly is useful when iterating on backend code.
-
-### Option A: full stack with Compose
-
-Run:
+Use `task dev` as the normal entry point:
 
 ```sh
 task dev
 ```
 
-`task dev` first runs the project generators and then builds and starts LANsurfer plus PostgreSQL through Docker Compose. Because generation happens on the host, **Go, Node.js/npm, and Task are still required locally even though the application itself runs in Docker**.
+`task dev` generates code and assets, then runs LANsurfer as a local Go process. When `LANSURFER_DATABASE_URL` is set in the shell or `.env`, it uses that URL unchanged and does not start PostgreSQL. Otherwise, it starts the repository PostgreSQL service with Docker Compose, waits for readiness, and uses the local development database URL. Set `LANSURFER_POSTGRES_PORT` when host port `5432` is occupied:
+
+```sh
+LANSURFER_POSTGRES_PORT=5544 task dev
+```
+
+For an existing database, configure its URL in `.env` or pass it directly:
+
+```sh
+LANSURFER_DATABASE_URL='postgres://user:password@db.example.test:5432/lansurfer?sslmode=require' task dev
+```
+
+Use a dedicated development database for external mode. LANsurfer runs database migrations at startup.
 
 The default local endpoints are:
 
 - LANsurfer: <http://localhost:8080>
-- PostgreSQL: `127.0.0.1:5432`
+- Managed PostgreSQL: `127.0.0.1:5432`
 - health check: <http://localhost:8080/healthz>
 - readiness check: <http://localhost:8080/readyz>
 
-The application should return `ok` from `/healthz` and `ready` from `/readyz`.
+The application should return `ok` from `/healthz` and `ready` from `/readyz`. Press Ctrl+C to stop the Go process. This does not stop or delete the managed database.
 
-Stop and remove the development services with:
+Stop managed PostgreSQL when you no longer need it:
 
 ```sh
 task db:down
 ```
 
-`compose.yaml` also supports `LANSURFER_HTTP_PORT` and `LANSURFER_POSTGRES_PORT` when the default host ports are occupied. If you change the HTTP port and need OIDC login, also use a matching `LANSURFER_BASE_URL` and ensure the identity provider accepts that callback origin.
+This stops development Compose services and keeps the PostgreSQL data volume. It does not reset database data. A destructive reset remains a separate, explicit action.
 
-### Option B: Go locally, PostgreSQL in Docker
-
-Start only PostgreSQL:
+The full application-plus-PostgreSQL Compose stack remains available explicitly:
 
 ```sh
-task db:up
+docker compose up --build
 ```
 
-Create a local environment file from the checked-in example:
+Stop that stack with `docker compose down`; PostgreSQL data remains in its volume. Compose also supports `LANSURFER_HTTP_PORT`. If you change the HTTP port and need OIDC login, set a matching `LANSURFER_BASE_URL` and configure that callback origin at the identity provider.
+
+### Optional `.env` configuration and `task run`
+
+Copy the example when you need local settings:
 
 ```sh
 cp .env.example .env
 ```
 
-`.env` is ignored by Git and optional. Task loads it automatically for every `task` command, so `task run` needs no manual exports. Variables already set in your shell or CI environment take precedence over `.env` values:
+`.env` is ignored by Git and optional. Task loads it automatically; shell variables take precedence. The database URL in `.env.example` is commented out, so `task dev` selects managed PostgreSQL unless you configure an external URL. To use an external database, set `LANSURFER_DATABASE_URL` in `.env` or the shell.
 
-```sh
-task run
-LANSURFER_LISTEN_ADDR=:9090 task run # overrides .env
-```
+`task run` remains independent: it runs the Go application but does not start containers or supply a database URL fallback. Configure `LANSURFER_DATABASE_URL` before running it. Direct `go run ./cmd/lansurfer` and the built binary read process environment only; production does not load `.env`.
 
-The loading is a Task convenience only. Running `go run ./cmd/lansurfer` or the built binary directly still reads the process environment only, and production has no implicit `.env` loading. Docker Compose reads the same `.env` itself for variable substitution.
+`task generate` prepares generated code and assets. `task dev` runs it automatically; `task run` does not.
 
-`LANSURFER_DATABASE_URL` is required. `LANSURFER_LISTEN_ADDR` and `LANSURFER_BASE_URL` have localhost defaults. OIDC configuration is optional for starting the process, but authenticated workflows require a configured provider.
+`LANSURFER_LISTEN_ADDR` and `LANSURFER_BASE_URL` have localhost defaults. `task dev` supplies the CXT development OIDC issuer and client ID when they are unset. OIDC configuration is optional for startup, but authenticated workflows require a configured provider.
 
-When you are finished, stop PostgreSQL with:
-
-```sh
-task db:down
-```
 
 ## Local authentication and administrator access
 
-The Compose development stack defaults to the CXT development OIDC realm and the `lansurfer` public client documented in [README.md](README.md#configure-oidc-login). The callback URL is `http://localhost:8080/auth/callback` by default.
+`task dev` and the full Compose stack default to the CXT development OIDC realm and the `lansurfer` public client documented in [README.md](README.md#configure-oidc-login). The callback URL is `http://localhost:8080/auth/callback` by default.
 
 You need an account accepted by the configured identity provider to exercise authenticated workflows. After your first successful login, LANsurfer creates your local user with the `user` role.
 
-When running the full Compose stack, list users and promote your local account to administrator with:
+When using `task dev`, the administrator tasks run the Go CLI locally and connect to the configured `LANSURFER_DATABASE_URL`. If it is unset, they use the local development database URL and `LANSURFER_POSTGRES_PORT`; they do not start PostgreSQL. Ensure the database is running first:
 
 ```sh
 task admin:users
 task admin:promote USER_ID=<your-user-id>
 ```
 
-When running the Go process directly instead of the `lansurfer` Compose service, keep the environment loaded and use the equivalent CLI commands:
-
-```sh
-go run ./cmd/lansurfer admin users
-go run ./cmd/lansurfer admin promote --user-id <your-user-id>
-```
+The same commands are available directly as `go run ./cmd/lansurfer admin users` and `go run ./cmd/lansurfer admin promote --user-id <your-user-id>` when the database URL is configured.
 
 Administrator access is useful for exercising catalog and other administration workflows during development.
 
@@ -179,7 +176,7 @@ after changing templ templates, frontend sources, branding, SQL queries, or migr
 
 Generated Go code and production assets are committed to the repository. Review generated diffs before committing them.
 
-`task dev` runs `task generate` before starting Compose. `task run` does not, so remember to generate explicitly when working directly on sources that require it.
+`task dev` runs `task generate` before starting LANsurfer. `task run` does not, so generate explicitly when working directly on sources that require it.
 
 ## Tests, lint, and build
 
@@ -242,10 +239,13 @@ Additional Task entry points cover writes, join races, SSE join/leave fan-out, c
 | Command | Purpose |
 | --- | --- |
 | `task --list` | Show the authoritative command list |
-| `task dev` | Generate, build, and run LANsurfer plus PostgreSQL |
-| `task run` | Run the Go application from the current environment plus optional `.env` |
-| `task db:up` | Start only the development PostgreSQL service |
-| `task db:down` | Stop the development Compose services |
+| `task dev` | Generate and run LANsurfer locally with managed or external PostgreSQL |
+| `task run` | Run the Go application without managing PostgreSQL |
+| `task db:up` | Start only the development PostgreSQL service and wait for readiness |
+| `task db:down` | Stop development Compose services; retain database data |
+| `task dev:test` | Check managed/external `task dev` behavior with mocked processes |
+| `task admin:users` | List users from the configured or local development database |
+| `task admin:promote USER_ID=<UUID>` | Promote a user in the configured or local development database |
 | `task generate` | Regenerate templ, frontend assets, branding, and sqlc output |
 | `task frontend:build` | Regenerate templ and production frontend assets |
 | `task lint` | Run formatting/module/vet and TypeScript checks |
@@ -258,12 +258,10 @@ Additional Task entry points cover writes, join races, SSE join/leave fan-out, c
 | `task loadtest:run` / `task loadtest:writes` | Run isolated HTTP read/write profiles |
 | `task loadtest:browser` | Run the isolated Playwright smoke test (not the product browser suite) |
 | `task loadtest:soak` | Run mixed HTTP/SSE/browser load, profiling, cooldown, and audit |
-| `task admin:users` | List users in the running Compose application |
-| `task admin:promote USER_ID=<UUID>` | Promote a local Compose user to administrator |
 
 ## Troubleshooting the local stack
 
-If the Compose application does not become ready, inspect its logs:
+When the full Compose stack does not become ready, inspect its logs:
 
 ```sh
 docker compose logs lansurfer

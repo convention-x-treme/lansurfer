@@ -76,30 +76,38 @@ The [design system](DESIGN.md) defines the palette, typography, icons, mascot us
 - [Architecture](docs/ARCHITECTURE.md), [terminology](docs/TERMINOLOGY.md), and [design system](DESIGN.md): the other canonical references.
 - [GitHub Issues](https://github.com/convention-x-treme/lansurfer/issues) and [milestones](https://github.com/convention-x-treme/lansurfer/milestones): current development work and proposals. There is no separate roadmap file.
 
-## 🐳 Run the current development build
+## 🐳 Run LANsurfer locally
 
-With this repository checked out and Docker with Docker Compose installed, start LANsurfer and PostgreSQL:
+With Go, Node.js/npm, Task, and Docker Compose installed, start the development workflow:
 
 ```sh
-docker compose up --build
+task dev
 ```
 
-This starts the application, including automatic database migrations and the responsive LANsurfer web UI. Open <http://localhost:8080> or check that the service is running:
+`task dev` generates the required files, then runs LANsurfer as a local Go process. It starts repository PostgreSQL and waits for readiness when `LANSURFER_DATABASE_URL` is unset. If the URL is configured in your shell or `.env`, LANsurfer uses it unchanged and does not start PostgreSQL. Set `LANSURFER_POSTGRES_PORT` to use a non-default host port.
+
+Use a dedicated development database in external mode. LANsurfer runs database migrations at startup.
+
+Open <http://localhost:8080>. Check health and readiness with:
 
 ```sh
 curl http://localhost:8080/healthz
 curl http://localhost:8080/readyz
 ```
 
-Expect `ok` from `/healthz` and `ready` from `/readyz`. Stop the stack with:
+Expect `ok` from `/healthz` and `ready` from `/readyz`. Ctrl+C stops the app, not managed PostgreSQL. Run `task db:down` to stop development Compose services; it keeps the database volume and does not reset data.
+
+To run both LANsurfer and PostgreSQL in Compose explicitly, use:
 
 ```sh
-docker compose down
+docker compose up --build
 ```
+
+Stop the full stack with `docker compose down`; the PostgreSQL data volume remains.
 
 ### Configure OIDC login
 
-LANsurfer uses generic OpenID Connect discovery and server-side PostgreSQL sessions. The local Compose environment defaults to the CXT development realm and client below. The provider must allow the exact callback URL `http://localhost:8080/auth/callback`:
+LANsurfer uses generic OpenID Connect discovery and server-side PostgreSQL sessions. Both `task dev` and the full Compose stack default to the CXT development realm and `lansurfer` public client below. The provider must allow the exact callback URL `http://localhost:8080/auth/callback`:
 
 ```sh
 LANSURFER_BASE_URL=http://localhost:8080
@@ -212,8 +220,7 @@ self-operated server in a colocation data center); another operator edits
 
 ### Promote the first administrator
 
-Every new account starts with the `user` role. Log in once to create your local
-account, then list the users in the running Compose stack:
+Every new account starts with the `user` role. Log in once to create your local account, then list users from the configured database:
 
 ```sh
 task admin:users
@@ -225,11 +232,9 @@ Copy your user ID from the output and promote it:
 task admin:promote USER_ID=2c359aee-7690-4975-a2f8-1730cf37f42b
 ```
 
-Reload LANsurfer after the command succeeds. Existing sessions resolve the local
-role on every request, so you do not need to log out. The same operations are
-available directly from the binary as `lansurfer admin users` and
-`lansurfer admin promote --user-id <UUID>` when
-`LANSURFER_DATABASE_URL` is configured.
+These tasks run the Go CLI locally. They use `LANSURFER_DATABASE_URL` when configured or the local development URL otherwise; they do not start PostgreSQL. Ensure the database is running before using them.
+
+Reload LANsurfer after the command succeeds. Existing sessions resolve the local role on every request, so you do not need to log out. The equivalent binary commands are `lansurfer admin users` and `lansurfer admin promote --user-id <UUID>`.
 
 Once promoted, an administrator can also inspect and retry stuck notification deliveries from the binary: `lansurfer admin notifications problems` lists exhausted, permanent, and uncertain deliveries, and `lansurfer admin notifications retry --delivery-id <ID>` (or `retry-uncertain` for a delivery in the uncertain state) reopens one for a fresh attempt.
 
