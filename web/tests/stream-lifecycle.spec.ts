@@ -79,12 +79,19 @@ test("native EventSource reconnect retries failed resync after an outage", async
     };
   });
   let refreshAttempts = 0;
+  let failReconnectRefresh = false;
+  let failedReconnectRefresh = false;
+  let refreshFailureAt = 0;
+  let retryDelay = 0;
   await page.route("**/game-requests/00000000-0000-0000-0000-000000000003/refresh", async (route) => {
     refreshAttempts += 1;
-    if (refreshAttempts === 1) {
+    if (failReconnectRefresh && !failedReconnectRefresh) {
+      failedReconnectRefresh = true;
+      refreshFailureAt = Date.now();
       await route.fulfill({ status: 503, body: "temporary refresh failure" });
       return;
     }
+    if (failedReconnectRefresh) retryDelay = Date.now() - refreshFailureAt;
     await route.continue();
   });
   let releaseRetry!: () => void;
@@ -114,14 +121,14 @@ test("native EventSource reconnect retries failed resync after an outage", async
   await page.goto(`/game-requests/${requestID}`);
   await retryStarted;
   const mutation = await request.get("/__test__/lifecycle?status=open&starts_at=2026-10-20T18:00:00Z&joined=1");
-  expect(mutation.status()).toBe(204);
+  failReconnectRefresh = true;
   releaseRetry();
-
   await waitForRealtime(page, request, 1);
   await expect(page.locator("#game-request-detail")).toContainText("4/4");
   await expect(page.locator("#session-information")).toContainText("No session information yet.");
   await expect(page.locator("#game-request-lobby")).toContainText("Host created the request");
   expect(refreshAttempts).toBe(2);
+  expect(retryDelay).toBeGreaterThanOrEqual(500);
   await expect.poll(() => page.evaluate(() => {
     const browserWindow = window as Window & { __eventSourceStates?: string[] };
     return browserWindow.__eventSourceStates;

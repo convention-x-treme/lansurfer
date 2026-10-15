@@ -642,7 +642,7 @@ if (realtime?.dataset.realtimeUrl) {
         const retryOnce = (): void => {
           if (retries > 0) return;
           retries += 1;
-          window.setTimeout(() => refreshGameRequests(undefined, retryOnce), 0);
+          window.setTimeout(() => refreshGameRequests(undefined, retryOnce), 1000);
         };
         refreshGameRequests(undefined, retryOnce);
       }
