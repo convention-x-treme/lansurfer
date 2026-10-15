@@ -668,6 +668,7 @@ if (realtime?.dataset.realtimeUrl) {
       disconnectRealtime();
       return;
     }
+    reconnectPending = false;
     connectRealtime();
     refreshGameRequests();
   });
