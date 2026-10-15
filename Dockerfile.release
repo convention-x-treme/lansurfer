@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # Production container reuses the binaries already compiled by GoReleaser.
 # Keep the non-root scratch runtime consistent with the development Dockerfile.
-FROM golang:1.27.1-alpine AS runtime-files
+FROM golang:1.27.2-alpine AS runtime-files
 RUN mkdir -p /out/covers
 
 FROM scratch
