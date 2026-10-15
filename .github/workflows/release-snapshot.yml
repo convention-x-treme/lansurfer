@@ -24,7 +24,7 @@ concurrency:
 jobs:
   snapshot:
     name: GoReleaser snapshot and changelog fixtures
-    runs-on: ${{ fromJSON(github.event.repository.private && '["self-hosted","linux","x64","lansurfer-ci"]' || '"ubuntu-latest"') }}
+    runs-on: ${{ fromJSON(github.event.repository.private && '["self-hosted","linux","x64","docker"]' || '"ubuntu-latest"') }}
     timeout-minutes: 40
     steps:
       - name: Check out source and full history
