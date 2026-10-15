@@ -65,6 +65,69 @@ test("a reconnect resynchronizes filtered discovery and detail state without ano
   await expect(page.locator("#game-request-lobby")).toContainText("Host created the request");
 });
 
+test("native EventSource reconnect retries failed resync after an outage", async ({ page, request }) => {
+  await page.addInitScript(() => {
+    const browserWindow = window as Window & { __eventSourceStates?: string[] };
+    const NativeEventSource = window.EventSource;
+    window.EventSource = class extends NativeEventSource {
+      constructor(url: string | URL, eventSourceInitDict?: EventSourceInit) {
+        super(url, eventSourceInitDict);
+        browserWindow.__eventSourceStates = [];
+        this.addEventListener("open", () => browserWindow.__eventSourceStates?.push("open"));
+        this.addEventListener("error", () => browserWindow.__eventSourceStates?.push("error"));
+      }
+    };
+  });
+  let refreshAttempts = 0;
+  await page.route("**/game-requests/00000000-0000-0000-0000-000000000003/refresh", async (route) => {
+    refreshAttempts += 1;
+    if (refreshAttempts === 1) {
+      await route.fulfill({ status: 503, body: "temporary refresh failure" });
+      return;
+    }
+    await route.continue();
+  });
+  let releaseRetry!: () => void;
+  let signalRetry!: () => void;
+  let attempts = 0;
+  const retryStarted = new Promise<void>((resolve) => { signalRetry = resolve; });
+  const holdRetry = new Promise<void>((resolve) => { releaseRetry = resolve; });
+
+  await page.route("**/events/game-requests**", async (route) => {
+    attempts += 1;
+    if (attempts === 1) {
+      await route.fulfill({
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+        body: "retry: 50\n\n",
+      });
+      return;
+    }
+    if (attempts === 2) {
+      signalRetry();
+      await holdRetry;
+    }
+    await route.continue();
+  });
+
+  const requestID = "00000000-0000-0000-0000-000000000003";
+  await page.goto(`/game-requests/${requestID}`);
+  await retryStarted;
+  const mutation = await request.get("/__test__/lifecycle?status=open&starts_at=2026-10-20T18:00:00Z&joined=1");
+  expect(mutation.status()).toBe(204);
+  releaseRetry();
+
+  await waitForRealtime(page, request, 1);
+  await expect(page.locator("#game-request-detail")).toContainText("4/4");
+  await expect(page.locator("#session-information")).toContainText("No session information yet.");
+  await expect(page.locator("#game-request-lobby")).toContainText("Host created the request");
+  expect(refreshAttempts).toBe(2);
+  await expect.poll(() => page.evaluate(() => {
+    const browserWindow = window as Window & { __eventSourceStates?: string[] };
+    return browserWindow.__eventSourceStates;
+  })).toEqual(["open", "error", "open"]);
+});
+
 test("a hidden page releases its stream and reclaims it when visible again", async ({ page, request }) => {
   await page.goto("/game-requests");
   await waitForRealtime(page, request, 1);
