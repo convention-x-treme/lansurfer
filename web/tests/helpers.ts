@@ -46,6 +46,17 @@ export async function waitForRealtime(page: Page, request: APIRequestContext, ex
   await expectStreams(request, expected);
 }
 
+// Fire EventSource lifecycle callbacks to test recovery without a network fault.
+export async function simulateRealtimeReconnect(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const browserWindow = window as Window & { __eventSource?: EventSource };
+    const stream = browserWindow.__eventSource;
+    if (!stream) throw new Error("EventSource was not recorded");
+    stream.dispatchEvent(new Event("error"));
+    stream.dispatchEvent(new Event("open"));
+  });
+}
+
 // countHtmxRequests instruments htmx's own lifecycle events. An unbalanced
 // count is the failure that matters: app.ts defers live refreshes while a
 // mutation is in flight, so a request that starts and never finishes freezes

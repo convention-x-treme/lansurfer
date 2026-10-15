@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { expectStreams, fixtureState, resetFixture, waitForRealtime } from "./helpers";
+import { expectStreams, fixtureState, resetFixture, simulateRealtimeReconnect, waitForRealtime } from "./helpers";
 
 // The hang reported in issue #15 was not a rendering bug. Every page held its
 // EventSource open for its whole lifetime, and a browser speaking HTTP/1.1
@@ -22,7 +22,8 @@ test("a page opens exactly one realtime stream and releases it on close", async 
 
   await expectStreams(request, 0);
 });
-test("a reconnect refreshes detail state without another SSE event", async ({ page, request }) => {
+
+test("a reconnect resynchronizes filtered discovery and detail state without another SSE event", async ({ page, request }) => {
   await page.addInitScript(() => {
     const browserWindow = window as Window & { __eventSource?: EventSource };
     const NativeEventSource = window.EventSource;
@@ -33,20 +34,31 @@ test("a reconnect refreshes detail state without another SSE event", async ({ pa
       }
     };
   });
-  await page.goto("/game-requests/00000000-0000-0000-0000-000000000003");
+  const requestID = "00000000-0000-0000-0000-000000000003";
+
+  await page.goto("/game-requests?q=age");
+  await waitForRealtime(page, request, 1);
+  const discoveryChange = await request.get("/__test__/lifecycle?status=open&starts_at=2026-10-20T18:00:00Z&joined=1");
+  expect(discoveryChange.status()).toBe(204);
+  await simulateRealtimeReconnect(page);
+  const filteredRequest = page.locator(`article[data-game-request-id="${requestID}"]`);
+  await expect(filteredRequest).toContainText("4/4");
+  await expect(page.locator("#game-request-list")).toHaveAttribute("data-filter-query", /q=age/);
+  await expect(page.locator("#request-search")).toHaveValue("age");
+
+  await resetFixture(request);
+  await page.goto(`/game-requests/${requestID}`);
   await waitForRealtime(page, request, 1);
   await expect(page.locator("#game-request-detail")).toContainText("3/4");
+  await expect(page.locator("#session-information")).toContainText("Join this Game Request to see session information.");
+  await expect(page.locator("#game-request-lobby")).toContainText("Join this Game Request to access the Lobby.");
 
-  const mutation = await request.get("/__test__/lifecycle?status=open&starts_at=2026-10-20T18:00:00Z&joined=1");
-  expect(mutation.status()).toBe(204);
-  await page.evaluate(() => {
-    const browserWindow = window as Window & { __eventSource?: EventSource };
-    const stream = browserWindow.__eventSource;
-    if (!stream) throw new Error("EventSource was not recorded");
-    stream.dispatchEvent(new Event("error"));
-    stream.dispatchEvent(new Event("open"));
-  });
+  const detailChange = await request.get("/__test__/lifecycle?status=open&starts_at=2026-10-20T18:00:00Z&joined=1");
+  expect(detailChange.status()).toBe(204);
+  await simulateRealtimeReconnect(page);
   await expect(page.locator("#game-request-detail")).toContainText("4/4");
+  await expect(page.locator("#session-information")).toContainText("No session information yet.");
+  await expect(page.locator("#game-request-lobby")).toContainText("Host created the request");
 });
 
 test("a hidden page releases its stream and reclaims it when visible again", async ({ page, request }) => {
