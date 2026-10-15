@@ -337,6 +337,8 @@ For the technical side, LANsurfer is a modular Go monolith with server-rendered 
 
 LANsurfer is free and open-source software under the [GNU Affero General Public License v3.0 (AGPL-3.0)](LICENSE).
 
+Third-party license notices are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The project's name, logo, otter illustrations and design exports have distinct rights questions, documented in [ASSETS-LICENSE.md](ASSETS-LICENSE.md); the software license does not itself grant trademark rights.
+
 ---
 
 Sometimes the best game at a LAN is the twenty-year-old one you suddenly discover ten other people also want to play.
