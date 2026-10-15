@@ -25,6 +25,11 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Set up Python for release validation
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+
       - name: Validate SemVer tag and maintained source branch
         shell: bash
         run: |
