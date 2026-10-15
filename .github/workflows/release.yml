@@ -1,3 +1,4 @@
+# Private repository CI uses Patrick's isolated runner; public repositories use GitHub-hosted runners for untrusted contributions.
 name: Publish release
 
 # Only an explicit, immutable SemVer tag starts publishing. Never publish from
@@ -13,7 +14,8 @@ permissions:
 jobs:
   validate:
     name: Validate source tag
-    runs-on: ubuntu-latest
+    # Tag validation has read-only permissions; use the private CI runner when applicable.
+    runs-on: ${{ fromJSON(github.event.repository.private && '["self-hosted","linux","x64","lansurfer-ci"]' || '"ubuntu-latest"') }}
     timeout-minutes: 5
     steps:
       - name: Check out exact tagged revision and all branch refs
@@ -50,6 +52,7 @@ jobs:
   publish:
     name: Publish GitHub Release and GHCR image
     needs: [validate, test]
+    # Keep write-privileged publishing isolated from PR workloads.
     runs-on: ubuntu-latest
     timeout-minutes: 55
     # Serializes all tag publishers: a slower older-major backport must never
