@@ -1,3 +1,4 @@
+# Private repository CI uses Patrick's isolated runner; public repositories use GitHub-hosted runners for untrusted contributions.
 name: Release snapshot
 
 # No tags, publication credentials, GHCR login, or deployment in this workflow.
@@ -23,7 +24,7 @@ concurrency:
 jobs:
   snapshot:
     name: GoReleaser snapshot and changelog fixtures
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(github.event.repository.private && '["self-hosted","linux","x64","lansurfer-ci"]' || '"ubuntu-latest"') }}
     timeout-minutes: 40
     steps:
       - name: Check out source and full history
