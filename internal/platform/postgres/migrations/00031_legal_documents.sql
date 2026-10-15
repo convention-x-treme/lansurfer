@@ -77,7 +77,8 @@ For any privacy question or request, write to the email address above.
 - **Account:** an internal user ID, your Game Nick, your role (player or administrator), and when the account was created and last changed.
 - **Linked login accounts:** for each account you log in with (OpenID Connect, Discord, or Twitch), the provider type, the provider's user ID, and the display name the provider reports. The display name is private and may be offered as a Game Nick suggestion; it is never shown to other players. An email address is stored only when a generic OpenID Connect provider supplies one.
 - **Discord login:** LANsurfer requests only the `identify` scope, never your Discord email address, and does not keep Discord access or refresh tokens after the login completes.
-- **Profile pictures:** the picture reference a login provider reports, and which one you chose as your avatar. If you choose one, other players see it next to your Game Nick. The server caches a chosen picture.
+- **Twitch login:** LANsurfer requests only OpenID Connect identity (your Twitch user ID, username, and profile picture), never your Twitch email address, and does not keep Twitch access tokens after the login completes.
+- **Profile pictures:** the picture reference a login provider reports, and which one you chose as your avatar. If you choose one, other players see it next to your Game Nick. The server caches a chosen picture and deletes the cached copy within 15 minutes after you change your picture, unlink the login account, or delete your account.
 - **Sessions:** a hashed session token with its creation, last-use, and expiry times. A session expires after 7 days. Session records remain stored until you log out or your account is deleted.
 - **Login flows:** short-lived login state, valid for 10 minutes and removed after it expires.
 - **Your activity:** Game Requests you create, join, or leave, their chat messages and session information, the Games you follow, the Game Requests you recently viewed, and the history of changes to each Game Request.
@@ -86,13 +87,13 @@ For any privacy question or request, write to the email address above.
 
 ## 3. Cookies
 
-LANsurfer sets only cookies it needs to work. It uses no analytics, advertising, or tracking cookies and no other browser storage.
+LANsurfer sets only cookies it needs to work. It uses no analytics, advertising, or tracking cookies and no other browser storage. All are set by the server, inaccessible to scripts (HttpOnly), same-site, and sent only over HTTPS. No third party collects information through LANsurfer pages.
 
 - `lansurfer_session`: keeps you logged in; until the session expires (7 days) or you log out.
 - `lansurfer_csrf`: protects forms against cross-site request forgery; 7 days.
 - `lansurfer_auth_binding`: binds a login to the browser that started it; 30 minutes.
 - `lansurfer_return`: returns you to the page you came from after login; 15 minutes.
-- `lansurfer_device`: identifies this browser's Web Push subscription; 400 days.
+- `lansurfer_device`: identifies this browser's Web Push subscription; 1 year.
 - `lansurfer_theme`: remembers your light or dark theme choice; 1 year.
 
 ## 4. Purposes and legal bases
@@ -104,7 +105,8 @@ LANsurfer sets only cookies it needs to work. It uses no analytics, advertising,
 
 - **Login providers:** when you log in, you are sent to the provider you choose. That provider's own privacy policy applies to its processing.
 - **Hosting:** [Describe where the server is hosted, which providers are involved, and who has access to the data.]
-- **Game covers and avatars:** the server fetches game cover images from IGDB and chosen profile pictures from the login provider. Your browser never contacts these services for images.
+- **Game data and covers (IGDB):** the server loads game names, details, and cover images from IGDB, a Twitch service. These server-to-server requests contain no data about you; IGDB sees only the server's IP address, the time, and which games or covers are requested. Your browser never contacts IGDB.
+- **Profile pictures:** if you choose a login provider's picture as your avatar, the server fetches it from that provider, which sees the server's IP address and the time. Your browser never contacts the provider for it.
 - **Push notifications:** if you enable Web Push, notifications are delivered through your browser vendor's push service.
 
 We do not sell your data or use it for advertising.

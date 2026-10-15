@@ -3,17 +3,35 @@ package middleware
 import (
 	"context"
 	"net/http"
+	"time"
 )
 
 // ThemeCookieName holds the visitor's explicit light/dark choice. The Content-
 // Security-Policy forbids inline scripts, so the choice cannot be read from
 // storage before the first paint; a cookie lets the server render it instead.
+// The server sets it so it can be HttpOnly: the Twitch Developer Services
+// Agreement (Schedule 1, A) requires same-site, HTTP-only, secure cookies that
+// expire within 13 months (https://legal.twitch.com/legal/developer-agreement/).
 const ThemeCookieName = "lansurfer_theme"
+
+const themeCookieLifetime = 365 * 24 * time.Hour
 
 const (
 	darkTheme  = "lansurfer-dark"
 	lightTheme = "lansurfer-light"
 )
+
+// ThemeCookie stores an explicit theme choice, or returns nil for anything
+// other than the two known themes.
+func ThemeCookie(theme string, secure bool) *http.Cookie {
+	if theme != darkTheme && theme != lightTheme {
+		return nil
+	}
+	return &http.Cookie{
+		Name: ThemeCookieName, Value: theme, Path: "/", Expires: time.Now().Add(themeCookieLifetime),
+		MaxAge: int(themeCookieLifetime.Seconds()), HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode,
+	}
+}
 
 type themeKey struct{}
 

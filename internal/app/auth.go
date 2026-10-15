@@ -37,3 +37,28 @@ func runPeriodicFlowCleanup(ctx context.Context, cleaner flowCleaner, interval t
 		}
 	}
 }
+
+// avatarPruneInterval bounds how long a changed, unlinked, or deleted
+// account's cached avatar outlives the selection (GDPR storage limitation).
+const avatarPruneInterval = 15 * time.Minute
+
+type mediaPruner interface {
+	Prune(context.Context) error
+}
+
+// runPeriodicAvatarPrune deletes cached avatars nobody selects any more,
+// once at startup (a disk cache survives restarts) and then on every tick.
+func runPeriodicAvatarPrune(ctx context.Context, pruner mediaPruner, interval time.Duration, logger *slog.Logger) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		if err := pruner.Prune(ctx); err != nil && ctx.Err() == nil {
+			logger.Error("prune cached avatars", "error", err)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}

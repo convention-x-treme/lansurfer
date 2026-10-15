@@ -194,7 +194,9 @@ func imprintContext(enabled bool) context.Context {
 }
 
 // Discord requires Terms, Privacy, and a reporting path to be reachable from
-// every surface, including the login screen where Discord is offered.
+// every surface, including the login screen where Discord is offered. IGDB
+// and the Twitch Developer Services Agreement require a static, user-visible
+// credit for IGDB-derived Game data on the same surfaces.
 func TestEveryShellLinksLegalPages(t *testing.T) {
 	brand := branding.Default()
 	shells := map[string]templ.Component{
@@ -212,7 +214,7 @@ func TestEveryShellLinksLegalPages(t *testing.T) {
 			body := rendered.String()
 			for _, want := range []string{
 				`<footer`, `href="/terms"`, `href="/privacy"`,
-				`href="/imprint"`,
+				`href="/imprint"`, `href="https://www.igdb.com"`,
 			} {
 				if !strings.Contains(body, want) {
 					t.Errorf("shell does not contain %q", want)

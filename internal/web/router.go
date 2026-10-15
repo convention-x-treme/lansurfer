@@ -216,6 +216,7 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 	}
 	router.Get("/service-worker.js", serviceWorker)
 	router.Head("/service-worker.js", serviceWorker)
+	router.Post("/theme", handler.SetTheme(dependencies.SecureCookies))
 	router.Group(func(authenticated chi.Router) {
 		authenticated.Use(webmiddleware.Authentication(dependencies.Sessions, dependencies.SecureCookies))
 		authenticated.Get("/", rootHandler(brand, dependencies.Landing))

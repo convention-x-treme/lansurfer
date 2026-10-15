@@ -36,6 +36,8 @@ var imageIDPattern = regexp.MustCompile(`^[a-z0-9]{1,32}$`)
 type Store interface {
 	Get(bucket, id string) ([]byte, bool, error)
 	Put(bucket, id string, image []byte) error
+	IDs(bucket string) ([]string, error)
+	Delete(bucket, id string) error
 }
 
 type Fetcher interface {
@@ -138,4 +140,30 @@ func (s *Service) fill(ctx context.Context, bucket, id, key string) ([]byte, err
 		s.logger.Error("cache remote image failed", "bucket", bucket, "image_id", id, "error", err)
 	}
 	return image, nil
+}
+
+// Prune deletes every cached image in this Service's buckets that the
+// catalog no longer knows. For avatars that means the picture is no longer
+// any user's selection: changed, unlinked, or the account deleted. A Put
+// racing a fresh selection may be deleted too; the next request refetches.
+func (s *Service) Prune(ctx context.Context) error {
+	for _, bucket := range s.buckets {
+		ids, err := s.store.IDs(bucket)
+		if err != nil {
+			return fmt.Errorf("list cached images: %w", err)
+		}
+		for _, id := range ids {
+			known, err := s.known(ctx, id)
+			if err != nil {
+				return fmt.Errorf("look up image %s: %w", id, err)
+			}
+			if known {
+				continue
+			}
+			if err := s.store.Delete(bucket, id); err != nil {
+				return fmt.Errorf("delete cached image %s: %w", id, err)
+			}
+		}
+	}
+	return nil
 }

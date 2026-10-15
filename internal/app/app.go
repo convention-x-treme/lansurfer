@@ -245,6 +245,7 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	go notificationWorker.Run(ctx)
 	go runDailyIGDBSync(ctx, igdbSyncService, igdbSyncInterval)
 	go runPeriodicFlowCleanup(ctx, flowStore, authFlowCleanupInterval, logger)
+	go runPeriodicAvatarPrune(ctx, avatars, avatarPruneInterval, logger)
 	// Registered after pool.Close() above so it runs first on the way out:
 	// an in-flight sync's transaction must finish (or be abandoned within the
 	// bound) before the pool it depends on is closed.

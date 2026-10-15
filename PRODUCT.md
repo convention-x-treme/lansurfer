@@ -248,7 +248,7 @@ If an IGDB record disappears during synchronization:
 
 ### Covers and attribution
 
-IGDB attribution and operator setup/terms must be visible in the appropriate UI and documentation. Covers are served same-origin through LANsurfer, so player browsers never contact IGDB directly. On a cache miss LANsurfer may fetch only a known cover ID from the fixed `images.igdb.com` origin server-side and cache the bytes on demand; missing or failed covers keep the local placeholder. Documentation must disclose that the server-side fetch exposes the LANsurfer server's egress IP address, request timing, and requested cover ID to IGDB. The bounded cover proxy is catalog infrastructure, not a generic remote-asset proxy.
+Every screen's footer credits IGDB with a static "Game data by IGDB.com" link to `https://www.igdb.com`, whether or not IGDB synchronization is currently configured, because synchronized metadata and cached covers outlive it. This meets IGDB's request for attribution "visible to your users and located in a static location" ([IGDB API FAQ](https://api-docs.igdb.com/#faq)) and the [Twitch Developer Services Agreement](https://legal.twitch.com/legal/developer-agreement/)'s clear path to the source of displayed Program Materials (VII.C). Covers are served same-origin through LANsurfer, so player browsers never contact IGDB directly. On a cache miss LANsurfer may fetch only a known cover ID from the fixed `images.igdb.com` origin server-side and cache the bytes on demand; missing or failed covers keep the local placeholder. Documentation must disclose that the server-side fetch exposes the LANsurfer server's egress IP address, request timing, and requested cover ID to IGDB. The bounded cover proxy is catalog infrastructure, not a generic remote-asset proxy.
 
 ## 10. Game Following
 
@@ -442,7 +442,7 @@ A deployment may expose the minimum configurable instance identity needed to dis
 
 The **Powered by Convention-X-Treme** operator attribution is fixed and always visible. It is not an instance-identity field and is not administrator-editable.
 
-Dark and light presentations are equally supported, and neither loses information or actions. Theme choice is a per-browser presentation preference, not instance branding: it is remembered in a preference cookie and rendered into the document, so a navigation never paints the other theme first.
+Dark and light presentations are equally supported, and neither loses information or actions. Theme choice is a per-browser presentation preference, not instance branding: the toggle reports it to the server, which remembers it in an HttpOnly preference cookie and renders it into the document, so a navigation never paints the other theme first.
 
 The web app manifest uses a stable application identity and start URL, and the minimal service-worker shell supports installation plus Web Push integration. Installation does not imply offline application support.
 

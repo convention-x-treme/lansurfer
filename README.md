@@ -156,11 +156,15 @@ LANSURFER_TWITCH_AUTH_ENABLED=false
 LANSURFER_IGDB_ENABLED=false
 ```
 
-Set either enable flag to `true` only after configuring both credentials. Register `<base URL>/auth/twitch/callback` as the Twitch OAuth redirect URI when Twitch login is enabled. Twitch login requests only OpenID Connect identity and a display username; it does not request email. The old `LANSURFER_IGDB_CLIENT_ID` and `LANSURFER_IGDB_CLIENT_SECRET` variables no longer work.
+Set either enable flag to `true` only after configuring both credentials. Register `<base URL>/auth/twitch/callback` as the Twitch OAuth redirect URI when Twitch login is enabled. Twitch login requests only OpenID Connect identity and a display username; it does not request email, and LANsurfer discards the Twitch access token after login. The old `LANSURFER_IGDB_CLIENT_ID` and `LANSURFER_IGDB_CLIENT_SECRET` variables no longer work.
+
+Both integrations are off by default and optional. With IGDB disabled, administrators maintain the local Game catalog by hand; disabling IGDB later stops synchronization and IGDB search but keeps every local Game with its last IGDB metadata and cover reference. Disabling Twitch login removes Twitch from the login options; linked Twitch identities stay stored until unlinked or the account is deleted, and a player whose only login is Twitch cannot log in until it is re-enabled. LANsurfer's open-source license covers only LANsurfer: access to the Twitch API and IGDB data is granted by Twitch under the [Twitch Developer Services Agreement](https://legal.twitch.com/legal/developer-agreement/), which the operator accepts when registering the application. IGDB is free for non-commercial use; [commercial use needs an IGDB partnership](https://api-docs.igdb.com/#faq). Every screen's footer credits IGDB as the source of Game data, as IGDB and the agreement require; keep it when customizing.
+
+LANsurfer requests a Twitch app access token with the client credentials in the request body and keeps it only in memory, never in logs or the database. IGDB synchronization stays within IGDB's documented [limit of 4 requests per second](https://api-docs.igdb.com/#rate-limits). Server-to-server requests to `id.twitch.tv`, `api.igdb.com`, and `images.igdb.com` reveal the LANsurfer server's egress IP address, request timing, the application's client ID, and the requested Game or cover IDs; they carry no player data.
 
 IGDB covers are served same-origin through LANsurfer; player browsers do not contact `images.igdb.com`. On a cache miss LANsurfer fetches a known cover from that fixed origin server-side. `LANSURFER_COVER_CACHE_DIR` selects a persistent disk cache; when it is unset, LANsurfer uses a fixed 64 MiB in-process LRU. The production Compose configuration sets it to `/var/cache/lansurfer/covers` and mounts the `cover-cache` named volume there. Deleting the configured cache directory resets the disk cache; known covers are fetched again on demand.
 
-Provider avatars (Discord avatar, Twitch or OIDC `picture`) use the same proxy and cache: browsers load `/media/avatar/{key}` from LANsurfer only, and on a cache miss the server fetches the user's selected picture from the provider host.
+Provider avatars (Discord avatar, Twitch or OIDC `picture`) use the same proxy and cache: browsers load `/media/avatar/{key}` from LANsurfer only, and on a cache miss the server fetches the user's selected picture from the provider host. At startup and every 15 minutes LANsurfer deletes cached avatars that no user has selected any more, so a changed picture, an unlinked login, or a deleted account leaves no cached copy behind.
 
 When LANsurfer runs behind a reverse proxy, set `LANSURFER_BASE_URL` to the
 public HTTPS origin. Set `LANSURFER_TRUSTED_PROXIES` to a comma-separated list
@@ -222,15 +226,19 @@ banner. The sample Privacy Policy lists them:
 
 | Cookie | Purpose | Lifetime |
 |---|---|---|
-| `lansurfer_session` | Signed-in session (HttpOnly) | Until session expiry (7 days) or logout |
-| `lansurfer_csrf` | CSRF double-submit token (HttpOnly) | 7 days |
-| `lansurfer_auth_binding` | Binds an OAuth login to the starting browser (HttpOnly) | 30 minutes |
-| `lansurfer_return` | Same-origin return path through login (HttpOnly) | 15 minutes |
-| `lansurfer_device` | Identifies this browser's Web Push subscription (HttpOnly) | 400 days |
-| `lansurfer_theme` | Light/dark theme choice, written by the page script | 1 year |
+| `lansurfer_session` | Signed-in session | Until session expiry (7 days) or logout |
+| `lansurfer_csrf` | CSRF double-submit token | 7 days |
+| `lansurfer_auth_binding` | Binds an OAuth login to the starting browser | 30 minutes |
+| `lansurfer_return` | Same-origin return path through login | 15 minutes |
+| `lansurfer_device` | Identifies this browser's Web Push subscription | 1 year |
+| `lansurfer_theme` | Light/dark theme choice | 1 year |
 
-All are `Path=/`, `SameSite=Lax`, and `Secure` on HTTPS. Adding analytics, marketing, remote
-embeds, or other optional storage requires a new consent and legal review first.
+All are set by the server, `HttpOnly`, `Path=/`, `SameSite=Lax`, and `Secure` on HTTPS, and none
+outlives 13 months, as the [Twitch Developer Services
+Agreement](https://legal.twitch.com/legal/developer-agreement/) (Schedule 1, A) requires of
+applications using Twitch APIs. No third party collects data through LANsurfer pages. Adding
+analytics, marketing, remote embeds, script-written cookies, or other optional storage requires a
+new consent and legal review first.
 
 ### Promote the first administrator
 

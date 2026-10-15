@@ -40,6 +40,10 @@ func (s *fakeStore) Put(size, id string, image []byte) error {
 	return nil
 }
 
+func (s *fakeStore) IDs(string) ([]string, error) { return nil, nil }
+
+func (s *fakeStore) Delete(string, string) error { return nil }
+
 type fakeCatalog struct {
 	calls atomic.Int32
 	known func(ctx context.Context, id string) (bool, error)
