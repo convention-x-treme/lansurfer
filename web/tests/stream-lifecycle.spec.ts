@@ -22,6 +22,32 @@ test("a page opens exactly one realtime stream and releases it on close", async 
 
   await expectStreams(request, 0);
 });
+test("a reconnect refreshes detail state without another SSE event", async ({ page, request }) => {
+  await page.addInitScript(() => {
+    const browserWindow = window as Window & { __eventSource?: EventSource };
+    const NativeEventSource = window.EventSource;
+    window.EventSource = class extends NativeEventSource {
+      constructor(url: string | URL, eventSourceInitDict?: EventSourceInit) {
+        super(url, eventSourceInitDict);
+        browserWindow.__eventSource = this;
+      }
+    };
+  });
+  await page.goto("/game-requests/00000000-0000-0000-0000-000000000003");
+  await waitForRealtime(page, request, 1);
+  await expect(page.locator("#game-request-detail")).toContainText("3/4");
+
+  const mutation = await request.get("/__test__/lifecycle?status=open&starts_at=2026-10-20T18:00:00Z&joined=1");
+  expect(mutation.status()).toBe(204);
+  await page.evaluate(() => {
+    const browserWindow = window as Window & { __eventSource?: EventSource };
+    const stream = browserWindow.__eventSource;
+    if (!stream) throw new Error("EventSource was not recorded");
+    stream.dispatchEvent(new Event("error"));
+    stream.dispatchEvent(new Event("open"));
+  });
+  await expect(page.locator("#game-request-detail")).toContainText("4/4");
+});
 
 test("a hidden page releases its stream and reclaims it when visible again", async ({ page, request }) => {
   await page.goto("/game-requests");

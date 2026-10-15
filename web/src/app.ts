@@ -601,7 +601,7 @@ const realtime = document.querySelector<HTMLElement>("[data-realtime-url]");
 if (realtime?.dataset.realtimeUrl) {
   const baseRealtimeURL = realtime.dataset.realtimeUrl;
   let events: EventSource | null = null;
-
+  let reconnectPending = false;
   const connectRealtime = (): void => {
     if (events) return;
     const detail = document.querySelector<HTMLElement>("[data-game-request-detail]");
@@ -609,7 +609,13 @@ if (realtime?.dataset.realtimeUrl) {
     const realtimeURL = new URL(baseRealtimeURL, window.location.href);
     if (requestID) realtimeURL.searchParams.set("detailRequestId", requestID);
     events = new EventSource(realtimeURL);
-    events.addEventListener("open", () => document.querySelector("[data-live-connection-alert]")?.remove());
+    events.addEventListener("open", () => {
+      document.querySelector("[data-live-connection-alert]")?.remove();
+      if (reconnectPending) {
+        reconnectPending = false;
+        refreshGameRequests();
+      }
+    });
     events.addEventListener("game-request", (message) => {
       try {
         refreshGameRequests(JSON.parse(message.data) as GameRequestEvent);
@@ -641,6 +647,7 @@ if (realtime?.dataset.realtimeUrl) {
       }
     });
     events.addEventListener("error", () => {
+      reconnectPending = true;
       if (document.querySelector("[data-live-connection-alert]")) return;
       liveNotice("warning", "Live connection lost. Retrying…").dataset.liveConnectionAlert = "";
     });
