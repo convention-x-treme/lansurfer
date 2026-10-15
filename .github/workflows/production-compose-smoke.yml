@@ -29,5 +29,5 @@ jobs:
       - name: Exercise real release images on disposable volumes
         shell: bash
         env:
-          GHCR_TOKEN: ${{ github.token }
+          GHCR_TOKEN: ${{ github.token }}
         run: bash scripts/smoke-production-compose.sh
