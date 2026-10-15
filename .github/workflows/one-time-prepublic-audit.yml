@@ -21,11 +21,6 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Fetch all branch and tag refs
-        shell: bash
-        run: |
-          set -euo pipefail
-          git fetch --prune origin '+refs/heads/*:refs/remotes/origin/*' '+refs/tags/*:refs/tags/*' >/dev/null 2>&1
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
