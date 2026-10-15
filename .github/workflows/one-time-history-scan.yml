@@ -55,7 +55,9 @@ jobs:
               except (FileNotFoundError, ValueError):
                   findings = []
               counts = collections.Counter(str(item.get("RuleID", "unknown")) for item in (findings or []))
-              summary[name] = {"exit_code": status, "findings": len(findings or []), "rules": dict(counts)}
+              grouped = collections.Counter((str(item.get("File", "(unknown)")), str(item.get("RuleID", "unknown"))) for item in (findings or []))
+              safe_locations = [{"file": file, "rule": rule, "count": number} for (file, rule), number in sorted(grouped.items())]
+              summary[name] = {"exit_code": status, "findings": len(findings or []), "rules": dict(counts), "locations_without_secret_values": safe_locations}
           print("REDACTED_GITLEAKS_SUMMARY=" + json.dumps(summary, sort_keys=True))
           if any(status not in (0, 1) for status in statuses):
               raise SystemExit("Scan did not complete; no clean result can be claimed")
