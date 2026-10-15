@@ -183,6 +183,8 @@ jobs:
         shell: bash
         # Avoid fixed host-port collisions on persistent self-hosted Docker daemons.
         env:
+          # Do not reuse or delete another LANsurfer Docker Compose project's state.
+          COMPOSE_PROJECT_NAME: lansurfer-ci-${{ github.run_id }}-${{ github.run_attempt }}
           LANSURFER_POSTGRES_PORT: "0"
           LANSURFER_HTTP_PORT: "0"
         run: |
