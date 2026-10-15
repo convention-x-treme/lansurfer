@@ -26,79 +26,23 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Test PR title validator
+      - name: Run quality and unit tests in Go container
         shell: bash
-        run: bash .github/scripts/test-validate-pr-title.sh
-
-      - name: Check formatting
-        shell: bash
-        run: |
-          unformatted="$(gofmt -l .)"
-          if [[ -n "$unformatted" ]]; then
-            printf 'The following files need gofmt:\n%s\n' "$unformatted"
-            exit 1
-          fi
-
-      - name: Check module files
-        run: go mod tidy -diff
-
-      - name: Vet
-        run: go vet ./...
-
-      - name: Check generated database code
-        shell: bash
-        run: |
-          go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1 generate
-          if [[ -n "$(git status --short)" ]]; then
-            git status --short
-            git diff
-            exit 1
-          fi
-
-      - name: Run unit tests
-        run: go test -race ./...
+        run: bash tools/ci/runner.sh quality
 
   integration:
     name: PostgreSQL integration tests
     runs-on: ${{ fromJSON(github.event.repository.private && '["self-hosted","linux","x64","docker"]' || '"ubuntu-latest"') }}
     timeout-minutes: 15
-    services:
-      postgres:
-        image: postgres:18.6-alpine
-        env:
-          POSTGRES_DB: lansurfer_test
-          POSTGRES_USER: lansurfer_test
-          POSTGRES_PASSWORD: lansurfer_test
-        # Let Docker choose an available host port (a shared runner may already use 5432).
-        ports:
-          - 5432/tcp
-        options: >-
-          --health-cmd "pg_isready -U lansurfer_test -d lansurfer_test"
-          --health-interval 2s
-          --health-timeout 3s
-          --health-retries 15
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Run integration tests
-        env:
-          LANSURFER_TEST_DATABASE_URL: postgres://lansurfer_test:lansurfer_test@127.0.0.1:${{ job.services.postgres.ports[5432] }}/lansurfer_test?sslmode=disable
-        run: go test -race -count=1 -tags=integration ./internal/platform/postgres
+      - name: Run PostgreSQL integration on its private Docker network
+        shell: bash
+        run: bash tools/ci/runner.sh integration
 
   browser:
     name: Browser interaction tests
@@ -110,46 +54,9 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Set up Node.js
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build frontend assets
-        # The fixture embeds the generated CSS and JS at compile time, so the
-        # bundle must match the current sources or the tests assert against a
-        # stale app.ts.
-        run: |
-          go generate ./internal/web/branding
-          go run github.com/a-h/templ/cmd/templ@v0.3.1020 generate
-          npm run build
-
-      - name: Check generated frontend assets
-        # The committed bundle is what production serves, so a stale
-        # dist/ must fail here rather than drift until someone rebuilds.
+      - name: Run Chromium and WebKit in Playwright container
         shell: bash
-        run: |
-          if [[ -n "$(git status --short)" ]]; then
-            git status --short
-            git diff
-            exit 1
-          fi
-
-      - name: Install Chromium and WebKit
-        run: npx playwright install --with-deps chromium webkit
-
-      - name: Run browser tests
-        run: npx playwright test
+        run: bash tools/ci/runner.sh browser
 
       - name: Upload failure traces
         if: failure()
@@ -170,46 +77,10 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Build binary
-        run: go build -trimpath ./...
-
-      - name: Run Compose smoke test
+      - name: Build source in Go container
         shell: bash
-        # Avoid fixed host-port collisions on persistent self-hosted Docker daemons.
-        env:
-          # Do not reuse or delete another LANsurfer Docker Compose project's state.
-          COMPOSE_PROJECT_NAME: lansurfer-ci-${{ github.run_id }}-${{ github.run_attempt }}
-          LANSURFER_POSTGRES_PORT: "0"
-          LANSURFER_HTTP_PORT: "0"
-        run: |
-          cleanup() {
-            status=$?
-            if [[ $status -ne 0 ]]; then
-              docker compose logs
-            fi
-            docker compose down --volumes --remove-orphans
-            exit "$status"
-          }
-          trap cleanup EXIT
+        run: bash tools/ci/runner.sh build
 
-          docker compose up --build --detach
-          published="$(docker compose port lansurfer 8080)"
-          http_port="${published##*:}"
-          [[ "$http_port" =~ ^[0-9]+$ ]] || { echo "::error::Cannot determine Compose HTTP port"; exit 1; }
-          for attempt in {1..30}; do
-            if curl --fail --silent "http://127.0.0.1:${http_port}/readyz" >/dev/null; then
-              break
-            fi
-            if [[ $attempt -eq 30 ]]; then
-              exit 1
-            fi
-            sleep 1
-          done
-          curl --fail --silent "http://127.0.0.1:${http_port}/healthz" | grep --fixed-strings --line-regexp ok
-          curl --fail --silent "http://127.0.0.1:${http_port}/readyz" | grep --fixed-strings --line-regexp ready
+      - name: Probe Compose services through Docker DNS
+        shell: bash
+        run: bash tools/ci/runner.sh smoke

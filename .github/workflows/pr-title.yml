@@ -30,4 +30,4 @@ jobs:
         shell: bash
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
-        run: bash .github/scripts/validate-pr-title.sh "$PR_TITLE"
+        run: bash tools/ci/runner.sh title

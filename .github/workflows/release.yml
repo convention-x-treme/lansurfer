@@ -14,7 +14,7 @@ permissions:
 jobs:
   validate:
     name: Validate source tag
-    # Tag validation has read-only permissions; use the private CI runner when applicable.
+    # Read-only tag checks use Docker; the privileged publisher stays hosted.
     runs-on: ${{ fromJSON(github.event.repository.private && '["self-hosted","linux","x64","docker"]' || '"ubuntu-latest"') }}
     timeout-minutes: 5
     steps:
@@ -25,30 +25,9 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Verify system Python for release tooling
-        # setup-python does not ship prebuilt Python for every self-hosted OS (e.g. Debian 13).
-        # Both Debian 13 and GitHub-hosted Ubuntu provide an appropriate system Python.
+      - name: Validate tag and source branch in a Python container
         shell: bash
-        run: |
-          python3 --version
-          python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else "Python 3.10 or newer is required")'
-
-      - name: Validate SemVer tag and maintained source branch
-        shell: bash
-        run: |
-          set -euo pipefail
-          tag="${GITHUB_REF#refs/tags/}"
-          python3 scripts/release/release_policy.py validate "$tag"
-          test "${GITHUB_REF}" = "refs/tags/$tag"
-          test "$(git rev-parse HEAD)" = "$(git rev-parse "refs/tags/$tag^{commit}")"
-
-          # A tag can be cut from main or a supported release/vN branch.
-          # Never release an arbitrary feature-branch-only commit.
-          if ! git for-each-ref --contains HEAD --format='%(refname:short)' refs/remotes/origin |
-              grep -Eq '^origin/(main|release/v(0|[1-9][0-9]*))$'; then
-            echo "::error::Tag source must be reachable from main or release/vN" >&2
-            exit 1
-          fi
+        run: bash tools/ci/runner.sh validate
 
   test:
     name: Validate tag revision through full CI
