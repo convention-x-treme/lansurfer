@@ -20,10 +20,12 @@ jobs:
     runs-on: ${{ fromJSON(github.event.repository.private && '["self-hosted","linux","x64","docker"]' || '"ubuntu-latest"') }}
     timeout-minutes: 5
     steps:
-      - name: Check out trusted base revision
+      - name: Check out current trusted target branch
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.base.sha }}
+          # Existing PRs can still report a base.sha from before the CI tools were merged.
+          # The target branch is trusted; never checkout the untrusted PR head here.
+          ref: ${{ github.event.pull_request.base.ref }}
           persist-credentials: false
 
       - name: Validate the PR title
