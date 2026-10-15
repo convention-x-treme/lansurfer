@@ -28,8 +28,11 @@ func TestGamesGetsOneTokenAndPagesByLastID(t *testing.T) {
 			if r.Method != http.MethodPost {
 				t.Errorf("token method = %s, want POST", r.Method)
 			}
-			if got := r.URL.Query(); got.Get("client_id") != "client-id" || got.Get("client_secret") != "client-secret" || got.Get("grant_type") != "client_credentials" {
-				t.Errorf("token query = %v, want client credentials", got)
+			if r.URL.RawQuery != "" {
+				t.Errorf("token URL query = %q, want credentials only in the body", r.URL.RawQuery)
+			}
+			if r.PostFormValue("client_id") != "client-id" || r.PostFormValue("client_secret") != "client-secret" || r.PostFormValue("grant_type") != "client_credentials" {
+				t.Errorf("token form = %v, want client credentials", r.PostForm)
 			}
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = io.WriteString(w, `{"access_token":"token-1","expires_in":3600,"token_type":"bearer"}`)

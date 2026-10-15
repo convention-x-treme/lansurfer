@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"net/mail"
 	"net/netip"
 	"net/url"
 	"os"
@@ -23,9 +22,6 @@ const (
 	defaultListenAddr     = ":8080"
 	defaultBaseURL        = "http://localhost:8080"
 	maxInstanceNameLength = 64
-
-	maxLegalEntityNameLength = 200
-	maxLegalAddressLength    = 300
 )
 
 type OIDC struct {
@@ -56,16 +52,6 @@ type Twitch struct {
 	ClientSecret string
 	AuthEnabled  bool
 	IGDBEnabled  bool
-}
-
-// Legal is the operator's legal identity shown on the Terms and Privacy
-// pages. Each deployment is its own data controller, so this is operator
-// configuration; it is deliberately not a branding surface.
-type Legal struct {
-	EntityName   string
-	Address      string
-	ContactEmail string
-	ImprintURL   string
 }
 
 type WebPush struct {
@@ -100,9 +86,9 @@ type Config struct {
 	// display fallback ("LANsurfer"), the same way it already owns
 	// branding.Default() rather than config owning product identity.
 	InstanceName string
-	// Legal is the trimmed, validated operator legal identity. Empty fields
-	// mean unset; the pages render them as "not configured".
-	Legal Legal
+	// ImprintEnabled (LANSURFER_IMPRINT_ENABLED) serves /imprint and links it
+	// from the footer. The document text itself is administrator content.
+	ImprintEnabled bool
 	// CoverCacheDir is the trimmed LANSURFER_COVER_CACHE_DIR. Empty means
 	// IGDB covers are cached in a bounded in-process memory store instead.
 	CoverCacheDir string
@@ -176,12 +162,9 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 
-	legal, err := loadLegal()
+	imprintEnabled, err := optionalBool("LANSURFER_IMPRINT_ENABLED")
 	if err != nil {
 		return Config{}, err
-	}
-	if discord != nil && (legal.EntityName == "" || legal.ContactEmail == "") {
-		return Config{}, errors.New("LANSURFER_LEGAL_ENTITY_NAME and LANSURFER_LEGAL_CONTACT_EMAIL are required when Discord login is configured")
 	}
 
 	return Config{
@@ -198,7 +181,7 @@ func Load() (Config, error) {
 		ChatRateLimit:     chatRateLimit,
 		ChatRateWindow:    chatRateWindow,
 		InstanceName:      instanceName,
-		Legal:             legal,
+		ImprintEnabled:    imprintEnabled,
 		CoverCacheDir:     strings.TrimSpace(os.Getenv("LANSURFER_COVER_CACHE_DIR")),
 	}, nil
 }
@@ -240,34 +223,6 @@ func checkSingleLine(name, value string, max int) error {
 		return fmt.Errorf("%s must be %d Unicode characters or fewer, got %d", name, max, length)
 	}
 	return nil
-}
-
-func loadLegal() (Legal, error) {
-	legal := Legal{
-		EntityName:   strings.TrimSpace(os.Getenv("LANSURFER_LEGAL_ENTITY_NAME")),
-		Address:      strings.TrimSpace(os.Getenv("LANSURFER_LEGAL_ADDRESS")),
-		ContactEmail: strings.TrimSpace(os.Getenv("LANSURFER_LEGAL_CONTACT_EMAIL")),
-		ImprintURL:   strings.TrimSpace(os.Getenv("LANSURFER_IMPRINT_URL")),
-	}
-	if err := checkSingleLine("LANSURFER_LEGAL_ENTITY_NAME", legal.EntityName, maxLegalEntityNameLength); err != nil {
-		return Legal{}, err
-	}
-	if err := checkSingleLine("LANSURFER_LEGAL_ADDRESS", legal.Address, maxLegalAddressLength); err != nil {
-		return Legal{}, err
-	}
-	if legal.ContactEmail != "" {
-		address, err := mail.ParseAddress(legal.ContactEmail)
-		if err != nil || address.Name != "" || address.Address != legal.ContactEmail {
-			return Legal{}, errors.New("LANSURFER_LEGAL_CONTACT_EMAIL must be a bare email address")
-		}
-	}
-	if legal.ImprintURL != "" {
-		parsed, err := url.Parse(legal.ImprintURL)
-		if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" || parsed.User != nil {
-			return Legal{}, errors.New("LANSURFER_IMPRINT_URL must be an absolute HTTP(S) URL")
-		}
-	}
-	return legal, nil
 }
 
 func loadTrustedProxies() ([]netip.Prefix, error) {

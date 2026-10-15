@@ -6,10 +6,12 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
-// DiskStore keeps covers as {dir}/{size}/{id}. It never evicts; operators
-// may delete the directory to reset it.
+// DiskStore keeps images as {dir}/{bucket}/{id}. It never evicts covers;
+// Service.Prune removes unknown avatars. Operators may delete the directory
+// to reset it.
 type DiskStore struct {
 	dir string
 }
@@ -56,4 +58,26 @@ func (d *DiskStore) Put(size, id string, image []byte) error {
 		return err
 	}
 	return os.Rename(temp.Name(), filepath.Join(d.dir, size, id))
+}
+
+// IDs lists cached images, skipping the "." temp files of in-flight Puts.
+func (d *DiskStore) IDs(bucket string) ([]string, error) {
+	entries, err := os.ReadDir(filepath.Join(d.dir, bucket))
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if !entry.IsDir() && !strings.HasPrefix(entry.Name(), ".") {
+			ids = append(ids, entry.Name())
+		}
+	}
+	return ids, nil
+}
+
+func (d *DiskStore) Delete(bucket, id string) error {
+	if err := os.Remove(filepath.Join(d.dir, bucket, id)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	return nil
 }

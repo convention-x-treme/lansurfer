@@ -2,6 +2,9 @@ package mediaproxy
 
 import (
 	"bytes"
+	"context"
+	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
@@ -59,5 +62,46 @@ func TestDiskStoreRejectsUnusableDirectory(t *testing.T) {
 	}
 	if _, err := NewDiskStore(file, "small"); err == nil {
 		t.Fatal("NewDiskStore(file) error = nil")
+	}
+}
+
+// An avatar that is no longer anyone's selection is personal data with no
+// purpose left, so Prune must delete its bytes from both store kinds while
+// keeping selected avatars and the temp files of in-flight writes.
+func TestPruneDeletesImagesTheCatalogNoLongerKnows(t *testing.T) {
+	disk, err := NewDiskStore(t.TempDir(), "avatar", "big")
+	if err != nil {
+		t.Fatal(err)
+	}
+	stores := map[string]Store{"disk": disk, "memory": NewMemoryStore(1 << 20)}
+	for name, store := range stores {
+		t.Run(name, func(t *testing.T) {
+			for _, id := range []string{"selected", "unlinked"} {
+				_ = store.Put("avatar", id, []byte(id))
+			}
+			_ = store.Put("big", "unlinked", []byte("cover")) // another Service's bucket
+			known := func(_ context.Context, id string) (bool, error) { return id == "selected", nil }
+			service := NewService(store, nil, known, slog.New(slog.NewTextHandler(io.Discard, nil)), "avatar")
+			if err := service.Prune(t.Context()); err != nil {
+				t.Fatalf("Prune: %v", err)
+			}
+			if _, ok, _ := store.Get("avatar", "selected"); !ok {
+				t.Error("selected avatar deleted")
+			}
+			if _, ok, _ := store.Get("avatar", "unlinked"); ok {
+				t.Error("unknown avatar kept")
+			}
+			if _, ok, _ := store.Get("big", "unlinked"); !ok {
+				t.Error("pruned outside the Service's buckets")
+			}
+		})
+	}
+	temp, err := os.CreateTemp(filepath.Join(disk.dir, "avatar"), ".tmp-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = temp.Close()
+	if ids, _ := disk.IDs("avatar"); len(ids) != 1 || ids[0] != "selected" {
+		t.Errorf("IDs = %v, want only the selected avatar", ids)
 	}
 }

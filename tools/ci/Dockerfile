@@ -19,7 +19,9 @@ RUN apk add --no-cache bash python3 jq git coreutils
 ENV GOTOOLCHAIN=local
 WORKDIR /workspace
 
-FROM bash:5.3 AS title
+# The bash image installs bash outside /bin; runner.sh requires /bin/bash.
+FROM alpine:3.22 AS title
+RUN apk add --no-cache bash
 WORKDIR /workspace
 
 FROM curlimages/curl:8.16.0 AS smoke

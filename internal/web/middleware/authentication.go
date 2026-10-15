@@ -95,7 +95,9 @@ func ExpiredSessionCookie(secure bool) *http.Cookie {
 
 const DeviceCookieName = "lansurfer_device"
 
-const deviceCookieLifetime = 400 * 24 * time.Hour
+// Twitch Developer Services Agreement, Schedule 1, A: persistent cookies
+// expire within 13 months.
+const deviceCookieLifetime = 365 * 24 * time.Hour
 
 // DeviceCookie identifies one browser across authentication sessions so
 // server-side logout can remove exactly that browser's Push subscription.
