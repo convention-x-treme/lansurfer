@@ -9,4 +9,6 @@ The LANsurfer software is licensed under AGPL-3.0; see [LICENSE](LICENSE). That 
 - `docs/pwa-icons/` contains icon renditions. [DESIGN.md](DESIGN.md) documents their derivation from `docs/logo/icon.png`.
 - `docs/ui-kit/` contains screenshots and a standalone design snapshot. Its README links to an external Claude Design project as the frame source.
 
+The project owner reports that some LANsurfer artwork was AI-generated; the specific files, provider/model, terms, and rights are not identified. This report does not establish permission to publish or redistribute the assets.
+
 The repository does not establish who created or owns these materials, what permissions were granted, or whether external design-project content may be redistributed. This file records no ownership claim and grants no rights. Confirm rightsholder, provenance, and permission for public source and release distribution before treating these assets as cleared.
