@@ -12,7 +12,14 @@ services:
       POSTGRES_USER: lansurfer
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in deploy/production.env}
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U lansurfer -d lansurfer"]
+      # The official image temporarily opens only a Unix socket during init.
+      # Authenticate a real SQL query over TCP, including on existing volumes.
+      test:
+        - CMD-SHELL
+        - >-
+          PGPASSWORD="${POSTGRES_PASSWORD}"
+          psql -h 127.0.0.1 -U "${POSTGRES_USER}"
+          -d "${POSTGRES_DB}" -Atqc 'SELECT 1' >/dev/null
       interval: 5s
       timeout: 3s
       retries: 15

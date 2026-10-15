@@ -58,6 +58,17 @@ wait_ready() {
 "${compose[@]}" up -d --wait --wait-timeout 120
 wait_ready
 
+# Explicit Compose restarts of PostgreSQL must restart the dependent application.
+app_container="$("${compose[@]}" ps -q lansurfer)"
+started_before="$(docker inspect --format '{{.State.StartedAt}}' "$app_container")"
+"${compose[@]}" restart postgres >/dev/null
+wait_ready
+started_after="$(docker inspect --format '{{.State.StartedAt}}' "$app_container")"
+[[ "$started_before" != "$started_after" ]] || {
+  echo 'Explicit PostgreSQL restart did not restart the dependent application' >&2
+  exit 1
+}
+
 # Seed one disposable record. Recreating all containers must keep named volumes.
 "${compose[@]}" exec -T postgres psql -U lansurfer -d lansurfer -v ON_ERROR_STOP=1 \
   -c 'CREATE TABLE ci_persistence_probe (id integer PRIMARY KEY); INSERT INTO ci_persistence_probe (id) VALUES (29);' >/dev/null
@@ -67,4 +78,4 @@ wait_ready
 count="$("${compose[@]}" exec -T postgres psql -U lansurfer -d lansurfer -At \
   -c 'SELECT count(*) FROM ci_persistence_probe WHERE id = 29;')"
 [[ "$count" == 1 ]] || { echo 'Named PostgreSQL volume did not retain the CI probe record' >&2; exit 1; }
-echo 'Production Compose: pinned release boots, migrates, passes readiness and retains data after recreation.'
+echo 'Production Compose: pinned images boot, authenticate DB, restart dependents and retain data after recreation.'

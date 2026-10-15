@@ -59,8 +59,10 @@ def validate(compose):
     require(dependency.get("condition") == "service_healthy", "LANsurfer must wait for DB health")
     require(dependency.get("restart") is True, "LANsurfer must restart after an explicit DB restart")
     db_health = db.get("healthcheck", {}).get("test", [])
-    require(isinstance(db_health, list) and "-h 127.0.0.1" in " ".join(db_health),
-            "PostgreSQL healthcheck must test TCP, not the initialization socket")
+    health_command = " ".join(db_health) if isinstance(db_health, list) else ""
+    require("psql -h 127.0.0.1" in health_command and "PGPASSWORD=" in health_command
+            and "SELECT 1" in health_command,
+            "PostgreSQL healthcheck must authenticate a TCP SQL query")
 
     ports = app.get("ports", [])
     require(len(ports) == 1, "LANsurfer must have exactly one published port")
