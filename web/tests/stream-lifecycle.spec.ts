@@ -38,11 +38,15 @@ test("a reconnect resynchronizes filtered discovery and detail state without ano
 
   await page.goto("/game-requests?q=age");
   await waitForRealtime(page, request, 1);
+  const filteredRequest = page.locator(`article[data-game-request-id="${requestID}"]`);
+  await expect(filteredRequest).toContainText("3/4");
+  await expect(page.locator("#game-request-list article[data-game-request-id]")).toHaveCount(1);
+
   const discoveryChange = await request.get("/__test__/lifecycle?status=open&starts_at=2026-10-20T18:00:00Z&joined=1");
   expect(discoveryChange.status()).toBe(204);
   await simulateRealtimeReconnect(page);
-  const filteredRequest = page.locator(`article[data-game-request-id="${requestID}"]`);
   await expect(filteredRequest).toContainText("4/4");
+  await expect(page.locator("#game-request-list article[data-game-request-id]")).toHaveCount(1);
   await expect(page.locator("#game-request-list")).toHaveAttribute("data-filter-query", /q=age/);
   await expect(page.locator("#request-search")).toHaveValue("age");
 
