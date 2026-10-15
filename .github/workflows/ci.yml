@@ -75,8 +75,9 @@ jobs:
           POSTGRES_DB: lansurfer_test
           POSTGRES_USER: lansurfer_test
           POSTGRES_PASSWORD: lansurfer_test
+        # Let Docker choose an available host port (a shared runner may already use 5432).
         ports:
-          - 5432:5432
+          - 5432/tcp
         options: >-
           --health-cmd "pg_isready -U lansurfer_test -d lansurfer_test"
           --health-interval 2s
@@ -96,12 +97,17 @@ jobs:
 
       - name: Run integration tests
         env:
-          LANSURFER_TEST_DATABASE_URL: postgres://lansurfer_test:lansurfer_test@127.0.0.1:5432/lansurfer_test?sslmode=disable
+          LANSURFER_TEST_DATABASE_URL: postgres://lansurfer_test:lansurfer_test@127.0.0.1:${{ job.services.postgres.ports[5432] }}/lansurfer_test?sslmode=disable
         run: go test -race -count=1 -tags=integration ./internal/platform/postgres
 
   browser:
     name: Browser interaction tests
     runs-on: ${{ fromJSON(github.event.repository.private && '["self-hosted","linux","x64","docker"]' || '"ubuntu-latest"') }}
+    # Matches @playwright/test in package.json; includes Chromium, WebKit and Linux libraries.
+    # Keep this version in sync when updating Playwright.
+    container:
+      image: mcr.microsoft.com/playwright:v1.60.0-noble
+      options: --shm-size=1g
     timeout-minutes: 15
     steps:
       - name: Check out repository
@@ -144,9 +150,7 @@ jobs:
             exit 1
           fi
 
-      - name: Install Chromium and WebKit
-        run: npx playwright install --with-deps chromium webkit
-
+      # Browser binaries and dependencies are provided by the version-pinned image.
       - name: Run browser tests
         run: npx playwright test
 
@@ -180,6 +184,10 @@ jobs:
 
       - name: Run Compose smoke test
         shell: bash
+        # Avoid fixed host-port collisions on persistent self-hosted Docker daemons.
+        env:
+          LANSURFER_POSTGRES_PORT: "0"
+          LANSURFER_HTTP_PORT: "0"
         run: |
           cleanup() {
             status=$?
@@ -192,8 +200,11 @@ jobs:
           trap cleanup EXIT
 
           docker compose up --build --detach
+          published="$(docker compose port lansurfer 8080)"
+          http_port="${published##*:}"
+          [[ "$http_port" =~ ^[0-9]+$ ]] || { echo "::error::Cannot determine Compose HTTP port"; exit 1; }
           for attempt in {1..30}; do
-            if curl --fail --silent http://127.0.0.1:8080/readyz >/dev/null; then
+            if curl --fail --silent "http://127.0.0.1:${http_port}/readyz" >/dev/null; then
               break
             fi
             if [[ $attempt -eq 30 ]]; then
@@ -201,5 +212,5 @@ jobs:
             fi
             sleep 1
           done
-          curl --fail --silent http://127.0.0.1:8080/healthz | grep --fixed-strings --line-regexp ok
-          curl --fail --silent http://127.0.0.1:8080/readyz | grep --fixed-strings --line-regexp ready
+          curl --fail --silent "http://127.0.0.1:${http_port}/healthz" | grep --fixed-strings --line-regexp ok
+          curl --fail --silent "http://127.0.0.1:${http_port}/readyz" | grep --fixed-strings --line-regexp ready
