@@ -1,0 +1,62 @@
+# TEMPORARY: one-time Gitleaks audit only; delete before merge.
+name: One-time history scan only
+on:
+  pull_request:
+    paths:
+      - .github/workflows/one-time-history-scan.yml
+permissions:
+  contents: read
+jobs:
+  scan:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'chore/89-92-prepublic-audit'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout all reachable refs and history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Install pinned Gitleaks
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/bin"
+          GOBIN="$RUNNER_TEMP/bin" go install github.com/zricethezav/gitleaks/v8@v8.28.0
+      - name: Scan and emit safe counts (no raw leak details)
+        shell: bash
+        run: |
+          set +e
+          "$RUNNER_TEMP/bin/gitleaks" git . --log-opts="--all" --redact=100 --log-level=error --report-format=json --report-path="$RUNNER_TEMP/history.json" >/dev/null 2>&1
+          git_status=$?
+          "$RUNNER_TEMP/bin/gitleaks" dir . --redact=100 --log-level=error --report-format=json --report-path="$RUNNER_TEMP/tree.json" >/dev/null 2>&1
+          tree_status=$?
+          set -e
+          python3 - "$git_status" "$tree_status" "$RUNNER_TEMP" <<'PY'
+          import collections
+          import json
+          import pathlib
+          import subprocess
+          import sys
+          statuses = [int(sys.argv[1]), int(sys.argv[2])]
+          root = pathlib.Path(sys.argv[3])
+          summary = {
+              "scanned_commits": len(subprocess.check_output(["git", "rev-list", "--all"]).splitlines()),
+              "scanned_refs": len(subprocess.check_output(["git", "for-each-ref", "--format=%(refname)"]).splitlines()),
+          }
+          for name, status in zip(("history", "tree"), statuses):
+              p = root / (name + ".json")
+              try:
+                  findings = json.loads(p.read_text(encoding="utf-8"))
+              except (FileNotFoundError, ValueError):
+                  findings = []
+              counts = collections.Counter(str(item.get("RuleID", "unknown")) for item in (findings or []))
+              summary[name] = {"exit_code": status, "findings": len(findings or []), "rules": dict(counts)}
+          print("REDACTED_GITLEAKS_SUMMARY=" + json.dumps(summary, sort_keys=True))
+          if any(status not in (0, 1) for status in statuses):
+              raise SystemExit("Scan did not complete; no clean result can be claimed")
+          PY
