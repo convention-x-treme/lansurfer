@@ -1,0 +1,17 @@
+LANsurfer software is licensed under GNU AGPL-3.0; see LICENSE.
+
+Go runtime dependencies
+-----------------------
+Full upstream license texts and copyright notices for Go packages imported by the application are in `third_party_licenses/go/`. Generated with `go-licenses` v1.6.0 using `go-licenses save ./... --ignore github.com/convention-x-treme/lansurfer --save_path=third_party_licenses/go`; rerun after dependency updates. First-party LANsurfer code is excluded.
+
+Bundled frontend assets
+-----------------------
+License texts for third-party fonts, icons, CSS and JavaScript shipped in the application are in internal/web/assets/dist/licenses/. The asset generator copies these texts from the exact npm packages pinned by package-lock.json. htmx is licensed under 0BSD; its upstream license text is preserved as htmx-0BSD.txt.
+
+Release packaging
+-----------------
+Include this file and the referenced license texts in release archives and container distributions. Packaging integration is tracked in issue #29.
+
+Container CA certificates
+-------------------------
+The inspected `golang:1.27.2-alpine` stage contains `ca-certificates-bundle` version `20260909-r0` (license expression `MPL-2.0 AND MIT`). `Dockerfile.release` copies its Mozilla root-certificate bundle into the final image. The full MPL-2.0 and MIT texts and certificate attribution requirements are not yet included here; verify them before treating container notices as complete. References: https://www.mozilla.org/en-US/MPL/2.0/ and https://spdx.org/licenses/MIT.html. This audit does not imply legal approval.

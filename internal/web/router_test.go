@@ -477,7 +477,6 @@ func TestEmbeddedAssetsAreServed(t *testing.T) {
 		"/assets/fonts/schibsted-grotesk-latin-wght-italic.woff2",
 		"/assets/fonts/jetbrains-mono-latin-wght-normal.woff2",
 		"/assets/images/otter.webp",
-		"/assets/licenses/htmx-BSD-2-Clause.txt",
 		"/assets/licenses/schibsted-grotesk-OFL-1.1.txt",
 		"/assets/licenses/jetbrains-mono-OFL-1.1.txt",
 		"/assets/licenses/tailwindcss-MIT.txt",
@@ -496,6 +495,26 @@ func TestEmbeddedAssetsAreServed(t *testing.T) {
 				t.Error("asset response is empty")
 			}
 		})
+	}
+}
+
+func TestHTMXLicenseUsesItsZeroClauseBSDNameAndText(t *testing.T) {
+	router := NewRouter(RouterDependencies{Ready: func(context.Context) error { return nil }})
+	request := httptest.NewRequest(http.MethodGet, "/assets/licenses/htmx-0BSD.txt", nil)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("license status = %d, want %d", response.Code, http.StatusOK)
+	}
+	if !strings.HasPrefix(response.Body.String(), "Zero-Clause BSD\n") {
+		t.Fatal("license asset does not contain the upstream Zero-Clause BSD text")
+	}
+
+	request = httptest.NewRequest(http.MethodGet, "/assets/licenses/htmx-BSD-2-Clause.txt", nil)
+	response = httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("obsolete license path status = %d, want %d", response.Code, http.StatusNotFound)
 	}
 }
 
