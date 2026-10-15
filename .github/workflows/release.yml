@@ -15,7 +15,7 @@ jobs:
   validate:
     name: Validate source tag
     # Tag validation has read-only permissions; use the private CI runner when applicable.
-    runs-on: ${{ fromJSON(github.event.repository.private && '["self-hosted","linux","x64","lansurfer-ci"]' || '"ubuntu-latest"') }}
+    runs-on: ${{ fromJSON(github.event.repository.private && '["self-hosted","linux","x64","docker"]' || '"ubuntu-latest"') }}
     timeout-minutes: 5
     steps:
       - name: Check out exact tagged revision and all branch refs
