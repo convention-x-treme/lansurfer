@@ -103,11 +103,6 @@ jobs:
   browser:
     name: Browser interaction tests
     runs-on: ${{ fromJSON(github.event.repository.private && '["self-hosted","linux","x64","docker"]' || '"ubuntu-latest"') }}
-    # Matches @playwright/test in package.json; includes Chromium, WebKit and Linux libraries.
-    # Keep this version in sync when updating Playwright.
-    container:
-      image: mcr.microsoft.com/playwright:v1.60.0-noble
-      options: --shm-size=1g
     timeout-minutes: 15
     steps:
       - name: Check out repository
@@ -150,7 +145,9 @@ jobs:
             exit 1
           fi
 
-      # Browser binaries and dependencies are provided by the version-pinned image.
+      - name: Install Chromium and WebKit
+        run: npx playwright install --with-deps chromium webkit
+
       - name: Run browser tests
         run: npx playwright test
 
