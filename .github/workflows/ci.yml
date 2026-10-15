@@ -180,9 +180,13 @@ jobs:
           # Deliberately synthetic values; never print interpolated secrets.
           export POSTGRES_PASSWORD=0123456789abcdef0123456789abcdef
           export LANSURFER_BASE_URL=https://lansurfer.example.org
+          export LANSURFER_DISCORD_CLIENT_ID=ci-fixture
+          export LANSURFER_DISCORD_CLIENT_SECRET=ci-fixture
+          export LANSURFER_LEGAL_ENTITY_NAME="CI fixture"
+          export LANSURFER_LEGAL_CONTACT_EMAIL=ci@example.invalid
           docker compose --env-file deploy/production.env.example \
             -f deploy/compose.production.yaml config --format json |
-            python3 scripts/test-production-compose.py
+            python3 scripts/test-production-compose.py --test-mutations
 
       - name: Build binary
         run: go build -trimpath ./...

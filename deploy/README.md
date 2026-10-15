@@ -6,7 +6,7 @@ This is a deployment example, **not** evidence that backup/restore or upgrades h
 
 ## Prepare configuration
 
-Run these commands from the **repository root** on the host that will run Docker:
+Run these commands from the **repository root** on the host that will run Docker. Prerequisites: Docker Engine with Compose v2, Python 3 for the fail-closed configuration check, and OpenSSL for password creation:
 
 ```sh
 cp deploy/production.env.example deploy/production.env
@@ -14,23 +14,27 @@ chmod 600 deploy/production.env
 openssl rand -hex 32
 ```
 
-Put the newly generated hex string in `POSTGRES_PASSWORD` in `deploy/production.env`; do not reuse the development password. Hex is important because Compose constructs `LANSURFER_DATABASE_URL` from this password and does not URL-encode it. Set `LANSURFER_BASE_URL` to the real public **HTTPS origin**, for example `https://lansurfer.example.org` (without a path). Configure at least one real login provider (OIDC, Discord or Twitch); the development Keycloak defaults are intentionally absent. Configure the operator legal identity and any desired Web Push, Discord notification or IGDB settings. See the root [README](../README.md) for each provider's required fields and callbacks.
+Put the newly generated **64-character** hex string in `POSTGRES_PASSWORD` in `deploy/production.env`; do not reuse the development password. Hex is important because Compose constructs `LANSURFER_DATABASE_URL` from this password and does not URL-encode it. Set `LANSURFER_BASE_URL` to the real public **HTTPS origin**, for example `https://lansurfer.example.org` (without a path). Configure at least one real login provider (OIDC, Discord or Twitch); the development Keycloak defaults are intentionally absent. Configure the operator legal identity and any desired Web Push, Discord notification or IGDB settings. See the root [README](../README.md) for each provider's required fields and callbacks.
 
 `deploy/production.env` must remain outside version control and be readable only by trusted operators. Docker administrators can inspect container environment values and `docker compose config` reveals interpolated secrets; avoid pasting its output into issues or logs. Treat the generated password and notification encryption keys as backup-sensitive secrets.
+
+Both the application image and the official PostgreSQL 18.6 image are referenced by **immutable multi-architecture digests**. Updating either version or digest is an explicit change, ideally after a fresh isolated startup test. PostgreSQL 18 uses `/var/lib/postgresql` as the correct persistent volume path. Do not change its major version by editing an image reference without a data-migration plan.
 
 The release image may require authentication while the GHCR package is private. An operator with package read access can run `docker login ghcr.io` before starting the stack. The pinned digest deliberately requires an explicit change for each future release.
 
 ## Start and inspect
 
 ```sh
-docker compose --env-file deploy/production.env -f deploy/compose.production.yaml config --quiet
-docker compose --env-file deploy/production.env -f deploy/compose.production.yaml up -d
+# Keep this pipe; it validates the effective config WITHOUT displaying secrets.
+docker compose --env-file deploy/production.env -f deploy/compose.production.yaml config --format json | python3 scripts/test-production-compose.py
+docker compose --env-file deploy/production.env -f deploy/compose.production.yaml pull
+docker compose --env-file deploy/production.env -f deploy/compose.production.yaml up -d --wait
 docker compose --env-file deploy/production.env -f deploy/compose.production.yaml ps
 curl --fail --silent http://127.0.0.1:8080/healthz
 curl --fail --silent http://127.0.0.1:8080/readyz
 ```
 
-The checks should return `ok` and `ready`, respectively. If you change `LANSURFER_HTTP_PORT`, use that host port in the `curl` commands and reverse-proxy upstream. Only Docker-host loopback is published; direct external clients cannot reach the app or PostgreSQL via this Compose file.
+The checks should return `ok` and `ready`, respectively. The preflight rejects an incomplete or insecure configuration (including a non-HTTPS origin, invalid database password, unexpectedly public ports, missing login providers or unsafe proxy trust) before deployment; it uses the same checks as CI. Shell-exported variables override values in `--env-file`, so check your environment if the results are unexpected. If `pull` fails with GHCR permission denied while the repository is private, authenticate using a read-authorized account instead of replacing the digest with `latest`. If you change `LANSURFER_HTTP_PORT`, use that host port in the `curl` commands and reverse-proxy upstream. Only Docker-host loopback is published; direct external clients cannot reach the app or PostgreSQL via this Compose file.
 
 A Caddy **installed on the Docker host** can terminate HTTPS, obtain certificates for a correctly configured public DNS name, and proxy to the loopback upstream:
 
@@ -65,6 +69,10 @@ Transfer those keys securely to `deploy/production.env` and store a separate sec
 docker compose --env-file deploy/production.env -f deploy/compose.production.yaml down
 ```
 
+The Compose database readiness probe uses **TCP** instead of the temporary Unix socket exposed during PostgreSQL initialization, and the application restarts after explicit Compose-driven database restarts. Unexpected crashes are handled by the container restart policies; startup migrations and readiness are still verified via `/readyz`. LANsurfer's application shutdown can spend up to ten seconds each draining HTTP, notifications and IGDB work, so the Compose stop grace period is 45 seconds rather than 15.
+
 A normal `down` preserves both named volumes. **Do not use `down --volumes` or `down -v` on a populated deployment**: it deletes PostgreSQL data. Backups/restores require their own verified procedure before this is used for important real-world data. Changing `POSTGRES_PASSWORD` in the env file after PostgreSQL has initialized does **not** automatically rotate its existing database user's password; rotate the database password in PostgreSQL and the env configuration together with a controlled restart.
+
+The isolated [Production Compose runtime smoke workflow](../.github/workflows/production-compose-smoke.yml) runs the **published digest-pinned image** in a uniquely named disposable project, tests a fresh database boot and readiness, then recreates the stack and checks a synthetic record survives. It does not touch an operator's deployment or replace the separately planned full backup/restore tests in #29.
 
 This example does not include automatic historical-version upgrade or rollback testing. Updating the pinned tag/digest, PostgreSQL version, or database schema needs explicit release-specific assessment and a verified backup, never an unreviewed moving `latest` tag.

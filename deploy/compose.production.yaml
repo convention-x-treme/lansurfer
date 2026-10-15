@@ -4,14 +4,15 @@ name: lansurfer-production
 
 services:
   postgres:
-    image: postgres:18.6-alpine
+    # Pinned multi-arch Docker Hub index; update deliberately after reviewing patch releases.
+    image: postgres:18.6-alpine@sha256:d3e1620b530c944afa6e887d22eb899824da68e19c52024bf98f5220c88a65b2
     restart: unless-stopped
     environment:
       POSTGRES_DB: lansurfer
       POSTGRES_USER: lansurfer
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in deploy/production.env}
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U lansurfer -d lansurfer"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U lansurfer -d lansurfer"]
       interval: 5s
       timeout: 3s
       retries: 15
@@ -28,6 +29,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+        restart: true
     init: true
     restart: unless-stopped
     read_only: true
@@ -73,7 +75,8 @@ services:
       LANSURFER_COVER_CACHE_DIR: /var/cache/lansurfer/covers
     volumes:
       - cover-cache:/var/cache/lansurfer/covers
-    stop_grace_period: 15s
+    # Allow the HTTP server and background workers to drain (each up to 10s).
+    stop_grace_period: 45s
 
 volumes:
   postgres-data:
