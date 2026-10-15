@@ -8,6 +8,8 @@ FROM scratch
 ARG TARGETPLATFORM
 COPY --from=runtime-files /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY ${TARGETPLATFORM}/lansurfer /lansurfer
+# Ship project licensing and third-party attribution with the container image.
+COPY LICENSE THIRD_PARTY_NOTICES.md ASSETS-LICENSE.md /usr/share/doc/lansurfer/
 # Docker volumes mounted on the covers directory inherit its non-root owner.
 COPY --from=runtime-files --chown=65532:65532 /out/covers /var/cache/lansurfer/covers
 USER 65532:65532
