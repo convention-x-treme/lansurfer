@@ -4,7 +4,7 @@ set -euo pipefail
 # Nested runner architecture: GitHub's job-level container lacked /__e/node24.
 # Checkout is on the runner; build/test tools are invoked inside Docker images.
 # Copy source through the Docker API rather than assuming daemon host mount paths.
-job="${1:?Usage: runner.sh quality|integration|browser|build|smoke|snapshot|validate|title}"
+job="${1:?Usage: runner.sh quality|integration|browser|build|smoke|snapshot|validate|title|publish-check|publish}"
 : "${GITHUB_WORKSPACE:?}"
 : "${GITHUB_RUN_ID:?}"
 : "${GITHUB_RUN_ATTEMPT:?}"
@@ -13,7 +13,7 @@ cd "$GITHUB_WORKSPACE"
 case "$job" in
   quality|integration|build) target=go ;;
   browser) target=browser ;;
-  snapshot|validate) target=release ;;
+  snapshot|validate|publish-check|publish) target=release ;;
   title) target=title ;;
   smoke) target=smoke ;;
   *) printf 'Unknown job: %s\n' "$job" >&2; exit 2 ;;
@@ -60,7 +60,17 @@ cleanup() {
 }
 trap cleanup EXIT
 
-docker build -f tools/ci/Dockerfile --target "$target" --tag "$image" .
+if [[ "$job" == publish ]]; then
+  [[ "${GITHUB_EVENT_NAME:-}" == push && "${GITHUB_REF:-}" == refs/tags/v* ]] ||
+    { echo "::error::Publisher requires a version-tag push" >&2; exit 1; }
+  : "${GH_TOKEN:?Only the privileged release job may supply GH_TOKEN}"
+  : "${GITHUB_REF_NAME:?}" "${GITHUB_ACTOR:?}" "${GITHUB_REPOSITORY:?}" "${GITHUB_STEP_SUMMARY:?}"
+  # An untrusted CI job can taint a shared Docker cache; force fresh layers and
+  # resolve the pinned GoReleaser base image from the registry.
+  docker build --pull --no-cache -f tools/ci/Dockerfile --target "$target" --tag "$image" .
+else
+  docker build -f tools/ci/Dockerfile --target "$target" --tag "$image" .
+fi
 
 args=(
   --name "$container" --workdir /workspace
@@ -68,9 +78,11 @@ args=(
   -e "GITHUB_REF=$GITHUB_REF" -e "GITHUB_RUN_ID=$GITHUB_RUN_ID"
   -e "GITHUB_RUN_ATTEMPT=$GITHUB_RUN_ATTEMPT"
   -e GOPATH=/go
-  -v lansurfer-ci-go-mod:/go/pkg/mod
-  -v lansurfer-ci-go-build:/root/.cache/go-build
 )
+# Do not share Go build/module-cache volumes with the privileged tag publisher.
+if [[ "$job" != publish ]]; then
+  args+=(-v lansurfer-ci-go-mod:/go/pkg/mod -v lansurfer-ci-go-build:/root/.cache/go-build)
+fi
 
 if [[ "$job" == integration ]]; then
   network="lansurfer-ci-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-integration"
@@ -98,9 +110,27 @@ if [[ "$job" == integration ]]; then
   args+=(--network "$network" -e 'LANSURFER_TEST_DATABASE_URL=postgres://lansurfer_test:lansurfer_test@postgres:5432/lansurfer_test?sslmode=disable')
 fi
 
-if [[ "$job" == snapshot ]]; then
-  # Read-only snapshot tooling needs Docker Buildx; the isolated CI socket is used.
+if [[ "$job" == snapshot || "$job" == publish ]]; then
+  # Docker builds need the isolated CI daemon. The same daemon handles PR jobs:
+  # that is a temporary, explicitly accepted risk until #150 goes public.
   args+=(-v /var/run/docker.sock:/var/run/docker.sock)
+fi
+if [[ "$job" == publish ]]; then
+  # Expose only non-secret release metadata in the container configuration.
+  # The short-lived GitHub token is delivered on STDIN after container creation.
+  args+=(
+    -i
+    -e "GITHUB_EVENT_NAME=$GITHUB_EVENT_NAME"
+    -e "GITHUB_REF_NAME=$GITHUB_REF_NAME"
+    -e "GITHUB_ACTOR=$GITHUB_ACTOR"
+    -e "GITHUB_REPOSITORY=$GITHUB_REPOSITORY"
+    -e GITHUB_STEP_SUMMARY=/tmp/lansurfer-release-summary.md
+  )
+fi
+if [[ "$job" == publish-check ]]; then
+  # Exercise the publisher's exact interactive Docker stdin mechanism with a
+  # harmless fixed marker, never real credentials or GitHub API mutations.
+  args+=(-i)
 fi
 if [[ "$job" == title ]]; then
   args+=(-e "PR_TITLE=$PR_TITLE")
@@ -111,8 +141,20 @@ docker create "${args[@]}" --entrypoint /bin/bash "$image" \
 docker cp "$GITHUB_WORKSPACE/." "$container:/workspace/"
 
 set +e
-docker start --attach "$container"
-attach_status=$?
+if [[ "$job" == publish ]]; then
+  # Never include the token in docker create args, inspectable container env,
+  # command-line args, Docker layers, or a persisted Docker config on the host.
+  printf '%s\n' "$GH_TOKEN" | docker start --attach --interactive "$container"
+  attach_status=$?
+  unset GH_TOKEN
+elif [[ "$job" == publish-check ]]; then
+  printf '%s\n' 'lansurfer-publish-stdin-smoke' |
+    docker start --attach --interactive "$container"
+  attach_status=$?
+else
+  docker start --attach "$container"
+  attach_status=$?
+fi
 set -e
 result="$(docker inspect --format '{{.State.ExitCode}}' "$container")"
 if (( attach_status != 0 && result == 0 )); then result="$attach_status"; fi
@@ -124,5 +166,12 @@ fi
 if [[ "$job" == snapshot && "$result" -eq 0 ]]; then
   mkdir -p "$GITHUB_WORKSPACE/dist"
   docker cp "$container:/workspace/dist/." "$GITHUB_WORKSPACE/dist/"
+fi
+if [[ "$job" == publish && "$result" -eq 0 ]]; then
+  # The release script wrote its GitHub Actions summary within the disposable
+  # container. Copy it out only after the guarded publication completed.
+  if ! docker cp "$container:/tmp/lansurfer-release-summary.md" "$GITHUB_STEP_SUMMARY"; then
+    echo "::warning::Release published, but could not copy job summary" >&2
+  fi
 fi
 exit "$result"

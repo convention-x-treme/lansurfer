@@ -41,6 +41,10 @@ jobs:
         shell: bash
         run: bash tools/ci/runner.sh snapshot
 
+      - name: Smoke-test publishing toolbox (no token or publishing)
+        shell: bash
+        run: bash tools/ci/runner.sh publish-check
+
       - name: Upload reviewable snapshot archives
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
