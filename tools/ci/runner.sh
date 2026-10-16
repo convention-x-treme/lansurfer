@@ -127,6 +127,11 @@ if [[ "$job" == publish ]]; then
     -e GITHUB_STEP_SUMMARY=/tmp/lansurfer-release-summary.md
   )
 fi
+if [[ "$job" == publish-check ]]; then
+  # Exercise the publisher's exact interactive Docker stdin mechanism with a
+  # harmless fixed marker, never real credentials or GitHub API mutations.
+  args+=(-i)
+fi
 if [[ "$job" == title ]]; then
   args+=(-e "PR_TITLE=$PR_TITLE")
 fi
@@ -142,6 +147,10 @@ if [[ "$job" == publish ]]; then
   printf '%s\n' "$GH_TOKEN" | docker start --attach --interactive "$container"
   attach_status=$?
   unset GH_TOKEN
+elif [[ "$job" == publish-check ]]; then
+  printf '%s\n' 'lansurfer-publish-stdin-smoke' |
+    docker start --attach --interactive "$container"
+  attach_status=$?
 else
   docker start --attach "$container"
   attach_status=$?

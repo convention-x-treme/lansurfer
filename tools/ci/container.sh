@@ -67,6 +67,11 @@ case "$job" in
 
   publish-check)
     # Safe to run on PRs: no tag, GH token, registry login, or publishing.
+    marker=""
+    IFS= read -r marker || true
+    [[ "$marker" == "lansurfer-publish-stdin-smoke" ]] ||
+      { echo "::error::Disposable publisher stdin transport failed" >&2; exit 1; }
+    unset marker
     command -v gh && gh --version
     command -v goreleaser && goreleaser --version
     command -v docker && docker buildx version
