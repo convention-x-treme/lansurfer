@@ -20,6 +20,8 @@ printf 'module example.invalid/release-fixture\n\ngo 1.27.1\n' > go.mod
 printf 'package main\nfunc main() {}\n' > cmd/lansurfer/main.go
 printf 'Fixture license for release-note tests\n' > LICENSE
 printf 'Fixture project for release-note tests\n' > README.md
+printf 'Fixture third-party license notices\n' > THIRD_PARTY_NOTICES.md
+printf 'Fixture brand rights inventory\n' > ASSETS-LICENSE.md
 printf '/dist/\n/last-build.log\n' > .gitignore
 git add .
 git commit -qm 'Import original legacy history'
