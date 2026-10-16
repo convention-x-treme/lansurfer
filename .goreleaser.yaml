@@ -27,6 +27,8 @@ archives:
     files:
       - LICENSE
       - README.md
+      - THIRD_PARTY_NOTICES.md
+      - ASSETS-LICENSE.md
 
 checksum:
   name_template: checksums.txt
@@ -81,6 +83,10 @@ dockers_v2:
     ids:
       - lansurfer
     dockerfile: Dockerfile.release
+    extra_files:
+      - LICENSE
+      - THIRD_PARTY_NOTICES.md
+      - ASSETS-LICENSE.md
     images:
       - ghcr.io/convention-x-treme/lansurfer
     tags:
