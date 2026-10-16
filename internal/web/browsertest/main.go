@@ -167,6 +167,9 @@ func (*fixture) Begin(context.Context, auth.OAuthStartInput) (auth.OAuthStart, e
 func (*fixture) Complete(context.Context, auth.OAuthCompletion) (auth.OAuthResult, error) {
 	return auth.OAuthResult{}, nil
 }
+func (*fixture) Decline(context.Context, auth.OAuthCompletion) (auth.FlowOperation, error) {
+	return "", nil
+}
 
 func (*fixture) Logout(context.Context, string) error { return nil }
 

@@ -601,13 +601,45 @@ func romanDigit(word string) rune {
 	}
 }
 
+// tagClosers pairs the bracket styles commonly used for clan/team tags.
+var tagClosers = map[rune]rune{'[': ']', '(': ')', '{': '}', '<': '>'}
+
+func isNameRune(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) }
+
+// ViewerInitial is the Default avatar glyph: the first letter or digit of the
+// Game Nick outside any bracketed clan tag. A nick that is only a tag falls
+// back to the tag's first letter or digit, then to "?". Presentation only.
 func ViewerInitial(name string) string {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return "?"
+	var tagInitial rune
+	for rest := name; rest != ""; {
+		r, size := utf8.DecodeRuneInString(rest)
+		if isNameRune(r) {
+			return string(unicode.ToUpper(r))
+		}
+		if closer, ok := tagClosers[r]; ok {
+			if end := strings.IndexRune(rest[size:], closer); end >= 0 {
+				if tagInitial == 0 {
+					tagInitial = firstNameRune(rest[size : size+end])
+				}
+				rest = rest[size+end+utf8.RuneLen(closer):]
+				continue
+			}
+		}
+		rest = rest[size:]
 	}
-	runeValue, _ := utf8.DecodeRuneInString(name)
-	return strings.ToUpper(string(runeValue))
+	if tagInitial != 0 {
+		return string(unicode.ToUpper(tagInitial))
+	}
+	return "?"
+}
+
+func firstNameRune(s string) rune {
+	for _, r := range s {
+		if isNameRune(r) {
+			return r
+		}
+	}
+	return 0
 }
 
 func viewerRole(role string) string {

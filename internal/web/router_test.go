@@ -437,6 +437,30 @@ func TestAuthCallbackRoutesSignedInIdentityConflictToAccount(t *testing.T) {
 	}
 }
 
+func TestAuthCallbackCancelledLinkReturnsToAccountWithNotice(t *testing.T) {
+	authentication := &routerAuthentication{
+		account: user.User{ID: "user-1", Role: user.RoleUser},
+		result:  auth.OAuthResult{Operation: auth.FlowLink},
+	}
+	request := httptest.NewRequest(http.MethodGet, "/auth/discord/callback?error=access_denied&state=state", nil)
+	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	request.AddCookie(&http.Cookie{Name: "lansurfer_auth_binding", Value: "binding"})
+	response := httptest.NewRecorder()
+
+	NewRouter(RouterDependencies{
+		Ready:          func(context.Context) error { return nil },
+		Authentication: authentication,
+		Sessions:       authentication,
+	}).ServeHTTP(response, request)
+
+	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/account?link_cancelled=1" {
+		t.Fatalf("status/location = %d, %q", response.Code, response.Header().Get("Location"))
+	}
+	if authentication.completed.CurrentUserID != "user-1" || authentication.completed.State != "state" {
+		t.Fatalf("cancel completion = %#v", authentication.completed)
+	}
+}
+
 func TestPatternFragments(t *testing.T) {
 	tests := []struct {
 		path string
@@ -1876,6 +1900,10 @@ func (a *routerAuthentication) Begin(_ context.Context, input auth.OAuthStartInp
 func (a *routerAuthentication) Complete(_ context.Context, completion auth.OAuthCompletion) (auth.OAuthResult, error) {
 	a.completed = completion
 	return a.result, a.completeErr
+}
+func (a *routerAuthentication) Decline(_ context.Context, completion auth.OAuthCompletion) (auth.FlowOperation, error) {
+	a.completed = completion
+	return a.result.Operation, a.completeErr
 }
 
 func (*routerAuthentication) Logout(context.Context, string) error { return nil }

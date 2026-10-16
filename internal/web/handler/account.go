@@ -8,6 +8,7 @@ import (
 	"github.com/convention-x-treme/lansurfer/internal/auth"
 	"github.com/convention-x-treme/lansurfer/internal/user"
 	"github.com/convention-x-treme/lansurfer/internal/web/branding"
+	"github.com/convention-x-treme/lansurfer/internal/web/components"
 	webmiddleware "github.com/convention-x-treme/lansurfer/internal/web/middleware"
 	"github.com/convention-x-treme/lansurfer/internal/web/pages"
 	"github.com/go-chi/chi/v5"
@@ -161,8 +162,12 @@ func (h *AccountHandler) render(w http.ResponseWriter, r *http.Request, status i
 	}
 	rows, linkable := accountIdentityRows(identities, h.providers())
 	linkError := r.URL.Query().Get("link_error") != ""
+	var notice components.Notice
+	if r.URL.Query().Get("link_cancelled") != "" {
+		notice = components.Notice{Text: "Sign-in method linking was cancelled.", Tone: components.NoticeInfo}
+	}
 	navigation := h.navigation.For(r, "account")
-	render(w, r, status, pages.Account(h.brand, navigation, account.GameNick, selectedAvatarKey(identities), rows, linkable, linkError, gameNickInput, gameNickError, deleteError))
+	render(w, r, status, pages.Account(h.brand, navigation, account.GameNick, selectedAvatarKey(identities), rows, linkable, linkError, notice, gameNickInput, gameNickError, deleteError))
 }
 
 func (h *AccountHandler) providers() []auth.ProviderAvailability {
