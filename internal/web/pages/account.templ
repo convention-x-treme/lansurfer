@@ -29,13 +29,14 @@ type AccountProviderOption struct {
 	Href  string
 }
 
-templ Account(brand branding.Brand, navigation components.NavigationState, currentGameNick, avatarKey string, identities []AccountIdentityRow, linkable []AccountProviderOption, linkError bool, gameNickInput, gameNickError, deleteError string) {
+templ Account(brand branding.Brand, navigation components.NavigationState, currentGameNick, avatarKey string, identities []AccountIdentityRow, linkable []AccountProviderOption, linkError bool, notice components.Notice, gameNickInput, gameNickError, deleteError string) {
 	@components.Layout(brand, "Account", navigation) {
 		<header class="app-topbar">
 			<h1 class="app-title">Account</h1>
 			<a class="btn btn-quiet btn-sm" href="/account/notifications"><i class="ph ph-bell" aria-hidden="true"></i>Notification settings</a>
 		</header>
 		<div class="content-page account-page">
+			@components.NoticeAlert(notice, "")
 			if linkError {
 				<div role="alert" class="alert alert-error">
 					<span>That sign-in method could not be linked. It may already belong to a different LANsurfer account.</span>

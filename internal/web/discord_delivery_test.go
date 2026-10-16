@@ -168,7 +168,7 @@ func TestDiscordCallbackConsumesStateBeforeOAuthExchange(t *testing.T) {
 	}{
 		{name: "success", wantStatus: http.StatusSeeOther, wantConnect: 1},
 		{name: "invalid state", consumeErr: notification.ErrDiscordSetupStateInvalid, wantStatus: http.StatusBadRequest},
-		{name: "oauth exchange failure", connectErr: errors.New("exchange failed"), wantStatus: http.StatusBadGateway, wantConnect: 1},
+		{name: "oauth exchange failure", connectErr: errors.New("exchange failed"), wantStatus: http.StatusSeeOther, wantConnect: 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			setup := &discordSetupStub{consumeErr: tc.consumeErr}
@@ -206,6 +206,22 @@ func TestDiscordCallbackReplayDoesNotReconnect(t *testing.T) {
 	}
 	if setup.consumes != 2 || connect.calls != 1 {
 		t.Fatalf("consume/connect calls = %d/%d", setup.consumes, connect.calls)
+	}
+}
+
+func TestDiscordCallbackCancelRedirectsWithNoticeWithoutConnecting(t *testing.T) {
+	for target, want := range map[string]string{
+		"/admin/discord/callback?error=access_denied&state=setup-state":                    "/admin/discord?notice=cancelled",
+		"/admin/discord/callback?error=server_error&error_description=x&state=setup-state": "/admin/discord?notice=failed",
+	} {
+		setup := &discordSetupStub{}
+		connect := &discordConnectStub{}
+		account := &routerAuthentication{account: user.User{ID: "admin-1", GameNick: "Admin", Role: user.RoleAdmin}}
+		response := httptest.NewRecorder()
+		discordRouter(setup, connect, &discordLifecycleStub{}, account).ServeHTTP(response, discordAdminRequest(http.MethodGet, target, account, false))
+		if response.Code != http.StatusSeeOther || response.Header().Get("Location") != want || setup.consumes != 1 || connect.calls != 0 {
+			t.Fatalf("%s: status/location/consume/connect = %d/%q/%d/%d", target, response.Code, response.Header().Get("Location"), setup.consumes, connect.calls)
+		}
 	}
 }
 func TestDiscordAdminPageRendersNotConfiguredAndKeepsLoginSeparate(t *testing.T) {

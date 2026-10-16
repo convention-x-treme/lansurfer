@@ -275,16 +275,34 @@ func TestCallbackForMapsFlowAndPersistenceFailures(t *testing.T) {
 // Signed-in identity-conflict routing to /account is covered at the router
 // level (see the note above TestLinkForRejectsAnonymousRequest).
 
-func TestCallbackForRejectsProviderDeclinedBeforeCompletion(t *testing.T) {
-	authentication := &stubAuthentication{available: true}
-	handler := NewAuthentication(authentication, &stubSessions{}, branding.Default(), false, nil)
-	request := httptest.NewRequest(http.MethodGet, "/auth/callback?error=access_denied", nil)
-	response := httptest.NewRecorder()
+func TestCallbackForProviderDeclineNeverCompletes(t *testing.T) {
+	tests := []struct {
+		name       string
+		query      string
+		result     auth.OAuthResult
+		cancelErr  error
+		wantStatus int
+		wantCancel int
+	}{
+		{name: "login cancelled stays login failure", query: "error=access_denied&state=s", result: auth.OAuthResult{Operation: auth.FlowLogin}, wantStatus: http.StatusUnauthorized, wantCancel: 1},
+		{name: "link cancelled without session stays failure", query: "error=access_denied&state=s", result: auth.OAuthResult{Operation: auth.FlowLink}, wantStatus: http.StatusUnauthorized, wantCancel: 1},
+		{name: "unvalidated state", query: "error=access_denied&state=s", cancelErr: auth.ErrFlowNotFound, wantStatus: http.StatusBadRequest, wantCancel: 1},
+		{name: "other provider error", query: "error=server_error&state=s", wantStatus: http.StatusUnauthorized},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			authentication := &stubAuthentication{available: true, result: test.result, completeErr: test.cancelErr}
+			handler := NewAuthentication(authentication, &stubSessions{}, branding.Default(), false, nil)
+			request := httptest.NewRequest(http.MethodGet, "/auth/discord/callback?"+test.query, nil)
+			request.AddCookie(&http.Cookie{Name: browserBindingCookieName, Value: "binding"})
+			response := httptest.NewRecorder()
 
-	handler.CallbackFor("oidc")(response, request)
+			handler.CallbackFor("discord")(response, request)
 
-	if response.Code != http.StatusUnauthorized || authentication.completeCalls != 0 {
-		t.Fatalf("status/complete calls = %d, %d", response.Code, authentication.completeCalls)
+			if response.Code != test.wantStatus || authentication.completeCalls != 0 || authentication.cancelCalls != test.wantCancel {
+				t.Fatalf("status/complete/cancel = %d/%d/%d", response.Code, authentication.completeCalls, authentication.cancelCalls)
+			}
+		})
 	}
 }
 
@@ -366,6 +384,7 @@ type stubAuthentication struct {
 	result        auth.OAuthResult
 	completed     auth.OAuthCompletion
 	completeCalls int
+	cancelCalls   int
 	completeErr   error
 }
 
@@ -379,6 +398,11 @@ func (s *stubAuthentication) Complete(_ context.Context, completion auth.OAuthCo
 	s.completeCalls++
 	s.completed = completion
 	return s.result, s.completeErr
+}
+func (s *stubAuthentication) Decline(_ context.Context, completion auth.OAuthCompletion) (auth.FlowOperation, error) {
+	s.cancelCalls++
+	s.completed = completion
+	return s.result.Operation, s.completeErr
 }
 
 type stubSessions struct {
