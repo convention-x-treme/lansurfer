@@ -4,18 +4,26 @@ This document distinguishes third-party bundled assets and LANsurfer's own brand
 
 ## Original project identity and visual assets
 
-| Asset family | Source and distributed files | Evidence in the repository | Publication rights |
-| --- | --- | --- | --- |
-| Name, wordmark and lockup | `LANsurfer`; `docs/logo/logo-with-slogan.png`; wordmark styling in `DESIGN.md` | `DESIGN.md` specifies canonical use | **Unconfirmed:** no independently documented authorship, trademark clearance or specific artwork reuse grant found |
-| Product signet and app icon | `docs/logo/icon.png`; `docs/pwa-icons/*`; bundled `internal/web/assets/dist/images/icons/*` | `DESIGN.md` states that PWA and favicon files are renditions of `icon.png` | **Unconfirmed:** rights to underlying artwork and its derived variants need owner confirmation |
-| Otter mascot illustrations | `docs/mascot/*.png`; `docs/mascot/web/*.webp`; bundled `internal/web/assets/dist/images/*.webp` | `DESIGN.md` and `scripts/prepare-assets.mjs` identify masters and web renditions | **Unconfirmed:** source/commission details and reuse rights are not evidenced here |
-| UI-kit frames and design exports | `docs/ui-kit/*.png`, `docs/ui-kit/index.html`, `docs/ui-kit/LANsurfer Colour Palette.html` | `docs/ui-kit/README.md` links to a Claude Design project, and describes the HTML as a standalone snapshot with embedded fonts/images/scripts | **Unconfirmed:** rights for exports, embedded media and onward distribution must be checked, including whether the source link is accessible after public release |
+The project owner confirmed the creation context and public-repository decision on 2026-10-16 in [issue #92](https://github.com/convention-x-treme/lansurfer/issues/92). These are owner statements supported by repository file references, **not independent proof of exclusive intellectual-property rights**.
 
-The inventory is limited to visual source and generated files at current `main` revision `b970de039756931589292783e90efafb9bc701eb` on 2026-10-16. Generated renderings are not separate proof of permission to redistribute the underlying originals.
+| Asset family | Source and distributed files | Owner-reported origin and repository evidence |
+| --- | --- | --- |
+| Name, logo and wordmark | `LANsurfer`; `docs/logo/logo-with-slogan.png`; styling in `DESIGN.md` | Visual logo created entirely with Claude, without external image templates. The LANsurfer name/mark remains a separate trademark question. |
+| Product signet, app and PWA icons | `docs/logo/icon.png`; `docs/pwa-icons/*`; bundled `internal/web/assets/dist/images/icons/*` | Original icon created entirely with Claude, without external image templates. `DESIGN.md` identifies the favicons/PWA images as derived renditions of that icon. |
+| Otter mascot illustrations | `docs/mascot/*.png`; `docs/mascot/web/*.webp`; bundled `internal/web/assets/dist/images/*.webp` | Original illustrations generated with ChatGPT, then refined with Claude; the owner reports 100% AI-generated imagery with no third-party reference pictures. `scripts/prepare-assets.mjs` identifies shipped renditions. |
+| UI-kit frames and design exports | `docs/ui-kit/*.png`, `docs/ui-kit/index.html`, `docs/ui-kit/LANsurfer Colour Palette.html` | Screenshots and design compositions created with Claude. `docs/ui-kit/README.md` links to the original Claude Design project. Standalone HTML exports can embed fonts, scripts and media with separate third-party rights. |
 
-The project owner reports that some LANsurfer artwork was AI-generated, but did not identify the files, provider/model, applicable terms, or resulting rights. This report does not establish permission to publish or redistribute the assets.
+### Creation context and consent for a public repository
 
-**Publication checkpoint (manual decision):** A maintainer with knowledge of how each original logo, mascot and UI-kit export was produced or licensed must confirm publication rights, including any third-party source material or generated-art terms. If a family cannot be cleared, replace or omit it **before** making the entire Git history public. History can still contain old copies even if the latest tree no longer does. This document intentionally does not claim a completed legal clearance or grant a new artwork license.
+- The owner used **personal ChatGPT and Claude accounts**, not a business/team account, for a **private, unpaid hobby project in the context of volunteer association activity**. The owner reports no paid commissioned work and no external image templates for the original project graphics.
+- The owner **explicitly consents to keeping the mascot, logo, app/PWA icons and UI-kit design images in the repository when it becomes public**, where GitHub visitors will be able to view, clone and download them.
+- This consent is **not a separate grant of a broadly reusable open artwork license or trademark license**. The source-code [AGPL-3.0 license](LICENSE) must not be represented as establishing exclusive trademark rights. The legal status and any independent copyright protection of AI-assisted visual material remain subject to applicable law and the relevant service terms.
+
+### Remaining publication checks
+
+The exact model versions, generation dates and terms applicable at the time of creation are not evidenced in the repository. The personal/unpaid context is documented but is not an independent legal determination of how each provider classifies association-related use. Check any separately embedded third-party fonts, scripts or media in the UI-kit HTML export, and verify whether the external Claude Design link should be treated as a public reference or removed. Rights to the LANsurfer name/mark have not been independently cleared.
+
+**Public-visibility checkpoint:** The owner has approved publication of the named original graphic families, but that decision alone does not clear every third-party embedded component, trademark concern or historical file. Review outstanding findings in #92 and the public-switch prerequisite in #150 before changing repository visibility. Files present in historical commits can become accessible even if removed from the latest tree.
 
 ## Bundled third-party assets
 
