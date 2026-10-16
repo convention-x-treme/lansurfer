@@ -65,6 +65,36 @@ case "$job" in
     jq -e '[.[] | select(.type == "Archive") | .goarch] | sort == ["amd64", "arm64"]' dist/artifacts.json
     ;;
 
+  publish-check)
+    # Safe to run on PRs: no tag, GH token, registry login, or publishing.
+    command -v gh && gh --version
+    command -v goreleaser && goreleaser --version
+    command -v docker && docker buildx version
+    command -v jq && command -v python3
+    bash -n scripts/release/publish.sh
+    echo "Release publishing toolbox is ready."
+    ;;
+
+  publish)
+    # Defense-in-depth: the token is supplied ONLY via stdin to this job,
+    # never baked into images or Docker container environment metadata.
+    [[ "${GITHUB_EVENT_NAME:-}" == push && "${GITHUB_REF:-}" == refs/tags/v* ]] ||
+      { echo "::error::Publisher requires a version-tag push" >&2; exit 1; }
+    token=""
+    IFS= read -r token || true
+    [[ -n "$token" ]] || { echo "::error::Missing one-time publishing token" >&2; exit 1; }
+    export GH_TOKEN="$token" GITHUB_TOKEN="$token"
+    unset token
+    builder="lansurfer-publish-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+    docker buildx create --driver docker-container --name "$builder" --use
+    trap 'docker buildx rm --force "$builder" >/dev/null 2>&1 || true' EXIT
+    docker buildx inspect --bootstrap
+    # Existing script preserves tag immutability, GHCR digest verification,
+    # GitHub draft verification and release notes before making it public.
+    bash scripts/release/publish.sh
+    unset GH_TOKEN GITHUB_TOKEN
+    ;;
+
   validate)
     python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else "Python 3.10+ required")'
     tag="${GITHUB_REF#refs/tags/}"
