@@ -279,3 +279,46 @@ test("retries an aborted refresh once", async ({ page, request }) => {
   await page.clock.runFor(1);
   await expect.poll(() => attempts).toBe(2);
 });
+test("preserves a queued detail refresh when a mutation replaces its target", async ({ page, request }) => {
+  let releaseRefresh!: () => void;
+  let notifyRefresh!: () => void;
+  let refreshCalls = 0;
+  const held = new Promise<void>((resolve) => { releaseRefresh = resolve; });
+  const started = new Promise<void>((resolve) => { notifyRefresh = resolve; });
+  await page.route(`**/game-requests/${requestId}/refresh*`, async (route) => {
+    refreshCalls++;
+    if (refreshCalls === 1) {
+      notifyRefresh();
+      await held;
+    }
+    await route.continue();
+  });
+  await page.route("**/test/replace-detail", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "text/html",
+      body: `<section id="game-request-detail" data-game-request-detail data-game-request-id="${requestId}" data-refresh-url="/game-requests/${requestId}/refresh" data-replaced></section>`,
+    });
+  });
+  await page.route(`**/game-requests/${requestId}`, async (route) => {
+    const response = await route.fetch();
+    const html = await response.text();
+    await route.fulfill({
+      response,
+      body: html.replace("</body>", '<form hx-post="/test/replace-detail" hx-target="#game-request-detail" hx-swap="outerHTML"><button type="submit" data-test-replace-detail>Replace</button></form></body>'),
+    });
+  });
+  await openList(page, request, `/game-requests/${requestId}`);
+  await emit(page, "GameRequestJoined");
+  await page.clock.runFor(200);
+  await started;
+
+  await page.locator("[data-test-replace-detail]").click();
+  await expect(page.locator("#game-request-detail[data-replaced]")).toHaveAttribute("data-replaced", "");
+  await emit(page, "GameRequestLeft");
+  await page.clock.runFor(200);
+  releaseRefresh();
+  await page.clock.runFor(200);
+
+  await expect.poll(() => refreshCalls).toBe(2);
+});
