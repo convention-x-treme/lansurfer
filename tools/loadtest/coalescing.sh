@@ -117,14 +117,27 @@ run_profile() {
     go -C "$root" run ./tools/loadtest/profile -duration "$duration" -interval 5s -metrics-key-file "$workspace/metrics-key" -output "$out/database-profile.jsonl" >"$out/profile-console.log" 2>&1 &
     profile_pid=$!
   fi
+  local calibration_exit=0 profile_exit=0
   if node "$root/tools/loadtest/browser-calibration.mjs" >"$out/console.log" 2>&1; then
     :
   else
+    calibration_exit=$?
+  fi
+  local reports=("$out"/browser-calibration-*.json)
+  if [[ ! -f "${reports[0]}" ]]; then
     cat "$out/console.log" >&2
-    [[ -z "$profile_pid" ]] || wait "$profile_pid"
+    [[ -z "$profile_pid" ]] || wait "$profile_pid" || true
     return 1
   fi
-  [[ -z "$profile_pid" ]] || wait "$profile_pid"
+  if [[ -n "$profile_pid" ]]; then
+    if wait "$profile_pid"; then :; else profile_exit=$?; fi
+  fi
+  if (( profile_exit )); then
+    printf 'profiler exited %s\n' "$profile_exit" >>"$out/profile-console.log"
+  fi
+  if (( calibration_exit || profile_exit )); then
+    printf '%s profile recorded findings: calibration=%d profiler=%d\n' "$profile" "$calibration_exit" "$profile_exit"
+  fi
   go -C "$root" run ./tools/loadtest/state -mode audit -output "$workspace/control.json" >"$out/audit.json"
 }
 

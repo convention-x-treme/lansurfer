@@ -149,6 +149,8 @@ task loadtest:coalescing WORKSPACE=147 PRODUCT_REVISION="$C" HARNESS_REVISION="$
 
 Set `H` to harness commit and `C` to treatment commit. Each baseline or treatment run measures 120 streams and 400 streams plus 100 writers, with five real Chromium pages. Paired runs restore same database snapshot. Baseline uses worst-case simulated refreshes; treatment uses 200 ms coalescing. Reports, session tokens, profile samples, and database snapshot remain private in workspace.
 
+Calibration failures remain in each JSON report and do not stop the paired run; missing reports or failed database audits still fail the task.
+
 For each profile, compare refresh GETs per SSE signal, refresh and write latency, timeouts, deliveries, browser errors, and final DOM convergence. Local measurements describe this workstation only.
 
 For ordinary `loadtest:calibrate`, 400 synthetic streams may share five browser identities. Paired coalescing runs use disjoint browser, stream, writer, and control identities.
