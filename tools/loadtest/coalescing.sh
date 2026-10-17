@@ -120,7 +120,7 @@ run_profile() {
   printf '{"schemaVersion":1,"variant":"%s","repetition":%s,"profile":"%s","productRevision":"%s","harnessRevision":"%s","runnerRevision":"%s","dirty":%s,"image":"%s","imageID":"%s","appBundleSHA256":"%s","runtimeBundleVerified":true,"refreshMode":"%s"}\n' \
     "$variant" "$repetition" "$profile" "$revision" "$HARNESS_REVISION" "$runner_revision" "$dirty" "$image" "$image_id" "$digest" "$refresh_mode" >"$out/manifest.json"
   chmod 600 "$out/manifest.json"
-  local simulated_users writers sim_offset writer_offset duration=150s run_duration=90s profile_pid=""
+  local simulated_users writers sim_offset writer_offset duration=150s run_duration=90s
   if [[ "$profile" == '120' ]]; then
     simulated_users=120 writers=20 sim_offset=5 writer_offset=125
   else
@@ -134,11 +134,7 @@ run_profile() {
   export LANSURFER_LOADTEST_REPORT_DIR="$out" PRODUCT_REVISION="$revision" HARNESS_REVISION="$HARNESS_REVISION"
   export LANSURFER_LOADTEST_METRICS_KEY_FILE="$workspace/metrics-key"
   export BUNDLE_SHA256="$digest" VARIANT="$variant" REPETITION="$repetition"
-  if [[ "$profile" == '120' ]]; then
-    go -C "$root" run ./tools/loadtest/profile -duration "$run_duration" -interval 5s -metrics-key-file "$workspace/metrics-key" -output "$out/database-profile.jsonl" >"$out/profile-console.log" 2>&1 &
-    profile_pid=$!
-  fi
-  local calibration_exit=0 profile_exit=0
+  local calibration_exit=0
   if node "$root/tools/loadtest/browser-calibration.mjs" >"$out/console.log" 2>&1; then
     :
   else
@@ -147,17 +143,10 @@ run_profile() {
   local reports=("$out"/browser-calibration-*.json)
   if [[ ! -f "${reports[0]}" ]]; then
     cat "$out/console.log" >&2
-    [[ -z "$profile_pid" ]] || wait "$profile_pid" || true
     return 1
   fi
-  if [[ -n "$profile_pid" ]]; then
-    if wait "$profile_pid"; then :; else profile_exit=$?; fi
-  fi
-  if (( profile_exit )); then
-    printf 'profiler exited %s\n' "$profile_exit" >>"$out/profile-console.log"
-  fi
-  if (( calibration_exit || profile_exit )); then
-    printf '%s profile recorded findings: calibration=%d profiler=%d\n' "$profile" "$calibration_exit" "$profile_exit"
+  if (( calibration_exit )); then
+    printf '%s profile recorded findings: calibration=%d\n' "$profile" "$calibration_exit"
   fi
   go -C "$root" run ./tools/loadtest/state -mode audit -output "$workspace/control.json" >"$out/audit.json"
 }
