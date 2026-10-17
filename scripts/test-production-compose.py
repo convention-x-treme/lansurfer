@@ -36,7 +36,7 @@ def validate(compose):
     require("build" not in app, "production must never build the application from source")
     require(
         re.fullmatch(
-            r"ghcr\.io/convention-x-treme/lansurfer:v\d+\.\d+\.\d+@sha256:[a-f0-9]{64}",
+            r"ghcr\.io/convention-x-treme/lansurfer:v\d+\.\d+\.\d+(?:-(?:alpha|beta|rc)\.(?:0|[1-9][0-9]*))?@sha256:[a-f0-9]{64}",
             app.get("image", ""),
         ),
         "LANsurfer must be pinned by stable version and digest",
@@ -124,6 +124,8 @@ def test_mutations(valid):
         "public database": lambda x: x["services"]["postgres"].update(ports=[{"published": "5432"}]),
         "public application": lambda x: x["services"]["lansurfer"]["ports"][0].update(host_ip="0.0.0.0"),
         "mutable application": lambda x: x["services"]["lansurfer"].update(image="ghcr.io/convention-x-treme/lansurfer:latest"),
+        "invalid prerelease tag": lambda x: x["services"]["lansurfer"].update(
+            image="ghcr.io/convention-x-treme/lansurfer:v0.2.0-preview.1@sha256:" + "a" * 64),
         "mutable database": lambda x: x["services"]["postgres"].update(image="postgres:18.6-alpine"),
         "missing application image": lambda x: x["services"]["lansurfer"].update(image=""),
         "missing database image": lambda x: x["services"]["postgres"].update(image=""),

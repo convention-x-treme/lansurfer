@@ -113,6 +113,10 @@ exact_digest="$(docker buildx imagetools inspect "$image:$tag" | awk '/^Digest:/
 deployment_dir="$tmp/deployment"
 python3 "$root/scripts/release/render_deployment.py" "$tag" "$exact_digest" "$deployment_dir"
 (cd "$deployment_dir" && sha256sum --check deployment-checksums.txt)
+# A tag release has a freshly built image. Boot THAT exact image (including
+# migrations and the new imprint setting) before the draft can be published.
+# This is separate from PR CI's existing v0.1.0 compatibility regression.
+bash "$root/scripts/release/smoke_deployment.sh" "$deployment_dir"
 
 # Upload deployment assets to the unpublished draft via its known release ID.
 # Drafts are not reliably addressable through GET /releases/tags/{tag}.
