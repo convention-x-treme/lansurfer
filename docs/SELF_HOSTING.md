@@ -10,11 +10,20 @@ instance? Jump to [Daily operations](#daily-operations) or
 [Updating LANsurfer](#updating-lansurfer).
 
 > [!IMPORTANT]
-> This is an early 0.x release. Startup and persistent-volume behavior have
-> been exercised in CI, but **production backup/restore and cross-version
-> upgrades have not yet been fully validated**. Before storing valuable
-> real-world data, establish and test your own recovery process. See
+> The example configuration installs **v0.1.0**, an early 0.x release.
+> Startup and persistent-volume behavior have been exercised in CI, but
+> **production backup/restore and cross-version upgrades have not yet been
+> fully validated**. Before storing valuable real-world data, establish and
+> test your own recovery process. See
 > [issue #29](https://github.com/convention-x-treme/lansurfer/issues/29).
+>
+> **Legal-text limitation of v0.1.0:** Its public Terms and Privacy page bodies
+> still describe the LANsurfer reference deployment, and **there is no
+> administrator legal-text editor** in that release. Operator names/contact
+> can be configured, but the text itself is not fully customizable in the
+> published image. Do not invite users to a different public deployment
+> relying on those sample policies. Later code on `main` includes a legal
+> editor, but that does **not** make the feature available in v0.1.0.
 
 ## How this deployment works
 
@@ -140,8 +149,9 @@ Replace all example values with your real operator details; the production
 preflight requires the legal entity name and contact email when Discord login
 is configured. Discord also expects public Terms and Privacy links:
 `https://lansurfer.example.org/terms` and
-`https://lansurfer.example.org/privacy`. Replace LANsurfer's default legal
-sample texts after administrator setup and before inviting users.
+`https://lansurfer.example.org/privacy`. The pinned v0.1.0 image uses reference-deployment legal texts that cannot
+be edited through its administrator interface; review the limitation at the
+top of this guide before inviting users.
 
 </details>
 
@@ -246,15 +256,19 @@ reverse proxy and sign-in flow.
    ```sh
    dc exec lansurfer /lansurfer admin promote --user-id YOUR_USER_UUID
    ```
-4. Reload LANsurfer. In **Administration → Legal texts** (`/admin/legal`),
-   replace the sample Terms and Privacy texts with information that accurately
-   describes *your* installation. Have the content checked against your local
-   legal requirements before inviting players.
+4. Reload LANsurfer. Check the public `/terms` and `/privacy` pages.
+   **In the pinned v0.1.0 image, these pages still describe the reference
+   deployment; no `/admin/legal` editor exists.** The operator fields in
+   `production.env` do not rewrite those sample paragraphs. Do not invite
+   users until the installed release has legally reviewed texts that match
+   your operation. When a later published release includes
+   **Administration → Legal texts**, edit them there.
 5. If IGDB is disabled (the default), create your community's Games manually
    in **Administration → Games** (`/admin/games`).
 
-Your players can then sign in, follow Games, create or join Game Requests,
-and use LANsurfer from desktop or mobile browsers.
+After the deployment and legal content are ready for public users, your
+players can sign in, follow Games, create or join Game Requests, and use
+LANsurfer from desktop or mobile browsers.
 
 ## Daily operations
 

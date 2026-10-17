@@ -6,6 +6,8 @@ This is a **separate, release-based** Docker Compose deployment for a single LAN
 
 This is a deployment example, **not** evidence that backup/restore or upgrades have been validated; those remaining regression tests belong to [#29](https://github.com/convention-x-treme/lansurfer/issues/29).
 
+> **Important for operators:** The pinned `v0.1.0` app image has public Terms/Privacy text describing the reference deployment, and no admin legal-text editor. The `LANSURFER_LEGAL_*` environment variables fill operator identity, but do not replace the fixed document bodies. The editor added later on `main` is not in this image. See the [self-hosting guide](../docs/SELF_HOSTING.md) before making a deployment publicly available.
+
 ## Prepare configuration
 
 Run these commands from the **repository root** on the host that will run Docker. Prerequisites: Docker Engine with Compose v2, Python 3 for the fail-closed configuration check, and OpenSSL for password creation:
