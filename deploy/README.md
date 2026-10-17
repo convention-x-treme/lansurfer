@@ -64,15 +64,33 @@ Stopping the stack normally preserves data; **`down --volumes` destroys
 the database volume**. Changing the env password alone does not rotate
 the initialized database user's password.
 
-Configure Web Push or Discord delivery only if needed. Use:
+Discord webhook notification delivery is **separate from Discord login**.
+Register `<your HTTPS origin>/admin/discord/callback` in the Discord
+Developer Portal, and configure `LANSURFER_DISCORD_WEBHOOK_CLIENT_ID`
+and `LANSURFER_DISCORD_WEBHOOK_CLIENT_SECRET` in `.env`.
+Only the `webhook.incoming` scope is used. Webhook delivery additionally
+requires `LANSURFER_DATA_ENCRYPTION_KEY` (standard Base64 encoding
+of 32 random bytes). For a key **only**, run `openssl rand -base64 32`.
+You may also generate notification secrets, including Web Push keys,
+with the LANsurfer CLI:
 
 ```sh
 docker compose run --rm --no-deps lansurfer admin notifications generate-secrets
 ```
 
-Store the generated keys separately and securely. Losing the data
-encryption key can make stored notification credentials unreadable.
-For administrator bootstrap, see the [quickstart](../docs/SELF_HOSTING.md#5-set-up-the-first-administrator).
+Generate and store the data-encryption key **only once**; reuse it if already
+configured for Web Push. Losing or changing the key makes stored Discord
+webhook credentials unreadable. After updating `.env`, run
+`docker compose up -d --wait`, then visit **Administration → Discord
+delivery** (`/admin/discord`) and use **Connect** to authorize your
+server/channel. There is no manual webhook URL to paste. The separate
+Discord login redirect is `<your HTTPS origin>/auth/discord/callback`
+and does not enable notifications.
+
+Store secrets securely with your database backup.
+For operator setup, see the
+[quickstart](../docs/SELF_HOSTING.md#5-set-up-the-first-administrator)
+and its [Discord notification walkthrough](../docs/SELF_HOSTING.md#optional-discord-notifications-webhook).
 
 The public Terms, Privacy and optional Imprint are edited through
 **Administration → Legal texts** (`/admin/legal`). The imprint is

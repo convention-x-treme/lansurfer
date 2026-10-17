@@ -139,6 +139,50 @@ If you need an Imprint, save it there too, set
 `docker compose up -d --wait` again. Review the public pages before
 inviting participants.
 
+### Optional: Discord notifications (webhook)
+
+To publish Game Request updates to a Discord channel, set up **Discord
+delivery** separately from player login. A Discord login configuration
+using `/auth/discord/callback` does **not** enable webhook delivery.
+
+1. In the [Discord Developer Portal](https://discord.com/developers/applications),
+   configure a Discord OAuth2 application for webhook delivery. Register
+   **exactly** this redirect URI, using your own HTTPS domain:
+
+   ```text
+   https://lansurfer.example.org/admin/discord/callback
+   ```
+
+   This flow only requests Discord's `webhook.incoming` scope, not
+   `identify` or bot permissions. You can use separate Discord
+   applications for login and delivery to keep their credentials distinct.
+
+2. Add the webhook application's credentials to your private `.env`:
+
+   ```dotenv
+   LANSURFER_DISCORD_WEBHOOK_CLIENT_ID=YOUR_WEBHOOK_CLIENT_ID
+   LANSURFER_DISCORD_WEBHOOK_CLIENT_SECRET=YOUR_WEBHOOK_CLIENT_SECRET
+   LANSURFER_DATA_ENCRYPTION_KEY=YOUR_BASE64_ENCRYPTION_KEY
+   ```
+
+   Generate the encryption key **once** with `openssl rand -base64 32`,
+   then paste the complete output into `LANSURFER_DATA_ENCRYPTION_KEY`.
+   If this variable already has a value (for example for Web Push),
+   **keep that existing key** instead of generating a replacement.
+   Back it up securely alongside your database: losing or changing it
+   makes stored webhook credentials unreadable.
+
+3. Apply the updated configuration with `docker compose up -d --wait`.
+   While signed in as a LANsurfer administrator, open
+   **Administration → Discord delivery** (`/admin/discord`), select
+   **Connect**, authorize Discord, and choose the server/channel
+   for notifications. LANsurfer creates and stores the webhook for you;
+   you do **not** need to paste a webhook URL manually.
+
+The webhook flow is optional and independent of the login provider.
+If it needs reauthorization later, use **Reconnect** in the same
+administration page.
+
 ## Everyday commands
 
 | Task | Command |

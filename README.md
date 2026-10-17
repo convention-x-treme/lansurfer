@@ -149,7 +149,9 @@ LANSURFER_DISCORD_WEBHOOK_CLIENT_ID=
 LANSURFER_DISCORD_WEBHOOK_CLIENT_SECRET=
 ```
 
-Configuring Discord login does not enable delivery, and configuring delivery does not enable login. Delivery additionally requires `LANSURFER_DATA_ENCRYPTION_KEY` to be set, since webhook credentials are encrypted at rest.
+Register `<base URL>/admin/discord/callback` as the **separate** Discord delivery OAuth2 redirect URI. Delivery requests only the `webhook.incoming` scope. Once these credentials and `LANSURFER_DATA_ENCRYPTION_KEY` (standard Base64 encoding of 32 random bytes) are configured, open **Administration → Discord delivery** (`/admin/discord`) and use **Connect** to choose the Discord server/channel. LANsurfer creates the webhook; no manual URL is needed.
+
+Configuring Discord login does not enable delivery, and configuring delivery does not enable login. Delivery additionally requires `LANSURFER_DATA_ENCRYPTION_KEY` to be set, since webhook credentials are encrypted at rest. Back up that key securely and never replace it casually.
 
 ### Configure Twitch login and IGDB discovery
 
