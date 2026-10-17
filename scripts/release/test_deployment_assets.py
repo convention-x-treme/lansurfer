@@ -75,7 +75,7 @@ class DeploymentReleaseAssetsTest(unittest.TestCase):
         overlay = (ROOT / "deploy" / "compose.traefik.yaml").read_text(encoding="utf-8")
         for key in set(keys) | set(proxy_keys):
             if key != "COMPOSE_FILE":  # Docker Compose consumes this itself.
-                self.assertIn("\${" + key, compose + overlay,
+                self.assertIn("${" + key, compose + overlay,
                               f"Documented env setting {key} not used by Compose")
 
 
