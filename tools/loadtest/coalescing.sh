@@ -120,9 +120,19 @@ run_profile() {
   chmod 700 "$out"
   restore_snapshot
   compose_override "$image" "$workspace/compose-${variant}.yaml"
-  "${chaos_compose[@]}" -f "$workspace/compose-${variant}.yaml" up -d --build --force-recreate lansurfer proxy
-  wait_ready
-  verify_bundle "$digest"
+  "${chaos_compose[@]}" build proxy
+  "${chaos_compose[@]}" -f "$workspace/compose-${variant}.yaml" up -d --no-build --force-recreate lansurfer proxy || {
+    capture_diagnostics "$variant" "$out"
+    return 1
+  }
+  wait_ready || {
+    capture_diagnostics "$variant" "$out"
+    return 1
+  }
+  verify_bundle "$digest" || {
+    capture_diagnostics "$variant" "$out"
+    return 1
+  }
   local image_id proxy_image_id app_container_id proxy_container_id runner_revision dirty refresh_mode="${REFRESH_MODE_OVERRIDE:-}"
   if [[ -z "$refresh_mode" ]]; then
     refresh_mode=browser-like
