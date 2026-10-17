@@ -103,6 +103,38 @@ jq -e '
     == ["amd64", "arm64"]
 ' "$tmp/image.json"
 
+# Resolve the actual multi-architecture index digest before attaching ANY
+# self-hosting files. Never publish an old image pin for a new release.
+exact_digest="$(docker buildx imagetools inspect "$image:$tag" | awk '/^Digest:/ { print $2; exit }')"
+[[ "$exact_digest" =~ ^sha256:[a-f0-9]{64}$ ]] || {
+  echo "::error::Unable to verify GHCR multi-platform digest" >&2
+  exit 1
+}
+deployment_dir="$tmp/deployment"
+python3 "$root/scripts/release/render_deployment.py" "$tag" "$exact_digest" "$deployment_dir"
+(cd "$deployment_dir" && sha256sum --check deployment-checksums.txt)
+
+# Upload deployment assets to the unpublished draft via its known release ID.
+# Drafts are not reliably addressable through GET /releases/tags/{tag}.
+# Fail closed if an asset cannot be uploaded or checksummed.
+release_id="$(jq -r '.id' "$tmp/release.json")"
+for name in compose.yaml compose.traefik.yaml production.env.example deployment-checksums.txt; do
+  gh api --hostname uploads.github.com --method POST \
+    -H 'Content-Type: application/octet-stream' \
+    --input "$deployment_dir/$name" \
+    "repos/$repo/releases/$release_id/assets?name=$name" > "$tmp/upload-$name.json"
+  expected_sha="$(sha256sum "$deployment_dir/$name" | awk '{ print $1 }')"
+  jq -e --arg name "$name" --arg digest "sha256:$expected_sha" '
+    .name == $name and .state == "uploaded" and .size > 0 and .digest == $digest
+  ' "$tmp/upload-$name.json" >/dev/null
+done
+gh api "repos/$repo/releases/$release_id/assets?per_page=100" > "$tmp/deployment-assets.json"
+for name in compose.yaml compose.traefik.yaml production.env.example deployment-checksums.txt; do
+  jq -e --arg name "$name" '
+    [.[] | select(.name == $name and .state == "uploaded" and .size > 0)] | length == 1
+  ' "$tmp/deployment-assets.json" >/dev/null
+done
+
 # Re-read published releases after the draft is created. The policy excludes
 # drafts and prereleases and refuses to move aliases backwards when an older
 # major/minor release ships after a newer one.
@@ -119,8 +151,6 @@ while IFS= read -r alias; do
 done < "$tmp/aliases.txt"
 if (("${#alias_args[@]}" > 0)); then
   docker buildx imagetools create "${alias_args[@]}" "$image:$tag"
-  exact_digest="$(docker buildx imagetools inspect "$image:$tag" | awk '/^Digest:/ { print $2; exit }')"
-  test -n "$exact_digest"
   while IFS= read -r alias; do
     [[ -n "$alias" ]] || continue
     alias_digest="$(docker buildx imagetools inspect "$image:$alias" | awk '/^Digest:/ { print $2; exit }')"
@@ -149,6 +179,7 @@ jq -e --arg tag "$tag" --argjson prerelease "$expected_prerelease" '
   echo "- Source: \`$(git rev-parse HEAD)\`"
   echo "- GitHub Release: https://github.com/$repo/releases/tag/$tag"
   echo "- Multi-arch image: \`$image:$tag\` (linux/amd64, linux/arm64)"
+  echo '- Self-hosting downloads: compose.yaml, compose.traefik.yaml, production.env.example, deployment-checksums.txt'
   echo "- Updated GHCR aliases: $(paste -sd ', ' "$tmp/aliases.txt" || true)"
   echo "- GitHub latest: \`$make_latest\`"
 } >> "${GITHUB_STEP_SUMMARY:?}"
