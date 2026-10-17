@@ -287,7 +287,12 @@ try {
         writerErrorOutput = collect(writerRunner.stderr);
         writerExit = new Promise((resolveExit) => writerRunner.once("close", resolveExit));
         const writerStatus = await writerReady;
-        if (!writerStatus) throw new Error("k6 writers did not become ready within 20 seconds");
+        if (!writerStatus) {
+          stopProcessGroup(writerRunner);
+          await writerExit;
+          const [output, errorOutput] = await Promise.all([writerOutput, writerErrorOutput]);
+          throw new Error(`k6 writers did not become ready within 20 seconds: ${errorOutput.trim() || output.trim() || "no output"}`);
+        }
         writerReadyAtMs = Date.now();
         writerReadyAt = new Date(writerReadyAtMs).toISOString();
         if (writerReadyAtMs >= triggerDeadlineMs) runnerError ||= "k6 writers became ready after the first mutation";
