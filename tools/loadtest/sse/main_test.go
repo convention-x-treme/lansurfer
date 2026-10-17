@@ -196,7 +196,7 @@ func TestRefreshCountsTruncatedOKBodyAsFailure(t *testing.T) {
 		t.Fatalf("truncated 200: failures=%d ok=%d, want 1 failure and 0 ok", failures, f.refreshes2xx)
 	}
 }
-func TestCoalescedRefreshWaitsForFixedWindow(t *testing.T) {
+func TestCoalescedRefreshStartsImmediatelyAndQueuesOneTrailingRequest(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		var requests atomic.Int64
 		client := &http.Client{Transport: roundTrip(func(*http.Request) (*http.Response, error) {
@@ -208,19 +208,22 @@ func TestCoalescedRefreshWaitsForFixedWindow(t *testing.T) {
 		state := &clientState{token: "test"}
 		f.observe(state, eventData{streamName: "game-request"}, time.Now())
 		synctest.Wait()
+		if got := requests.Load(); got != 1 {
+			t.Fatalf("requests after first signal = %d, want 1", got)
+		}
 		for range 3 {
 			time.Sleep(25 * time.Millisecond)
 			f.observe(state, eventData{streamName: "game-request"}, time.Now())
 		}
 		time.Sleep(24 * time.Millisecond)
 		synctest.Wait()
-		if got := requests.Load(); got != 0 {
-			t.Fatalf("requests before 100 ms = %d, want 0", got)
+		if got := requests.Load(); got != 1 {
+			t.Fatalf("requests before trailing window = %d, want 1", got)
 		}
 		time.Sleep(time.Millisecond)
 		synctest.Wait()
-		if got := requests.Load(); got != 1 {
-			t.Fatalf("requests at 100 ms = %d, want 1", got)
+		if got := requests.Load(); got != 2 {
+			t.Fatalf("requests at 100 ms = %d, want 2", got)
 		}
 	})
 }
@@ -241,8 +244,8 @@ func TestCoalescedRefreshDoesNotSlideUnderContinuousSignals(t *testing.T) {
 			}
 			time.Sleep(50 * time.Millisecond)
 			synctest.Wait()
-			if i == 1 && requests.Load() == 0 {
-				t.Fatal("continuous signals postponed first refresh beyond 100 ms")
+			if i == 1 && requests.Load() < 2 {
+				t.Fatal("continuous signals postponed trailing refresh beyond 100 ms")
 			}
 		}
 		f.wg.Wait()
@@ -269,7 +272,6 @@ func TestCoalescedRefreshQueuesOneRequestBehindHeldResponse(t *testing.T) {
 		state := &clientState{token: "test"}
 		f.observe(state, eventData{streamName: "game-request"}, time.Now())
 		synctest.Wait()
-		time.Sleep(201 * time.Millisecond)
 		<-entered
 		for range 20 {
 			f.observe(state, eventData{streamName: "game-request"}, time.Now())
@@ -298,15 +300,14 @@ func TestCoalescedRefreshRetriesOnceAfterOneSecond(t *testing.T) {
 		f.baseURL = "http://loadtest.invalid"
 		f.observe(&clientState{token: "test"}, eventData{streamName: "game-request"}, time.Now())
 		synctest.Wait()
-		time.Sleep(101 * time.Millisecond)
-		synctest.Wait()
+		time.Sleep(500 * time.Millisecond)
 		if got := requests.Load(); got != 1 {
 			t.Fatalf("requests before retry delay = %d, want 1", got)
 		}
-		time.Sleep(998 * time.Millisecond)
+		time.Sleep(500 * time.Millisecond)
 		synctest.Wait()
-		if got := requests.Load(); got != 1 {
-			t.Fatalf("requests at 999 ms retry delay = %d, want 1", got)
+		if got := requests.Load(); got != 2 {
+			t.Fatalf("requests after retry delay = %d, want 2", got)
 		}
 		time.Sleep(time.Millisecond)
 		synctest.Wait()

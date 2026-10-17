@@ -54,6 +54,7 @@ type GameRequestRefreshAttempt = {
 type GameRequestRefreshState = {
   pending: boolean;
   dueAt: number;
+  nextAllowedAt: number;
   timer: number | null;
   inFlight: GameRequestRefreshAttempt | null;
   retryUsed: boolean;
@@ -61,8 +62,8 @@ type GameRequestRefreshState = {
   closeEditor: boolean;
 };
 const gameRequestRefreshStates: Record<GameRequestRefreshTarget, GameRequestRefreshState> = {
-  "#game-request-list": { pending: false, dueAt: 0, timer: null, inFlight: null, retryUsed: false, highlightId: null, closeEditor: false },
-  "#game-request-detail": { pending: false, dueAt: 0, timer: null, inFlight: null, retryUsed: false, highlightId: null, closeEditor: false },
+  "#game-request-list": { pending: false, dueAt: 0, nextAllowedAt: 0, timer: null, inFlight: null, retryUsed: false, highlightId: null, closeEditor: false },
+  "#game-request-detail": { pending: false, dueAt: 0, nextAllowedAt: 0, timer: null, inFlight: null, retryUsed: false, highlightId: null, closeEditor: false },
 };
 const schedulerAttempts = new WeakMap<XMLHttpRequest, GameRequestRefreshAttempt>();
 const activeHtmxRequests = new Set<XMLHttpRequest>();
@@ -679,7 +680,7 @@ function queueGameRequestRefresh(target: GameRequestRefreshTarget, options: Game
   const now = performance.now();
   if (!state.pending) {
     state.pending = true;
-    state.dueAt = now + (options.immediate ? 0 : 100);
+    state.dueAt = options.immediate ? now : Math.max(now, state.nextAllowedAt);
   } else if (options.immediate && !state.retryUsed) {
     state.dueAt = Math.min(state.dueAt, now);
   }
@@ -730,6 +731,7 @@ function dispatchGameRequestRefresh(target: GameRequestRefreshTarget, state: Gam
     closeEditor: state.closeEditor,
   };
   state.pending = false;
+  state.nextAllowedAt = performance.now() + 100;
   state.highlightId = null;
   state.closeEditor = false;
   const attempt: GameRequestRefreshAttempt = {

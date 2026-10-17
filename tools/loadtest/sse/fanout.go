@@ -88,15 +88,16 @@ func newFanout(request string, mutations int, interval time.Duration, refreshMod
 // clientState counts target-request events seen by one player, so the k-th
 // event can be matched to the k-th mutation (join, leave, join, ...).
 type clientState struct {
-	token          string
-	seen           int
-	mappingGap     bool
-	received       []time.Time
-	refreshMu      sync.Mutex
-	refreshActive  bool
-	refreshQueued  bool
-	refreshPending bool
-	refreshDue     time.Time
+	token            string
+	seen             int
+	mappingGap       bool
+	received         []time.Time
+	refreshMu        sync.Mutex
+	refreshActive    bool
+	refreshQueued    bool
+	refreshPending   bool
+	refreshDue       time.Time
+	refreshAllowedAt time.Time
 }
 
 func (f *fanout) register(state *clientState) {
@@ -183,7 +184,10 @@ func (f *fanout) refreshCoalesced(state *clientState) {
 		return
 	}
 	state.refreshPending = true
-	state.refreshDue = time.Now().Add(100 * time.Millisecond)
+	state.refreshDue = time.Now()
+	if state.refreshAllowedAt.After(state.refreshDue) {
+		state.refreshDue = state.refreshAllowedAt
+	}
 	if state.refreshActive {
 		state.refreshMu.Unlock()
 		return
@@ -206,6 +210,7 @@ func (f *fanout) runCoalescedRefresh(state *clientState) {
 		}
 		state.refreshMu.Lock()
 		state.refreshPending = false
+		state.refreshAllowedAt = time.Now().Add(100 * time.Millisecond)
 		state.refreshMu.Unlock()
 		ok := f.refreshList(state.token)
 		if !ok && !retryUsed {

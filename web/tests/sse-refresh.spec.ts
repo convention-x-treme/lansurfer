@@ -159,9 +159,18 @@ test("an automatic lobby load does not invalidate a trailing detail refresh", as
   expect(swapsPrevented).toEqual([false, false]);
   expect(detailCalls).toBe(2);
 });
+test("starts a first list refresh immediately", async ({ page, request }) => {
+  await openList(page, request);
+  await emit(page, "GameRequestJoined");
+  await page.clock.runFor(0);
+  expect((await refreshProbe(page)).count).toBe(1);
+});
 test("coalesces list events inside a fixed 100 ms window", async ({ page, request }) => {
   await openList(page, request);
   await emit(page, "GameRequestJoined");
+  await page.clock.runFor(0);
+  await expect.poll(async () => (await refreshProbe(page)).count).toBe(1);
+  await expect.poll(async () => (await refreshProbe(page)).active).toBe(0);
   await page.clock.runFor(25);
   await emit(page, "GameRequestLeft");
   await page.clock.runFor(25);
@@ -169,9 +178,9 @@ test("coalesces list events inside a fixed 100 ms window", async ({ page, reques
   await page.clock.runFor(25);
   await emit(page, "GameRequestLeft");
   await page.clock.runFor(24);
-  expect((await refreshProbe(page)).count).toBe(0);
+  expect((await refreshProbe(page)).count).toBe(1);
   await page.clock.runFor(1);
-  await expect.poll(async () => (await refreshProbe(page)).count).toBe(1);
+  await expect.poll(async () => (await refreshProbe(page)).count).toBe(2);
 });
 test("keeps live rows and ignores stale out-of-band content after a filter swap", async ({ page, request }) => {
   let releaseFirst!: () => void;
@@ -284,30 +293,32 @@ test("a failed refresh retries once after 1000 ms and stops after second failure
 test("keeps a pending refresh through hidden and pagehide suspension", async ({ page, request }) => {
   await openList(page, request);
   await emit(page, "GameRequestJoined");
+  await page.clock.runFor(0);
+  await expect.poll(async () => (await refreshProbe(page)).count).toBe(1);
+  await expect.poll(async () => (await refreshProbe(page)).active).toBe(0);
+  await emit(page, "GameRequestLeft");
   await page.clock.runFor(50);
   await page.evaluate(() => {
     Object.defineProperty(document, "hidden", { configurable: true, value: true });
     document.dispatchEvent(new Event("visibilitychange"));
   });
   await page.clock.runFor(500);
-  expect((await refreshProbe(page)).count).toBe(0);
+  expect((await refreshProbe(page)).count).toBe(1);
   await page.evaluate(() => {
     Object.defineProperty(document, "hidden", { configurable: true, value: false });
     document.dispatchEvent(new Event("visibilitychange"));
   });
-  await page.clock.runFor(1);
-  await expect.poll(async () => (await refreshProbe(page)).count).toBe(1);
-  await page.clock.runFor(200);
-  expect((await refreshProbe(page)).count).toBe(1);
-
-  await emit(page, "GameRequestLeft");
   await page.clock.runFor(50);
+  await expect.poll(async () => (await refreshProbe(page)).count).toBe(2);
+
+  await emit(page, "GameRequestJoined");
+  await page.clock.runFor(20);
   await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent("pagehide")));
   await page.clock.runFor(500);
-  expect((await refreshProbe(page)).count).toBe(1);
+  expect((await refreshProbe(page)).count).toBe(2);
   await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent("pageshow")));
   await page.clock.runFor(1);
-  await expect.poll(async () => (await refreshProbe(page)).count).toBe(2);
+  await expect.poll(async () => (await refreshProbe(page)).count).toBe(3);
 });
 test("retries an aborted refresh once", async ({ page, request }) => {
   let attempts = 0;

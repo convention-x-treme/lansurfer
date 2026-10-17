@@ -119,7 +119,7 @@ TypeScript is intentionally limited to progressive enhancement.
 
 SSE is used for realtime browser updates. Browser-to-server communication remains ordinary HTTP.
 
-Browser refreshes driven by Game Request SSE signals use a fixed 100 ms coalescing window. Each visible list or matching detail target keeps at most one pending refresh; one trailing refresh preserves changes received during an active request. A failed refresh retries once after one second. Hidden-page timers pause, and returning to visibility revalidates current targets.
+Browser refreshes driven by Game Request SSE signals start immediately when a target is idle. Further signals within 100 ms queue at most one trailing refresh. Each visible list or matching detail target keeps at most one pending refresh; one trailing refresh preserves changes received during an active request. A failed refresh retries once after one second. Hidden-page timers pause, and returning to visibility revalidates current targets.
 
 For the current single-instance deployment model, the SSE broker may run in memory. Durable external notifications use PostgreSQL persistence and do not make SSE durable.
 
