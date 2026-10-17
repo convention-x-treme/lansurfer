@@ -107,32 +107,35 @@ run_profile() {
   "${chaos_compose[@]}" -f "$workspace/compose-${variant}.yaml" up -d --no-build --force-recreate lansurfer proxy
   wait_ready
   verify_bundle "$digest"
-  local image_id runner_revision dirty
+  local image_id runner_revision dirty refresh_mode="${REFRESH_MODE_OVERRIDE:-}"
+  if [[ -z "$refresh_mode" ]]; then
+    refresh_mode=browser-like
+    [[ "$variant" == treatment ]] && refresh_mode=coalesced
+  fi
+  [[ "$refresh_mode" == browser-like || "$refresh_mode" == coalesced ]] || { echo 'REFRESH_MODE_OVERRIDE must be browser-like or coalesced' >&2; exit 2; }
   image_id="$(docker image inspect --format '{{.Id}}' "$image")"
   runner_revision="$(git -C "$root" rev-parse HEAD)"
   dirty=false
   [[ -z "$(git -C "$root" status --porcelain -- . ':!docs/superpowers')" ]] || dirty=true
-  printf '{"schemaVersion":1,"variant":"%s","repetition":%s,"profile":"%s","productRevision":"%s","harnessRevision":"%s","runnerRevision":"%s","dirty":%s,"image":"%s","imageID":"%s","appBundleSHA256":"%s","runtimeBundleVerified":true,"refreshMode":"browser-like"}\n' \
-    "$variant" "$repetition" "$profile" "$revision" "$HARNESS_REVISION" "$runner_revision" "$dirty" "$image" "$image_id" "$digest" >"$out/manifest.json"
+  printf '{"schemaVersion":1,"variant":"%s","repetition":%s,"profile":"%s","productRevision":"%s","harnessRevision":"%s","runnerRevision":"%s","dirty":%s,"image":"%s","imageID":"%s","appBundleSHA256":"%s","runtimeBundleVerified":true,"refreshMode":"%s"}\n' \
+    "$variant" "$repetition" "$profile" "$revision" "$HARNESS_REVISION" "$runner_revision" "$dirty" "$image" "$image_id" "$digest" "$refresh_mode" >"$out/manifest.json"
   chmod 600 "$out/manifest.json"
-  local simulated_users writers sim_offset writer_offset refresh_mode duration profile_pid=""
+  local simulated_users writers sim_offset writer_offset duration=150s run_duration=90s profile_pid=""
   if [[ "$profile" == '120' ]]; then
-    simulated_users=120 writers=0 sim_offset=5 writer_offset=125 duration=90s
+    simulated_users=120 writers=20 sim_offset=5 writer_offset=125
   else
-    simulated_users=400 writers=100 sim_offset=5 writer_offset=405 duration=90s
+    simulated_users=400 writers=100 sim_offset=5 writer_offset=405
   fi
-  refresh_mode=browser-like
-  [[ "$variant" == treatment ]] && refresh_mode=coalesced
   export BASE_URL=http://127.0.0.1:18081 REQUEST="$(node -p "require('$workspace/control.json').request_id")"
   export SIMULATED_USERS="$simulated_users" SIMULATED_SESSION_OFFSET="$sim_offset" BROWSER_CLIENTS=5
-  export WRITERS="$writers" WRITER_SESSION_OFFSET="$writer_offset" WRITER_DURATION="$duration"
-  export DURATION="$duration" PROFILE_DURATION="$duration" PROFILE_INTERVAL=5s TRIGGER=20 TRIGGER_INTERVAL=500ms TRIGGER_DELAY=10s
-  export COALESCING=1 REFRESH_MODE="$refresh_mode" VIEW=mixed FILTER_GAME='Counter-Strike 2' PROBE=0
+  export WRITERS="$writers" WRITER_SESSION_OFFSET="$writer_offset" WRITER_DURATION="$run_duration"
+  export DURATION="$duration" PROFILE_DURATION="$run_duration" PROFILE_INTERVAL=5s TRIGGER=1 TRIGGER_INTERVAL=500ms TRIGGER_DELAY=10s
+  export COALESCING=1 REFRESH_MODE="$refresh_mode" VIEW=mixed FILTER_GAME='Counter-Strike 2' PROBE=1
   export LANSURFER_LOADTEST_REPORT_DIR="$out" PRODUCT_REVISION="$revision" HARNESS_REVISION="$HARNESS_REVISION"
   export LANSURFER_LOADTEST_METRICS_KEY_FILE="$workspace/metrics-key"
   export BUNDLE_SHA256="$digest" VARIANT="$variant" REPETITION="$repetition"
   if [[ "$profile" == '120' ]]; then
-    go -C "$root" run ./tools/loadtest/profile -duration "$duration" -interval 5s -metrics-key-file "$workspace/metrics-key" -output "$out/database-profile.jsonl" >"$out/profile-console.log" 2>&1 &
+    go -C "$root" run ./tools/loadtest/profile -duration "$run_duration" -interval 5s -metrics-key-file "$workspace/metrics-key" -output "$out/database-profile.jsonl" >"$out/profile-console.log" 2>&1 &
     profile_pid=$!
   fi
   local calibration_exit=0 profile_exit=0

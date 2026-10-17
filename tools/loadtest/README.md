@@ -147,11 +147,12 @@ task loadtest:coalescing WORKSPACE=147 PRODUCT_REVISION="$H" HARNESS_REVISION="$
 task loadtest:coalescing WORKSPACE=147 PRODUCT_REVISION="$C" HARNESS_REVISION="$H" VARIANT=treatment REPETITION=1
 ```
 
-Set `H` to the harness commit and `C` to the treatment commit. Each variant measures 120 streams and 400 streams plus 100 writers, with five real Chromium pages. Paired runs restore same database snapshot. Synthetic baseline clients use `browser-like` (one in-flight plus one trailing refresh); synthetic treatment clients use 200 ms coalescing. Real pages execute each revision's app bundle. Per-profile reports record product/harness SHAs and app.js checksum. The private workspace stores manifests, session tokens, profile samples, and database snapshot.
+Set `H` to the harness commit and `C` to the treatment commit. Each variant measures 120 SSE streams plus 20 writers, then 400 streams plus 100 writers, with five real Chromium pages. SSE runs last 150s; writers run 90s after startup. Paired runs restore same database snapshot. Synthetic baseline clients use `browser-like` (one in-flight plus one trailing refresh); synthetic treatment clients use 200 ms coalescing. Real pages execute each revision's app bundle. Per-profile manifests record actual refresh mode, product/harness SHAs, and app.js checksum. The private workspace stores manifests, session tokens, profile samples, and database snapshot.
 
 Calibration failures remain in each JSON report and do not stop the paired run; missing reports or failed database audits still fail the task.
 
-For each profile, compare refresh GETs per SSE signal, refresh and write latency, timeouts, deliveries, browser errors, and final DOM convergence. Local measurements describe this workstation only.
+The single control join changes final membership from `1/8` to `2/8`, so DOM convergence check detects a missed update. `PROBE=1` records event-to-visible latency for that join. Compare refresh GETs per relevant SSE event, refresh and write latency, timeouts, deliveries, browser errors, final DOM convergence, and captured database-pool/process-resource samples. Local measurements describe this workstation only.
+For a same-mode control, prepare a separate workspace and run both variants with `REFRESH_MODE_OVERRIDE=browser-like`. Treat mode-switched synthetic totals as workload-model evidence; use five real Chromium pages for direct product behavior.
 
 For ordinary `loadtest:calibrate`, 400 synthetic streams may share five browser identities. Paired coalescing runs use disjoint browser, stream, writer, and control identities.
 
