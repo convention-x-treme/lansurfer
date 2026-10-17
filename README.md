@@ -105,6 +105,8 @@ docker compose up --build
 
 Stop the full stack with `docker compose down`; the PostgreSQL data volume remains.
 
+For a separate self-hosted deployment with immutable release images, private version selection, and internal PostgreSQL, see [Production Compose](deploy/README.md). Do not expose the development Compose stack to the internet.
+
 ### Configure OIDC login
 
 LANsurfer uses generic OpenID Connect discovery and server-side PostgreSQL sessions. Both `task dev` and the full Compose stack default to the CXT development realm and `lansurfer` public client below. The provider must allow the exact callback URL `http://localhost:8080/auth/callback`:

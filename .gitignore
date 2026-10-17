@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+/deploy/production.env
 
 # Build and test output
 /dist/

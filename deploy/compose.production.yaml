@@ -1,0 +1,90 @@
+# Self-hosted release deployment; development stays in ../compose.yaml.
+# Use with: docker compose --env-file deploy/production.env -f deploy/compose.production.yaml up -d
+name: lansurfer-production
+
+services:
+  postgres:
+    # The operator chooses the tested, digest-pinned PostgreSQL image in production.env.
+    image: ${POSTGRES_IMAGE:?Set POSTGRES_IMAGE in deploy/production.env}
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: lansurfer
+      POSTGRES_USER: lansurfer
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in deploy/production.env}
+    healthcheck:
+      # The official image temporarily opens only a Unix socket during init.
+      # Authenticate a real SQL query over TCP, including on existing volumes.
+      test:
+        - CMD-SHELL
+        - >-
+          PGPASSWORD="$${POSTGRES_PASSWORD}"
+          psql -h 127.0.0.1 -U "$${POSTGRES_USER}"
+          -d "$${POSTGRES_DB}" -Atqc 'SELECT 1' >/dev/null
+      interval: 5s
+      timeout: 3s
+      retries: 15
+      start_period: 10s
+    volumes:
+      # PostgreSQL 18 uses /var/lib/postgresql as its persistent mount.
+      - postgres-data:/var/lib/postgresql
+    stop_grace_period: 60s
+    # No published ports: only the LANsurfer service reaches PostgreSQL.
+
+  lansurfer:
+    # Release-independent Compose: upgrade intentionally via LANSURFER_IMAGE in production.env.
+    image: ${LANSURFER_IMAGE:?Set LANSURFER_IMAGE in deploy/production.env}
+    depends_on:
+      postgres:
+        condition: service_healthy
+        restart: true
+    init: true
+    restart: unless-stopped
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    ports:
+      # An external reverse proxy on the Docker host terminates HTTPS.
+      - "127.0.0.1:${LANSURFER_HTTP_PORT:-8080}:8080"
+    environment:
+      # Generate a URL-safe hex POSTGRES_PASSWORD; use the same value for both services.
+      LANSURFER_DATABASE_URL: "postgres://lansurfer:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in deploy/production.env}@postgres:5432/lansurfer?sslmode=disable"
+      LANSURFER_LISTEN_ADDR: ":8080"
+      LANSURFER_BASE_URL: ${LANSURFER_BASE_URL:?Set LANSURFER_BASE_URL to the public HTTPS origin}
+      LANSURFER_TRUSTED_PROXIES: ${LANSURFER_TRUSTED_PROXIES:-}
+      LANSURFER_CHAT_RATE_LIMIT: ${LANSURFER_CHAT_RATE_LIMIT:-}
+      LANSURFER_CHAT_RATE_WINDOW: ${LANSURFER_CHAT_RATE_WINDOW:-}
+      LANSURFER_OIDC_ISSUER: ${LANSURFER_OIDC_ISSUER:-}
+      LANSURFER_OIDC_CLIENT_ID: ${LANSURFER_OIDC_CLIENT_ID:-}
+      LANSURFER_OIDC_CLIENT_SECRET: ${LANSURFER_OIDC_CLIENT_SECRET:-}
+      LANSURFER_OIDC_DISPLAY_NAME: ${LANSURFER_OIDC_DISPLAY_NAME:-}
+      LANSURFER_OIDC_GAME_NICK_CLAIM: ${LANSURFER_OIDC_GAME_NICK_CLAIM:-}
+      LANSURFER_DISCORD_CLIENT_ID: ${LANSURFER_DISCORD_CLIENT_ID:-}
+      LANSURFER_DISCORD_CLIENT_SECRET: ${LANSURFER_DISCORD_CLIENT_SECRET:-}
+      LANSURFER_DISCORD_WEBHOOK_CLIENT_ID: ${LANSURFER_DISCORD_WEBHOOK_CLIENT_ID:-}
+      LANSURFER_DISCORD_WEBHOOK_CLIENT_SECRET: ${LANSURFER_DISCORD_WEBHOOK_CLIENT_SECRET:-}
+      LANSURFER_WEBPUSH_PUBLIC_KEY: ${LANSURFER_WEBPUSH_PUBLIC_KEY:-}
+      LANSURFER_WEBPUSH_PRIVATE_KEY: ${LANSURFER_WEBPUSH_PRIVATE_KEY:-}
+      LANSURFER_WEBPUSH_SUBJECT: ${LANSURFER_WEBPUSH_SUBJECT:-}
+      LANSURFER_DATA_ENCRYPTION_KEY: ${LANSURFER_DATA_ENCRYPTION_KEY:-}
+      LANSURFER_TWITCH_CLIENT_ID: ${LANSURFER_TWITCH_CLIENT_ID:-}
+      LANSURFER_TWITCH_CLIENT_SECRET: ${LANSURFER_TWITCH_CLIENT_SECRET:-}
+      LANSURFER_TWITCH_AUTH_ENABLED: ${LANSURFER_TWITCH_AUTH_ENABLED:-false}
+      LANSURFER_IGDB_ENABLED: ${LANSURFER_IGDB_ENABLED:-false}
+      LANSURFER_INSTANCE_NAME: ${LANSURFER_INSTANCE_NAME:-}
+      LANSURFER_LEGAL_ENTITY_NAME: ${LANSURFER_LEGAL_ENTITY_NAME:-}
+      LANSURFER_LEGAL_ADDRESS: ${LANSURFER_LEGAL_ADDRESS:-}
+      LANSURFER_LEGAL_CONTACT_EMAIL: ${LANSURFER_LEGAL_CONTACT_EMAIL:-}
+      LANSURFER_IMPRINT_URL: ${LANSURFER_IMPRINT_URL:-}
+      LANSURFER_COVER_CACHE_DIR: /var/cache/lansurfer/covers
+    volumes:
+      - cover-cache:/var/cache/lansurfer/covers
+    # Allow the HTTP server and background workers to drain (each up to 10s).
+    stop_grace_period: 45s
+
+volumes:
+  postgres-data:
+  cover-cache:

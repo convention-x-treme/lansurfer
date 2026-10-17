@@ -1,0 +1,39 @@
+# Private repositories use the isolated self-hosted Docker runner like main CI.
+# Public repositories use GitHub-hosted runners; fork PRs never receive package tokens.
+name: Production Compose runtime smoke
+
+on:
+  pull_request:
+    paths:
+      - 'deploy/**'
+      - scripts/test-production-compose.py
+      - scripts/smoke-production-compose.sh
+      - .github/workflows/production-compose-smoke.yml
+  workflow_dispatch:
+
+# The GHCR image may be private. Never grant package-read to untrusted fork PR code.
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: production-compose-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pinned-release-smoke:
+    name: Boot pinned images, migrate, and verify persistence
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ${{ fromJSON(github.event.repository.private && '["self-hosted","linux","x64","docker"]' || '"ubuntu-latest"') }}
+    timeout-minutes: 18
+    steps:
+      - name: Check out proposed revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Exercise real release images on disposable runner Docker volumes
+        shell: bash
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: bash scripts/smoke-production-compose.sh
