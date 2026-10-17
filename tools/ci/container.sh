@@ -76,7 +76,7 @@ case "$job" in
     command -v gh && gh --version
     command -v goreleaser && goreleaser --version
     command -v docker && docker buildx version
-    command -v jq && command -v python3
+    command -v jq && command -v python3 && command -v curl
     bash -n scripts/release/publish.sh
     python3 -m unittest discover -s scripts/release -p 'test_deployment_assets.py' -v
     echo "Release publishing toolbox is ready."

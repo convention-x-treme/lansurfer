@@ -119,10 +119,16 @@ python3 "$root/scripts/release/render_deployment.py" "$tag" "$exact_digest" "$de
 # Fail closed if an asset cannot be uploaded or checksummed.
 release_id="$(jq -r '.id' "$tmp/release.json")"
 for name in compose.yaml compose.traefik.yaml production.env.example deployment-checksums.txt; do
-  gh api --hostname uploads.github.com --method POST \
-    -H 'Content-Type: application/octet-stream' \
-    --input "$deployment_dir/$name" \
-    "repos/$repo/releases/$release_id/assets?name=$name" > "$tmp/upload-$name.json"
+  # Use the upload_url host directly; gh api --hostname uploads.github.com
+  # incorrectly targets api.uploads.github.com. Supply the token via curl's
+  # stdin config rather than making it visible in process command arguments.
+  printf 'header = "Authorization: Bearer %s"\n' "$GH_TOKEN" |
+    curl --fail-with-body --silent --show-error \
+      --config - -X POST \
+      -H 'Content-Type: application/octet-stream' \
+      --data-binary "@$deployment_dir/$name" \
+      "https://uploads.github.com/repos/$repo/releases/$release_id/assets?name=$name" \
+      > "$tmp/upload-$name.json"
   expected_sha="$(sha256sum "$deployment_dir/$name" | awk '{ print $1 }')"
   jq -e --arg name "$name" --arg digest "sha256:$expected_sha" '
     .name == $name and .state == "uploaded" and .size > 0 and .digest == $digest

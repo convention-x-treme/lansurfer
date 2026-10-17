@@ -15,7 +15,7 @@ WORKDIR /workspace
 
 # Matches release workflow; bundled Go, Docker CLI and Buildx.
 FROM goreleaser/goreleaser:v2.18.3 AS release
-RUN apk add --no-cache bash python3 jq git coreutils github-cli
+RUN apk add --no-cache bash python3 jq git coreutils github-cli curl
 ENV GOTOOLCHAIN=local
 WORKDIR /workspace
 
