@@ -147,7 +147,7 @@ task loadtest:coalescing WORKSPACE=147 PRODUCT_REVISION="$H" HARNESS_REVISION="$
 task loadtest:coalescing WORKSPACE=147 PRODUCT_REVISION="$C" HARNESS_REVISION="$H" VARIANT=treatment REPETITION=1
 ```
 
-Set `H` to the harness commit and `C` to the treatment commit. Each variant measures 120 streams and 400 streams plus 100 writers, with five real Chromium pages. Paired runs restore same database snapshot and use identical `browser-like` synthetic refreshes; real pages execute each revision's app bundle. Per-profile reports record product/harness SHAs and app.js checksum. The private workspace stores manifests, session tokens, profile samples, and database snapshot.
+Set `H` to the harness commit and `C` to the treatment commit. Each variant measures 120 streams and 400 streams plus 100 writers, with five real Chromium pages. Paired runs restore same database snapshot. Synthetic baseline clients use `browser-like` (one in-flight plus one trailing refresh); synthetic treatment clients use 200 ms coalescing. Real pages execute each revision's app bundle. Per-profile reports record product/harness SHAs and app.js checksum. The private workspace stores manifests, session tokens, profile samples, and database snapshot.
 
 Calibration failures remain in each JSON report and do not stop the paired run; missing reports or failed database audits still fail the task.
 

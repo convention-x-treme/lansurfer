@@ -122,6 +122,7 @@ run_profile() {
     simulated_users=400 writers=100 sim_offset=5 writer_offset=405 duration=90s
   fi
   refresh_mode=browser-like
+  [[ "$variant" == treatment ]] && refresh_mode=coalesced
   export BASE_URL=http://127.0.0.1:18081 REQUEST="$(node -p "require('$workspace/control.json').request_id")"
   export SIMULATED_USERS="$simulated_users" SIMULATED_SESSION_OFFSET="$sim_offset" BROWSER_CLIENTS=5
   export WRITERS="$writers" WRITER_SESSION_OFFSET="$writer_offset" WRITER_DURATION="$duration"
