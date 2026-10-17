@@ -17,12 +17,12 @@ BASE="https://github.com/convention-x-treme/lansurfer/releases/download/$VERSION
 
 mkdir -p lansurfer && cd lansurfer
 wget -O compose.yaml "$BASE/compose.yaml"
-wget -O .env.example "$BASE/production.env.example"
-cp .env.example .env
+wget -O production.env.example "$BASE/production.env.example"
+cp production.env.example .env
 chmod 600 .env
 ```
 
-Both files come from the **same release**. The downloaded `.env.example`
+Both files come from the **same release**. The downloaded `production.env.example`
 already references `LANSURFER_IMAGE` with the selected release's exact tag
 and immutable multi-platform digest. You **do not need to find or enter
 a Docker image version yourself**. Different released versions can be
