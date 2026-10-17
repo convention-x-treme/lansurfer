@@ -57,8 +57,6 @@ func TestLoadReadsConfiguredValues(t *testing.T) {
 	t.Setenv("LANSURFER_DISCORD_CLIENT_ID", " discord-client ")
 	t.Setenv("LANSURFER_DISCORD_CLIENT_SECRET", " discord-secret ")
 	t.Setenv("LANSURFER_TRUSTED_PROXIES", " 10.20.0.5, 10.21.0.0/16 ")
-	t.Setenv("LANSURFER_LEGAL_ENTITY_NAME", " Computerfreunde Karlsdorf-Neuthard e.V. ")
-	t.Setenv("LANSURFER_LEGAL_CONTACT_EMAIL", " datenschutz@convention-x-treme.de ")
 
 	cfg, err := Load()
 	if err != nil {
@@ -230,8 +228,6 @@ func TestLoadDiscordDeliveryRejectsInvalidDataEncryptionKey(t *testing.T) {
 func TestLoadDiscordLoginAndDeliveryAreIndependent(t *testing.T) {
 	clearOptionalEnvironment(t)
 	t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
-	t.Setenv("LANSURFER_LEGAL_ENTITY_NAME", "Example Org")
-	t.Setenv("LANSURFER_LEGAL_CONTACT_EMAIL", "privacy@example.test")
 	t.Setenv("LANSURFER_DISCORD_CLIENT_ID", "login-client")
 	t.Setenv("LANSURFER_DISCORD_CLIENT_SECRET", "login-secret")
 
@@ -611,10 +607,7 @@ func clearOptionalEnvironment(t *testing.T) {
 		"LANSURFER_WEBPUSH_PRIVATE_KEY",
 		"LANSURFER_WEBPUSH_SUBJECT",
 		"LANSURFER_DATA_ENCRYPTION_KEY",
-		"LANSURFER_LEGAL_ENTITY_NAME",
-		"LANSURFER_LEGAL_ADDRESS",
-		"LANSURFER_LEGAL_CONTACT_EMAIL",
-		"LANSURFER_IMPRINT_URL",
+		"LANSURFER_IMPRINT_ENABLED",
 	} {
 		t.Setenv(name, "")
 	}
@@ -629,93 +622,6 @@ func TestLoadReadsCoverCacheDir(t *testing.T) {
 	}
 	if cfg.CoverCacheDir != "/var/cache/lansurfer/covers" {
 		t.Errorf("CoverCacheDir = %q", cfg.CoverCacheDir)
-	}
-}
-
-func TestLoadReadsLegalIdentity(t *testing.T) {
-	clearOptionalEnvironment(t)
-	t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
-	t.Setenv("LANSURFER_LEGAL_ENTITY_NAME", " Computerfreunde Karlsdorf-Neuthard e.V. ")
-	t.Setenv("LANSURFER_LEGAL_ADDRESS", " Example Street 1, 76689 Karlsdorf-Neuthard, Germany ")
-	t.Setenv("LANSURFER_LEGAL_CONTACT_EMAIL", " datenschutz@convention-x-treme.de ")
-	t.Setenv("LANSURFER_IMPRINT_URL", " https://www.convention-x-treme.de/impressum ")
-
-	cfg, err := Load()
-	if err != nil {
-		t.Fatalf("Load() error = %v", err)
-	}
-	want := Legal{
-		EntityName:   "Computerfreunde Karlsdorf-Neuthard e.V.",
-		Address:      "Example Street 1, 76689 Karlsdorf-Neuthard, Germany",
-		ContactEmail: "datenschutz@convention-x-treme.de",
-		ImprintURL:   "https://www.convention-x-treme.de/impressum",
-	}
-	if cfg.Legal != want {
-		t.Errorf("Legal = %#v, want %#v", cfg.Legal, want)
-	}
-}
-
-func TestLoadLeavesLegalIdentityUnsetByDefault(t *testing.T) {
-	clearOptionalEnvironment(t)
-	t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
-
-	cfg, err := Load()
-	if err != nil {
-		t.Fatalf("Load() error = %v", err)
-	}
-	if cfg.Legal != (Legal{}) {
-		t.Errorf("Legal = %#v, want zero value", cfg.Legal)
-	}
-}
-
-func TestLoadRejectsInvalidLegalIdentity(t *testing.T) {
-	tests := map[string]struct{ name, value string }{
-		"entity with line break":  {"LANSURFER_LEGAL_ENTITY_NAME", "Club\ne.V."},
-		"entity too long":         {"LANSURFER_LEGAL_ENTITY_NAME", strings.Repeat("a", 201)},
-		"address with tab":        {"LANSURFER_LEGAL_ADDRESS", "Street 1,\tCity"},
-		"address too long":        {"LANSURFER_LEGAL_ADDRESS", strings.Repeat("a", 301)},
-		"email with display name": {"LANSURFER_LEGAL_CONTACT_EMAIL", "Privacy <datenschutz@convention-x-treme.de>"},
-		"email without domain":    {"LANSURFER_LEGAL_CONTACT_EMAIL", "datenschutz"},
-		"imprint javascript":      {"LANSURFER_IMPRINT_URL", "javascript:alert(1)"},
-		"imprint placeholder":     {"LANSURFER_IMPRINT_URL", "<https://www.convention-x-treme.de/impressum>"},
-		"imprint relative":        {"LANSURFER_IMPRINT_URL", "/impressum"},
-	}
-	for name, test := range tests {
-		t.Run(name, func(t *testing.T) {
-			clearOptionalEnvironment(t)
-			t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
-			t.Setenv(test.name, test.value)
-
-			_, err := Load()
-			if err == nil || !strings.Contains(err.Error(), test.name) {
-				t.Fatalf("Load() error = %v, want error naming %s", err, test.name)
-			}
-		})
-	}
-}
-
-// Discord's Developer Terms require a privacy policy that names a responsible
-// party with a contact, so enabling Discord login without one is refused.
-func TestLoadRequiresLegalIdentityWithDiscord(t *testing.T) {
-	for name, legal := range map[string][2]string{
-		"both missing":  {"", ""},
-		"email missing": {"Computerfreunde Karlsdorf-Neuthard e.V.", ""},
-		"name missing":  {"", "datenschutz@convention-x-treme.de"},
-	} {
-		t.Run(name, func(t *testing.T) {
-			clearOptionalEnvironment(t)
-			t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
-			t.Setenv("LANSURFER_DISCORD_CLIENT_ID", "client")
-			t.Setenv("LANSURFER_DISCORD_CLIENT_SECRET", "secret")
-			t.Setenv("LANSURFER_LEGAL_ENTITY_NAME", legal[0])
-			t.Setenv("LANSURFER_LEGAL_CONTACT_EMAIL", legal[1])
-
-			_, err := Load()
-			if err == nil || !strings.Contains(err.Error(), "LANSURFER_LEGAL_ENTITY_NAME") ||
-				!strings.Contains(err.Error(), "LANSURFER_LEGAL_CONTACT_EMAIL") {
-				t.Fatalf("Load() error = %v, want error naming both legal variables", err)
-			}
-		})
 	}
 }
 

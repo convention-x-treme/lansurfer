@@ -15,6 +15,7 @@ import (
 	"github.com/convention-x-treme/lansurfer/internal/auth"
 	"github.com/convention-x-treme/lansurfer/internal/game"
 	"github.com/convention-x-treme/lansurfer/internal/gamerequest"
+	"github.com/convention-x-treme/lansurfer/internal/platform/legal"
 	"github.com/convention-x-treme/lansurfer/internal/platform/mediaproxy"
 	requestquery "github.com/convention-x-treme/lansurfer/internal/query/gamerequest"
 	"github.com/convention-x-treme/lansurfer/internal/user"
@@ -436,6 +437,30 @@ func TestAuthCallbackRoutesSignedInIdentityConflictToAccount(t *testing.T) {
 	}
 }
 
+func TestAuthCallbackCancelledLinkReturnsToAccountWithNotice(t *testing.T) {
+	authentication := &routerAuthentication{
+		account: user.User{ID: "user-1", Role: user.RoleUser},
+		result:  auth.OAuthResult{Operation: auth.FlowLink},
+	}
+	request := httptest.NewRequest(http.MethodGet, "/auth/discord/callback?error=access_denied&state=state", nil)
+	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+	request.AddCookie(&http.Cookie{Name: "lansurfer_auth_binding", Value: "binding"})
+	response := httptest.NewRecorder()
+
+	NewRouter(RouterDependencies{
+		Ready:          func(context.Context) error { return nil },
+		Authentication: authentication,
+		Sessions:       authentication,
+	}).ServeHTTP(response, request)
+
+	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/account?link_cancelled=1" {
+		t.Fatalf("status/location = %d, %q", response.Code, response.Header().Get("Location"))
+	}
+	if authentication.completed.CurrentUserID != "user-1" || authentication.completed.State != "state" {
+		t.Fatalf("cancel completion = %#v", authentication.completed)
+	}
+}
+
 func TestPatternFragments(t *testing.T) {
 	tests := []struct {
 		path string
@@ -476,7 +501,6 @@ func TestEmbeddedAssetsAreServed(t *testing.T) {
 		"/assets/fonts/schibsted-grotesk-latin-wght-italic.woff2",
 		"/assets/fonts/jetbrains-mono-latin-wght-normal.woff2",
 		"/assets/images/otter.webp",
-		"/assets/licenses/htmx-BSD-2-Clause.txt",
 		"/assets/licenses/schibsted-grotesk-OFL-1.1.txt",
 		"/assets/licenses/jetbrains-mono-OFL-1.1.txt",
 		"/assets/licenses/tailwindcss-MIT.txt",
@@ -495,6 +519,26 @@ func TestEmbeddedAssetsAreServed(t *testing.T) {
 				t.Error("asset response is empty")
 			}
 		})
+	}
+}
+
+func TestHTMXLicenseUsesItsZeroClauseBSDNameAndText(t *testing.T) {
+	router := NewRouter(RouterDependencies{Ready: func(context.Context) error { return nil }})
+	request := httptest.NewRequest(http.MethodGet, "/assets/licenses/htmx-0BSD.txt", nil)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("license status = %d, want %d", response.Code, http.StatusOK)
+	}
+	if !strings.HasPrefix(response.Body.String(), "Zero-Clause BSD\n") {
+		t.Fatal("license asset does not contain the upstream Zero-Clause BSD text")
+	}
+
+	request = httptest.NewRequest(http.MethodGet, "/assets/licenses/htmx-BSD-2-Clause.txt", nil)
+	response = httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("obsolete license path status = %d, want %d", response.Code, http.StatusNotFound)
 	}
 }
 
@@ -1857,6 +1901,10 @@ func (a *routerAuthentication) Complete(_ context.Context, completion auth.OAuth
 	a.completed = completion
 	return a.result, a.completeErr
 }
+func (a *routerAuthentication) Decline(_ context.Context, completion auth.OAuthCompletion) (auth.FlowOperation, error) {
+	a.completed = completion
+	return a.result.Operation, a.completeErr
+}
 
 func (*routerAuthentication) Logout(context.Context, string) error { return nil }
 
@@ -2098,22 +2146,44 @@ func TestIGDBCoverRouteWritesNothingForCanceledCaller(t *testing.T) {
 	}
 }
 
+type routerLegalDocuments map[legal.Kind]legal.Document
+
+func (d routerLegalDocuments) Document(_ context.Context, kind legal.Kind) (legal.Document, error) {
+	document, ok := d[kind]
+	if !ok {
+		return legal.Document{}, legal.ErrNotFound
+	}
+	return document, nil
+}
+
+func (d routerLegalDocuments) Save(_ context.Context, kind legal.Kind, body string) error {
+	if strings.TrimSpace(body) == "" {
+		return legal.ErrEmpty
+	}
+	d[kind] = legal.Document{Kind: kind, Body: body}
+	return nil
+}
+
+func sampleLegalDocuments() routerLegalDocuments {
+	return routerLegalDocuments{
+		legal.Terms:   {Kind: legal.Terms, Body: "## Acceptable use\n\nBe nice.", Sample: true},
+		legal.Privacy: {Kind: legal.Privacy, Body: "## Controller\n\nClub e.V."},
+		legal.Imprint: {Kind: legal.Imprint, Body: "Club e.V.", Sample: true},
+	}
+}
+
 // The Discord Developer Portal needs stable public Terms and Privacy URLs, so
-// both pages must render for an anonymous visitor with the operator's details.
-func TestLegalPagesArePublicAndShowOperatorIdentity(t *testing.T) {
+// the pages must render for an anonymous visitor.
+func TestLegalPagesArePublicAndRenderMarkdown(t *testing.T) {
 	authentication := &routerAuthentication{}
 	router := NewRouter(RouterDependencies{
 		Ready: func(context.Context) error { return nil }, Authentication: authentication, Sessions: authentication,
-		Legal: webmiddleware.LegalIdentity{
-			EntityName:   "Computerfreunde Karlsdorf-Neuthard e.V.",
-			Address:      "Example Street 1, 76689 Karlsdorf-Neuthard, Germany",
-			ContactEmail: "datenschutz@convention-x-treme.de",
-			ImprintURL:   "https://www.convention-x-treme.de/impressum",
-		},
+		LegalDocuments: sampleLegalDocuments(), ImprintEnabled: true,
 	})
-	for path, wants := range map[string][]string{
-		"/privacy": {"Privacy Policy", "Last updated", "Core-Backbone GmbH", "30 days", "Discord"},
-		"/terms":   {"Terms of Service", "Last updated", `id="contact"`, `href="https://github.com/convention-x-treme/lansurfer/issues" target="_blank" rel="noopener noreferrer"`},
+	for path, want := range map[string]string{
+		"/terms":   "<h2>Acceptable use</h2>",
+		"/privacy": "<h2>Controller</h2>",
+		"/imprint": "<p>Club e.V.</p>",
 	} {
 		t.Run(path, func(t *testing.T) {
 			response := httptest.NewRecorder()
@@ -2122,12 +2192,7 @@ func TestLegalPagesArePublicAndShowOperatorIdentity(t *testing.T) {
 				t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
 			}
 			body := response.Body.String()
-			for _, want := range append(wants,
-				"Computerfreunde Karlsdorf-Neuthard e.V.",
-				"Example Street 1, 76689 Karlsdorf-Neuthard, Germany",
-				`href="mailto:datenschutz@convention-x-treme.de"`,
-				`href="/auth/login"`,
-			) {
+			for _, want := range []string{want, "Last updated", `href="/auth/login"`} {
 				if !strings.Contains(body, want) {
 					t.Errorf("body does not contain %q", want)
 				}
@@ -2136,18 +2201,50 @@ func TestLegalPagesArePublicAndShowOperatorIdentity(t *testing.T) {
 	}
 }
 
-func TestLegalPagesMarkUnconfiguredIdentity(t *testing.T) {
+// An unedited seed must never pass as this operator's own statement.
+func TestLegalPageMarksSampleTextUntilSaved(t *testing.T) {
+	authentication := &routerAuthentication{}
+	router := NewRouter(RouterDependencies{
+		Ready: func(context.Context) error { return nil }, Authentication: authentication, Sessions: authentication,
+		LegalDocuments: sampleLegalDocuments(),
+	})
+	for path, wantBanner := range map[string]bool{"/terms": true, "/privacy": false} {
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+		if got := strings.Contains(response.Body.String(), "sample text"); got != wantBanner {
+			t.Errorf("%s sample banner = %v, want %v", path, got, wantBanner)
+		}
+	}
+}
+
+func TestImprintIsNotServedWhenDisabled(t *testing.T) {
 	authentication := &routerAuthentication{}
 	response := httptest.NewRecorder()
-	NewRouter(RouterDependencies{Ready: func(context.Context) error { return nil }, Authentication: authentication, Sessions: authentication}).
-		ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/privacy", nil))
-
-	body := response.Body.String()
-	if !strings.Contains(body, "not configured") {
-		t.Error("privacy page does not mark missing operator details as not configured")
+	NewRouter(RouterDependencies{
+		Ready: func(context.Context) error { return nil }, Authentication: authentication, Sessions: authentication,
+		LegalDocuments: sampleLegalDocuments(),
+	}).ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/imprint", nil))
+	if response.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want %d", response.Code, http.StatusNotFound)
 	}
-	if strings.Contains(body, "mailto:") {
-		t.Error("privacy page renders a mailto link without a configured contact email")
+}
+
+// Administrator Markdown is trusted for wording, not for markup: raw HTML and
+// script links must not reach a visitor's browser.
+func TestLegalMarkdownOmitsRawHTMLAndScriptLinks(t *testing.T) {
+	documents := sampleLegalDocuments()
+	documents[legal.Privacy] = legal.Document{Kind: legal.Privacy, Body: "<script>alert(1)</script>\n\n<img src=x onerror=alert(1)>\n\n[contact](javascript:alert(1))"}
+	authentication := &routerAuthentication{}
+	response := httptest.NewRecorder()
+	NewRouter(RouterDependencies{
+		Ready: func(context.Context) error { return nil }, Authentication: authentication, Sessions: authentication,
+		LegalDocuments: documents,
+	}).ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/privacy", nil))
+	body := response.Body.String()
+	for _, unsafe := range []string{"alert(1)", "onerror"} {
+		if strings.Contains(body, unsafe) {
+			t.Errorf("privacy page contains %q", unsafe)
+		}
 	}
 }
 
@@ -2156,7 +2253,7 @@ func TestLegalPagesUseAppShellForSignedInPlayer(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/privacy", nil)
 	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
 	response := httptest.NewRecorder()
-	NewRouter(RouterDependencies{Ready: func(context.Context) error { return nil }, Authentication: authentication, Sessions: authentication}).
+	NewRouter(RouterDependencies{Ready: func(context.Context) error { return nil }, Authentication: authentication, Sessions: authentication, LegalDocuments: sampleLegalDocuments()}).
 		ServeHTTP(response, request)
 
 	if response.Code != http.StatusOK {
@@ -2176,7 +2273,7 @@ func TestLegalPagesTreatPlayerWithoutGameNickAsAnonymous(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/terms", nil)
 	request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
 	response := httptest.NewRecorder()
-	NewRouter(RouterDependencies{Ready: func(context.Context) error { return nil }, Authentication: authentication, Sessions: authentication}).
+	NewRouter(RouterDependencies{Ready: func(context.Context) error { return nil }, Authentication: authentication, Sessions: authentication, LegalDocuments: sampleLegalDocuments()}).
 		ServeHTTP(response, request)
 
 	if response.Code != http.StatusOK {
@@ -2187,17 +2284,31 @@ func TestLegalPagesTreatPlayerWithoutGameNickAsAnonymous(t *testing.T) {
 	}
 }
 
-// The policy must describe everything the request log and session store keep.
-func TestPrivacyPolicyDescribesLoggedFieldsAndSessionRetention(t *testing.T) {
-	authentication := &routerAuthentication{}
-	response := httptest.NewRecorder()
-	NewRouter(RouterDependencies{Ready: func(context.Context) error { return nil }, Authentication: authentication, Sessions: authentication}).
-		ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/privacy", nil))
+func TestAdminSavesLegalTextAndKeepsRejectedInput(t *testing.T) {
+	admin := &routerAuthentication{account: user.User{ID: "u1", GameNick: "Ada Admin", Role: user.RoleAdmin}}
+	documents := sampleLegalDocuments()
+	router := NewRouter(RouterDependencies{Ready: func(context.Context) error { return nil }, Authentication: admin, Sessions: admin, LegalDocuments: documents})
+	post := func(kind, body string) *httptest.ResponseRecorder {
+		request := httptest.NewRequest(http.MethodPost, "/admin/legal/"+kind, strings.NewReader(url.Values{"body": {body}}.Encode()))
+		request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		request.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
+		addCSRF(request)
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, request)
+		return response
+	}
 
-	body := response.Body.String()
-	for _, want := range []string{"response status", "response size", "duration", "Session records remain stored"} {
-		if !strings.Contains(body, want) {
-			t.Errorf("privacy policy does not mention %q", want)
-		}
+	if response := post("terms", "## Our rules"); response.Code != http.StatusSeeOther || documents[legal.Terms].Body != "## Our rules" {
+		t.Errorf("save: status = %d, stored = %q", response.Code, documents[legal.Terms].Body)
+	}
+	response := post("privacy", "   ")
+	if response.Code != http.StatusUnprocessableEntity || !strings.Contains(response.Body.String(), legal.ErrEmpty.Error()) {
+		t.Errorf("empty save: status = %d, want %d with error", response.Code, http.StatusUnprocessableEntity)
+	}
+	if documents[legal.Privacy].Body != "## Controller\n\nClub e.V." {
+		t.Errorf("rejected save changed the stored privacy text to %q", documents[legal.Privacy].Body)
+	}
+	if response := post("cookies", "text"); response.Code != http.StatusNotFound {
+		t.Errorf("unknown kind: status = %d, want %d", response.Code, http.StatusNotFound)
 	}
 }

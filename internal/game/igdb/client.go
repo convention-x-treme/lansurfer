@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -228,15 +229,19 @@ func (c *Client) token(ctx context.Context) (string, error) {
 		return c.accessToken, nil
 	}
 
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, c.tokenURL, nil)
+	// The secret travels in the form body, not the URL query, so proxies and
+	// transport-level URL logging never see it. Twitch accepts both
+	// (https://dev.twitch.tv/docs/authentication/getting-tokens-oauth/#client-credentials-grant-flow).
+	form := url.Values{
+		"client_id":     {c.clientID},
+		"client_secret": {c.clientSecret},
+		"grant_type":    {"client_credentials"},
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, c.tokenURL, strings.NewReader(form.Encode()))
 	if err != nil {
 		return "", fmt.Errorf("build app access token request: %w", err)
 	}
-	query := request.URL.Query()
-	query.Set("client_id", c.clientID)
-	query.Set("client_secret", c.clientSecret)
-	query.Set("grant_type", "client_credentials")
-	request.URL.RawQuery = query.Encode()
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	response, err := c.httpClient.Do(request)
 	if err != nil {

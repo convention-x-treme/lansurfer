@@ -1,3 +1,5 @@
+# Private repositories use the isolated self-hosted Docker runner like main CI.
+# Public repositories use GitHub-hosted runners; fork PRs never receive package tokens.
 name: Production Compose runtime smoke
 
 on:
@@ -14,11 +16,15 @@ permissions:
   contents: read
   packages: read
 
+concurrency:
+  group: production-compose-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   pinned-release-smoke:
     name: Boot pinned images, migrate, and verify persistence
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(github.event.repository.private && '["self-hosted","linux","x64","docker"]' || '"ubuntu-latest"') }}
     timeout-minutes: 18
     steps:
       - name: Check out proposed revision
@@ -26,7 +32,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Exercise real release images on disposable volumes
+      - name: Exercise real release images on disposable runner Docker volumes
         shell: bash
         env:
           GHCR_TOKEN: ${{ github.token }}

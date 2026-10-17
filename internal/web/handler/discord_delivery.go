@@ -77,6 +77,10 @@ func discordDeliveryNotice(r *http.Request) components.Notice {
 		return components.Notice{Text: "Discord destination connected.", Tone: components.NoticeSuccess}
 	case "disconnected":
 		return components.Notice{Text: "Discord destination disconnected.", Tone: components.NoticeInfo}
+	case "cancelled":
+		return components.Notice{Text: "Discord webhook setup was cancelled.", Tone: components.NoticeInfo}
+	case "failed":
+		return components.Notice{Text: "Discord webhook setup could not be completed. Please try again.", Tone: components.NoticeWarning}
 	case "not-configured":
 		return components.Notice{Text: "Discord destination is not configured.", Tone: components.NoticeWarning}
 	default:
@@ -124,11 +128,23 @@ func (h *DiscordDelivery) Callback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not complete Discord setup. Please try again.", http.StatusInternalServerError)
 		return
 	}
-	if code := r.URL.Query().Get("code"); code == "" {
-		http.Error(w, "Discord authorization was not completed.", http.StatusBadRequest)
+	// ponytail: state was consumed above, so a cancel can't be replayed.
+	if providerError := r.URL.Query().Get("error"); providerError != "" {
+		if providerError == "access_denied" {
+			http.Redirect(w, r, "/admin/discord?notice=cancelled", http.StatusSeeOther)
+			return
+		}
+		http.Redirect(w, r, "/admin/discord?notice=failed", http.StatusSeeOther)
 		return
-	} else if err := h.connector.Connect(r.Context(), code); err != nil {
-		http.Error(w, "Could not complete Discord setup. Please try again.", http.StatusBadGateway)
+	}
+	code := r.URL.Query().Get("code")
+	if code == "" {
+		http.Redirect(w, r, "/admin/discord?notice=failed", http.StatusSeeOther)
+		return
+	}
+	if err := h.connector.Connect(r.Context(), code); err != nil {
+		webmiddleware.LogError(r, "connect discord destination", err)
+		http.Redirect(w, r, "/admin/discord?notice=failed", http.StatusSeeOther)
 		return
 	}
 	http.Redirect(w, r, "/admin/discord?notice=connected", http.StatusSeeOther)

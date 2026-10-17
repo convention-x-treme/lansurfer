@@ -195,8 +195,8 @@ document.addEventListener("session-information-mutated", () => {
 // choice into <html>, and without one the stylesheet follows the operating
 // system. Setting it from script on load would repaint the page after the
 // deferred bundle runs, which is the theme flash this avoids.
-const themeCookieName = "lansurfer_theme";
-const themeCookieMaxAge = 60 * 60 * 24 * 365;
+// The server sets the choice as an HttpOnly cookie (Twitch Developer Services
+// Agreement, Schedule 1, A), so script only reports it.
 const darkTheme = "lansurfer-dark";
 const lightTheme = "lansurfer-light";
 
@@ -208,9 +208,15 @@ function currentTheme(): Theme {
   return window.matchMedia("(prefers-color-scheme: light)").matches ? lightTheme : darkTheme;
 }
 
-function rememberTheme(theme: Theme): void {
-  const secure = window.location.protocol === "https:" ? "; Secure" : "";
-  document.cookie = `${themeCookieName}=${theme}; path=/; max-age=${themeCookieMaxAge}; SameSite=Lax${secure}`;
+function rememberTheme(theme: Theme, button: HTMLButtonElement): void {
+  const csrf = button.form?.elements.namedItem("csrf_token");
+  if (!(csrf instanceof HTMLInputElement)) return;
+  void fetch("/theme", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ csrf_token: csrf.value, theme }),
+  }).catch(() => undefined);
 }
 
 function describeToggles(theme: Theme): void {
@@ -337,7 +343,7 @@ document.addEventListener(
 document.querySelectorAll<HTMLButtonElement>("[data-theme-toggle]").forEach((button) => {
   button.addEventListener("click", () => {
     const nextTheme = currentTheme() === darkTheme ? lightTheme : darkTheme;
-    rememberTheme(nextTheme);
+    rememberTheme(nextTheme, button);
     document.documentElement.dataset.theme = nextTheme;
     describeToggles(nextTheme);
   });
@@ -420,6 +426,7 @@ type GameRequestEvent = {
 // removing the element a response is about to be swapped into.
 let pendingMutations = 0;
 let refreshQueued = false;
+let queuedRefreshFailure: (() => void) | null = null;
 let lobbyRefreshQueued = false;
 let queuedLobbyRequestID: string | null = null;
 
@@ -432,7 +439,9 @@ document.addEventListener("htmx:afterRequest", () => {
   if (pendingMutations > 0) return;
   if (refreshQueued) {
     refreshQueued = false;
-    refreshGameRequests();
+    const onFailure = queuedRefreshFailure;
+    queuedRefreshFailure = null;
+    refreshGameRequests(undefined, onFailure ?? undefined);
   }
   if (lobbyRefreshQueued) {
     lobbyRefreshQueued = false;
@@ -550,11 +559,39 @@ document.addEventListener("htmx:afterSwap", (event) => {
 // page needs after it was disconnected from the stream for a while. A deferred
 // refresh drops the event, and with it only the highlight on a new row; the
 // rows themselves come from the database either way.
-function refreshGameRequests(event?: GameRequestEvent): void {
+function refreshGameRequests(event?: GameRequestEvent, onFailure?: () => void): void {
   if (pendingMutations > 0) {
     refreshQueued = true;
+    if (onFailure) queuedRefreshFailure = onFailure;
     return;
   }
+
+  const requestRefresh = (url: string, target: string): void => {
+    if (!onFailure) {
+      void htmx.ajax("get", url, { target, swap: "outerHTML" });
+      return;
+    }
+    let failed = false;
+    const fail = (): void => {
+      if (failed) return;
+      failed = true;
+      onFailure();
+    };
+    const onRequestError = (requestEvent: Event): void => {
+      const responseTarget = (requestEvent as CustomEvent<{ target: Element }>).detail.target;
+      if (responseTarget === document.querySelector(target)) fail();
+    };
+    document.addEventListener("htmx:responseError", onRequestError);
+    document.addEventListener("htmx:sendError", onRequestError);
+    document.addEventListener("htmx:timeout", onRequestError);
+    void htmx.ajax("get", url, { target, swap: "outerHTML" })
+      .catch(fail)
+      .finally(() => {
+        document.removeEventListener("htmx:responseError", onRequestError);
+        document.removeEventListener("htmx:sendError", onRequestError);
+        document.removeEventListener("htmx:timeout", onRequestError);
+      });
+  };
 
   // The refresh reloads whatever selection the player is looking at, so a live
   // update never silently drops their discovery filters.
@@ -563,10 +600,7 @@ function refreshGameRequests(event?: GameRequestEvent): void {
     const parameters = new URLSearchParams(list.dataset.filterQuery ?? "");
     if (event?.type === "GameRequestCreated") parameters.set("highlight", event.requestId);
     const query = parameters.toString();
-    void htmx.ajax("get", `/game-requests/refresh${query ? `?${query}` : ""}`, {
-      target: "#game-request-list",
-      swap: "outerHTML",
-    });
+    requestRefresh(`/game-requests/refresh${query ? `?${query}` : ""}`, "#game-request-list");
   }
 
   const detail = document.querySelector<HTMLElement>("[data-game-request-detail]");
@@ -578,10 +612,7 @@ function refreshGameRequests(event?: GameRequestEvent): void {
       const value = new URL(window.location.href).searchParams.get(key);
       if (value !== null) refreshURL.searchParams.set(key, value);
     }
-    void htmx.ajax("get", refreshURL.toString(), {
-      target: "#game-request-detail",
-      swap: "outerHTML",
-    });
+    requestRefresh(refreshURL.toString(), "#game-request-detail");
   }
 }
 
@@ -601,7 +632,7 @@ const realtime = document.querySelector<HTMLElement>("[data-realtime-url]");
 if (realtime?.dataset.realtimeUrl) {
   const baseRealtimeURL = realtime.dataset.realtimeUrl;
   let events: EventSource | null = null;
-
+  let reconnectPending = false;
   const connectRealtime = (): void => {
     if (events) return;
     const detail = document.querySelector<HTMLElement>("[data-game-request-detail]");
@@ -609,7 +640,19 @@ if (realtime?.dataset.realtimeUrl) {
     const realtimeURL = new URL(baseRealtimeURL, window.location.href);
     if (requestID) realtimeURL.searchParams.set("detailRequestId", requestID);
     events = new EventSource(realtimeURL);
-    events.addEventListener("open", () => document.querySelector("[data-live-connection-alert]")?.remove());
+    events.addEventListener("open", () => {
+      document.querySelector("[data-live-connection-alert]")?.remove();
+      if (reconnectPending) {
+        reconnectPending = false;
+        let retries = 0;
+        const retryOnce = (): void => {
+          if (retries > 0) return;
+          retries += 1;
+          window.setTimeout(() => refreshGameRequests(undefined, retryOnce), 1000);
+        };
+        refreshGameRequests(undefined, retryOnce);
+      }
+    });
     events.addEventListener("game-request", (message) => {
       try {
         refreshGameRequests(JSON.parse(message.data) as GameRequestEvent);
@@ -641,6 +684,7 @@ if (realtime?.dataset.realtimeUrl) {
       }
     });
     events.addEventListener("error", () => {
+      reconnectPending = true;
       if (document.querySelector("[data-live-connection-alert]")) return;
       liveNotice("warning", "Live connection lost. Retrying…").dataset.liveConnectionAlert = "";
     });
@@ -661,6 +705,7 @@ if (realtime?.dataset.realtimeUrl) {
       disconnectRealtime();
       return;
     }
+    reconnectPending = false;
     connectRealtime();
     refreshGameRequests();
   });

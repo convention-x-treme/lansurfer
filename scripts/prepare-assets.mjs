@@ -58,7 +58,7 @@ await cp(
 );
 await cp(
   new URL("../node_modules/htmx.org/LICENSE", import.meta.url),
-  new URL("licenses/htmx-BSD-2-Clause.txt", output),
+  new URL("licenses/htmx-0BSD.txt", output),
 );
 await cp(
   new URL("../node_modules/tailwindcss/LICENSE", import.meta.url),

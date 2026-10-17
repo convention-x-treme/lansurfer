@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# CI-only: boot the real, pinned release image on a disposable Compose project.
+# CI-only: boot the actual release image using the self-hosted runner Docker daemon.
+# Probe through project Docker DNS, never through the LXC runner's host loopback.
 set -euo pipefail
 
 : "${GITHUB_RUN_ID:?Run only in GitHub Actions, never on an operator host}"
@@ -7,9 +8,13 @@ set -euo pipefail
 : "${GHCR_TOKEN:?The job needs packages:read for the existing release image}"
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-project="lansurfer-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT:-1}"
+project="lansurfer-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT:-1}-production"
+network="${project}_default"
 config_file="$(mktemp)"
 chmod 600 "$config_file"
+docker_config="$(mktemp -d)"
+chmod 700 "$docker_config"
+export DOCKER_CONFIG="$docker_config"
 compose=(docker compose --project-name "$project" --env-file "$config_file" -f "$root/deploy/compose.production.yaml")
 
 cleanup() {
@@ -21,6 +26,7 @@ cleanup() {
   fi
   "${compose[@]}" down --volumes --remove-orphans >/dev/null || true
   rm -f "$config_file"
+  rm -rf -- "$docker_config"
   exit "$result"
 }
 trap cleanup EXIT
@@ -37,31 +43,39 @@ cat > "$config_file" <<EOF
 $image_refs
 POSTGRES_PASSWORD=$(openssl rand -hex 32)
 LANSURFER_BASE_URL=https://lansurfer.example.invalid
-LANSURFER_HTTP_PORT=18081
+LANSURFER_HTTP_PORT=$((20000 + GITHUB_RUN_ID % 30000))
 LANSURFER_DISCORD_CLIENT_ID=ci-only
 LANSURFER_DISCORD_CLIENT_SECRET=ci-only
 LANSURFER_LEGAL_ENTITY_NAME=CI fixture
 LANSURFER_LEGAL_CONTACT_EMAIL=ci@example.invalid
 EOF
 
-"${compose[@]}" config --format json | python3 "$root/scripts/test-production-compose.py" --test-mutations
+# The runner host is intentionally bare (no native Python dependency).
+# Pipe synthetic effective configuration to a disposable, network-isolated Python container.
+"${compose[@]}" config --format json |
+  docker run --rm -i --network none python:3.13-alpine \
+    python3 -c "$(cat "$root/scripts/test-production-compose.py")" --test-mutations
+# GHCR read token lives in an ephemeral Docker config, never the runner's home.
 printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin >/dev/null
 
 # All containers are isolated to the uniquely named CI Compose project.
 "${compose[@]}" pull --quiet
 
 wait_ready() {
-  local health readiness
-  for attempt in {1..90}; do
-    health="$(curl --fail --silent --max-time 3 http://127.0.0.1:18081/healthz || true)"
-    readiness="$(curl --fail --silent --max-time 3 http://127.0.0.1:18081/readyz || true)"
-    if [[ "$health" == ok && "$readiness" == ready ]]; then
-      return 0
-    fi
-    sleep 2
-  done
-  echo 'LANsurfer never became ready on the pinned release image' >&2
-  return 1
+  # Docker lives behind the runner's isolated daemon. Do not assume
+  # host-published 127.0.0.1 ports are reachable from GitHub's LXC worker.
+  docker run --rm --network "$network" --entrypoint /bin/sh curlimages/curl:8.16.0 -ec '
+    attempt=0
+    while [ "$attempt" -lt 90 ]; do
+      health="$(curl --fail --silent --max-time 3 http://lansurfer:8080/healthz || true)"
+      readiness="$(curl --fail --silent --max-time 3 http://lansurfer:8080/readyz || true)"
+      if [ "$health" = ok ] && [ "$readiness" = ready ]; then exit 0; fi
+      attempt=$((attempt + 1))
+      sleep 2
+    done
+    echo "LANsurfer did not become ready inside the private Docker network" >&2
+    exit 1
+  '
 }
 
 "${compose[@]}" up -d --wait --wait-timeout 120

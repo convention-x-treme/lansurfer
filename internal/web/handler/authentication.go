@@ -31,6 +31,7 @@ type Authentication interface {
 	Providers() []auth.ProviderAvailability
 	Begin(context.Context, auth.OAuthStartInput) (auth.OAuthStart, error)
 	Complete(context.Context, auth.OAuthCompletion) (auth.OAuthResult, error)
+	Decline(context.Context, auth.OAuthCompletion) (auth.FlowOperation, error)
 }
 
 // Sessions revokes the browser session on logout. It is satisfied by
@@ -159,10 +160,6 @@ func (h *AuthenticationHandler) CallbackFor(providerKind string) http.HandlerFun
 			h.renderError(w, r, http.StatusServiceUnavailable, "Login is not configured for this LANsurfer instance.")
 			return
 		}
-		if r.URL.Query().Get("error") != "" {
-			h.renderError(w, r, http.StatusUnauthorized, "The identity provider did not complete login.")
-			return
-		}
 		binding, ok := h.browserBinding(r)
 		currentUser, signedIn := webmiddleware.CurrentUser(r.Context())
 		if !ok {
@@ -174,6 +171,10 @@ func (h *AuthenticationHandler) CallbackFor(providerKind string) http.HandlerFun
 		}
 		if signedIn {
 			completion.CurrentUserID = currentUser.ID
+		}
+		if r.URL.Query().Get("error") != "" {
+			h.handleProviderDecline(w, r, completion, signedIn)
+			return
 		}
 		result, err := h.authentication.Complete(r.Context(), completion)
 		if err != nil {
@@ -191,6 +192,27 @@ func (h *AuthenticationHandler) CallbackFor(providerKind string) http.HandlerFun
 			http.Redirect(w, r, consumeReturnPath(w, r, h.secureCookies), http.StatusSeeOther)
 		}
 	}
+}
+
+// handleProviderDecline handles a callback carrying a provider error. Only an
+// explicit access_denied on a validated account-link flow is a cancellation;
+// everything else stays a login failure. The raw provider error is never shown.
+func (h *AuthenticationHandler) handleProviderDecline(w http.ResponseWriter, r *http.Request, completion auth.OAuthCompletion, signedIn bool) {
+	const declined = "The identity provider did not complete login."
+	if r.URL.Query().Get("error") != "access_denied" {
+		h.renderError(w, r, http.StatusUnauthorized, declined)
+		return
+	}
+	operation, err := h.authentication.Decline(r.Context(), completion)
+	if err != nil {
+		h.handleCallbackError(w, r, err, signedIn)
+		return
+	}
+	if operation == auth.FlowLink && signedIn {
+		http.Redirect(w, r, "/account?link_cancelled=1", http.StatusSeeOther)
+		return
+	}
+	h.renderError(w, r, http.StatusUnauthorized, declined)
 }
 
 func (h *AuthenticationHandler) handleCallbackError(w http.ResponseWriter, r *http.Request, err error, signedIn bool) {

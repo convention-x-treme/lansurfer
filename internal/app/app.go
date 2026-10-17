@@ -19,6 +19,7 @@ import (
 	"github.com/convention-x-treme/lansurfer/internal/notification"
 	notificationpostgres "github.com/convention-x-treme/lansurfer/internal/notification/postgres"
 	"github.com/convention-x-treme/lansurfer/internal/platform/config"
+	"github.com/convention-x-treme/lansurfer/internal/platform/legal"
 	"github.com/convention-x-treme/lansurfer/internal/platform/mediaproxy"
 	"github.com/convention-x-treme/lansurfer/internal/platform/metrics"
 	"github.com/convention-x-treme/lansurfer/internal/platform/postgres"
@@ -27,7 +28,6 @@ import (
 	"github.com/convention-x-treme/lansurfer/internal/user"
 	userpostgres "github.com/convention-x-treme/lansurfer/internal/user/postgres"
 	"github.com/convention-x-treme/lansurfer/internal/web"
-	webmiddleware "github.com/convention-x-treme/lansurfer/internal/web/middleware"
 )
 
 const (
@@ -217,11 +217,9 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		Logger:                     logger,
 		TrustedProxies:             cfg.TrustedProxies,
 		InstanceName:               cfg.InstanceName,
-		Legal: webmiddleware.LegalIdentity{
-			EntityName: cfg.Legal.EntityName, Address: cfg.Legal.Address,
-			ContactEmail: cfg.Legal.ContactEmail, ImprintURL: cfg.Legal.ImprintURL,
-		},
-		BaseURL: cfg.BaseURL,
+		LegalDocuments:             legal.NewStore(pool),
+		ImprintEnabled:             cfg.ImprintEnabled,
+		BaseURL:                    cfg.BaseURL,
 	}
 	if cfg.DiscordDelivery != nil {
 		routerDependencies.DiscordSetup = discordSetup
@@ -247,6 +245,7 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	go notificationWorker.Run(ctx)
 	go runDailyIGDBSync(ctx, igdbSyncService, igdbSyncInterval)
 	go runPeriodicFlowCleanup(ctx, flowStore, authFlowCleanupInterval, logger)
+	go runPeriodicAvatarPrune(ctx, avatars, avatarPruneInterval, logger)
 	// Registered after pool.Close() above so it runs first on the way out:
 	// an in-flight sync's transaction must finish (or be abandoned within the
 	// bound) before the pool it depends on is closed.

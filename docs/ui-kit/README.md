@@ -6,6 +6,8 @@ Reference for specific screen compositions and interactions: the landing page, l
 
 `index.html` is a standalone file (fonts, images, and scripts embedded) and runs without a build step. Open it in the browser, then pan and zoom with the trackpad or scroll.
 
+The archived HTML exports bundle React/ReactDOM 18.3.1 and WOFF2 webfonts. See [UI-kit third-party notices](THIRD_PARTY_NOTICES.md) for the applicable MIT/OFL-1.1 copyright and license texts; keep those notices alongside either HTML export if redistributed separately. This is distinct from the application [release notices](../../THIRD_PARTY_NOTICES.md). The HTML snapshots are design references, **not** dependencies of the production web application.
+
 ## Frames
 
 | ID | Screen | Route |

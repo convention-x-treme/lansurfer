@@ -134,6 +134,28 @@ func (s *OAuthService) Begin(ctx context.Context, input OAuthStartInput) (OAuthS
 	return OAuthStart{AuthorizationURL: provider.Adapter.AuthorizationURL(state, nonce, verifier)}, nil
 }
 
+// Decline consumes the flow of a callback the user declined at the provider and
+// returns its operation. State, browser binding and (for Link) the signed-in
+// user are validated exactly as in Complete; no provider exchange happens.
+func (s *OAuthService) Decline(ctx context.Context, completion OAuthCompletion) (FlowOperation, error) {
+	provider, ok := s.providers[completion.ProviderKind]
+	if !ok || s.flows == nil {
+		return "", ErrUnavailable
+	}
+	if completion.State == "" || completion.BrowserBinding == "" {
+		return "", ErrInvalidCallback
+	}
+	flow, err := s.flows.ConsumeProviderCallback(ctx, ProviderCallback{
+		State: completion.State, BrowserBinding: completion.BrowserBinding,
+		ProviderKind: provider.Adapter.ProviderKind(), ProviderKey: provider.Adapter.ProviderKey(),
+		CurrentUserID: completion.CurrentUserID,
+	})
+	if err != nil {
+		return "", err
+	}
+	return flow.Operation, nil
+}
+
 func (s *OAuthService) Complete(ctx context.Context, completion OAuthCompletion) (OAuthResult, error) {
 	provider, ok := s.providers[completion.ProviderKind]
 	if !ok || s.flows == nil || s.resolver == nil {

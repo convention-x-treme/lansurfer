@@ -298,6 +298,11 @@ templ NavigationLinks(state NavigationState) {
 				</li>
 			}
 			<li>
+				<a class={ navigationSubLinkClass(state.Section == "administration-legal") } href="/admin/legal" aria-current={ navigationCurrent(state.Section == "administration-legal") }>
+					<i class="ph ph-scales" aria-hidden="true"></i><span>Legal texts</span>
+				</a>
+			</li>
+			<li>
 				<a class={ navigationSubLinkClass(state.Section == "administration-metrics") } href="/admin/metrics" aria-current={ navigationCurrent(state.Section == "administration-metrics") }>
 					<i class="ph ph-chart-line" aria-hidden="true"></i><span>Metrics</span>
 				</a>
@@ -393,8 +398,13 @@ templ LogoutControl() {
 	</form>
 }
 
+// ThemeToggle is a form only to carry the CSRF token; app.ts flips the theme
+// in place and posts the choice so the server can set an HttpOnly cookie.
 templ ThemeToggle() {
-	<button type="button" class="btn btn-ghost btn-sm btn-square" data-theme-toggle aria-label="Use light theme" title="Use light theme"><i class="ph ph-moon" data-theme-icon aria-hidden="true"></i></button>
+	<form class="contents" method="post" action="/theme" data-theme-form>
+		@CSRFInput()
+		<button type="button" class="btn btn-ghost btn-sm btn-square" data-theme-toggle aria-label="Use light theme" title="Use light theme"><i class="ph ph-moon" data-theme-icon aria-hidden="true"></i></button>
+	</form>
 }
 
 // InstanceLabel renders the minimum-instance-identity secondary label next to
@@ -436,10 +446,17 @@ templ FontPreloads(brand branding.Brand) {
 	<link rel="preload" as="font" type="font/woff2" crossorigin="anonymous" href={ templ.SafeURL(brand.Assets.DataFont) }/>
 }
 
-// Footer links the Terms and Privacy surfaces on every
+// Footer links the Terms, Privacy, and (when enabled) Imprint surfaces on every
 // shell. It is ordinary flow content, not fixed or sticky: each shell is a
 // full-height flex column, so it rests at the viewport bottom on short pages
 // without covering content or the live-notice toasts on long ones.
+//
+// The IGDB credit is static, independent of whether IGDB synchronization is
+// configured, because synchronized Game data and cached covers outlive it.
+// IGDB asks for attribution "visible to your users and located in a static
+// location" (https://api-docs.igdb.com/#faq), and the Twitch Developer
+// Services Agreement (VII.C) requires a clear path to the source of displayed
+// Program Materials (https://legal.twitch.com/legal/developer-agreement/).
 templ Footer(brand branding.Brand) {
 	<footer class="border-t border-base-300 bg-base-200">
 		<div class="w-full flex flex-col items-center justify-end gap-x-3 gap-y-2 px-4 py-4 text-center text-sm text-base-content/70 sm:flex-row sm:text-right lg:px-6">
@@ -447,15 +464,17 @@ templ Footer(brand branding.Brand) {
 				<a class="link link-hover" href="/terms">Terms</a>
 				<span aria-hidden="true">·</span>
 				<a class="link link-hover" href="/privacy">Privacy</a>
-				if imprint := webmiddleware.LegalInfo(ctx).ImprintURL; imprint != "" {
+				if webmiddleware.ImprintEnabled(ctx) {
 					<span aria-hidden="true">·</span>
-					<a class="link link-hover" href={ templ.URL(imprint) } target="_blank" rel="noopener noreferrer">Imprint</a>
+					<a class="link link-hover" href="/imprint">Imprint</a>
 				}
 			</nav>
-			<div class="flex items-center gap-3 font-medium">
+			<div class="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 font-medium">
 				<span class="hidden text-base-content/50 sm:inline" aria-hidden="true">│</span>
 				<p><a class="link link-hover icon-label" href={ templ.URL(branding.RepositoryURL) } target="_blank" rel="noopener noreferrer"><i class="ph ph-github-logo" aria-hidden="true"></i>Github</a></p>
-				<span class="text-base-content/50" aria-hidden="true">│</span>
+				<span class="hidden text-base-content/50 sm:inline" aria-hidden="true">│</span>
+				<p>Game data by <a class="link link-hover" href="https://www.igdb.com" target="_blank" rel="noopener noreferrer">IGDB.com</a></p>
+				<span class="hidden text-base-content/50 sm:inline" aria-hidden="true">│</span>
 				@OperatorAttribution("")
 			</div>
 		</div>
@@ -582,13 +601,45 @@ func romanDigit(word string) rune {
 	}
 }
 
+// tagClosers pairs the bracket styles commonly used for clan/team tags.
+var tagClosers = map[rune]rune{'[': ']', '(': ')', '{': '}', '<': '>'}
+
+func isNameRune(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) }
+
+// ViewerInitial is the Default avatar glyph: the first letter or digit of the
+// Game Nick outside any bracketed clan tag. A nick that is only a tag falls
+// back to the tag's first letter or digit, then to "?". Presentation only.
 func ViewerInitial(name string) string {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return "?"
+	var tagInitial rune
+	for rest := name; rest != ""; {
+		r, size := utf8.DecodeRuneInString(rest)
+		if isNameRune(r) {
+			return string(unicode.ToUpper(r))
+		}
+		if closer, ok := tagClosers[r]; ok {
+			if end := strings.IndexRune(rest[size:], closer); end >= 0 {
+				if tagInitial == 0 {
+					tagInitial = firstNameRune(rest[size : size+end])
+				}
+				rest = rest[size+end+utf8.RuneLen(closer):]
+				continue
+			}
+		}
+		rest = rest[size:]
 	}
-	runeValue, _ := utf8.DecodeRuneInString(name)
-	return strings.ToUpper(string(runeValue))
+	if tagInitial != 0 {
+		return string(unicode.ToUpper(tagInitial))
+	}
+	return "?"
+}
+
+func firstNameRune(s string) rune {
+	for _, r := range s {
+		if isNameRune(r) {
+			return r
+		}
+	}
+	return 0
 }
 
 func viewerRole(role string) string {
