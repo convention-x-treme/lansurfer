@@ -49,6 +49,7 @@ type GameRequestRefreshAttempt = {
   failed: boolean;
   isRetry: boolean;
   completed: boolean;
+  beforeSwapHandler?: (event: Event) => void;
 };
 type GameRequestRefreshState = {
   pending: boolean;
@@ -735,6 +736,15 @@ function dispatchGameRequestRefresh(target: GameRequestRefreshTarget, state: Gam
     target, element, options, xhr: null, invalidated: false, swapped: false,
     failed: false, isRetry: state.retryUsed, completed: false,
   };
+  attempt.beforeSwapHandler = (event) => {
+    const detail = (event as CustomEvent<{ xhr: XMLHttpRequest }>).detail;
+    if (detail.xhr !== attempt.xhr) return;
+    if (document.hidden || pageRefreshSuspended || document.getElementById(element.id) !== element || attempt.invalidated) {
+      attempt.invalidated = true;
+      event.preventDefault();
+    }
+  };
+  element.addEventListener("htmx:beforeSwap", attempt.beforeSwapHandler);
   state.inFlight = attempt;
   let url: string;
   if (target === "#game-request-list") {
@@ -752,7 +762,7 @@ function dispatchGameRequestRefresh(target: GameRequestRefreshTarget, state: Gam
   }
   try {
     dispatchingRefreshAttempt = attempt;
-    void htmx.ajax("get", url, { source: element, target: element, swap: "outerHTML" })
+    void htmx.ajax("get", url, { source: document.body, target: element, swap: "outerHTML" })
       .catch(() => { attempt.failed = true; })
       .finally(() => queueMicrotask(() => completeGameRequestRefresh(attempt)));
   } catch {
@@ -773,6 +783,7 @@ function completeGameRequestRefresh(attempt: GameRequestRefreshAttempt): void {
   attempt.completed = true;
   const state = gameRequestRefreshStates[attempt.target];
   const xhr = attempt.xhr;
+  if (attempt.beforeSwapHandler) attempt.element.removeEventListener("htmx:beforeSwap", attempt.beforeSwapHandler);
   if (xhr) activeHtmxRequests.delete(xhr);
   if (state.inFlight !== attempt) return;
   state.inFlight = null;
