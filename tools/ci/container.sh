@@ -52,6 +52,8 @@ case "$job" in
     python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else "Python 3.10+ required")'
     goreleaser check
     bash -n scripts/release/publish.sh
+    bash -n scripts/release/smoke_deployment.sh
+    docker compose version
     python3 -m unittest discover -s scripts/release -p 'test_release_policy.py' -v
     python3 -m unittest discover -s scripts/release -p 'test_deployment_assets.py' -v
     bash scripts/release/test-changelog.sh
