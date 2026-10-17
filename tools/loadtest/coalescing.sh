@@ -129,9 +129,9 @@ run_profile() {
 }
 
 run() {
-  local product_revision harness_revision variant repetition baseline_revision baseline_image baseline_sha image digest
+  local product_revision requested_harness_revision variant repetition baseline_revision baseline_image baseline_sha image digest
   product_revision="$(revision "${PRODUCT_REVISION:-}")"
-  harness_revision="$(revision "${HARNESS_REVISION:-}")"
+  requested_harness_revision="$(revision "${HARNESS_REVISION:-}")"
   variant="${VARIANT:-}"
   repetition="${REPETITION:-}"
   [[ "$variant" == baseline || "$variant" == treatment ]] || { echo 'VARIANT must be baseline or treatment' >&2; exit 2; }
@@ -139,7 +139,8 @@ run() {
   [[ -d "$workspace" && -O "$workspace" ]] || { echo 'paired workspace is missing or not owned by current user' >&2; exit 2; }
   # shellcheck disable=SC1090
   source "$workspace/manifest"
-  [[ "$harness_revision" == "$HARNESS_REVISION" ]] || { echo 'HARNESS_REVISION differs from prepared workspace' >&2; exit 2; }
+  [[ "$harness_revision" == "$requested_harness_revision" ]] || { echo 'HARNESS_REVISION differs from prepared workspace' >&2; exit 2; }
+  export HARNESS_REVISION="$harness_revision"
   if [[ "$variant" == baseline ]]; then
     [[ "$product_revision" == "$baseline_revision" ]] || { echo 'baseline run must use prepared PRODUCT_REVISION' >&2; exit 2; }
     image="$baseline_image" digest="$baseline_sha"
