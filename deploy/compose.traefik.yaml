@@ -13,7 +13,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=${TRAEFIK_NETWORK:?Set TRAEFIK_NETWORK to Traefik's existing network}"
-      - "traefik.http.routers.lansurfer.rule=Host(\`${TRAEFIK_HOST:?Set TRAEFIK_HOST to the public hostname}\`)"
+      - "traefik.http.routers.lansurfer.rule=Host(`${TRAEFIK_HOST:?Set TRAEFIK_HOST to the public hostname}`)"
       - "traefik.http.routers.lansurfer.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}"
       - "traefik.http.routers.lansurfer.tls=true"
       - "traefik.http.routers.lansurfer.tls.certresolver=${TRAEFIK_CERT_RESOLVER:?Set TRAEFIK_CERT_RESOLVER}"
