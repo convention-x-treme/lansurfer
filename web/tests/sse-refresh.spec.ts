@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { resetFixture, waitForRealtime } from "./helpers";
+import { resetFixture, simulateRealtimeReconnect, waitForRealtime } from "./helpers";
 
 type RefreshProbe = { count: number; active: number; peak: number };
 type TestWindow = Window & { __eventSource?: EventSource; __refreshProbe?: RefreshProbe; __swapPrevented?: boolean[]; __staleSwapPrevented?: boolean };
@@ -159,28 +159,18 @@ test("an automatic lobby load does not invalidate a trailing detail refresh", as
   expect(swapsPrevented).toEqual([false, false]);
   expect(detailCalls).toBe(2);
 });
-test("starts a first list refresh immediately", async ({ page, request }) => {
+test("waits 200 ms and coalesces a 20-event burst", async ({ page, request }) => {
   await openList(page, request);
   await emit(page, "GameRequestJoined");
-  await page.clock.runFor(0);
-  expect((await refreshProbe(page)).count).toBe(1);
-});
-test("coalesces list events inside a fixed 100 ms window", async ({ page, request }) => {
-  await openList(page, request);
-  await emit(page, "GameRequestJoined");
-  await page.clock.runFor(0);
-  await expect.poll(async () => (await refreshProbe(page)).count).toBe(1);
-  await expect.poll(async () => (await refreshProbe(page)).active).toBe(0);
-  await page.clock.runFor(25);
-  await emit(page, "GameRequestLeft");
-  await page.clock.runFor(25);
-  await emit(page, "GameRequestJoined");
-  await page.clock.runFor(25);
-  await emit(page, "GameRequestLeft");
-  await page.clock.runFor(24);
-  expect((await refreshProbe(page)).count).toBe(1);
+  for (let index = 1; index < 20; index++) {
+    await page.clock.runFor(5);
+    await emit(page, index % 2 ? "GameRequestLeft" : "GameRequestJoined");
+  }
+  await page.clock.runFor(104);
+  expect((await refreshProbe(page)).count).toBe(0);
   await page.clock.runFor(1);
-  await expect.poll(async () => (await refreshProbe(page)).count).toBe(2);
+  await expect.poll(async () => (await refreshProbe(page)).count).toBe(1);
+  expect((await refreshProbe(page)).peak).toBe(1);
 });
 test("keeps live rows and ignores stale out-of-band content after a filter swap", async ({ page, request }) => {
   let releaseFirst!: () => void;
@@ -246,7 +236,7 @@ test("keeps the latest Created highlight and active filter across a burst", asyn
   expect(refreshURL.searchParams.get("highlight")).toBe("request-c");
 });
 
-test("keeps one pending list refresh while response remains active", async ({ page, request }) => {
+test("waits one fixed 200 ms window for events received during a slow refresh", async ({ page, request }) => {
   let release!: () => void;
   let notifyStarted!: () => void;
   let routeCalls = 0;
@@ -263,15 +253,23 @@ test("keeps one pending list refresh while response remains active", async ({ pa
   await emit(page, "GameRequestJoined");
   await page.clock.runFor(200);
   await started;
+  await page.clock.runFor(50);
   await emit(page, "GameRequestLeft");
-  await page.clock.runFor(500);
+  await page.clock.runFor(25);
+  await emit(page, "GameRequestJoined");
+  await page.clock.runFor(25);
+  await emit(page, "GameRequestLeft");
+  await page.clock.runFor(149);
   expect((await refreshProbe(page)).count).toBe(1);
-  expect((await refreshProbe(page)).peak).toBe(1);
   release();
+  await page.clock.runFor(0);
+  expect((await refreshProbe(page)).count).toBe(1);
+  await page.clock.runFor(1);
   await expect.poll(async () => (await refreshProbe(page)).count).toBe(2);
+  expect((await refreshProbe(page)).peak).toBe(1);
 });
 
-test("a failed refresh retries once after 1000 ms and stops after second failure", async ({ page, request }) => {
+test("merges events and reconnect resync into one bounded retry", async ({ page, request }) => {
   let attempts = 0;
   await page.route("**/game-requests/refresh*", async (route) => {
     attempts++;
@@ -281,8 +279,11 @@ test("a failed refresh retries once after 1000 ms and stops after second failure
   await emit(page, "GameRequestJoined");
   await page.clock.runFor(200);
   await expect.poll(() => attempts).toBe(1);
-  await expect.poll(async () => (await refreshProbe(page)).active).toBe(0);
-  await page.clock.runFor(999);
+  await page.clock.runFor(500);
+  await emit(page, "GameRequestLeft");
+  await emit(page, "GameRequestJoined");
+  await simulateRealtimeReconnect(page);
+  await page.clock.runFor(499);
   expect(attempts).toBe(1);
   await page.clock.runFor(1);
   await expect.poll(() => attempts).toBe(2);
@@ -293,7 +294,7 @@ test("a failed refresh retries once after 1000 ms and stops after second failure
 test("keeps a pending refresh through hidden and pagehide suspension", async ({ page, request }) => {
   await openList(page, request);
   await emit(page, "GameRequestJoined");
-  await page.clock.runFor(0);
+  await page.clock.runFor(200);
   await expect.poll(async () => (await refreshProbe(page)).count).toBe(1);
   await expect.poll(async () => (await refreshProbe(page)).active).toBe(0);
   await emit(page, "GameRequestLeft");
@@ -319,6 +320,49 @@ test("keeps a pending refresh through hidden and pagehide suspension", async ({ 
   await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent("pageshow")));
   await page.clock.runFor(1);
   await expect.poll(async () => (await refreshProbe(page)).count).toBe(3);
+});
+test("does not restore an inline draft after a hidden refresh swap is cancelled", async ({ page, request }) => {
+  await page.goto("/game-requests/new?game_id=game-1");
+  await page.getByLabel("Max players").fill("4");
+  const created = page.waitForURL(/\/game-requests\/[0-9a-f-]+(?:\?.*)?$/);
+  await page.getByRole("button", { name: "Create Game Request" }).click();
+  await created;
+  const detailPath = new URL(page.url()).pathname;
+  const id = detailPath.split("/").at(-1)!;
+  let releaseRefresh!: () => void;
+  let notifyRefresh!: () => void;
+  let refreshCalls = 0;
+  const held = new Promise<void>((resolve) => { releaseRefresh = resolve; });
+  const started = new Promise<void>((resolve) => { notifyRefresh = resolve; });
+  await page.route(`**/game-requests/${id}/refresh*`, async (route) => {
+    if (++refreshCalls === 1) {
+      notifyRefresh();
+      await held;
+    }
+    await route.continue();
+  });
+  await openList(page, request, `${detailPath}?edit=1`);
+  const capacity = page.locator("#game-request-detail input[name='max_players']");
+  await expect(capacity).toHaveValue("4");
+  await capacity.fill("6");
+  await emit(page, "GameRequestJoined", id);
+  await page.clock.runFor(200);
+  await started;
+  await page.evaluate(() => {
+    Object.defineProperty(document, "hidden", { configurable: true, value: true });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  releaseRefresh();
+  await page.clock.runFor(0);
+  await expect.poll(async () => (await refreshProbe(page)).active).toBe(0);
+  await capacity.fill("4");
+  await page.evaluate(() => {
+    Object.defineProperty(document, "hidden", { configurable: true, value: false });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await page.clock.runFor(0);
+  await expect.poll(async () => (await refreshProbe(page)).count).toBe(2);
+  await expect(capacity).toHaveValue("4");
 });
 test("retries an aborted refresh once", async ({ page, request }) => {
   let attempts = 0;
@@ -410,4 +454,42 @@ test("preserves a save-triggered detail refresh while an SSE refresh is in fligh
   releaseRefresh();
   await expect.poll(() => refreshCalls).toBe(2);
   await expect(page.locator("#game-request-edit-dialog")).not.toHaveAttribute("open");
+});
+test("real detail save during an SSE refresh gets a serialized revalidation", async ({ page, request }) => {
+  await page.goto("/game-requests/new?game_id=game-1");
+  await page.getByLabel("Max players").fill("4");
+  const created = page.waitForURL(/\/game-requests\/[0-9a-f-]+(?:\?.*)?$/);
+  await page.getByRole("button", { name: "Create Game Request" }).click();
+  await created;
+  const detailPath = new URL(page.url()).pathname;
+  const id = detailPath.split("/").at(-1)!;
+
+  let releaseRefresh!: () => void;
+  let notifyRefresh!: () => void;
+  let refreshCalls = 0;
+  const held = new Promise<void>((resolve) => { releaseRefresh = resolve; });
+  const started = new Promise<void>((resolve) => { notifyRefresh = resolve; });
+  await page.route(`**/game-requests/${id}/refresh*`, async (route) => {
+    if (++refreshCalls === 1) {
+      notifyRefresh();
+      await held;
+    }
+    await route.fulfill({ response: await route.fetch() });
+  });
+  await openList(page, request, detailPath);
+  await page.getByRole("link", { name: "Edit" }).click();
+  await expect(page.locator("#game-request-edit-dialog")).toBeVisible();
+  await emit(page, "GameRequestJoined", id);
+  await page.clock.runFor(200);
+  await started;
+
+  await page.getByLabel("Max players").fill("7");
+  const saved = page.waitForResponse((response) => response.url().endsWith(`/game-requests/${id}/details`) && response.status() === 204);
+  await page.getByRole("button", { name: "Save" }).click();
+  await saved;
+  releaseRefresh();
+  await expect.poll(() => refreshCalls).toBe(2);
+  await expect(page.locator("#game-request-detail")).toContainText("1/7");
+  await expect(page.locator("#game-request-edit-dialog")).toBeHidden();
+  expect((await refreshProbe(page)).peak).toBe(1);
 });

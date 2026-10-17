@@ -33,6 +33,7 @@ htmx.config.includeIndicatorStyles = false;
 let pendingSessionDialogOpen = false;
 let pendingGameRequestEditOpen = false;
 
+const gameRequestRefreshCoalesceMs = 200;
 type GameRequestRefreshTarget = "#game-request-list" | "#game-request-detail";
 type GameRequestRefreshOptions = {
   immediate?: boolean;
@@ -561,6 +562,7 @@ type RequestDetailFieldDraft = {
 const requestDetailsDrafts = new WeakMap<HTMLElement, RequestDetailFieldDraft[]>();
 
 document.addEventListener("htmx:beforeSwap", (event) => {
+  if (event.defaultPrevented) return;
   const target = (event as CustomEvent<{ target: HTMLElement }>).detail.target;
   if (target.id !== "game-request-detail") return;
   const form = target.querySelector<HTMLFormElement>("form[action$='/details']");
@@ -680,7 +682,7 @@ function queueGameRequestRefresh(target: GameRequestRefreshTarget, options: Game
   const now = performance.now();
   if (!state.pending) {
     state.pending = true;
-    state.dueAt = options.immediate ? now : Math.max(now, state.nextAllowedAt);
+    state.dueAt = options.immediate ? now : Math.max(now + gameRequestRefreshCoalesceMs, state.nextAllowedAt);
   } else if (options.immediate && !state.retryUsed) {
     state.dueAt = Math.min(state.dueAt, now);
   }
