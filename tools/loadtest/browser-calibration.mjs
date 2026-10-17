@@ -77,8 +77,8 @@ let profileOutput;
 let profileErrorOutput;
 let writerExitCode = null;
 let profileExitCode = null;
-let writerReadyAt = "";
 let writerTimeouts = null;
+let writerHTTP502s = null;
 let writerReadyAtMs = 0;
 let profileStartedAt = "";
 let profilePath = "";
@@ -170,7 +170,7 @@ try {
         await route.continue();
       }
     });
-    const stats = { started: 0, completed: 0, failed: 0, active: 0, peakConcurrent: 0, outOfOrder: 0, lastCompletedSequence: 0, lastActivityAt: Date.now(), durationsMs: [], statuses: [] };
+    const stats = { started: 0, completed: 0, failed: 0, active: 0, peakConcurrent: 0, outOfOrder: 0, lastCompletedSequence: 0, lastActivityAt: Date.now(), durationsMs: [], statuses: [], requestTimeline: [] };
     await page.exposeBinding("__loadtestActivity", () => { stats.lastActivityAt = Date.now(); });
     const pending = new Map();
     const responseStatuses = new Map();
@@ -180,6 +180,7 @@ try {
         const record = { sequence: ++stats.started, startedAt: performance.now() };
         pending.set(request, record);
         stats.active++;
+        stats.requestTimeline.push({ type: "start", sequence: record.sequence, at: record.startedAt, active: stats.active });
         stats.peakConcurrent = Math.max(stats.peakConcurrent, stats.active);
       }
     });
@@ -215,7 +216,9 @@ try {
       stats.active--;
       stats.completed++;
       stats.statuses.push(status);
-      stats.durationsMs.push(performance.now() - record.startedAt);
+      const durationMs = performance.now() - record.startedAt;
+      stats.durationsMs.push(durationMs);
+      stats.requestTimeline.push({ type: "finish", sequence: record.sequence, at: performance.now(), active: stats.active, status, durationMs });
       if (record.sequence < stats.lastCompletedSequence) stats.outOfOrder++;
       stats.lastCompletedSequence = Math.max(stats.lastCompletedSequence, record.sequence);
     }
@@ -318,10 +321,11 @@ try {
     if (writerRunner) {
       const [output, errorOutput] = await Promise.all([writerOutput, writerErrorOutput]);
       const reportPath = /^Result:\s*(.+)$/m.exec(output)?.[1]?.trim();
-      if (writerExitCode === 0 && reportPath) {
+      if (reportPath) {
         try {
           const report = JSON.parse(await readFile(reportPath, "utf8"));
           writerTimeouts = report.metrics?.loadtest_write_timeouts?.count ?? null;
+          writerHTTP502s = report.metrics?.loadtest_write_http_502s?.count ?? null;
         } catch (error) {
           runnerError ||= `cannot read k6 writer report: ${String(error)}`;
         }
@@ -374,6 +378,7 @@ try {
       outOfOrder: stats.outOfOrder,
       durationsMs: stats.durationsMs.slice(),
       statuses: stats.statuses.slice(),
+      requestTimeline: stats.requestTimeline,
     };
     allLatenciesMs.push(...measured.durationsMs);
     const state = await page.evaluate(async ({ url, currentView }) => {
@@ -445,6 +450,7 @@ try {
       outOfOrderCompletions: measured.outOfOrder,
       refreshLatencyMs: { p50: percentile(measured.durationsMs, 50), p95: percentile(measured.durationsMs, 95), p99: percentile(measured.durationsMs, 99), max: percentile(measured.durationsMs, 100) },
       statuses: statusCounts(measured.statuses),
+      requestTimeline: measured.requestTimeline,
       initialState,
       visibleState: state.visibleState,
       authoritativeState: state.authoritativeState,
@@ -487,6 +493,7 @@ try {
     probe: probe === "1",
     writerUsers,
     writerTimeouts,
+    writerHTTP502s,
     writerReadyAt,
     writerExitCode,
     profileExitCode,
@@ -527,7 +534,7 @@ try {
   };
   summary.failures = calibrationFailures(summary, browserClients);
   if (runnerError) summary.failures.push(`load-test process failed: ${runnerError}`);
-  if (writerUsers > 0 && (writerExitCode !== 0 || writerTimeouts === null)) summary.failures.push("writer process or timeout metric is missing");
+  if (writerUsers > 0 && (writerExitCode !== 0 || writerTimeouts === null || writerHTTP502s === null)) summary.failures.push("writer process or HTTP failure metrics are missing");
   if (writerUsers > 0 && profileExitCode !== 0) summary.failures.push("profiler process failed");
   await mkdir(reportDir, { recursive: true, mode: 0o700 });
   const reportPath = join(reportDir, `browser-calibration-${new Date().toISOString().replaceAll(/[-:]/g, "").replace(/\.\d+Z$/, "Z")}.json`);

@@ -8,9 +8,11 @@ workspace_name="${WORKSPACE:-}"
 slug="${workspace_name,,}"
 workspace_root="${HOME}/lansurfer-loadtest-coalescing"
 workspace="${workspace_root}/${slug}"
-compose=(docker compose -p lansurfer-loadtest -f "$root/tools/loadtest/compose.yaml")
+project_name="lansurfer-loadtest-${slug}"
+compose=(docker compose -p "$project_name" -f "$root/tools/loadtest/compose.yaml")
 chaos_compose=("${compose[@]}" -f "$root/tools/loadtest/compose.chaos.yaml")
 database_url='postgres://lansurfer_loadtest:local-loadtest-only@127.0.0.1:55433/lansurfer_loadtest?sslmode=disable'
+export LOADTEST_NETWORK="${project_name}_default" COMPOSE_PROJECT_NAME="$project_name"
 
 revision() {
   git -C "$root" rev-parse --verify "$1^{commit}"
@@ -53,12 +55,12 @@ verify_bundle() {
 }
 
 prepare() {
-  local product_revision harness_revision baseline_image baseline_sha
+  local product_revision harness_revision runner_revision baseline_image baseline_sha
   product_revision="$(revision "${PRODUCT_REVISION:-}")"
   harness_revision="$(revision "${HARNESS_REVISION:-}")"
-  git -C "$root" merge-base --is-ancestor "$harness_revision" "$product_revision" || {
-    echo 'HARNESS_REVISION must be an ancestor of PRODUCT_REVISION' >&2; exit 2;
-  }
+  runner_revision="$(git -C "$root" rev-parse HEAD)"
+  [[ "$runner_revision" == "$harness_revision" ]] || { echo 'running checkout differs from HARNESS_REVISION' >&2; exit 2; }
+  [[ -z "$(git -C "$root" status --porcelain)" ]] || { echo 'load-test source checkout must be clean' >&2; exit 2; }
   mkdir -m 700 "$workspace"
   read -r baseline_image baseline_sha < <(build_image "$product_revision" baseline)
   printf 'harness_revision=%s\nbaseline_revision=%s\nbaseline_image=%s\nbaseline_sha=%s\n' \
@@ -97,6 +99,20 @@ restore_snapshot() {
   cat "$workspace/database.dump" | "${compose[@]}" exec -T postgres pg_restore -U lansurfer_loadtest --no-owner --no-privileges -d lansurfer_loadtest
 }
 
+capture_diagnostics() {
+  local variant="$1" out="$2"
+  local stack=("${chaos_compose[@]}" -f "$workspace/compose-${variant}.yaml")
+  "${stack[@]}" ps --all --format json >"$out/container-state.json" 2>&1 || true
+  local -a ids=()
+  mapfile -t ids < <("${stack[@]}" ps -aq)
+  if ((${#ids[@]})); then
+    docker inspect --format 'name={{.Name}} imageID={{.Image}} status={{.State.Status}} exitCode={{.State.ExitCode}} oomKilled={{.State.OOMKilled}} restarts={{.RestartCount}} started={{.State.StartedAt}} finished={{.State.FinishedAt}}' "${ids[@]}" >"$out/container-inspect.txt" 2>&1 || true
+  fi
+  "${stack[@]}" logs --no-color --timestamps --tail=10000 lansurfer proxy postgres >"$out/compose.log" 2>&1 || true
+  chmod 600 "$out/container-state.json" "$out/compose.log"
+  [[ ! -f "$out/container-inspect.txt" ]] || chmod 600 "$out/container-inspect.txt"
+}
+
 run_profile() {
   local variant="$1" revision="$2" image="$3" digest="$4" repetition="$5" profile="$6"
   local out="$workspace/results/${variant}/rep-${repetition}/${profile}"
@@ -104,28 +120,36 @@ run_profile() {
   chmod 700 "$out"
   restore_snapshot
   compose_override "$image" "$workspace/compose-${variant}.yaml"
-  "${chaos_compose[@]}" -f "$workspace/compose-${variant}.yaml" up -d --no-build --force-recreate lansurfer proxy
+  "${chaos_compose[@]}" -f "$workspace/compose-${variant}.yaml" up -d --build --force-recreate lansurfer proxy
   wait_ready
   verify_bundle "$digest"
-  local image_id runner_revision dirty refresh_mode="${REFRESH_MODE_OVERRIDE:-}"
+  local image_id proxy_image_id app_container_id proxy_container_id runner_revision dirty refresh_mode="${REFRESH_MODE_OVERRIDE:-}"
   if [[ -z "$refresh_mode" ]]; then
     refresh_mode=browser-like
     [[ "$variant" == treatment ]] && refresh_mode=coalesced
   fi
   [[ "$refresh_mode" == browser-like || "$refresh_mode" == coalesced ]] || { echo 'REFRESH_MODE_OVERRIDE must be browser-like or coalesced' >&2; exit 2; }
   image_id="$(docker image inspect --format '{{.Id}}' "$image")"
+  app_container_id="$("${chaos_compose[@]}" -f "$workspace/compose-${variant}.yaml" ps -q lansurfer)"
+  proxy_container_id="$("${chaos_compose[@]}" -f "$workspace/compose-${variant}.yaml" ps -q proxy)"
+  [[ -n "$app_container_id" && -n "$proxy_container_id" ]] || { echo 'app or proxy container did not start' >&2; exit 1; }
+  [[ "$(docker inspect --format '{{.Image}}' "$app_container_id")" == "$image_id" ]] || { echo 'started app image differs from selected product image' >&2; exit 1; }
+  proxy_image_id="$(docker inspect --format '{{.Image}}' "$proxy_container_id")"
   runner_revision="$(git -C "$root" rev-parse HEAD)"
+  [[ "$runner_revision" == "$HARNESS_REVISION" ]] || { echo 'running checkout differs from HARNESS_REVISION' >&2; exit 2; }
   dirty=false
-  [[ -z "$(git -C "$root" status --porcelain -- . ':!docs/superpowers')" ]] || dirty=true
-  printf '{"schemaVersion":1,"variant":"%s","repetition":%s,"profile":"%s","productRevision":"%s","harnessRevision":"%s","runnerRevision":"%s","dirty":%s,"image":"%s","imageID":"%s","appBundleSHA256":"%s","runtimeBundleVerified":true,"refreshMode":"%s"}\n' \
-    "$variant" "$repetition" "$profile" "$revision" "$HARNESS_REVISION" "$runner_revision" "$dirty" "$image" "$image_id" "$digest" "$refresh_mode" >"$out/manifest.json"
+  [[ -z "$(git -C "$root" status --porcelain)" ]] || dirty=true
+  [[ "$dirty" == false ]] || { echo 'load-test source checkout must be clean' >&2; exit 2; }
+  printf '{"schemaVersion":2,"variant":"%s","repetition":%s,"profile":"%s","productRevision":"%s","harnessRevision":"%s","runnerRevision":"%s","dirty":%s,"image":"%s","imageID":"%s","appContainerID":"%s","appContainerImageID":"%s","proxyContainerID":"%s","proxyImageID":"%s","appBundleSHA256":"%s","runtimeBundleVerified":true,"refreshMode":"%s"}\n' \
+    "$variant" "$repetition" "$profile" "$revision" "$HARNESS_REVISION" "$runner_revision" "$dirty" "$image" "$image_id" "$app_container_id" "$image_id" "$proxy_container_id" "$proxy_image_id" "$digest" "$refresh_mode" >"$out/manifest.json"
   chmod 600 "$out/manifest.json"
   local simulated_users writers sim_offset writer_offset duration=150s run_duration=90s
-  if [[ "$profile" == '120' ]]; then
-    simulated_users=120 writers=20 sim_offset=5 writer_offset=125
-  else
-    simulated_users=400 writers=100 sim_offset=5 writer_offset=405
-  fi
+  case "$profile" in
+    small) simulated_users=10 writers=2 sim_offset=5 writer_offset=15 duration=40s run_duration=20s ;;
+    120) simulated_users=120 writers=20 sim_offset=5 writer_offset=125 ;;
+    400-writer) simulated_users=400 writers=100 sim_offset=0 writer_offset=405 ;;
+    *) echo "unknown coalescing profile: $profile" >&2; exit 2 ;;
+  esac
   export BASE_URL=http://127.0.0.1:18081 REQUEST="$(node -p "require('$workspace/control.json').request_id")"
   export SIMULATED_USERS="$simulated_users" SIMULATED_SESSION_OFFSET="$sim_offset" BROWSER_CLIENTS=5
   export WRITERS="$writers" WRITER_SESSION_OFFSET="$writer_offset" WRITER_DURATION="$run_duration"
@@ -140,6 +164,7 @@ run_profile() {
   else
     calibration_exit=$?
   fi
+  capture_diagnostics "$variant" "$out"
   local reports=("$out"/browser-calibration-*.json)
   if [[ ! -f "${reports[0]}" ]]; then
     cat "$out/console.log" >&2
@@ -152,9 +177,13 @@ run_profile() {
 }
 
 run() {
-  local product_revision requested_harness_revision variant repetition baseline_revision baseline_image baseline_sha image digest
+  local product_revision requested_harness_revision runner_revision variant repetition baseline_revision baseline_image baseline_sha image digest
+  local profile="${LOADTEST_PROFILE:-small}" profiles=()
   product_revision="$(revision "${PRODUCT_REVISION:-}")"
   requested_harness_revision="$(revision "${HARNESS_REVISION:-}")"
+  runner_revision="$(git -C "$root" rev-parse HEAD)"
+  [[ "$runner_revision" == "$requested_harness_revision" ]] || { echo 'running checkout differs from HARNESS_REVISION' >&2; exit 2; }
+  [[ -z "$(git -C "$root" status --porcelain)" ]] || { echo 'load-test source checkout must be clean' >&2; exit 2; }
   variant="${VARIANT:-}"
   repetition="${REPETITION:-}"
   [[ "$variant" == baseline || "$variant" == treatment ]] || { echo 'VARIANT must be baseline or treatment' >&2; exit 2; }
@@ -164,12 +193,17 @@ run() {
   source "$workspace/manifest"
   [[ "$harness_revision" == "$requested_harness_revision" ]] || { echo 'HARNESS_REVISION differs from prepared workspace' >&2; exit 2; }
   export HARNESS_REVISION="$harness_revision"
+  case "$profile" in
+    small|120) profiles=("$profile") ;;
+    400-writer) [[ "${ALLOW_400_CLIENT_PROFILE:-0}" == 1 ]] || { echo '400-client profile requires ALLOW_400_CLIENT_PROFILE=1' >&2; exit 2; }; profiles=(400-writer) ;;
+    all) [[ "${ALLOW_400_CLIENT_PROFILE:-0}" == 1 ]] || { echo 'all profiles require ALLOW_400_CLIENT_PROFILE=1' >&2; exit 2; }; profiles=(120 400-writer) ;;
+    *) echo 'LOADTEST_PROFILE must be small, 120, 400-writer, or all' >&2; exit 2 ;;
+  esac
   if [[ "$variant" == baseline ]]; then
     [[ "$product_revision" == "$baseline_revision" ]] || { echo 'baseline run must use prepared PRODUCT_REVISION' >&2; exit 2; }
     image="$baseline_image" digest="$baseline_sha"
   else
     [[ "$product_revision" != "$baseline_revision" ]] || { echo 'treatment revision must differ from baseline' >&2; exit 2; }
-    git -C "$root" merge-base --is-ancestor "$harness_revision" "$product_revision" || { echo 'HARNESS_REVISION must be an ancestor of treatment PRODUCT_REVISION' >&2; exit 2; }
     read -r image digest < <(build_image "$product_revision" treatment)
   fi
   export LANSURFER_LOADTEST_DATABASE_URL="$database_url"
@@ -177,8 +211,9 @@ run() {
   export LANSURFER_LOADTEST_FIXTURES_FILE="$workspace/fixtures.json"
   export LANSURFER_LOADTEST_CONTROL_FILE="$workspace/control.json"
   export LANSURFER_LOADTEST_METRICS_KEY_FILE="$workspace/metrics-key"
-  run_profile "$variant" "$product_revision" "$image" "$digest" "$repetition" 120
-  run_profile "$variant" "$product_revision" "$image" "$digest" "$repetition" 400-writer
+  for profile in "${profiles[@]}"; do
+    run_profile "$variant" "$product_revision" "$image" "$digest" "$repetition" "$profile"
+  done
   echo "Completed $variant repetition $repetition; reports: $workspace/results/$variant/rep-$repetition"
 }
 mkdir -p "$workspace_root"

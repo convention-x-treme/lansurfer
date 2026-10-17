@@ -10,5 +10,5 @@ services:
     cap_add: [NET_ADMIN]
 networks:
   default:
-    name: lansurfer-loadtest_default
+    name: ${LOADTEST_NETWORK:-lansurfer-loadtest_default}
     external: true

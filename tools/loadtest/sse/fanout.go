@@ -184,7 +184,7 @@ func (f *fanout) refreshCoalesced(state *clientState) {
 		return
 	}
 	state.refreshPending = true
-	state.refreshDue = time.Now()
+	state.refreshDue = time.Now().Add(200 * time.Millisecond)
 	if state.refreshAllowedAt.After(state.refreshDue) {
 		state.refreshDue = state.refreshAllowedAt
 	}

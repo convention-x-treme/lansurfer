@@ -101,7 +101,7 @@ task loadtest:sse USERS=120 DURATION=2m REQUEST="$REQ" TRIGGER=20 MODE=browser-l
 task loadtest:sse USERS=400 DURATION=75s RECONNECT=1
 ```
 
-`TRIGGER=N` alternates join and leave; an odd N leaves the trigger player joined, while an even N restores prior membership. Use an open request with free capacity that the last seeded player neither hosts nor has joined. `TRIGGER_DELAY` waits after every stream connects. Events are matched against POST completions; delay can be negative when SSE arrives first. `MODE=browser-like` models one in-flight refresh plus one trailing refresh; `MODE=coalesced` models an immediate first refresh and at most one trailing refresh per 100 ms; `MODE=worst-case` refreshes once per event. Set `GAME_REQUEST_REFRESH_ONLY=1` to filter refresh metrics to `game-request` frames while retaining all-event delivery totals. `ALLOW_MISSING_EVENTS=1` records expected losses instead of failing the harness. Choose an open request with free capacity. Sessions are read from LANSURFER_LOADTEST_SESSIONS_FILE or ~/lansurfer-loadtest-sessions.jsonl.
+`TRIGGER=N` alternates join and leave; an odd N leaves the trigger player joined, while an even N restores prior membership. Use an open request with free capacity that the last seeded player neither hosts nor has joined. `TRIGGER_DELAY` waits after every stream connects. Events are matched against POST completions; delay can be negative when SSE arrives first. `MODE=browser-like` models one in-flight refresh plus one trailing refresh; `MODE=coalesced` waits 200 ms after the first event, does not slide the window, and permits one pending refresh during an active request; `MODE=worst-case` refreshes once per event. Set `GAME_REQUEST_REFRESH_ONLY=1` to filter refresh metrics to `game-request` frames while retaining all-event delivery totals. `ALLOW_MISSING_EVENTS=1` records expected losses instead of failing the runner.
 
 Direct CLI users can pass `-game-request-refresh-only`; the Task command exposes this as `GAME_REQUEST_REFRESH_ONLY=1`.
 
@@ -135,21 +135,25 @@ For `loadtest:chaos`, set `SCENARIO` to **one of** `cut`, `offline`, `delay`, or
 
 These scenarios start `compose.chaos.yaml` (a Go reverse proxy with `NET_ADMIN`, bound to `127.0.0.1:18081`/`18082` only). `POST :18082/control` accepts only fixed modes with bounded fields: `normal`, `hold-refresh`, `fail-refresh`, `cut-streams`, `offline`, `drop-sse`, `delay`, `loss`. `tc netem` runs only inside the proxy container and is removed afterwards. If `NET_ADMIN` or netem is unavailable the packet scenarios exit 2 as "not executed".
 
-Calibration launches 5–10 separate Chromium processes, observes EventSource `open`/`error` and named events, HTMX before/after/swap, busy and disabled state, and compares visible DOM with an authoritative server fragment. The final diagnostic fetch is excluded from refresh counts. Synthetic clients refresh the same filtered list as the pages (`-refresh-query`). `browser-like` coalesces to one in-flight refresh plus one trailing refresh per client; `coalesced` starts the first refresh immediately and allows at most one trailing refresh per 100 ms; `worst-case` refreshes once per event. Synthetic streams reuse the browser identities in the 400-stream runs, so 400 streams plus five browsers are 400 identities, not 405.
+Calibration launches 5–10 separate Chromium processes, observes EventSource `open`/`error` and named events, HTMX before/after/swap, busy and disabled state, and compares visible DOM with an authoritative server fragment. The final diagnostic fetch is excluded from refresh counts. The report records request start/finish timelines and HTTP statuses per browser. Synthetic clients refresh the same filtered list as the pages (`-refresh-query`). `browser-like` coalesces to one in-flight refresh plus one trailing refresh per client; `coalesced` waits 200 ms after the first event and allows one pending refresh during an active request; `worst-case` refreshes once per event. Synthetic streams reuse the browser identities in the 400-stream runs, so 400 streams plus five browsers are 400 identities, not 405.
 
 ### Paired SSE-refresh comparison
 
-`loadtest:coalescing:prepare` creates a private workspace under `$HOME/lansurfer-loadtest-coalescing`, builds baseline image, seeds 507 test identities, and saves a database snapshot. **It deletes only the isolated `lansurfer-loadtest` database volume.** Run only when that test database can be reset.
+`loadtest:coalescing:prepare` creates a private workspace under `$HOME/lansurfer-loadtest-coalescing`, builds the baseline image, seeds 507 test identities, and saves a database snapshot. Each workspace uses a separate Compose project and database volume. Prepare removes only that workspace's volume; it does not touch legacy `lansurfer-loadtest` volumes.
 
 ```sh
-task loadtest:coalescing:prepare WORKSPACE=147 PRODUCT_REVISION="$H" HARNESS_REVISION="$H"
-task loadtest:coalescing WORKSPACE=147 PRODUCT_REVISION="$H" HARNESS_REVISION="$H" VARIANT=baseline REPETITION=1
-task loadtest:coalescing WORKSPACE=147 PRODUCT_REVISION="$C" HARNESS_REVISION="$H" VARIANT=treatment REPETITION=1
+B=baseline-product-commit
+H=harness-commit
+C=treatment-product-commit
+task loadtest:coalescing:prepare WORKSPACE=147m PRODUCT_REVISION="$B" HARNESS_REVISION="$H"
+task loadtest:coalescing WORKSPACE=147m PRODUCT_REVISION="$B" HARNESS_REVISION="$H" VARIANT=baseline REPETITION=1
+task loadtest:coalescing WORKSPACE=147m PRODUCT_REVISION="$C" HARNESS_REVISION="$H" VARIANT=treatment REPETITION=1
 ```
 
-Set `H` to the harness commit and `C` to the treatment commit. Each variant measures 120 SSE streams plus 20 writers, then 400 streams plus 100 writers, with five real Chromium pages. SSE runs last 150s; writers run 90s after startup. Paired runs restore same database snapshot. Synthetic baseline clients use `browser-like` (one in-flight plus one trailing refresh); synthetic treatment clients use immediate-first 100 ms coalescing. Real pages execute each revision's app bundle. Per-profile manifests record actual refresh mode, product/harness SHAs, and app.js checksum. The private workspace stores manifests, session tokens, profile samples, and database snapshot.
 
-Calibration failures remain in each JSON report and do not stop the paired run; missing reports or failed database audits still fail the task.
+Each run uses same committed, clean harness checkout for both product images. Default profile is `small`: 10 SSE streams, two writers, five browser pages, 40 seconds. Set `PROFILE=120` for 120 SSE streams and 20 writers. The 400-stream/100-writer profile requires `PROFILE=400-writer ALLOW_400_CLIENT_PROFILE=1`; `PROFILE=all` also requires that explicit guard. Standard profiles run SSE for 150s and writers for 90s. Each profile restores same database snapshot. Baseline clients use one in-flight plus one trailing refresh; treatment clients use fixed 200 ms coalescing. App images come from exact product SHAs; manifests record harness/product SHAs, app and proxy image IDs, container IDs, and served app.js checksum.
+
+Calibration failures remain in each JSON report and do not stop the paired run; missing reports or failed database audits still fail the task. The output also retains proxy, app, and database logs plus container exit, restart, and OOM state. Writer HTTP 502 counts are separate from request timeouts.
 
 The single control join changes final membership from `1/8` to `2/8`, so DOM convergence check detects a missed update. `PROBE=1` records event-to-visible latency for that join. Compare refresh GETs per relevant SSE event, refresh and write latency, timeouts, deliveries, browser errors, final DOM convergence, and captured database-pool/process-resource samples. Local measurements describe this workstation only.
 For a same-mode control, prepare a separate workspace and run both variants with `REFRESH_MODE_OVERRIDE=browser-like`. Treat mode-switched synthetic totals as workload-model evidence; use five real Chromium pages for direct product behavior.

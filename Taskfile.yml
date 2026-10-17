@@ -254,11 +254,11 @@ tasks:
       - WORKSPACE='{{.WORKSPACE}}' PRODUCT_REVISION='{{.PRODUCT_REVISION}}' HARNESS_REVISION='{{.HARNESS_REVISION}}' bash tools/loadtest/coalescing.sh prepare
 
   loadtest:coalescing:
-    desc: Run one isolated paired SSE-refresh measurement cell
+    desc: Run one isolated paired SSE-refresh measurement cell (small profile by default)
     requires:
       vars: [WORKSPACE, PRODUCT_REVISION, HARNESS_REVISION, VARIANT, REPETITION]
     cmds:
-      - WORKSPACE='{{.WORKSPACE}}' PRODUCT_REVISION='{{.PRODUCT_REVISION}}' HARNESS_REVISION='{{.HARNESS_REVISION}}' VARIANT='{{.VARIANT}}' REPETITION='{{.REPETITION}}' bash tools/loadtest/coalescing.sh run
+      - WORKSPACE='{{.WORKSPACE}}' PRODUCT_REVISION='{{.PRODUCT_REVISION}}' HARNESS_REVISION='{{.HARNESS_REVISION}}' VARIANT='{{.VARIANT}}' REPETITION='{{.REPETITION}}' LOADTEST_PROFILE='{{.PROFILE | default "small"}}' ALLOW_400_CLIENT_PROFILE='{{.ALLOW_400_CLIENT_PROFILE | default "0"}}' bash tools/loadtest/coalescing.sh run
   loadtest:loss:
     desc: Prove persistent state survives deliberately lost SSE signals
     requires:
