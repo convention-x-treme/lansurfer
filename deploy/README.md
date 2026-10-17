@@ -44,7 +44,10 @@ lansurfer.example.org {
 For an existing Docker-based Traefik, use
 [`compose.traefik.yaml`](compose.traefik.yaml) with `TRAEFIK_NETWORK`,
 `TRAEFIK_HOST` and `TRAEFIK_CERT_RESOLVER`. This adds only LANsurfer to
-the proxy network, not PostgreSQL. The configured TLS entrypoint must exist
+the proxy network, not PostgreSQL. Because the Compose project and Traefik
+router/service identifiers are fixed, the sample supports one LANsurfer
+instance per Docker host; multiple instances require distinct names.
+The configured TLS entrypoint must exist
 (default: `websecure`). A containerized reverse proxy cannot reach the
 host's loopback at `127.0.0.1`; it needs this shared private network.
 
@@ -110,19 +113,26 @@ to download or install Python to follow the simple Quickstart.
 
 The project CI uses an isolated Docker runner to boot the published
 baseline image, verify PostgreSQL readiness and persistence, and
-validate the Traefik overlay without launching a proxy.
+validate the Traefik overlay without launching a proxy. During a real
+tag release, the publisher additionally boots the **freshly built tagged
+image** using its actual rendered deployment package on a disposable
+Docker project. It verifies database startup, health/readiness and the
+enabled/disabled public Imprint route **before** publishing the draft.
+This does not replace a tested operator backup or proxy integration test.
 The separate [release snapshot pipeline](../.github/workflows/release-snapshot.yml)
 tests release-asset generation with synthetic digests.
 
 ## Updates and backups
 
 Upgrade by choosing the next **published tag** and downloading its
-matching assets. Keep the existing private `.env` (do not overwrite
-credentials); replace `LANSURFER_IMAGE` only after checking release
-notes, migration compatibility and restoring ability. Database
-migrations are forward-only and rolling back an image does not
-automatically downgrade the schema. PostgreSQL major upgrades need
-their own procedures.
+matching assets. Do not overwrite your existing private `.env`.
+Compare it with the new `production.env.example` and review **all**
+changes, including new variables and any `POSTGRES_IMAGE` change.
+Update the pinned `LANSURFER_IMAGE` only after reading release notes,
+checking compatibility and testing recovery. Rolling back a binary
+does not reverse database migrations; PostgreSQL major upgrades need
+their own migration plan. Earlier checkout-based installs can follow
+the [migration steps](../docs/SELF_HOSTING.md#moving-from-an-earlier-checkout-based-installation).
 
 A container restart or successful data-volume retention test is not
 a complete database backup-and-restore verification; see

@@ -77,7 +77,7 @@ class DeploymentReleaseAssetsTest(unittest.TestCase):
 
         compose = (ROOT / "deploy" / "compose.production.yaml").read_text(encoding="utf-8")
         overlay = (ROOT / "deploy" / "compose.traefik.yaml").read_text(encoding="utf-8")
-        # Docker Compose escapes service-side env references as $$${...};
+        # Docker Compose escapes service-side env references as $${...};
         # these are not .env interpolation variables.
         interpolated = re.sub(r"\$\$\{[A-Z][A-Z0-9_]*\}", "", compose + overlay)
         used = set(re.findall(r"\$\{([A-Z][A-Z0-9_]*)", interpolated))

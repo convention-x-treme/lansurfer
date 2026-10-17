@@ -1,5 +1,6 @@
 # Optional Traefik overlay for the production Compose file.
 # Use only with an EXISTING Traefik container on an external shared network.
+# Fixed router/service labels support one LANsurfer instance per proxy setup.
 # Standalone use: set COMPOSE_FILE=compose.yaml:compose.traefik.yaml in .env.
 services:
   postgres:

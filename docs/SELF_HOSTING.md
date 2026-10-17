@@ -22,6 +22,9 @@ cp production.env.example .env
 chmod 600 .env
 ```
 
+These are **release download** URLs: they are available only after the
+selected version has actually been published on GitHub.
+
 Both files come from the **same release**. The downloaded `production.env.example`
 already references `LANSURFER_IMAGE` with the selected release's exact tag
 and immutable multi-platform digest. You **do not need to find or enter
@@ -108,7 +111,10 @@ TRAEFIK_CERT_RESOLVER=letsencrypt
 The network must exist and Traefik must already be connected to it.
 If your HTTPS entrypoint is named differently, set
 `TRAEFIK_ENTRYPOINT` too. The overlay attaches **only LANsurfer**
-to that shared network; PostgreSQL remains private.
+to that shared network; PostgreSQL remains private. This example uses a
+fixed Docker project name and fixed Traefik router/service names, so it
+supports **one LANsurfer instance per Docker host/Traefik setup**. Running
+multiple instances requires distinct project and router names.
 
 ## 4. Start
 
@@ -202,14 +208,39 @@ database backup/restore procedure before relying on important data.
 
 ## Updates
 
-LANsurfer does **not** update automatically. For a later released
-version, review its release notes and database compatibility,
-make a tested backup, then download the matching release's files
-using its `VERSION`. Preserve your existing private `.env` settings
-and carefully update only `LANSURFER_IMAGE` to the image reference
-shipped in that new release's env example.
+LANsurfer does **not** update automatically. Before updating:
 
-A previous Docker image cannot automatically reverse database
-migrations. PostgreSQL major upgrades require a separate migration
-plan. See the [technical deployment reference](../deploy/README.md)
-for additional operational and security details.
+1. Make a **tested database backup** and a secure copy of your private
+   `.env`. Read the new release notes, especially database compatibility.
+2. Download that release's `compose.yaml`, optional Traefik overlay and
+   `production.env.example`. Compare the new template to your existing
+   `.env`:
+
+   ```sh
+   diff -u .env production.env.example
+   ```
+
+   Review this output **locally only**; it may display secrets.
+3. Keep your credentials, add any new settings, and update
+   `LANSURFER_IMAGE` to the new **tag-and-digest** reference.
+   Review `POSTGRES_IMAGE` changes separately: **never blindly change
+   a PostgreSQL major version** without a database migration plan.
+4. Run `docker compose config --quiet`, `docker compose pull` and
+   `docker compose up -d --wait`.
+
+An older application image cannot automatically reverse database migrations.
+See the [technical deployment reference](../deploy/README.md) for more.
+
+### Moving from an earlier checkout-based installation
+
+If you used `docker compose --env-file deploy/production.env -f
+deploy/compose.production.yaml` from a repository checkout, **do not
+create a new database**. Back up the existing database and private env.
+Stop the old stack using the same Compose flags with `down` **without
+`-v`**. Download the version-matched files into a new directory and
+copy your existing password/provider settings instead of generating new
+ones. The fixed project name `lansurfer-production` means Docker's
+**named volumes** remain available on the same daemon, provided you
+did not manually change the project name or volume configuration.
+Verify volume mappings and compatibility before starting the new stack;
+never remove the existing database volume to make an upgrade work.
