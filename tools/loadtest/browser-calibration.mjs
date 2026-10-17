@@ -80,6 +80,7 @@ let profileExitCode = null;
 let writerTimeouts = null;
 let writerHTTP502s = null;
 let writerReadyAtMs = 0;
+let writerReadyAt = "";
 let profileStartedAt = "";
 let profilePath = "";
 let profileInvalidWindows = null;
