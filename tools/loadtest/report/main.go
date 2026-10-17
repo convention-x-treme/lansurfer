@@ -17,27 +17,30 @@ import (
 )
 
 type runManifest struct {
-	SchemaVersion  int               `json:"schema_version"`
-	Scenario       string            `json:"scenario"`
-	StartedAt      time.Time         `json:"started_at"`
-	FinishedAt     *time.Time        `json:"finished_at,omitempty"`
-	ActualDuration string            `json:"actual_duration,omitempty"`
-	ExitCode       *int              `json:"exit_code,omitempty"`
-	GitRevision    string            `json:"git_revision"`
-	GitBranch      string            `json:"git_branch"`
-	GitDirty       bool              `json:"git_dirty"`
-	OS             string            `json:"os"`
-	Architecture   string            `json:"architecture"`
-	Kernel         string            `json:"kernel,omitempty"`
-	CPU            string            `json:"cpu,omitempty"`
-	CPUs           int               `json:"cpus"`
-	MemoryMiB      int64             `json:"memory_mib,omitempty"`
-	GoVersion      string            `json:"go_version,omitempty"`
-	NodeVersion    string            `json:"node_version,omitempty"`
-	DockerVersion  string            `json:"docker_version,omitempty"`
-	NetworkID      string            `json:"network_id,omitempty"`
-	Containers     []containerInfo   `json:"containers,omitempty"`
-	Parameters     map[string]string `json:"parameters,omitempty"`
+	SchemaVersion   int               `json:"schema_version"`
+	Scenario        string            `json:"scenario"`
+	StartedAt       time.Time         `json:"started_at"`
+	FinishedAt      *time.Time        `json:"finished_at,omitempty"`
+	ActualDuration  string            `json:"actual_duration,omitempty"`
+	ExitCode        *int              `json:"exit_code,omitempty"`
+	GitRevision     string            `json:"git_revision"`
+	ProductRevision string            `json:"product_revision,omitempty"`
+	HarnessRevision string            `json:"harness_revision,omitempty"`
+	BundleSHA256    string            `json:"bundle_sha256,omitempty"`
+	GitBranch       string            `json:"git_branch"`
+	GitDirty        bool              `json:"git_dirty"`
+	OS              string            `json:"os"`
+	Architecture    string            `json:"architecture"`
+	Kernel          string            `json:"kernel,omitempty"`
+	CPU             string            `json:"cpu,omitempty"`
+	CPUs            int               `json:"cpus"`
+	MemoryMiB       int64             `json:"memory_mib,omitempty"`
+	GoVersion       string            `json:"go_version,omitempty"`
+	NodeVersion     string            `json:"node_version,omitempty"`
+	DockerVersion   string            `json:"docker_version,omitempty"`
+	NetworkID       string            `json:"network_id,omitempty"`
+	Containers      []containerInfo   `json:"containers,omitempty"`
+	Parameters      map[string]string `json:"parameters,omitempty"`
 }
 
 type containerInfo struct {
@@ -54,9 +57,10 @@ var safeParameterNames = []string{
 	"USERS", "BROWSERS", "WRITERS", "SIMULATED_USERS", "BROWSER_CLIENTS",
 	"DURATION", "TRIGGER", "TRIGGER_INTERVAL", "TRIGGER_DELAY", "MODE",
 	"VIEW", "FILTER_GAME", "DATASET", "GAMES", "REQUESTS", "CHAT_MESSAGES",
-	"SEED", "SESSION_OFFSET", "CONNECT_MODE", "DROP_EVERY", "DELAY",
-	"CUT_AFTER", "OFFLINE_FOR", "SSE_ONLY", "RESET_SSE", "ALLOW_RECONNECT",
-	"ALLOW_MISSING_EVENTS",
+	"SEED", "SESSION_OFFSET", "SIMULATED_SESSION_OFFSET", "WRITER_SESSION_OFFSET", "WRITER_DURATION", "PROFILE_DURATION", "PROFILE_INTERVAL",
+	"REPETITION", "VARIANT", "PRODUCT_REVISION", "HARNESS_REVISION", "BUNDLE_SHA256",
+	"REFRESH_MODE", "PROBE", "COALESCING", "CONNECT_MODE", "DROP_EVERY", "DELAY",
+	"CUT_AFTER", "OFFLINE_FOR", "SSE_ONLY", "RESET_SSE", "ALLOW_RECONNECT", "ALLOW_MISSING_EVENTS",
 }
 
 type stringList []string
@@ -199,23 +203,26 @@ func collectManifest(scenario string, started time.Time) (runManifest, error) {
 	branch := gitOutput(repo, "branch", "--show-current")
 	dirty := gitOutput(repo, "status", "--porcelain") != ""
 	manifest := runManifest{
-		SchemaVersion: 1,
-		Scenario:      scenario,
-		StartedAt:     started,
-		GitRevision:   revision,
-		GitBranch:     branch,
-		GitDirty:      dirty,
-		OS:            runtime.GOOS,
-		Architecture:  runtime.GOARCH,
-		CPUs:          runtime.NumCPU(),
-		GoVersion:     runtime.Version(),
-		Kernel:        commandOutput("uname", "-sr"),
-		CPU:           cpuName(),
-		MemoryMiB:     memoryMiB(),
-		NodeVersion:   commandOutput("node", "--version"),
-		DockerVersion: commandOutput("docker", "version", "--format", "{{.Server.Version}}"),
-		NetworkID:     commandOutput("docker", "network", "inspect", "--format", "{{.Id}}", "lansurfer-loadtest_default"),
-		Parameters:    safeParameters(),
+		SchemaVersion:   1,
+		Scenario:        scenario,
+		StartedAt:       started,
+		GitRevision:     revision,
+		ProductRevision: os.Getenv("PRODUCT_REVISION"),
+		HarnessRevision: os.Getenv("HARNESS_REVISION"),
+		BundleSHA256:    os.Getenv("BUNDLE_SHA256"),
+		GitBranch:       branch,
+		GitDirty:        dirty,
+		OS:              runtime.GOOS,
+		Architecture:    runtime.GOARCH,
+		CPUs:            runtime.NumCPU(),
+		GoVersion:       runtime.Version(),
+		Kernel:          commandOutput("uname", "-sr"),
+		CPU:             cpuName(),
+		MemoryMiB:       memoryMiB(),
+		NodeVersion:     commandOutput("node", "--version"),
+		DockerVersion:   commandOutput("docker", "version", "--format", "{{.Server.Version}}"),
+		NetworkID:       commandOutput("docker", "network", "inspect", "--format", "{{.Id}}", "lansurfer-loadtest_default"),
+		Parameters:      safeParameters(),
 	}
 	manifest.Containers = dockerContainers()
 	return manifest, nil

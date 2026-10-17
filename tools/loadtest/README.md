@@ -95,12 +95,15 @@ task loadtest:sse USERS=400 DURATION=1m
 # Mutation-to-stream delay and browser-like refresh amplification:
 task loadtest:prepare
 REQ=$(node -p "require('$HOME/lansurfer-loadtest-control.json').request_id")
+task loadtest:sse USERS=120 DURATION=2m REQUEST="$REQ" TRIGGER=20 MODE=coalesced
 task loadtest:sse USERS=120 DURATION=2m REQUEST="$REQ" TRIGGER=20 MODE=browser-like
 # Restart/reconnect (restart the app from another terminal while this runs):
 task loadtest:sse USERS=400 DURATION=75s RECONNECT=1
 ```
 
-`TRIGGER=N` alternates join and leave; an odd N leaves the trigger player joined, while an even N restores prior membership. Use an open request with free capacity that the last seeded player neither hosts nor has joined. `TRIGGER_DELAY` waits after every stream connects. Events are matched against POST completions; delay can be negative when SSE arrives first. `MODE=browser-like` models client refresh coalescing; `MODE=worst-case` refreshes once per event. `ALLOW_MISSING_EVENTS=1` records expected losses instead of failing the harness. Chat-specific signal-loss and browser-convergence checks are part of `loadtest:loss`, not a general all-subscriber chat fan-out measurement.
+`TRIGGER=N` alternates join and leave; an odd N leaves the trigger player joined, while an even N restores prior membership. Use an open request with free capacity that the last seeded player neither hosts nor has joined. `TRIGGER_DELAY` waits after every stream connects. Events are matched against POST completions; delay can be negative when SSE arrives first. `MODE=browser-like` models one in-flight refresh plus one trailing refresh; `MODE=coalesced` applies a fixed 200 ms window to `game-request` frames; `MODE=worst-case` refreshes once per event. Set `GAME_REQUEST_REFRESH_ONLY=1` to filter refresh metrics to `game-request` frames while retaining all-event delivery totals. `ALLOW_MISSING_EVENTS=1` records expected losses instead of failing the harness. Chat-specific signal-loss and browser-convergence checks are part of `loadtest:loss`, not a general all-subscriber chat fan-out measurement.
+
+Direct CLI users can pass `-game-request-refresh-only`; the Task command exposes this as `GAME_REQUEST_REFRESH_ONLY=1`.
 
 Recovery scenarios against the isolated stack only:
 
@@ -133,6 +136,22 @@ For `loadtest:chaos`, set `SCENARIO` to **one of** `cut`, `offline`, `delay`, or
 These scenarios start `compose.chaos.yaml` (a Go reverse proxy with `NET_ADMIN`, bound to `127.0.0.1:18081`/`18082` only). `POST :18082/control` accepts only fixed modes with bounded fields: `normal`, `hold-refresh`, `fail-refresh`, `cut-streams`, `offline`, `drop-sse`, `delay`, `loss`. `tc netem` runs only inside the proxy container and is removed afterwards. If `NET_ADMIN` or netem is unavailable the packet scenarios exit 2 as "not executed".
 
 Calibration launches 5–10 separate Chromium processes, observes EventSource `open`/`error` and named events, HTMX before/after/swap, busy and disabled state, and compares visible DOM with an authoritative server fragment. The final diagnostic fetch is excluded from refresh counts. Synthetic clients refresh the same filtered list as the pages (`-refresh-query`). `browser-like` coalesces to one in-flight refresh plus one trailing refresh per client; `worst-case` refreshes once per event. Synthetic streams reuse the browser identities in the 400-stream runs, so 400 streams plus five browsers are 400 identities, not 405.
+
+### Paired SSE-refresh comparison
+
+`loadtest:coalescing:prepare` creates a private workspace under `$HOME/lansurfer-loadtest-coalescing`, builds baseline image, seeds 507 test identities, and saves a database snapshot. **It deletes only the isolated `lansurfer-loadtest` database volume.** Run only when that test database can be reset.
+
+```sh
+task loadtest:coalescing:prepare WORKSPACE=147 PRODUCT_REVISION="$H" HARNESS_REVISION="$H"
+task loadtest:coalescing WORKSPACE=147 PRODUCT_REVISION="$H" HARNESS_REVISION="$H" VARIANT=baseline REPETITION=1
+task loadtest:coalescing WORKSPACE=147 PRODUCT_REVISION="$C" HARNESS_REVISION="$H" VARIANT=treatment REPETITION=1
+```
+
+Set `H` to harness commit and `C` to treatment commit. Each baseline or treatment run measures 120 streams and 400 streams plus 100 writers, with five real Chromium pages. Paired runs restore same database snapshot. Baseline uses worst-case simulated refreshes; treatment uses 200 ms coalescing. Reports, session tokens, profile samples, and database snapshot remain private in workspace.
+
+For each profile, compare refresh GETs per SSE signal, refresh and write latency, timeouts, deliveries, browser errors, and final DOM convergence. Local measurements describe this workstation only.
+
+For ordinary `loadtest:calibrate`, 400 synthetic streams may share five browser identities. Paired coalescing runs use disjoint browser, stream, writer, and control identities.
 
 Orchestrated tasks (`loadtest:run`, `writes`, `profile`, `calibrate`, `loss`, `chaos`, `soak`) create `$HOME/lansurfer-loadtest-reports/<UTC>-<scenario>/` (mode `0700`) with `manifest.json` (SHA, dirty flag, image IDs/creation, container limits, versions, parameters, exit code, actual duration), `console.log`, and artifacts (`0600`). Direct diagnostics such as `loadtest:race`, `loadtest:sse`, and `loadtest:browser` print to the terminal and do not create a run manifest. Run `task loadtest:scan REPORT_PATH=<dir>` on a generated report bundle before publishing; it prints only the number of session-token or metrics-key hits.
 

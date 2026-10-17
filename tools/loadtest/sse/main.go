@@ -47,13 +47,14 @@ func main() {
 	triggerDelay := flag.Duration("trigger-delay", 0, "delay after all streams connect before mutations")
 
 	interval := flag.Duration("interval", 500*time.Millisecond, "spacing between mutations")
-	refreshMode := flag.String("refresh-mode", "off", "refresh behavior: off, browser-like, worst-case")
+	refreshMode := flag.String("refresh-mode", "off", "refresh behavior: off, browser-like, worst-case or coalesced")
 	baseURL := flag.String("base-url", directOrigin, "allowed isolated HTTP origin")
 	offset := flag.Int("session-offset", 0, "first session row")
 	connectMode := flag.String("connect-mode", "staggered", "connection startup: staggered or barrier")
 	allowReconnect := flag.Bool("allow-reconnect", false, "tolerate drops and report recovery")
 	allowMissing := flag.Bool("allow-missing-events", false, "report but tolerate expected stream events lost during network faults")
 	refreshQueryFlag := flag.String("refresh-query", "", "optional encoded query for refresh GETs, for example q=Warcraft+III")
+	gameRequestRefreshOnly := flag.Bool("game-request-refresh-only", false, "count only game-request events in refresh and delivery measurements")
 	flag.Parse()
 	if *refreshQueryFlag != "" {
 		for _, c := range *refreshQueryFlag {
@@ -68,6 +69,7 @@ func main() {
 		clients: *clients, duration: *duration, sessionsPath: *sessions, request: *request,
 		trigger: *trigger, triggerDelay: *triggerDelay, interval: *interval, refreshMode: *refreshMode, baseURL: *baseURL,
 		sessionOffset: *offset, allowReconnect: *allowReconnect, allowMissingEvents: *allowMissing, connectMode: *connectMode, triggerMode: *triggerMode,
+		gameRequestRefreshOnly: *gameRequestRefreshOnly,
 	}); err != nil {
 		fmt.Fprintln(os.Stderr, "SSE load test:", err)
 		os.Exit(1)
@@ -75,20 +77,21 @@ func main() {
 }
 
 type options struct {
-	clients            int
-	duration           time.Duration
-	sessionsPath       string
-	request            string
-	trigger            int
-	triggerDelay       time.Duration
-	interval           time.Duration
-	refreshMode        string
-	baseURL            string
-	sessionOffset      int
-	allowReconnect     bool
-	allowMissingEvents bool
-	connectMode        string
-	triggerMode        string
+	clients                int
+	duration               time.Duration
+	sessionsPath           string
+	request                string
+	trigger                int
+	triggerDelay           time.Duration
+	interval               time.Duration
+	refreshMode            string
+	baseURL                string
+	sessionOffset          int
+	allowReconnect         bool
+	allowMissingEvents     bool
+	connectMode            string
+	triggerMode            string
+	gameRequestRefreshOnly bool
 }
 
 func selectSessions(tokens []string, offset, clients int, needsTrigger bool) ([]string, string, error) {
@@ -115,8 +118,8 @@ func run(o options) error {
 	if o.triggerMode == "chat" && (o.trigger != 1 || o.request == "") {
 		return errors.New("chat trigger requires -trigger 1 and -request")
 	}
-	if o.refreshMode != "off" && o.refreshMode != "browser-like" && o.refreshMode != "worst-case" {
-		return errors.New("-refresh-mode must be off, browser-like or worst-case")
+	if o.refreshMode != "off" && o.refreshMode != "browser-like" && o.refreshMode != "worst-case" && o.refreshMode != "coalesced" {
+		return errors.New("-refresh-mode must be off, browser-like, worst-case or coalesced")
 	}
 	if o.connectMode != "staggered" && o.connectMode != "barrier" {
 		return errors.New("-connect-mode must be staggered or barrier")
@@ -173,6 +176,7 @@ func run(o options) error {
 	if o.trigger > 0 || o.refreshMode != "off" {
 		fan = newFanout(o.request, o.trigger, o.interval, o.refreshMode, httpClient)
 		fan.chat = o.triggerMode == "chat"
+		fan.gameRequestOnly = o.gameRequestRefreshOnly || o.refreshMode == "coalesced"
 		fan.baseURL = strings.TrimRight(o.baseURL, "/")
 	}
 	var totals counters
@@ -182,6 +186,7 @@ func run(o options) error {
 	// Recovery: time from the first stream drop until every stream is back.
 	var recoveries []time.Duration
 	var downSince time.Time
+	readyPrinted := false
 	monitorDone := make(chan struct{})
 	go func() {
 		defer close(monitorDone)
@@ -193,6 +198,10 @@ func run(o options) error {
 				return
 			case now := <-tick.C:
 				active := totals.active.Load()
+				if active >= int64(o.clients) && !readyPrinted {
+					fmt.Fprintf(os.Stderr, "sse-ready clients=%d\n", o.clients)
+					readyPrinted = true
+				}
 				if totals.peak.Load() >= int64(o.clients) && active < int64(o.clients) && downSince.IsZero() {
 					downSince = now
 				} else if active >= int64(o.clients) && !downSince.IsZero() {
@@ -214,6 +223,7 @@ func run(o options) error {
 				case <-time.After(50 * time.Millisecond):
 				}
 			}
+			fmt.Fprintf(os.Stderr, "trigger-start clients=%d delay=%s\n", o.clients, o.triggerDelay)
 			if o.triggerDelay > 0 {
 				timer := time.NewTimer(o.triggerDelay)
 				select {
@@ -392,10 +402,13 @@ func consumeEvents(reader io.Reader, stats *counters, observe func(eventData)) e
 				var event eventData
 				if json.Unmarshal([]byte(data), &event) != nil {
 					stats.malformed.Add(1)
-				} else if observe != nil && event.RequestID == "" {
-					stats.unassignable.Add(1)
-				} else if observe != nil {
-					observe(event)
+				} else {
+					event.streamName = eventName
+					if observe != nil && event.RequestID == "" {
+						stats.unassignable.Add(1)
+					} else if observe != nil {
+						observe(event)
+					}
 				}
 			}
 			eventName, data = "", ""

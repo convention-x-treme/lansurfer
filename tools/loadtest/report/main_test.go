@@ -38,6 +38,40 @@ func TestSafeParametersExcludeSecrets(t *testing.T) {
 	}
 }
 
+func TestStartRunCapturesPairedWorkloadMetadata(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Chmod(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("LANSURFER_LOADTEST_REPORT_ROOT", root)
+	t.Setenv("PRODUCT_REVISION", "treatment-sha")
+	t.Setenv("HARNESS_REVISION", "harness-sha")
+	t.Setenv("BUNDLE_SHA256", "bundle-sha")
+	t.Setenv("VARIANT", "treatment")
+	t.Setenv("REPETITION", "2")
+	t.Setenv("SIMULATED_USERS", "400")
+	t.Setenv("WRITERS", "100")
+	dir, err := startRun("coalescing")
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "manifest.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got runManifest
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.ProductRevision != "treatment-sha" || got.HarnessRevision != "harness-sha" || got.BundleSHA256 != "bundle-sha" {
+		t.Fatalf("paired revisions missing: %#v", got)
+	}
+	if got.Parameters["VARIANT"] != "treatment" || got.Parameters["REPETITION"] != "2" ||
+		got.Parameters["SIMULATED_USERS"] != "400" || got.Parameters["WRITERS"] != "100" {
+		t.Fatalf("paired workload missing: %#v", got.Parameters)
+	}
+}
+
 func TestFinishRunUpdatesPrivateManifest(t *testing.T) {
 	root := t.TempDir()
 	if err := os.Chmod(root, 0700); err != nil {
