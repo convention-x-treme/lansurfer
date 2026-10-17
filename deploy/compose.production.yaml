@@ -1,5 +1,7 @@
-# Self-hosted release deployment; development stays in ../compose.yaml.
-# Use with: docker compose --env-file deploy/production.env -f deploy/compose.production.yaml up -d
+# Self-hosted release deployment; also downloadable standalone as compose.yaml.
+# Standalone: copy production.env.example to .env, then docker compose up -d --wait.
+# Repo: docker compose --env-file deploy/production.env -f deploy/compose.production.yaml up -d.
+# Optional Docker Traefik: add compose.traefik.yaml and COMPOSE_FILE in .env.
 name: lansurfer-production
 
 services:

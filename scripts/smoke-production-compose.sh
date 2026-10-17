@@ -55,6 +55,32 @@ EOF
 "${compose[@]}" config --format json |
   docker run --rm -i --network none python:3.13-alpine \
     python3 -c "$(cat "$root/scripts/test-production-compose.py")" --test-mutations
+
+# Verify the Traefik override without starting a proxy or creating its external network.
+TRAEFIK_HOST=ci.example.invalid TRAEFIK_NETWORK=ci-traefik-net TRAEFIK_CERT_RESOLVER=ci-resolver \
+  docker compose --project-name "$project" --env-file "$config_file" \
+    -f "$root/deploy/compose.production.yaml" -f "$root/deploy/compose.traefik.yaml" \
+    config --format json |
+  docker run --rm -i --network none python:3.13-alpine python3 -c '
+import json, sys
+model = json.load(sys.stdin)
+app = model["services"]["lansurfer"]
+db = model["services"]["postgres"]
+labels = app["labels"]
+assert set(model["services"]) == {"lansurfer", "postgres"}
+assert "default" in app.get("networks", {}) and "traefik" in app["networks"]
+assert "traefik" not in db.get("networks", {})
+assert model["networks"]["traefik"]["external"] is True
+assert model["networks"]["traefik"]["name"] == "ci-traefik-net"
+assert labels["traefik.docker.network"] == "ci-traefik-net"
+assert labels["traefik.http.routers.lansurfer.rule"] == "Host(" + chr(96) + "ci.example.invalid" + chr(96) + ")"
+assert labels["traefik.http.routers.lansurfer.tls.certresolver"] == "ci-resolver"
+assert labels["traefik.http.services.lansurfer.loadbalancer.server.port"] == "8080"
+assert db["labels"]["traefik.enable"] == "false"
+assert db.get("ports", []) == []
+assert app["ports"][0]["host_ip"] == "127.0.0.1"
+print("Traefik Compose config validated (no live proxy started).")
+'
 # GHCR read token lives in an ephemeral Docker config, never the runner's home.
 printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin >/dev/null
 

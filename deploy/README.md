@@ -1,6 +1,6 @@
 # Self-hosted production Compose
 
-> **First time hosting LANsurfer?** Start with the [step-by-step self-hosting guide](../docs/SELF_HOSTING.md). This page is the more detailed technical reference.
+> **First time hosting LANsurfer?** Use the [two-file download quickstart](../docs/SELF_HOSTING.md) — no Git clone or Python needed. It includes Caddy and Traefik examples. This page is the technical reference for deeper validation and operations.
 
 This is a **separate, release-based** Docker Compose deployment for a single LANsurfer instance. Unlike root `compose.yaml` (development), it does not build from a checkout, reads **both immutable image references from `deploy/production.env`**, keeps PostgreSQL internal, and binds the application only to Docker-host loopback. The example env file starts with the previously verified `v0.1.0` image; the Compose template is not tied to that release. PostgreSQL data and the media cache use named volumes. No proxy, identity provider or monitoring service is added to the Compose stack.
 
@@ -18,7 +18,7 @@ This is a deployment example, **not** evidence that backup/restore or upgrades h
 
 ## Prepare configuration
 
-Run these commands from the **repository root** on the host that will run Docker. Prerequisites: Docker Engine with Compose v2, Python 3 for the fail-closed configuration check, and OpenSSL for password creation:
+The commands below use the **full repository layout** and the optional Python security preflight. Ordinary operators need **no Git clone or Python**: the [self-hosting quickstart](../docs/SELF_HOSTING.md) downloads just `compose.yaml` and `.env.example` into one directory (plus `compose.traefik.yaml` when required). For this more technical repository-based procedure, run from the **repository root** with Docker Engine, Compose v2, Python 3 and OpenSSL:
 
 ```sh
 cp deploy/production.env.example deploy/production.env
@@ -56,7 +56,7 @@ lansurfer.example.org {
 }
 ```
 
-For other reverse proxies, forward normal HTTP requests and streaming/SSE responses without buffering the event stream. Do not expose port 8080 on the public network. If the proxy is in *another container*, `127.0.0.1` refers to that proxy container and this example must be adapted to a shared private network instead. Set `LANSURFER_TRUSTED_PROXIES` only to known proxy IPs or CIDRs when accurate forwarded client IPs are needed; never trust all addresses. Cookies are marked `Secure` according to the public HTTPS `LANSURFER_BASE_URL`, not forwarded headers. HTTPS must be trusted by client browsers for PWA installation and Web Push.
+For **Traefik running in Docker**, use the [optional Traefik Compose overlay](compose.traefik.yaml) and [Traefik quickstart](../docs/SELF_HOSTING.md#3-choose-https-caddy-or-traefik). It attaches LANsurfer to a pre-existing external proxy network without exposing PostgreSQL. For other reverse proxies, forward normal HTTP requests and streaming/SSE responses without buffering the event stream. Do not expose port 8080 on the public network. If the proxy is in *another container*, `127.0.0.1` refers to that proxy container and this example must be adapted to a shared private network instead. Set `LANSURFER_TRUSTED_PROXIES` only to known proxy IPs or CIDRs when accurate forwarded client IPs are needed; never trust all addresses. Cookies are marked `Secure` according to the public HTTPS `LANSURFER_BASE_URL`, not forwarded headers. HTTPS must be trusted by client browsers for PWA installation and Web Push.
 
 ## Admin bootstrap and optional notification keys
 
