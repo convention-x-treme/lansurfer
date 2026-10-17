@@ -61,6 +61,7 @@ for (const action of actions) {
   }
 }
 thresholds.loadtest_write_timeouts = ['count>=0'];
+thresholds.loadtest_write_http_502s = ['count>=0'];
 
 export const options = {
   scenarios: {

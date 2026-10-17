@@ -346,7 +346,7 @@ try {
         const records = (await readFile(profilePath, "utf8")).trim().split("\n").map((line) => JSON.parse(line));
         const profileSummary = records.find((record) => record.kind === "summary");
         if (!profileSummary) throw new Error("profile summary is missing");
-        profileInvalidWindows = profileSummary.invalid_windows;
+        profileInvalidWindows = records.filter((record) => record.kind === "sample" && record.invalid_window && record.invalid_reason !== "baseline").length;
         profileSamples = profileSummary.samples;
         profileSampleErrors = profileSummary.sample_errors;
         if (profileInvalidWindows > 0 || profileSampleErrors > 0) {
