@@ -1,92 +1,101 @@
-# Self-host LANsurfer with Docker Compose
+# Self-host LANsurfer
 
-Run your own LANsurfer instance for a LAN party or gaming community. This guide
-is written for **server operators**: you do not need Go, Node.js, or a build
-toolchain. Docker downloads the published LANsurfer image and runs it alongside
-PostgreSQL.
-
-**New here?** Follow [Setup](#setup) from top to bottom. Already running an
-instance? Jump to [Daily operations](#daily-operations) or
-[Updating LANsurfer](#updating-lansurfer).
+Host LANsurfer with Docker Compose and an existing HTTPS reverse proxy.
+**No Git clone, source code, Go, Node.js or Python needed.**
 
 > [!IMPORTANT]
-> **Current release vs. upcoming v0.2.0:** This guide documents the
-> **current `main` code**, which is being prepared for a later release.
-> **v0.2.0 has not been published.** The production environment template
-> still installs the last published image, **v0.1.0**, by default.
-> In particular, current `main` supports editing Terms, Privacy, and
-> Imprint in **Administration → Legal texts** (`/admin/legal`), while
-> **v0.1.0 does not**. An updated checkout does not upgrade its Docker image.
-> Only use the new features after a release containing them has been
-> published and you have deliberately selected its verified image digest.
->
-> v0.1.0's fixed Terms/Privacy text describes the reference deployment; it
-> cannot be edited in the running image. Do **not** publicly host it for a
-> different operator relying on that wording. Regardless of version,
-> **backup/restore and cross-version upgrade/rollback procedures are not yet
-> fully validated**. Test your own recovery before using valuable data;
-> see [issue #29](https://github.com/convention-x-treme/lansurfer/issues/29).
+> **Release status:** v0.1.0 is the latest published release; v0.2.0 is
+> being prepared but **is not published yet**. The default image stays
+> pinned to v0.1.0 until a verified new release exists.
+> v0.1.0 has fixed Terms/Privacy text for the reference deployment,
+> **not** the legal-text editor already on `main`. Do not invite players
+> to a different public installation with those sample policies.
+> Backup/restore and cross-version upgrades remain unverified
+> ([#29](https://github.com/convention-x-treme/lansurfer/issues/29)).
 
-## How this deployment works
+## Quickstart
 
-```text
-Players ── HTTPS ──> Your reverse proxy (on the Docker host)
-                         |
-                         +── http://127.0.0.1:8080 ──> LANsurfer container
-                                                          |
-                                                          +── PostgreSQL container
-                                                              (private Docker network)
-```
+You need **Docker Engine and Docker Compose v2**, `wget`, `openssl`, a domain,
+an HTTPS reverse proxy (Caddy or Traefik below), and a login provider
+(Discord, OIDC or Twitch).
 
-The [production Compose file](../deploy/compose.production.yaml) starts only
-LANsurfer and PostgreSQL. The database has no public port. The app is published
-on **host loopback only**, so you provide HTTPS separately. Image versions are
-selected by a private env file rather than hardcoded into Compose.
-
-This setup assumes a **reverse proxy running directly on the Docker host**.
-If yours runs in another container or on another machine, do not copy the
-loopback configuration unchanged; adapt the private networking first.
-
-## Before you start
-
-| You need | Why |
-| --- | --- |
-| Linux server with Docker Engine and Docker Compose v2 | Runs the published images and PostgreSQL |
-| Git, Python 3, and OpenSSL on the server | Fetches the deployment files, validates configuration, and generates a password |
-| A domain pointing at the server and an HTTPS reverse proxy | LANsurfer uses a public HTTPS origin for sign-in and secure browser features |
-| At least one login provider | Choose Discord, OIDC (for example, Keycloak), or Twitch |
-| Registry access | The images must be downloadable; while the LANsurfer repository/package is private you need appropriate GitHub package-read access |
-
-You will need to manage your server, DNS, firewall, provider credentials, and
-backups. The commands below are intended for a Linux shell. Replace
-`lansurfer.example.org` with **your own domain**, everywhere it occurs.
-
-## Setup
-
-### 1. Get the deployment files
+### 1. Download the deployment files
 
 ```sh
-git clone https://github.com/convention-x-treme/lansurfer.git
-cd lansurfer
+mkdir -p lansurfer && cd lansurfer
+
+# Use main until a release containing these deployment files exists.
+REF=main
+BASE="https://raw.githubusercontent.com/convention-x-treme/lansurfer/$REF/deploy"
+wget -O compose.yaml "$BASE/compose.production.yaml"
+wget -O .env.example "$BASE/production.env.example"
+cp .env.example .env
+chmod 600 .env
 ```
 
-The repository is currently private, so cloning requires authorized GitHub
-access. You only need its Compose configuration and validation script: **the
-production deployment does not compile the application from source**. The
-checkout may already include features planned for v0.2.0; which **application
-version actually runs** is determined solely by `LANSURFER_IMAGE` in
-`deploy/production.env`.
+The deployment files were added **after v0.1.0**, so `REF=v0.1.0` will
+not work. **After v0.2.0 is published**, use `REF=v0.2.0` to obtain files
+from that release. Downloading Compose files does not automatically
+upgrade the app image in `.env`.
 
-Keep running all commands in this guide from the repository root.
+The repository is **currently private**, so anonymous `wget` cannot
+download the files yet. Authorized operators can instead use GitHub CLI
+without cloning:
 
-### 2. Prepare the public HTTPS address
+<details>
+<summary>Download while the repository is private</summary>
 
-Configure DNS so your chosen domain points to your server. Allow inbound
-**80/tcp and 443/tcp** for your reverse proxy; do **not** expose the LANsurfer
-port (8080) or PostgreSQL (5432) publicly.
+After `gh auth login`, in an empty `lansurfer` directory run:
 
-For example, with **Caddy installed directly on the Docker host**, add the
-following to its Caddyfile:
+```sh
+gh api -H "Accept: application/vnd.github.raw+json" \
+  repos/convention-x-treme/lansurfer/contents/deploy/compose.production.yaml > compose.yaml
+gh api -H "Accept: application/vnd.github.raw+json" \
+  repos/convention-x-treme/lansurfer/contents/deploy/production.env.example > .env.example
+cp .env.example .env
+chmod 600 .env
+```
+
+You may also need `docker login ghcr.io` for private image access.
+
+</details>
+
+### 2. Configure LANsurfer
+
+Generate a database password:
+
+```sh
+openssl rand -hex 32
+```
+
+Edit `.env` and set `POSTGRES_PASSWORD` to the entire **64-character
+hex string**. Set `LANSURFER_BASE_URL` to your public HTTPS origin
+(e.g. `https://lansurfer.example.org`). Leave the preconfigured
+`LANSURFER_IMAGE` and `POSTGRES_IMAGE` values unchanged initially.
+
+Enable **at least one** login provider:
+
+| Provider | Required `.env` settings | Register this HTTPS callback |
+| --- | --- | --- |
+| **Discord** | `LANSURFER_DISCORD_CLIENT_ID`, `LANSURFER_DISCORD_CLIENT_SECRET`, plus `LANSURFER_LEGAL_ENTITY_NAME` and `LANSURFER_LEGAL_CONTACT_EMAIL` | `/auth/discord/callback` |
+| **OIDC / Keycloak** | `LANSURFER_OIDC_ISSUER`, `LANSURFER_OIDC_CLIENT_ID`; a secret if required by the provider | `/auth/callback` |
+| **Twitch** | `LANSURFER_TWITCH_CLIENT_ID`, `LANSURFER_TWITCH_CLIENT_SECRET`, `LANSURFER_TWITCH_AUTH_ENABLED=true` | `/auth/twitch/callback` |
+
+Append each callback path to **your own HTTPS origin**. Discord login uses
+the `identify` scope; create credentials in the
+[Discord Developer Portal](https://discord.com/developers/applications).
+[Provider details](../README.md#configure-oidc-login) are documented separately.
+IGDB, Web Push and Discord notification delivery are optional.
+
+Keep `.env` private, with file permissions restricted. Do not put
+real keys or expanded Compose output in bug reports.
+
+### 3. Choose HTTPS: Caddy **or** Traefik
+
+**Option A — Caddy installed directly on the Docker host**
+
+Point your domain at the server. Configure Caddy to proxy to the locally
+bound app port (8080 by default):
 
 ```caddyfile
 lansurfer.example.org {
@@ -94,293 +103,111 @@ lansurfer.example.org {
 }
 ```
 
-Apply/reload the configuration using your host's Caddy setup. With correct DNS
-and publicly reachable ports, Caddy can arrange HTTPS certificates
-automatically. See the [Caddy HTTPS guide](https://caddyserver.com/docs/quick-starts/https)
-for installation and certificate prerequisites.
+Caddy needs access to ports 80/443 for its standard HTTPS setup.
+**Do not publish the LANsurfer port 8080 or PostgreSQL port 5432.**
 
-For Traefik, Nginx, or a containerized reverse proxy, see the
-[technical deployment reference](../deploy/README.md) and adapt the upstream
-network. In particular, `127.0.0.1` **inside a proxy container is not the
-Docker host**. Make sure live SSE connections are not buffered or prematurely
-closed by the proxy.
+**Option B — Existing Traefik container with Docker provider**
 
-### 3. Create your private configuration
+Traefik must already be running with its Docker provider, an HTTPS
+entrypoint (typically `websecure`), a certificate resolver and a
+**shared external Docker network**.
+
+Download an optional third file:
 
 ```sh
-cp deploy/production.env.example deploy/production.env
-chmod 600 deploy/production.env
-openssl rand -hex 32
+wget -O compose.traefik.yaml "$BASE/compose.traefik.yaml"
 ```
 
-Copy the generated **64-character hexadecimal string** into
-`POSTGRES_PASSWORD` in `deploy/production.env`. Open that file in your
-preferred text editor and set at least:
+While private, use the authenticated `gh api` pattern from step 1 with
+the `deploy/compose.traefik.yaml` path.
 
-| Setting | What to enter |
-| --- | --- |
-| `POSTGRES_PASSWORD` | The generated 64-character hex password; do not reuse development credentials |
-| `LANSURFER_BASE_URL` | The complete HTTPS origin, e.g. `https://lansurfer.example.org`, **without a path** |
-| `LANSURFER_IMAGE`, `POSTGRES_IMAGE` | The example pins the **published v0.1.0** image and PostgreSQL by digest. Do not use an unpublished v0.2.0 tag; once it is released, choose its verified digest deliberately. |
-| Login provider settings | At least one provider, described in step 4 |
-| `LANSURFER_HTTP_PORT` | Leave at `8080` unless that port is already used on the Docker host |
-| `LANSURFER_IMPRINT_ENABLED` | Optional for the current `main` app (intended for an upcoming release): `true` exposes the operator-written `/imprint` document after you have saved it; `false` hides the link. The v0.1.0 image does not support this flag. |
-
-The file is ignored by Git. Never commit it or share its contents, since it may
-contain credentials and encryption keys. Environment variables exported in
-your shell can override the file's values.
-
-### 4. Set up sign-in (choose at least one)
-
-<details>
-<summary>Discord login</summary>
-
-Create an application in the [Discord Developer Portal](https://discord.com/developers/applications).
-Register this exact OAuth2 redirect URL, using your public domain:
-
-```text
-https://lansurfer.example.org/auth/discord/callback
-```
-
-LANsurfer requests the `identify` scope. In `deploy/production.env`, set:
+Add these lines to `.env`:
 
 ```dotenv
-LANSURFER_DISCORD_CLIENT_ID=YOUR_APPLICATION_ID
-LANSURFER_DISCORD_CLIENT_SECRET=YOUR_APPLICATION_SECRET
-LANSURFER_LEGAL_ENTITY_NAME=YOUR_ORGANIZATION_NAME
-LANSURFER_LEGAL_CONTACT_EMAIL=contact@example.org
+COMPOSE_FILE=compose.yaml:compose.traefik.yaml
+TRAEFIK_HOST=lansurfer.example.org
+TRAEFIK_NETWORK=traefik_proxy
+TRAEFIK_CERT_RESOLVER=letsencrypt
 ```
 
-Replace all example values with your real operator details. The production
-Compose preflight still requires the legal entity name and contact email for
-Discord login (also required by v0.1.0). On current `main`, the
-`LANSURFER_LEGAL_*` variables do **not** edit the published Terms/Privacy
-content; the operator must save their own texts in the administrator UI after
-a supporting release is selected. Discord expects public Terms and Privacy
-links: `https://lansurfer.example.org/terms` and
-`https://lansurfer.example.org/privacy`. Do not invite users while those
-pages contain placeholder or reference-deployment text.
+Replace the values with **your actual domain, existing Traefik Docker
+network and configured TLS resolver**. Traefik must be connected to
+that network; the overlay does not install or configure Traefik.
+Set `TRAEFIK_ENTRYPOINT` too if yours is not named `websecure`.
 
-</details>
+Compose automatically loads both files via `COMPOSE_FILE`. Traefik
+reaches LANsurfer through the shared network; **PostgreSQL remains only
+on the separate internal app network**. The base app's host port is
+still bound to 127.0.0.1.
 
-<details>
-<summary>OIDC / Keycloak login</summary>
+See the [Traefik Docker provider reference](https://doc.traefik.io/traefik/reference/routing-configuration/other-providers/docker/)
+for its requirements and certificate configuration.
 
-Configure your provider to allow
-`https://lansurfer.example.org/auth/callback` as an exact redirect URI.
-Set its **issuer URL**, not the discovery endpoint:
+### 4. Start the containers
 
-```dotenv
-LANSURFER_OIDC_ISSUER=https://your-identity-provider.example/realms/your-realm
-LANSURFER_OIDC_CLIENT_ID=YOUR_CLIENT_ID
-LANSURFER_OIDC_CLIENT_SECRET=YOUR_CLIENT_SECRET
-```
-
-A confidential client needs its secret. A correctly configured public PKCE
-client may leave the secret empty. Do not use LANsurfer's local-development
-Keycloak realm for a public installation.
-
-</details>
-
-<details>
-<summary>Twitch login (optional alternative)</summary>
-
-Register `https://lansurfer.example.org/auth/twitch/callback` in your Twitch
-Developer Application and set:
-
-```dotenv
-LANSURFER_TWITCH_CLIENT_ID=YOUR_CLIENT_ID
-LANSURFER_TWITCH_CLIENT_SECRET=YOUR_CLIENT_SECRET
-LANSURFER_TWITCH_AUTH_ENABLED=true
-```
-
-IGDB game discovery is a **separate, optional** setting
-(`LANSURFER_IGDB_ENABLED=true`) that uses the same Twitch credentials; it
-is not necessary for Twitch login. See the [main README](../README.md#configure-twitch-login-and-igdb-discovery)
-for third-party terms and limitations.
-
-</details>
-
-You can enable more than one provider later. Web Push, Discord **notification
-delivery**, and IGDB are optional; none is required just to start LANsurfer.
-
-### 5. Check configuration and start
-
-In the repository root, define this shortcut in your current shell:
+From the directory containing `compose.yaml` and `.env`:
 
 ```sh
-dc() {
-  docker compose --env-file deploy/production.env -f deploy/compose.production.yaml "$@"
-}
+docker compose config --quiet
+docker compose pull
+docker compose up -d --wait
+docker compose ps
 ```
 
-Run the security preflight. It checks the effective Compose configuration
-without printing secrets to the screen:
+`config --quiet` checks Compose syntax, but is **not** a complete
+security validation. The [technical reference](../deploy/README.md)
+explains the optional stronger preflight.
+
+On the Docker host, check `curl -fsS http://127.0.0.1:8080/healthz`
+(expected `ok`) and `curl -fsS http://127.0.0.1:8080/readyz`
+(expected `ready`). Then open your public HTTPS domain in a browser.
+
+### 5. Set up your first administrator
+
+Sign in once and choose a **Game Nick**. List your local user ID
+and promote it:
 
 ```sh
-dc config --format json | python3 scripts/test-production-compose.py
+docker compose exec lansurfer /lansurfer admin users
+docker compose exec lansurfer /lansurfer admin promote --user-id YOUR_USER_UUID
 ```
 
-If the preflight fails, fix the named setting in `deploy/production.env`
-before proceeding. Do **not** work around failures by switching to `latest`
-tags or opening database ports.
+Reload LANsurfer. For an **actually published image containing current
+`main` features**, open **Administration → Legal texts**
+(`/admin/legal`), replace the sample Terms and Privacy text, and
+review the public pages. If you need an Imprint page, save one and set
+`LANSURFER_IMPRINT_ENABLED=true` in `.env`, then recreate with
+`docker compose up -d --wait`.
 
-If GitHub Container Registry asks for authentication, sign in with an account
-that has permission to read the LANsurfer package:
+**The v0.1.0 image does not have this editor.** Current source code
+alone does not make it available in an older published image.
+Review legal content before allowing public users.
 
-```sh
-docker login ghcr.io
-```
+## Daily use
 
-Then start the two containers:
-
-```sh
-dc pull
-dc up -d --wait
-dc ps
-```
-
-Check locally on the Docker host:
-
-```sh
-curl -fsS http://127.0.0.1:8080/healthz
-curl -fsS http://127.0.0.1:8080/readyz
-```
-
-The expected responses are `ok` and `ready`. If you changed
-`LANSURFER_HTTP_PORT`, replace 8080 in the `curl` commands.
-
-Now visit **`https://lansurfer.example.org`** in a browser to test the
-reverse proxy and sign-in flow.
-
-### 6. Create the first administrator
-
-1. Sign in through your configured provider and choose your **Game Nick**.
-2. List local accounts and find your own user ID:
-   ```sh
-   dc exec lansurfer /lansurfer admin users
-   ```
-3. Promote that exact ID:
-   ```sh
-   dc exec lansurfer /lansurfer admin promote --user-id YOUR_USER_UUID
-   ```
-4. Reload LANsurfer and follow [Legal texts and imprint](#legal-texts-and-imprint)
-   before inviting players. The exact steps depend on your **installed image
-   version**, not the Git checkout.
-5. If IGDB is disabled (the default), create your community's Games manually
-   in **Administration → Games** (`/admin/games`).
-
-After the deployment and legal content are ready for public users, your
-players can sign in, follow Games, create or join Game Requests, and use
-LANsurfer from desktop or mobile browsers.
-
-### Legal texts and imprint
-
-The administration interface available in **current `main`** (intended for
-an upcoming release) lets the operator maintain public legal documents **in
-the application's database**, not through environment variables.
-
-Once you are running a published release that includes this feature:
-
-1. Open **Administration → Legal texts** (`/admin/legal`).
-2. Replace every placeholder in the sample **Terms of Service** and **Privacy
-   Policy** with real details about your organization and infrastructure.
-   The public URLs are `/terms` and `/privacy`.
-3. If you need an Imprint page, prepare and save its text in the same
-   administration area. Then set `LANSURFER_IMPRINT_ENABLED=true` in
-   `deploy/production.env` and run `dc up -d --wait`. The public
-   `/imprint` page and footer link then become available. If disabled, the
-   page is not served. **This setting is available on current `main`, not
-   v0.1.0.**
-4. Review the rendered pages in a private browser window, and have the legal
-   content checked for your jurisdiction **before** inviting players.
-
-The **published v0.1.0 image has no `/admin/legal` editor**. Its fixed
-Terms/Privacy paragraphs describe the LANsurfer reference deployment.
-`LANSURFER_LEGAL_ENTITY_NAME`, `LANSURFER_LEGAL_ADDRESS`, and
-`LANSURFER_LEGAL_CONTACT_EMAIL` only fill the old release's operator
-identity fields; `LANSURFER_IMPRINT_URL` points to an external imprint.
-These environment variables do **not** make the built-in sample policies
-accurate for a different operator.
-
-**Until a new release with editable legal texts exists, do not treat the
-default v0.1.0 production image as ready for an unrelated public deployment.**
-
-## Daily operations
-
-Keep using the `dc` shortcut in the same shell. In a fresh shell, define it
-again with the function from step 5.
-
-| Task | Command |
+| Action | Command |
 | --- | --- |
-| See container state | `dc ps` |
-| Read recent application logs | `dc logs --tail=100 lansurfer` |
-| Follow logs live | `dc logs -f lansurfer` |
-| Start previously configured services | `dc up -d --wait` |
-| Restart just LANsurfer | `dc restart lansurfer` |
-| Stop the stack while keeping data | `dc down` |
+| Status | `docker compose ps` |
+| Application logs | `docker compose logs --tail=100 lansurfer` |
+| Follow logs | `docker compose logs -f lansurfer` |
+| Restart | `docker compose restart lansurfer` |
+| Stop (preserve data) | `docker compose down` |
 
-**Data safety:** The PostgreSQL named volume stores the important product
-data. A normal `dc down` leaves named volumes intact. **Never run Compose
-with `--volumes` / `-v` on an installation you need to preserve.** The cover
-cache is separate and can be rebuilt.
+Run commands in your `lansurfer` directory. **Never use `down -v` or
+`down --volumes` on an installation with data you need to keep.**
+Keep an independent, protected backup of your `.env` and database.
 
-Keep a secure, separate copy of `deploy/production.env`, especially if you
-enable Web Push or Discord notification delivery. For those optional features,
-generate keys once using the
-[documented CLI](../deploy/README.md#admin-bootstrap-and-optional-notification-keys);
-losing the data-encryption key can make existing notification credentials
-unreadable.
+## Updating later
 
-## Updating LANsurfer
+After **v0.2.0 has actually been published**, read its release and migration
+notes, verify the published GHCR image digest, and ensure you have a
+**tested backup and restore procedure**. Update only
+`LANSURFER_IMAGE` in your private `.env` to the exact release tag **and
+digest**, then run `docker compose pull` and `docker compose up -d --wait`.
 
-LANsurfer **does not update automatically**. The application and PostgreSQL
-versions live in your private `deploy/production.env`:
+LANsurfer may apply forward-only database migrations. An image rollback
+does not automatically undo a database migration. PostgreSQL major
+upgrades need a separate migration plan. Do not use a moving `latest` tag.
 
-- `LANSURFER_IMAGE` controls the exact LANsurfer release **and digest**.
-- `POSTGRES_IMAGE` separately controls PostgreSQL. Do not casually change its
-  major version: a database migration plan is needed.
-
-When **v0.2.0 is actually published**, read its release notes and verify the
-published **multi-architecture image digest**. This guide does not include a
-made-up v0.2.0 digest, and the configuration example intentionally continues
-to pin v0.1.0 until a verified release is available. Once you have a **tested
-backup and recovery plan**, change `LANSURFER_IMAGE` in your *private*
-`deploy/production.env` to that exact published tag-and-digest reference,
-run the preflight, then use `dc pull` and `dc up -d --wait`. If updating
-from v0.1.0, verify the migration/compatibility notes before doing so.
-
-**Important:** Application startup applies forward-only database migrations.
-Switching the image back to an older release does *not* automatically restore
-the older database schema. Cross-version upgrades, rollbacks, and automated
-backup/restore regression tests are not yet complete; see
-[issue #29](https://github.com/convention-x-treme/lansurfer/issues/29).
-
-## Troubleshooting
-
-| Symptom | What to check |
-| --- | --- |
-| `docker compose` or the preflight fails | Run from the repository root; check required values in `deploy/production.env` and confirm Docker Compose v2 + Python 3 are installed |
-| Image pull denied | The package may still be private; authenticate with `docker login ghcr.io` using a permitted account |
-| `dc up` fails / app stays unready | Inspect `dc ps` and `dc logs --tail=100 lansurfer`; check the database password and container health |
-| Site shows 502 / cannot connect | Check both local health URLs, DNS, your HTTPS proxy, and the proxy-to-`127.0.0.1:8080` route |
-| Login redirects fail | Register the **exact HTTPS callback URL** for the selected provider and match `LANSURFER_BASE_URL` |
-| No **Administration → Legal texts** menu | Check the `LANSURFER_IMAGE` tag and digest in `production.env`: the published v0.1.0 image has no legal editor. Cloning newer source does not upgrade a container. |
-| Imprint link missing on a supporting release | Save the Imprint in `/admin/legal`, set `LANSURFER_IMPRINT_ENABLED=true` in `deploy/production.env`, and recreate the app with `dc up -d --wait`. |
-| HTTPS proxy is itself containerized | Host loopback is the wrong upstream; use an explicitly configured **private Docker network** instead |
-| Need to recover data | Do not delete or reinitialize the PostgreSQL volume; follow your tested database recovery procedure |
-
-Avoid pasting `docker compose config` output or complete application environment
-values into public support issues: expanded Compose output may reveal secrets.
-When asking for help, share only **redacted** error messages.
-
-## Further reading
-
-- [Technical production Compose reference](../deploy/README.md) — more detail on the proxy, Docker security, secrets, and shutdown
-- [Production environment template](../deploy/production.env.example) — all supported deployment options in this Compose example
-- [LANsurfer main README](../README.md) — provider specifics, application features, and optional integrations
-- [Docker Compose environment variables](https://docs.docker.com/compose/how-tos/environment-variables/variable-interpolation) — how `--env-file` works
-- [Caddy HTTPS setup](https://caddyserver.com/docs/quick-starts/https) — certificates, ports, and DNS
-
-For LANsurfer development instead of self-hosting, use `task dev` as documented
-in the [development section of the README](../README.md#-run-lansurfer-locally).
+For advanced operations, troubleshooting, notification encryption
+keys, and proxy options, see the [technical deployment reference](../deploy/README.md).
