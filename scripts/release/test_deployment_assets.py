@@ -22,6 +22,10 @@ class DeploymentReleaseAssetsTest(unittest.TestCase):
                 image = f"ghcr.io/convention-x-treme/lansurfer:{tag}@{DIGEST}"
                 self.assertEqual(re.findall(r"(?m)^LANSURFER_IMAGE=(.*)$", env), [image])
                 self.assertNotIn(MARKER, env)
+                self.assertNotIn("__LANSURFER_DEPLOYMENT_RELEASE_HEADER__", env)
+                self.assertIn(f"# LANsurfer {tag} production configuration.", env)
+                self.assertIn(f"https://github.com/convention-x-treme/lansurfer/blob/{tag}/docs/CONFIGURATION.md", env)
+                self.assertNotIn("unrendered source", env)
                 self.assertIn("POSTGRES_IMAGE=postgres:", env)
                 self.assertIn("services:", (output / "compose.yaml").read_text())
                 self.assertIn("TRAEFIK_HOST", (output / "compose.traefik.yaml").read_text())
@@ -73,10 +77,15 @@ class DeploymentReleaseAssetsTest(unittest.TestCase):
 
         compose = (ROOT / "deploy" / "compose.production.yaml").read_text(encoding="utf-8")
         overlay = (ROOT / "deploy" / "compose.traefik.yaml").read_text(encoding="utf-8")
-        for key in set(keys) | set(proxy_keys):
-            if key != "COMPOSE_FILE":  # Docker Compose consumes this itself.
-                self.assertIn("${" + key, compose + overlay,
-                              f"Documented env setting {key} not used by Compose")
+        # Docker Compose escapes service-side env references as $$${...};
+        # these are not .env interpolation variables.
+        interpolated = re.sub(r"\$\$\{[A-Z][A-Z0-9_]*\}", "", compose + overlay)
+        used = set(re.findall(r"\$\{([A-Z][A-Z0-9_]*)", interpolated))
+        documented = (set(keys) | set(proxy_keys)) - {"COMPOSE_FILE"}
+        self.assertEqual(
+            documented, used,
+            "Production Compose and .env must agree in BOTH directions",
+        )
 
 
 if __name__ == "__main__":

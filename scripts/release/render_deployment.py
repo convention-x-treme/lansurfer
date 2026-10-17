@@ -15,6 +15,7 @@ from pathlib import Path
 from release_policy import parse_tag
 
 MARKER = "__LANSURFER_RELEASE_IMAGE__"
+HEADER_MARKER = "# __LANSURFER_DEPLOYMENT_RELEASE_HEADER__"
 IMAGE_REPO = "ghcr.io/convention-x-treme/lansurfer"
 ASSETS = ("compose.yaml", "compose.traefik.yaml", "production.env.example")
 
@@ -29,10 +30,19 @@ def render_deployment(tag: str, digest: str, output: Path, *, root: Path | None 
     template = (deploy / "production.env.example").read_text(encoding="utf-8")
     if template.count(f"LANSURFER_IMAGE={MARKER}\n") != 1 or template.count(MARKER) != 1:
         raise ValueError("Exactly one release image marker is required in source env template")
+    if template.count(HEADER_MARKER + "\n") != 1:
+        raise ValueError("Exactly one release header marker is required in source env template")
     image = f"{IMAGE_REPO}:{tag}@{digest}"
-    rendered = template.replace(MARKER, image)
-    if MARKER in rendered:
-        raise ValueError("Unresolved release image marker")
+    operator_header = (
+        f"# LANsurfer {tag} production configuration.\n"
+        "# Download compose.yaml and this file from the SAME GitHub Release.\n"
+        "# Copy to .env, fill in credentials, and restrict permissions: chmod 600 .env\n"
+        f"# Complete configuration reference: "
+        f"https://github.com/convention-x-treme/lansurfer/blob/{tag}/docs/CONFIGURATION.md"
+    )
+    rendered = template.replace(HEADER_MARKER, operator_header).replace(MARKER, image)
+    if MARKER in rendered or HEADER_MARKER in rendered:
+        raise ValueError("Unresolved release template marker")
     output.mkdir(parents=True, exist_ok=False)
     shutil.copyfile(deploy / "compose.production.yaml", output / "compose.yaml")
     shutil.copyfile(deploy / "compose.traefik.yaml", output / "compose.traefik.yaml")

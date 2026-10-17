@@ -15,7 +15,12 @@ chmod 600 "$config_file"
 docker_config="$(mktemp -d)"
 chmod 700 "$docker_config"
 export DOCKER_CONFIG="$docker_config"
-compose=(docker compose --project-name "$project" --env-file "$config_file" -f "$root/deploy/compose.production.yaml")
+# The v0.1.0 baseline image still expects two legacy legal fields when Discord
+# login is configured. This compatibility overlay is CI-only and must NEVER
+# become a shipped production environment setting.
+compose=(docker compose --project-name "$project" --env-file "$config_file" \
+  -f "$root/deploy/compose.production.yaml" \
+  -f "$root/tools/ci/legacy-v01-login.override.yaml")
 
 cleanup() {
   result=$?
@@ -48,9 +53,22 @@ LANSURFER_BASE_URL=https://lansurfer.example.invalid
 LANSURFER_HTTP_PORT=$((20000 + GITHUB_RUN_ID % 30000))
 LANSURFER_DISCORD_CLIENT_ID=ci-only
 LANSURFER_DISCORD_CLIENT_SECRET=ci-only
-LANSURFER_LEGAL_ENTITY_NAME=CI fixture
-LANSURFER_LEGAL_CONTACT_EMAIL=ci@example.invalid
 EOF
+
+# Validate the ACTUAL deployable Compose config first; only the v0.1.0
+# runtime receives the legacy test-only overlay to keep this regression
+# fixture useful until the next release image is available.
+docker compose --project-name "$project" --env-file "$config_file" \
+  -f "$root/deploy/compose.production.yaml" config --format json |
+  docker run --rm -i --network none python:3.13-alpine python3 -c '
+import json, sys
+env = json.load(sys.stdin)["services"]["lansurfer"]["environment"]
+legacy = {"LANSURFER_LEGAL_ENTITY_NAME", "LANSURFER_LEGAL_ADDRESS",
+          "LANSURFER_LEGAL_CONTACT_EMAIL", "LANSURFER_IMPRINT_URL"}
+assert legacy.isdisjoint(env), "Legacy legal fields must not be in production Compose"
+assert env["LANSURFER_IMPRINT_ENABLED"] == "false"
+print("v0.2 Compose app env contains no legacy legal fields.")
+'
 
 # The runner host is intentionally bare (no native Python dependency).
 # Pipe synthetic effective configuration to a disposable, network-isolated Python container.
