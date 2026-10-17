@@ -15,7 +15,7 @@ Hundreds of players. Dozens of games. And somewhere in the room, someone else is
 
 [The idea](#-what-is-lansurfer) · [How it works](#-how-it-works) · [Project status](#-project-status) · [Get involved](#-get-involved)
 
-**Downloads:** Choose a published version in [GitHub Releases](https://github.com/convention-x-treme/lansurfer/releases). Every release contains its matching Docker Compose files and image configuration.
+**Releases:** Find published versions in [GitHub Releases](https://github.com/convention-x-treme/lansurfer/releases). The self-hosting package is included with the v0.2.0 release line.
 
 ## 🎮 What is LANsurfer?
 
