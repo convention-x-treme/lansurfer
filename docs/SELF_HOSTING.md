@@ -30,7 +30,8 @@ installed by changing `VERSION` in the download command.
 
 For optional integrity verification, download
 `deployment-checksums.txt` from the same `$BASE` URL and run
-`sha256sum -c deployment-checksums.txt` before editing `.env`.
+`sha256sum --ignore-missing -c deployment-checksums.txt` before editing `.env`.
+The flag skips the optional Traefik overlay if you did not download it.
 
 ## 2. Configure your instance
 
