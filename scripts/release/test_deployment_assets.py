@@ -57,5 +57,27 @@ class DeploymentReleaseAssetsTest(unittest.TestCase):
                 render_deployment("v0.2.0", DIGEST, target, root=ROOT)
 
 
+    def test_all_production_env_settings_have_a_reference_row(self):
+        """Ensure each release env entry is explained, including Traefik."""
+        template = (ROOT / "deploy" / "production.env.example").read_text(encoding="utf-8")
+        reference = (ROOT / "docs" / "CONFIGURATION.md").read_text(encoding="utf-8")
+        keys = re.findall(r"(?m)^([A-Z][A-Z0-9_]*)=", template)
+        proxy_keys = re.findall(r"(?m)^# (COMPOSE_FILE|TRAEFIK_[A-Z_]+)=", template)
+        rows = re.findall(r"(?m)^[|] `([A-Z][A-Z0-9_]*)` [|]", reference)
+
+        self.assertEqual(len(keys), len(set(keys)), "Duplicate env keys")
+        self.assertEqual(len(proxy_keys), len(set(proxy_keys)), "Duplicate Traefik keys")
+        self.assertEqual(len(rows), len(set(rows)), "Duplicate reference rows")
+        self.assertEqual(set(keys) | set(proxy_keys), set(rows),
+                         "Every env entry needs exactly one reference row")
+
+        compose = (ROOT / "deploy" / "compose.production.yaml").read_text(encoding="utf-8")
+        overlay = (ROOT / "deploy" / "compose.traefik.yaml").read_text(encoding="utf-8")
+        for key in set(keys) | set(proxy_keys):
+            if key != "COMPOSE_FILE":  # Docker Compose consumes this itself.
+                self.assertIn("\${" + key, compose + overlay,
+                              f"Documented env setting {key} not used by Compose")
+
+
 if __name__ == "__main__":
     unittest.main()

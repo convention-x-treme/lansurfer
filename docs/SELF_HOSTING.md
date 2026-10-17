@@ -63,6 +63,9 @@ admin login. For additional identity-provider options, see the
 
 Do not commit or share `.env`: it contains private credentials.
 
+For explanations of **every** `.env` option, default and optional integration,
+see the [complete production configuration reference](CONFIGURATION.md).
+
 ## 3. Choose HTTPS
 
 LANsurfer expects a reverse proxy and only binds its host port to

@@ -78,7 +78,7 @@ The [design system](DESIGN.md) defines the palette, typography, icons, mascot us
 
 ## 🚀 Self-host LANsurfer
 
-Want to run LANsurfer for your community? Use the **[Self-hosting quickstart](docs/SELF_HOSTING.md)**: choose a release, download its matching Compose and environment files with `wget`, configure your domain and login provider, then start Docker Compose. **No Git clone, Go, Node.js or Python required.** Caddy and Traefik examples are included. More detail: [production Compose reference](deploy/README.md).
+Want to run LANsurfer for your community? Use the **[Self-hosting quickstart](docs/SELF_HOSTING.md)**: choose a release, download its matching Compose and environment files with `wget`, configure your domain and login provider, then start Docker Compose. **No Git clone, Go, Node.js or Python required.** Caddy and Traefik examples are included. For all environment settings see the [`.env` reference](docs/CONFIGURATION.md), or read the [production Compose reference](deploy/README.md) for advanced operations.
 
 ## 🐳 Run LANsurfer locally
 

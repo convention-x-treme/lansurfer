@@ -22,6 +22,10 @@ before making that release public. The source file
 `deploy/production.env.example` contains an image marker and is *not* itself
 a runnable deployment. Use the release downloads, not raw files from `main`.
 
+The [complete `.env` reference](../docs/CONFIGURATION.md) explains every
+production variable, its default, and when it is required, including the
+optional Traefik overlay.
+
 The operator's private `.env` selects the application and PostgreSQL images.
 Updating source code, cloning the repo, or running `docker compose pull` with
 an unchanged digest does **not** update LANsurfer.
