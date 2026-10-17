@@ -6,7 +6,15 @@ This is a **separate, release-based** Docker Compose deployment for a single LAN
 
 This is a deployment example, **not** evidence that backup/restore or upgrades have been validated; those remaining regression tests belong to [#29](https://github.com/convention-x-treme/lansurfer/issues/29).
 
-> **Important for operators:** The pinned `v0.1.0` app image has public Terms/Privacy text describing the reference deployment, and no admin legal-text editor. The `LANSURFER_LEGAL_*` environment variables fill operator identity, but do not replace the fixed document bodies. The editor added later on `main` is not in this image. See the [self-hosting guide](../docs/SELF_HOSTING.md) before making a deployment publicly available.
+> **Important for operators:** This reference tracks the current `main`
+> Compose deployment, but the example still pins **the published v0.1.0
+> image**. v0.2.0 is **not yet released**; do not invent or use its tag/digest.
+> v0.1.0's fixed Terms/Privacy paragraphs describe the reference deployment
+> and have no `/admin/legal` editor. Current `main` supports database-backed
+> editable Terms, Privacy and Imprint; **you cannot use that UI until an
+> image containing the feature is published and selected**. Do not use v0.1.0's
+> sample policies for an unrelated public operator. See the
+> [self-hosting guide](../docs/SELF_HOSTING.md#legal-texts-and-imprint).
 
 ## Prepare configuration
 
@@ -18,13 +26,13 @@ chmod 600 deploy/production.env
 openssl rand -hex 32
 ```
 
-Put the newly generated **64-character** hex string in `POSTGRES_PASSWORD` in `deploy/production.env`; do not reuse the development password. Hex is important because Compose constructs `LANSURFER_DATABASE_URL` from this password and does not URL-encode it. Set `LANSURFER_BASE_URL` to the real public **HTTPS origin**, for example `https://lansurfer.example.org` (without a path). Configure at least one real login provider (OIDC, Discord or Twitch); the development Keycloak defaults are intentionally absent. Configure the operator legal identity and any desired Web Push, Discord notification or IGDB settings. See the root [README](../README.md) for each provider's required fields and callbacks.
+Put the newly generated **64-character** hex string in `POSTGRES_PASSWORD` in `deploy/production.env`; do not reuse the development password. Hex is important because Compose constructs `LANSURFER_DATABASE_URL` from this password and does not URL-encode it. Set `LANSURFER_BASE_URL` to the real public **HTTPS origin**, for example `https://lansurfer.example.org` (without a path). Configure at least one real login provider (OIDC, Discord or Twitch); the development Keycloak defaults are intentionally absent. Configure the login provider and any desired Web Push, Discord notification or IGDB settings. For the v0.1.0 image, the `LANSURFER_LEGAL_*` variables populate only its limited, fixed-page operator identity fields. Current `main` instead has administrator-edited legal documents; `LANSURFER_IMPRINT_ENABLED` controls whether the saved Imprint is served (`false` by default). The Compose file passes both the old `LANSURFER_IMPRINT_URL` and new `LANSURFER_IMPRINT_ENABLED` values so the example remains compatible with the currently published image while being ready for a future release. See the root [README](../README.md) for each provider's required fields and callbacks.
 
 `deploy/production.env` must remain outside version control and be readable only by trusted operators. Docker administrators can inspect container environment values and `docker compose config` reveals interpolated secrets; avoid pasting its output into issues or logs. Treat the generated password and notification encryption keys as backup-sensitive secrets.
 
 **Image version management:** `deploy/compose.production.yaml` contains no LANsurfer or PostgreSQL version. `deploy/production.env` selects `LANSURFER_IMAGE` and `POSTGRES_IMAGE`; the example pins the verified `v0.1.0` LANsurfer and PostgreSQL `18.6-alpine` with immutable multi-architecture digests. An operator can update either reference *without editing Compose*. `docker compose pull` alone never selects a newer digest, and deployments do not upgrade automatically. To upgrade LANsurfer, verify the desired published release's multi-architecture digest, update only `LANSURFER_IMAGE` in your private env file, review the release notes and data/backup compatibility, then run the documented preflight, pull and up commands. For a rollback, restore the prior exact image reference only when its database-schema compatibility is confirmed; rollback is not guaranteed. PostgreSQL image updates are independent: PostgreSQL 18 uses `/var/lib/postgresql` as the persistent mount, and a major-version change requires a dedicated database migration/restore plan.
 
-The release image may require authentication while the GHCR package is private. An operator with package read access can run `docker login ghcr.io` before starting the stack. The private `production.env` preserves the operator's version choice even if the example template is updated for a future release. The pinned digest deliberately requires an explicit change to `LANSURFER_IMAGE` when an operator adopts a new release.
+The release image may require authentication while the GHCR package is private. An operator with package read access can run `docker login ghcr.io` before starting the stack. The private `production.env` preserves the operator's version choice even if the example template is updated for a future release. The pinned digest deliberately requires an explicit change to `LANSURFER_IMAGE` when an operator adopts a new release. When v0.2.0 is published, verify its exact image digest and release notes before updating the private file; the example deliberately stays on v0.1.0 until a real release is available.
 
 ## Start and inspect
 

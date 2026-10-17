@@ -10,20 +10,22 @@ instance? Jump to [Daily operations](#daily-operations) or
 [Updating LANsurfer](#updating-lansurfer).
 
 > [!IMPORTANT]
-> The example configuration installs **v0.1.0**, an early 0.x release.
-> Startup and persistent-volume behavior have been exercised in CI, but
-> **production backup/restore and cross-version upgrades have not yet been
-> fully validated**. Before storing valuable real-world data, establish and
-> test your own recovery process. See
-> [issue #29](https://github.com/convention-x-treme/lansurfer/issues/29).
+> **Current release vs. upcoming v0.2.0:** This guide documents the
+> **current `main` code**, which is being prepared for a later release.
+> **v0.2.0 has not been published.** The production environment template
+> still installs the last published image, **v0.1.0**, by default.
+> In particular, current `main` supports editing Terms, Privacy, and
+> Imprint in **Administration → Legal texts** (`/admin/legal`), while
+> **v0.1.0 does not**. An updated checkout does not upgrade its Docker image.
+> Only use the new features after a release containing them has been
+> published and you have deliberately selected its verified image digest.
 >
-> **Legal-text limitation of v0.1.0:** Its public Terms and Privacy page bodies
-> still describe the LANsurfer reference deployment, and **there is no
-> administrator legal-text editor** in that release. Operator names/contact
-> can be configured, but the text itself is not fully customizable in the
-> published image. Do not invite users to a different public deployment
-> relying on those sample policies. Later code on `main` includes a legal
-> editor, but that does **not** make the feature available in v0.1.0.
+> v0.1.0's fixed Terms/Privacy text describes the reference deployment; it
+> cannot be edited in the running image. Do **not** publicly host it for a
+> different operator relying on that wording. Regardless of version,
+> **backup/restore and cross-version upgrade/rollback procedures are not yet
+> fully validated**. Test your own recovery before using valuable data;
+> see [issue #29](https://github.com/convention-x-treme/lansurfer/issues/29).
 
 ## How this deployment works
 
@@ -70,7 +72,10 @@ cd lansurfer
 
 The repository is currently private, so cloning requires authorized GitHub
 access. You only need its Compose configuration and validation script: **the
-production deployment does not compile the application from source**.
+production deployment does not compile the application from source**. The
+checkout may already include features planned for v0.2.0; which **application
+version actually runs** is determined solely by `LANSURFER_IMAGE` in
+`deploy/production.env`.
 
 Keep running all commands in this guide from the repository root.
 
@@ -116,9 +121,10 @@ preferred text editor and set at least:
 | --- | --- |
 | `POSTGRES_PASSWORD` | The generated 64-character hex password; do not reuse development credentials |
 | `LANSURFER_BASE_URL` | The complete HTTPS origin, e.g. `https://lansurfer.example.org`, **without a path** |
-| `LANSURFER_IMAGE`, `POSTGRES_IMAGE` | **Leave the known-good, digest-pinned defaults** for the first installation |
+| `LANSURFER_IMAGE`, `POSTGRES_IMAGE` | The example pins the **published v0.1.0** image and PostgreSQL by digest. Do not use an unpublished v0.2.0 tag; once it is released, choose its verified digest deliberately. |
 | Login provider settings | At least one provider, described in step 4 |
 | `LANSURFER_HTTP_PORT` | Leave at `8080` unless that port is already used on the Docker host |
+| `LANSURFER_IMPRINT_ENABLED` | Optional for the current `main` app (intended for an upcoming release): `true` exposes the operator-written `/imprint` document after you have saved it; `false` hides the link. The v0.1.0 image does not support this flag. |
 
 The file is ignored by Git. Never commit it or share its contents, since it may
 contain credentials and encryption keys. Environment variables exported in
@@ -145,13 +151,15 @@ LANSURFER_LEGAL_ENTITY_NAME=YOUR_ORGANIZATION_NAME
 LANSURFER_LEGAL_CONTACT_EMAIL=contact@example.org
 ```
 
-Replace all example values with your real operator details; the production
-preflight requires the legal entity name and contact email when Discord login
-is configured. Discord also expects public Terms and Privacy links:
-`https://lansurfer.example.org/terms` and
-`https://lansurfer.example.org/privacy`. The pinned v0.1.0 image uses reference-deployment legal texts that cannot
-be edited through its administrator interface; review the limitation at the
-top of this guide before inviting users.
+Replace all example values with your real operator details. The production
+Compose preflight still requires the legal entity name and contact email for
+Discord login (also required by v0.1.0). On current `main`, the
+`LANSURFER_LEGAL_*` variables do **not** edit the published Terms/Privacy
+content; the operator must save their own texts in the administrator UI after
+a supporting release is selected. Discord expects public Terms and Privacy
+links: `https://lansurfer.example.org/terms` and
+`https://lansurfer.example.org/privacy`. Do not invite users while those
+pages contain placeholder or reference-deployment text.
 
 </details>
 
@@ -256,19 +264,47 @@ reverse proxy and sign-in flow.
    ```sh
    dc exec lansurfer /lansurfer admin promote --user-id YOUR_USER_UUID
    ```
-4. Reload LANsurfer. Check the public `/terms` and `/privacy` pages.
-   **In the pinned v0.1.0 image, these pages still describe the reference
-   deployment; no `/admin/legal` editor exists.** The operator fields in
-   `production.env` do not rewrite those sample paragraphs. Do not invite
-   users until the installed release has legally reviewed texts that match
-   your operation. When a later published release includes
-   **Administration → Legal texts**, edit them there.
+4. Reload LANsurfer and follow [Legal texts and imprint](#legal-texts-and-imprint)
+   before inviting players. The exact steps depend on your **installed image
+   version**, not the Git checkout.
 5. If IGDB is disabled (the default), create your community's Games manually
    in **Administration → Games** (`/admin/games`).
 
 After the deployment and legal content are ready for public users, your
 players can sign in, follow Games, create or join Game Requests, and use
 LANsurfer from desktop or mobile browsers.
+
+### Legal texts and imprint
+
+The administration interface available in **current `main`** (intended for
+an upcoming release) lets the operator maintain public legal documents **in
+the application's database**, not through environment variables.
+
+Once you are running a published release that includes this feature:
+
+1. Open **Administration → Legal texts** (`/admin/legal`).
+2. Replace every placeholder in the sample **Terms of Service** and **Privacy
+   Policy** with real details about your organization and infrastructure.
+   The public URLs are `/terms` and `/privacy`.
+3. If you need an Imprint page, prepare and save its text in the same
+   administration area. Then set `LANSURFER_IMPRINT_ENABLED=true` in
+   `deploy/production.env` and run `dc up -d --wait`. The public
+   `/imprint` page and footer link then become available. If disabled, the
+   page is not served. **This setting is available on current `main`, not
+   v0.1.0.**
+4. Review the rendered pages in a private browser window, and have the legal
+   content checked for your jurisdiction **before** inviting players.
+
+The **published v0.1.0 image has no `/admin/legal` editor**. Its fixed
+Terms/Privacy paragraphs describe the LANsurfer reference deployment.
+`LANSURFER_LEGAL_ENTITY_NAME`, `LANSURFER_LEGAL_ADDRESS`, and
+`LANSURFER_LEGAL_CONTACT_EMAIL` only fill the old release's operator
+identity fields; `LANSURFER_IMPRINT_URL` points to an external imprint.
+These environment variables do **not** make the built-in sample policies
+accurate for a different operator.
+
+**Until a new release with editable legal texts exists, do not treat the
+default v0.1.0 production image as ready for an unrelated public deployment.**
 
 ## Daily operations
 
@@ -305,10 +341,14 @@ versions live in your private `deploy/production.env`:
 - `POSTGRES_IMAGE` separately controls PostgreSQL. Do not casually change its
   major version: a database migration plan is needed.
 
-When a new LANsurfer release is available, read its release notes and verify
-its published digest. Once you have a **tested backup and recovery plan**,
-change `LANSURFER_IMAGE` to that exact image reference, run the preflight,
-then use `dc pull` and `dc up -d --wait`.
+When **v0.2.0 is actually published**, read its release notes and verify the
+published **multi-architecture image digest**. This guide does not include a
+made-up v0.2.0 digest, and the configuration example intentionally continues
+to pin v0.1.0 until a verified release is available. Once you have a **tested
+backup and recovery plan**, change `LANSURFER_IMAGE` in your *private*
+`deploy/production.env` to that exact published tag-and-digest reference,
+run the preflight, then use `dc pull` and `dc up -d --wait`. If updating
+from v0.1.0, verify the migration/compatibility notes before doing so.
 
 **Important:** Application startup applies forward-only database migrations.
 Switching the image back to an older release does *not* automatically restore
@@ -325,6 +365,8 @@ backup/restore regression tests are not yet complete; see
 | `dc up` fails / app stays unready | Inspect `dc ps` and `dc logs --tail=100 lansurfer`; check the database password and container health |
 | Site shows 502 / cannot connect | Check both local health URLs, DNS, your HTTPS proxy, and the proxy-to-`127.0.0.1:8080` route |
 | Login redirects fail | Register the **exact HTTPS callback URL** for the selected provider and match `LANSURFER_BASE_URL` |
+| No **Administration → Legal texts** menu | Check the `LANSURFER_IMAGE` tag and digest in `production.env`: the published v0.1.0 image has no legal editor. Cloning newer source does not upgrade a container. |
+| Imprint link missing on a supporting release | Save the Imprint in `/admin/legal`, set `LANSURFER_IMPRINT_ENABLED=true` in `deploy/production.env`, and recreate the app with `dc up -d --wait`. |
 | HTTPS proxy is itself containerized | Host loopback is the wrong upstream; use an explicitly configured **private Docker network** instead |
 | Need to recover data | Do not delete or reinitialize the PostgreSQL volume; follow your tested database recovery procedure |
 

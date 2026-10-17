@@ -78,7 +78,9 @@ services:
       LANSURFER_LEGAL_ENTITY_NAME: ${LANSURFER_LEGAL_ENTITY_NAME:-}
       LANSURFER_LEGAL_ADDRESS: ${LANSURFER_LEGAL_ADDRESS:-}
       LANSURFER_LEGAL_CONTACT_EMAIL: ${LANSURFER_LEGAL_CONTACT_EMAIL:-}
+      # Backward-compatible: v0.1.0 uses an external imprint URL; current main uses an admin-edited document.
       LANSURFER_IMPRINT_URL: ${LANSURFER_IMPRINT_URL:-}
+      LANSURFER_IMPRINT_ENABLED: ${LANSURFER_IMPRINT_ENABLED:-false}
       LANSURFER_COVER_CACHE_DIR: /var/cache/lansurfer/covers
     volumes:
       - cover-cache:/var/cache/lansurfer/covers

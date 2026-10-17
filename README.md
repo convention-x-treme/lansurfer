@@ -15,7 +15,7 @@ Hundreds of players. Dozens of games. And somewhere in the room, someone else is
 
 [The idea](#-what-is-lansurfer) · [How it works](#-how-it-works) · [Project status](#-project-status) · [Get involved](#-get-involved)
 
-> 🚧 **Under active development:** there is no stable release yet. The design and database may still change.
+> 🚧 **Early releases:** [`v0.1.0`](https://github.com/convention-x-treme/lansurfer/releases/tag/v0.1.0) is published. `v0.2.0` is planned but **not released yet**. The project remains under active development; its data model and deployment guidance may change before 1.0.
 
 ## 🎮 What is LANsurfer?
 
@@ -78,7 +78,7 @@ The [design system](DESIGN.md) defines the palette, typography, icons, mascot us
 
 ## 🚀 Self-host LANsurfer
 
-Want to run LANsurfer for your community? Start with the **[Self-hosting guide](docs/SELF_HOSTING.md)**: install with Docker Compose, configure HTTPS and a login provider, create your first administrator, and manage the instance. **No Go or Node.js required.** For low-level details, see the [production Compose reference](deploy/README.md).
+Want to run LANsurfer for your community? Start with the **[Self-hosting guide](docs/SELF_HOSTING.md)**: install with Docker Compose, configure HTTPS and a login provider, create your first administrator, and manage the instance. **No Go or Node.js required.** The guide tracks current `main` behavior while clearly distinguishing it from the still-published `v0.1.0` image; `v0.2.0` is not available yet. For low-level details, see the [production Compose reference](deploy/README.md).
 
 ## 🐳 Run LANsurfer locally
 
