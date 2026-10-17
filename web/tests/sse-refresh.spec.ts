@@ -159,16 +159,16 @@ test("an automatic lobby load does not invalidate a trailing detail refresh", as
   expect(swapsPrevented).toEqual([false, false]);
   expect(detailCalls).toBe(2);
 });
-test("coalesces list events inside a fixed 200 ms window", async ({ page, request }) => {
+test("coalesces list events inside a fixed 100 ms window", async ({ page, request }) => {
   await openList(page, request);
   await emit(page, "GameRequestJoined");
-  await page.clock.runFor(50);
+  await page.clock.runFor(25);
   await emit(page, "GameRequestLeft");
-  await page.clock.runFor(50);
+  await page.clock.runFor(25);
   await emit(page, "GameRequestJoined");
-  await page.clock.runFor(50);
+  await page.clock.runFor(25);
   await emit(page, "GameRequestLeft");
-  await page.clock.runFor(49);
+  await page.clock.runFor(24);
   expect((await refreshProbe(page)).count).toBe(0);
   await page.clock.runFor(1);
   await expect.poll(async () => (await refreshProbe(page)).count).toBe(1);
@@ -284,7 +284,7 @@ test("a failed refresh retries once after 1000 ms and stops after second failure
 test("keeps a pending refresh through hidden and pagehide suspension", async ({ page, request }) => {
   await openList(page, request);
   await emit(page, "GameRequestJoined");
-  await page.clock.runFor(100);
+  await page.clock.runFor(50);
   await page.evaluate(() => {
     Object.defineProperty(document, "hidden", { configurable: true, value: true });
     document.dispatchEvent(new Event("visibilitychange"));
@@ -301,7 +301,7 @@ test("keeps a pending refresh through hidden and pagehide suspension", async ({ 
   expect((await refreshProbe(page)).count).toBe(1);
 
   await emit(page, "GameRequestLeft");
-  await page.clock.runFor(100);
+  await page.clock.runFor(50);
   await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent("pagehide")));
   await page.clock.runFor(500);
   expect((await refreshProbe(page)).count).toBe(1);

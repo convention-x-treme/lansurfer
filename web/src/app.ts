@@ -679,7 +679,7 @@ function queueGameRequestRefresh(target: GameRequestRefreshTarget, options: Game
   const now = performance.now();
   if (!state.pending) {
     state.pending = true;
-    state.dueAt = now + (options.immediate ? 0 : 200);
+    state.dueAt = now + (options.immediate ? 0 : 100);
   } else if (options.immediate && !state.retryUsed) {
     state.dueAt = Math.min(state.dueAt, now);
   }

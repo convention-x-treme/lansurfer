@@ -208,23 +208,22 @@ func TestCoalescedRefreshWaitsForFixedWindow(t *testing.T) {
 		state := &clientState{token: "test"}
 		f.observe(state, eventData{streamName: "game-request"}, time.Now())
 		synctest.Wait()
-		for range 2 {
-			time.Sleep(50 * time.Millisecond)
+		for range 3 {
+			time.Sleep(25 * time.Millisecond)
 			f.observe(state, eventData{streamName: "game-request"}, time.Now())
 		}
+		time.Sleep(24 * time.Millisecond)
 		synctest.Wait()
 		if got := requests.Load(); got != 0 {
-			t.Fatalf("requests before 200 ms = %d, want 0", got)
+			t.Fatalf("requests before 100 ms = %d, want 0", got)
 		}
-		f.observe(state, eventData{streamName: "game-request"}, time.Now())
-		time.Sleep(101 * time.Millisecond)
+		time.Sleep(time.Millisecond)
 		synctest.Wait()
 		if got := requests.Load(); got != 1 {
-			t.Fatalf("requests at 200 ms = %d, want 1", got)
+			t.Fatalf("requests at 100 ms = %d, want 1", got)
 		}
 	})
 }
-
 func TestCoalescedRefreshDoesNotSlideUnderContinuousSignals(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		var requests atomic.Int64
@@ -242,8 +241,8 @@ func TestCoalescedRefreshDoesNotSlideUnderContinuousSignals(t *testing.T) {
 			}
 			time.Sleep(50 * time.Millisecond)
 			synctest.Wait()
-			if i == 3 && requests.Load() == 0 {
-				t.Fatal("continuous signals postponed first refresh beyond 200 ms")
+			if i == 1 && requests.Load() == 0 {
+				t.Fatal("continuous signals postponed first refresh beyond 100 ms")
 			}
 		}
 		f.wg.Wait()
@@ -299,7 +298,7 @@ func TestCoalescedRefreshRetriesOnceAfterOneSecond(t *testing.T) {
 		f.baseURL = "http://loadtest.invalid"
 		f.observe(&clientState{token: "test"}, eventData{streamName: "game-request"}, time.Now())
 		synctest.Wait()
-		time.Sleep(201 * time.Millisecond)
+		time.Sleep(101 * time.Millisecond)
 		synctest.Wait()
 		if got := requests.Load(); got != 1 {
 			t.Fatalf("requests before retry delay = %d, want 1", got)

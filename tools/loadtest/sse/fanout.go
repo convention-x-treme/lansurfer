@@ -183,7 +183,7 @@ func (f *fanout) refreshCoalesced(state *clientState) {
 		return
 	}
 	state.refreshPending = true
-	state.refreshDue = time.Now().Add(200 * time.Millisecond)
+	state.refreshDue = time.Now().Add(100 * time.Millisecond)
 	if state.refreshActive {
 		state.refreshMu.Unlock()
 		return
