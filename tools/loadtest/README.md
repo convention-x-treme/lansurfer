@@ -147,7 +147,7 @@ task loadtest:coalescing WORKSPACE=147 PRODUCT_REVISION="$H" HARNESS_REVISION="$
 task loadtest:coalescing WORKSPACE=147 PRODUCT_REVISION="$C" HARNESS_REVISION="$H" VARIANT=treatment REPETITION=1
 ```
 
-Set `H` to harness commit and `C` to treatment commit. Each baseline or treatment run measures 120 streams and 400 streams plus 100 writers, with five real Chromium pages. Paired runs restore same database snapshot. Baseline uses worst-case simulated refreshes; treatment uses 200 ms coalescing. Reports, session tokens, profile samples, and database snapshot remain private in workspace.
+Set `H` to the harness commit and `C` to the treatment commit. Each variant measures 120 streams and 400 streams plus 100 writers, with five real Chromium pages. Paired runs restore same database snapshot and use identical `browser-like` synthetic refreshes; real pages execute each revision's app bundle. Per-profile reports record product/harness SHAs and app.js checksum. The private workspace stores manifests, session tokens, profile samples, and database snapshot.
 
 Calibration failures remain in each JSON report and do not stop the paired run; missing reports or failed database audits still fail the task.
 
@@ -155,7 +155,7 @@ For each profile, compare refresh GETs per SSE signal, refresh and write latency
 
 For ordinary `loadtest:calibrate`, 400 synthetic streams may share five browser identities. Paired coalescing runs use disjoint browser, stream, writer, and control identities.
 
-Orchestrated tasks (`loadtest:run`, `writes`, `profile`, `calibrate`, `loss`, `chaos`, `soak`) create `$HOME/lansurfer-loadtest-reports/<UTC>-<scenario>/` (mode `0700`) with `manifest.json` (SHA, dirty flag, image IDs/creation, container limits, versions, parameters, exit code, actual duration), `console.log`, and artifacts (`0600`). Direct diagnostics such as `loadtest:race`, `loadtest:sse`, and `loadtest:browser` print to the terminal and do not create a run manifest. Run `task loadtest:scan REPORT_PATH=<dir>` on a generated report bundle before publishing; it prints only the number of session-token or metrics-key hits.
+Orchestrated tasks (`loadtest:run`, `writes`, `profile`, `calibrate`, `loss`, `chaos`, `soak`) create `$HOME/lansurfer-loadtest-reports/<UTC>-<scenario>/` (mode `0700`) with `manifest.json` (SHA, dirty flag, image IDs/creation, container limits, versions, parameters, exit code, actual duration), `console.log`, and artifacts (`0600`). `loadtest:coalescing` stores per-profile `manifest.json` and `environment.txt` in its private workspace. Direct diagnostics such as `loadtest:race`, `loadtest:sse`, and `loadtest:browser` print to the terminal and do not create a run manifest. Run `task loadtest:scan REPORT_PATH=<dir>` on a generated report bundle before publishing; it prints only the number of session-token or metrics-key hits.
 
 ### Measured local results (WSL2, not capacity evidence)
 

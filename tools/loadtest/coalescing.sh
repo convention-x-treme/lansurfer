@@ -22,7 +22,7 @@ build_image() {
   local tag="lansurfer-loadtest-coalescing:${slug}-${variant}-${short_rev}"
   if [[ ! -f "$archive" ]]; then git -C "$root" archive --format=tar "$rev" >"$archive"; fi
   local digest
-  digest="$(sha256sum "$archive" | cut -d ' ' -f1)"
+  digest="$(tar -xOf "$archive" internal/web/assets/dist/app.js | sha256sum | cut -d ' ' -f1)"
   if ! docker image inspect "$tag" >/dev/null 2>&1; then
     mkdir -p -m 700 "$context"
     tar -xf "$archive" -C "$context"
@@ -42,6 +42,14 @@ wait_ready() {
   done
   echo 'isolated app did not become ready' >&2
   return 1
+}
+verify_bundle() {
+  local expected="$1" actual
+  actual="$(curl -fsS -H 'Accept-Encoding: identity' http://127.0.0.1:18080/assets/app.js | sha256sum | cut -d ' ' -f1)"
+  [[ "$actual" == "$expected" ]] || {
+    echo "served app.js checksum $actual does not match image bundle $expected" >&2
+    return 1
+  }
 }
 
 prepare() {
@@ -76,6 +84,8 @@ prepare() {
   "${compose[@]}" exec -T postgres pg_dump -U lansurfer_loadtest -Fc lansurfer_loadtest >"$workspace/database.dump"
   chmod 600 "$workspace/database.dump"
   "${chaos_compose[@]}" up -d --build --wait proxy
+  bash "$root/tools/loadtest/collect-env.sh" >"$workspace/environment.txt"
+  chmod 600 "$workspace/environment.txt"
   echo "Prepared private paired workspace: $workspace"
   echo 'The isolated lansurfer-loadtest database was reset and seeded.'
 }
@@ -96,15 +106,22 @@ run_profile() {
   compose_override "$image" "$workspace/compose-${variant}.yaml"
   "${chaos_compose[@]}" -f "$workspace/compose-${variant}.yaml" up -d --no-build --force-recreate lansurfer proxy
   wait_ready
-
+  verify_bundle "$digest"
+  local image_id runner_revision dirty
+  image_id="$(docker image inspect --format '{{.Id}}' "$image")"
+  runner_revision="$(git -C "$root" rev-parse HEAD)"
+  dirty=false
+  [[ -z "$(git -C "$root" status --porcelain -- . ':!docs/superpowers')" ]] || dirty=true
+  printf '{"schemaVersion":1,"variant":"%s","repetition":%s,"profile":"%s","productRevision":"%s","harnessRevision":"%s","runnerRevision":"%s","dirty":%s,"image":"%s","imageID":"%s","appBundleSHA256":"%s","runtimeBundleVerified":true,"refreshMode":"browser-like"}\n' \
+    "$variant" "$repetition" "$profile" "$revision" "$HARNESS_REVISION" "$runner_revision" "$dirty" "$image" "$image_id" "$digest" >"$out/manifest.json"
+  chmod 600 "$out/manifest.json"
   local simulated_users writers sim_offset writer_offset refresh_mode duration profile_pid=""
   if [[ "$profile" == '120' ]]; then
     simulated_users=120 writers=0 sim_offset=5 writer_offset=125 duration=90s
   else
     simulated_users=400 writers=100 sim_offset=5 writer_offset=405 duration=90s
   fi
-  refresh_mode=worst-case
-  [[ "$variant" == treatment ]] && refresh_mode=coalesced
+  refresh_mode=browser-like
   export BASE_URL=http://127.0.0.1:18081 REQUEST="$(node -p "require('$workspace/control.json').request_id")"
   export SIMULATED_USERS="$simulated_users" SIMULATED_SESSION_OFFSET="$sim_offset" BROWSER_CLIENTS=5
   export WRITERS="$writers" WRITER_SESSION_OFFSET="$writer_offset" WRITER_DURATION="$duration"
