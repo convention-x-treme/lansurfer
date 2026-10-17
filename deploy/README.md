@@ -1,5 +1,7 @@
 # Self-hosted production Compose
 
+> **First time hosting LANsurfer?** Start with the [step-by-step self-hosting guide](../docs/SELF_HOSTING.md). This page is the more detailed technical reference.
+
 This is a **separate, release-based** Docker Compose deployment for a single LANsurfer instance. Unlike root `compose.yaml` (development), it does not build from a checkout, reads **both immutable image references from `deploy/production.env`**, keeps PostgreSQL internal, and binds the application only to Docker-host loopback. The example env file starts with the previously verified `v0.1.0` image; the Compose template is not tied to that release. PostgreSQL data and the media cache use named volumes. No proxy, identity provider or monitoring service is added to the Compose stack.
 
 This is a deployment example, **not** evidence that backup/restore or upgrades have been validated; those remaining regression tests belong to [#29](https://github.com/convention-x-treme/lansurfer/issues/29).

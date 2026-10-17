@@ -76,6 +76,10 @@ The [design system](DESIGN.md) defines the palette, typography, icons, mascot us
 - [Architecture](docs/ARCHITECTURE.md), [terminology](docs/TERMINOLOGY.md), and [design system](DESIGN.md): the other canonical references.
 - [GitHub Issues](https://github.com/convention-x-treme/lansurfer/issues) and [milestones](https://github.com/convention-x-treme/lansurfer/milestones): current development work and proposals. There is no separate roadmap file.
 
+## 🚀 Self-host LANsurfer
+
+Want to run LANsurfer for your community? Start with the **[Self-hosting guide](docs/SELF_HOSTING.md)**: install with Docker Compose, configure HTTPS and a login provider, create your first administrator, and manage the instance. **No Go or Node.js required.** For low-level details, see the [production Compose reference](deploy/README.md).
+
 ## 🐳 Run LANsurfer locally
 
 With Go, Node.js/npm, Task, and Docker Compose installed, start the development workflow:
@@ -105,7 +109,7 @@ docker compose up --build
 
 Stop the full stack with `docker compose down`; the PostgreSQL data volume remains.
 
-For a separate self-hosted deployment with immutable release images, private version selection, and internal PostgreSQL, see [Production Compose](deploy/README.md). Do not expose the development Compose stack to the internet.
+The commands above are for **local development**, not an internet-facing installation. Use the [Self-hosting guide](docs/SELF_HOSTING.md) for deployment with published images and HTTPS.
 
 ### Configure OIDC login
 
