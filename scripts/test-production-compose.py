@@ -116,10 +116,6 @@ def validate(compose):
                 bool(app_env.get("LANSURFER_TWITCH_CLIENT_SECRET")),
                 "Twitch login needs client ID and client secret")
     require(oidc_issuer or discord_id or twitch_login, "configure at least one login provider")
-    if discord_id:
-        require(bool(app_env.get("LANSURFER_LEGAL_ENTITY_NAME")) and
-                bool(app_env.get("LANSURFER_LEGAL_CONTACT_EMAIL")),
-                "Discord login requires operator legal entity name and contact email")
 
 
 def test_mutations(valid):

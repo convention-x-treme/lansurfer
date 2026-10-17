@@ -15,7 +15,7 @@ Hundreds of players. Dozens of games. And somewhere in the room, someone else is
 
 [The idea](#-what-is-lansurfer) · [How it works](#-how-it-works) · [Project status](#-project-status) · [Get involved](#-get-involved)
 
-> 🚧 **Early releases:** [`v0.1.0`](https://github.com/convention-x-treme/lansurfer/releases/tag/v0.1.0) is published. `v0.2.0` is planned but **not released yet**. The project remains under active development; its data model and deployment guidance may change before 1.0.
+**Downloads:** Choose a published version in [GitHub Releases](https://github.com/convention-x-treme/lansurfer/releases). Every release contains its matching Docker Compose files and image configuration.
 
 ## 🎮 What is LANsurfer?
 
@@ -78,7 +78,7 @@ The [design system](DESIGN.md) defines the palette, typography, icons, mascot us
 
 ## 🚀 Self-host LANsurfer
 
-Want to run LANsurfer for your community? Follow the **[download-only self-hosting quickstart](docs/SELF_HOSTING.md)**: fetch two files with `wget`, set a domain and login provider, and start Docker Compose. **No Git clone, Go, Node.js or Python required.** Use a host-based **Caddy** or existing Docker-based **Traefik**. The example still pins v0.1.0 until a verified v0.2.0 release exists. More detail: [production Compose reference](deploy/README.md).
+Want to run LANsurfer for your community? Use the **[Self-hosting quickstart](docs/SELF_HOSTING.md)**: choose a release, download its matching Compose and environment files with `wget`, configure your domain and login provider, then start Docker Compose. **No Git clone, Go, Node.js or Python required.** Caddy and Traefik examples are included. More detail: [production Compose reference](deploy/README.md).
 
 ## 🐳 Run LANsurfer locally
 
