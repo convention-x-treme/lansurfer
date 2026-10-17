@@ -15,7 +15,7 @@ Hundreds of players. Dozens of games. And somewhere in the room, someone else is
 
 [The idea](#-what-is-lansurfer) · [How it works](#-how-it-works) · [Project status](#-project-status) · [Get involved](#-get-involved)
 
-> 🚧 **Under active development:** there is no stable release yet. The design and database may still change.
+**Releases:** Find published versions in [GitHub Releases](https://github.com/convention-x-treme/lansurfer/releases). The self-hosting package is included with the v0.2.0 release line.
 
 ## 🎮 What is LANsurfer?
 
@@ -76,6 +76,10 @@ The [design system](DESIGN.md) defines the palette, typography, icons, mascot us
 - [Architecture](docs/ARCHITECTURE.md), [terminology](docs/TERMINOLOGY.md), and [design system](DESIGN.md): the other canonical references.
 - [GitHub Issues](https://github.com/convention-x-treme/lansurfer/issues) and [milestones](https://github.com/convention-x-treme/lansurfer/milestones): current development work and proposals. There is no separate roadmap file.
 
+## 🚀 Self-host LANsurfer
+
+Want to run LANsurfer for your community? Use the **[Self-hosting quickstart](docs/SELF_HOSTING.md)**: choose a release, download its matching Compose and environment files with `wget`, configure your domain and login provider, then start Docker Compose. **No Git clone, Go, Node.js or Python required.** Caddy and Traefik examples are included. For all environment settings see the [`.env` reference](docs/CONFIGURATION.md), or read the [production Compose reference](deploy/README.md) for advanced operations.
+
 ## 🐳 Run LANsurfer locally
 
 With Go, Node.js/npm, Task, and Docker Compose installed, start the development workflow:
@@ -105,7 +109,7 @@ docker compose up --build
 
 Stop the full stack with `docker compose down`; the PostgreSQL data volume remains.
 
-For a separate self-hosted deployment with immutable release images, private version selection, and internal PostgreSQL, see [Production Compose](deploy/README.md). Do not expose the development Compose stack to the internet.
+The commands above are for **local development**, not an internet-facing installation. Use the [Self-hosting guide](docs/SELF_HOSTING.md) for deployment with published images and HTTPS.
 
 ### Configure OIDC login
 
@@ -145,7 +149,9 @@ LANSURFER_DISCORD_WEBHOOK_CLIENT_ID=
 LANSURFER_DISCORD_WEBHOOK_CLIENT_SECRET=
 ```
 
-Configuring Discord login does not enable delivery, and configuring delivery does not enable login. Delivery additionally requires `LANSURFER_DATA_ENCRYPTION_KEY` to be set, since webhook credentials are encrypted at rest.
+Register `<base URL>/admin/discord/callback` as the **separate** Discord delivery OAuth2 redirect URI. Delivery requests only the `webhook.incoming` scope. Once these credentials and `LANSURFER_DATA_ENCRYPTION_KEY` (standard Base64 encoding of 32 random bytes) are configured, open **Administration → Discord delivery** (`/admin/discord`) and use **Connect** to choose the Discord server/channel. LANsurfer creates the webhook; no manual URL is needed.
+
+Configuring Discord login does not enable delivery, and configuring delivery does not enable login. Delivery additionally requires `LANSURFER_DATA_ENCRYPTION_KEY` to be set, since webhook credentials are encrypted at rest. Back up that key securely and never replace it casually.
 
 ### Configure Twitch login and IGDB discovery
 

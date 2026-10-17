@@ -52,7 +52,10 @@ case "$job" in
     python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else "Python 3.10+ required")'
     goreleaser check
     bash -n scripts/release/publish.sh
+    bash -n scripts/release/smoke_deployment.sh
+    docker compose version
     python3 -m unittest discover -s scripts/release -p 'test_release_policy.py' -v
+    python3 -m unittest discover -s scripts/release -p 'test_deployment_assets.py' -v
     bash scripts/release/test-changelog.sh
     builder="lansurfer-snapshot-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
     docker buildx create --driver docker-container --name "$builder" --use
@@ -75,8 +78,11 @@ case "$job" in
     command -v gh && gh --version
     command -v goreleaser && goreleaser --version
     command -v docker && docker buildx version
-    command -v jq && command -v python3
+    command -v jq && command -v python3 && command -v curl
+    docker compose version
     bash -n scripts/release/publish.sh
+    bash -n scripts/release/smoke_deployment.sh
+    python3 -m unittest discover -s scripts/release -p 'test_deployment_assets.py' -v
     echo "Release publishing toolbox is ready."
     ;;
 

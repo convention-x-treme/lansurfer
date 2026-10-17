@@ -423,6 +423,34 @@ There is **no atomic transaction** across GitHub draft creation, release-asset u
 - **Alias promotion fails:** avoid marking a release successful. Verify or repair the mutable aliases with the semver policy; don't point `latest` or `vN` to an older release.
 - **After the GitHub Release is public:** preserve the tag/artifacts; fixes get a new SemVer version.
 
+### Verify v0.2.0 release assets with a real prerelease
+
+The version-matched Compose package and its GitHub asset upload path were
+added after v0.1.0. **Before v0.2.0 stable**, the maintainer should
+intentionally publish an unused `v0.2.0-rc.1` (or next available RC tag)
+from the reviewed, merged revision. **This is an immutable real
+prerelease, not a dry run.** Inspect all results before approving stable:
+
+1. Full tag CI passes, and the publisher boots the newly built GHCR
+   image with the release-rendered Compose and checks readiness and
+   `LANSURFER_IMPRINT_ENABLED` behavior before marking the draft public.
+2. GitHub Release provides `compose.yaml`, `compose.traefik.yaml`,
+   `production.env.example`, and `deployment-checksums.txt`.
+   The rendered env references the RC tag and verified multi-arch digest,
+   not an older application release.
+3. The [GitHub release-asset API](https://docs.github.com/en/rest/releases/assets)
+   reports each asset as uploaded with the expected SHA-256 `digest`.
+   Download the files through the actual release URL and verify checksums.
+4. On a **disposable operator-style test instance**, follow the
+   download-only quickstart, check OAuth redirects and readiness, and
+   validate optional Traefik routing. Do not use real private server URLs
+   or credentials in Git and do not treat the runner smoke as a backup test.
+
+A failed upload can leave a draft and a GHCR image. **Never reuse or
+move a partly used version tag.** Follow the recovery rules above and
+choose a new version if necessary. Only release v0.2.0 stable after
+the prerelease has confirmed the complete publishing path.
+
 During the private-repository phase, GitHub branch/tag rulesets may be unavailable; #150 tracks enforcing them after going public. Until then, maintainers must avoid manual tag movement or bypassing these conventions. The workflow checks for moved refs but cannot guarantee protection from out-of-band administrative changes.
 
 ## Making changes

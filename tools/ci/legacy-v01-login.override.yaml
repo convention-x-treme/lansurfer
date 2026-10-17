@@ -1,0 +1,8 @@
+# CI-only v0.1.0 runtime bridge. NEVER include in GitHub release assets.
+# The published v0.1.0 binary expects these operator identity settings
+# when a synthetic Discord login is enabled. Current main does NOT read them.
+services:
+  lansurfer:
+    environment:
+      LANSURFER_LEGAL_ENTITY_NAME: "CI fixture"
+      LANSURFER_LEGAL_CONTACT_EMAIL: "ci@example.invalid"

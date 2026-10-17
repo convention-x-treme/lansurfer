@@ -1,16 +1,17 @@
-# Self-hosted release deployment; development stays in ../compose.yaml.
-# Use with: docker compose --env-file deploy/production.env -f deploy/compose.production.yaml up -d
+# Self-hosted deployment template. The release publisher ships this as compose.yaml
+# with a matching, rendered production.env.example and optional Traefik overlay.
+# Download both from the SAME tag and copy the env example to .env.
 name: lansurfer-production
 
 services:
   postgres:
     # The operator chooses the tested, digest-pinned PostgreSQL image in production.env.
-    image: ${POSTGRES_IMAGE:?Set POSTGRES_IMAGE in deploy/production.env}
+    image: ${POSTGRES_IMAGE:?Set POSTGRES_IMAGE in .env}
     restart: unless-stopped
     environment:
       POSTGRES_DB: lansurfer
       POSTGRES_USER: lansurfer
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in deploy/production.env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
     healthcheck:
       # The official image temporarily opens only a Unix socket during init.
       # Authenticate a real SQL query over TCP, including on existing volumes.
@@ -31,8 +32,8 @@ services:
     # No published ports: only the LANsurfer service reaches PostgreSQL.
 
   lansurfer:
-    # Release-independent Compose: upgrade intentionally via LANSURFER_IMAGE in production.env.
-    image: ${LANSURFER_IMAGE:?Set LANSURFER_IMAGE in deploy/production.env}
+    # The matching release supplies the pinned image in its rendered .env example.
+    image: ${LANSURFER_IMAGE:?Set LANSURFER_IMAGE in .env}
     depends_on:
       postgres:
         condition: service_healthy
@@ -51,7 +52,7 @@ services:
       - "127.0.0.1:${LANSURFER_HTTP_PORT:-8080}:8080"
     environment:
       # Generate a URL-safe hex POSTGRES_PASSWORD; use the same value for both services.
-      LANSURFER_DATABASE_URL: "postgres://lansurfer:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in deploy/production.env}@postgres:5432/lansurfer?sslmode=disable"
+      LANSURFER_DATABASE_URL: "postgres://lansurfer:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/lansurfer?sslmode=disable"
       LANSURFER_LISTEN_ADDR: ":8080"
       LANSURFER_BASE_URL: ${LANSURFER_BASE_URL:?Set LANSURFER_BASE_URL to the public HTTPS origin}
       LANSURFER_TRUSTED_PROXIES: ${LANSURFER_TRUSTED_PROXIES:-}
@@ -75,10 +76,7 @@ services:
       LANSURFER_TWITCH_AUTH_ENABLED: ${LANSURFER_TWITCH_AUTH_ENABLED:-false}
       LANSURFER_IGDB_ENABLED: ${LANSURFER_IGDB_ENABLED:-false}
       LANSURFER_INSTANCE_NAME: ${LANSURFER_INSTANCE_NAME:-}
-      LANSURFER_LEGAL_ENTITY_NAME: ${LANSURFER_LEGAL_ENTITY_NAME:-}
-      LANSURFER_LEGAL_ADDRESS: ${LANSURFER_LEGAL_ADDRESS:-}
-      LANSURFER_LEGAL_CONTACT_EMAIL: ${LANSURFER_LEGAL_CONTACT_EMAIL:-}
-      LANSURFER_IMPRINT_URL: ${LANSURFER_IMPRINT_URL:-}
+      LANSURFER_IMPRINT_ENABLED: ${LANSURFER_IMPRINT_ENABLED:-false}
       LANSURFER_COVER_CACHE_DIR: /var/cache/lansurfer/covers
     volumes:
       - cover-cache:/var/cache/lansurfer/covers

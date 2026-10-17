@@ -15,7 +15,12 @@ chmod 600 "$config_file"
 docker_config="$(mktemp -d)"
 chmod 700 "$docker_config"
 export DOCKER_CONFIG="$docker_config"
-compose=(docker compose --project-name "$project" --env-file "$config_file" -f "$root/deploy/compose.production.yaml")
+# The v0.1.0 baseline image still expects two legacy legal fields when Discord
+# login is configured. This compatibility overlay is CI-only and must NEVER
+# become a shipped production environment setting.
+compose=(docker compose --project-name "$project" --env-file "$config_file" \
+  -f "$root/deploy/compose.production.yaml" \
+  -f "$root/tools/ci/legacy-v01-login.override.yaml")
 
 cleanup() {
   result=$?
@@ -31,14 +36,16 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Resolve both release references from the single checked-in example instead of
-# duplicating version or digest pins in CI. Explicitly clear host overrides.
+# CI-only baseline image fixture: the source operator env template is
+# deliberately unrendered until the publisher has a verified tag and digest.
 unset LANSURFER_IMAGE POSTGRES_IMAGE
-image_refs="$(grep -E '^(LANSURFER_IMAGE|POSTGRES_IMAGE)=' "$root/deploy/production.env.example")"
-[[ "$(printf '%s\n' "$image_refs" | wc -l)" -eq 2 ]] || {
-  echo 'Production image references are missing from production.env.example' >&2
+test_image_ref="$(grep '^LANSURFER_IMAGE=' "$root/tools/ci/production-smoke-image.env")"
+postgres_image_ref="$(grep '^POSTGRES_IMAGE=' "$root/deploy/production.env.example")"
+[[ -n "$test_image_ref" && -n "$postgres_image_ref" ]] || {
+  echo "Missing immutable CI image references" >&2
   exit 1
 }
+image_refs="$(printf '%s\n%s\n' "$test_image_ref" "$postgres_image_ref")"
 cat > "$config_file" <<EOF
 $image_refs
 POSTGRES_PASSWORD=$(openssl rand -hex 32)
@@ -46,15 +53,54 @@ LANSURFER_BASE_URL=https://lansurfer.example.invalid
 LANSURFER_HTTP_PORT=$((20000 + GITHUB_RUN_ID % 30000))
 LANSURFER_DISCORD_CLIENT_ID=ci-only
 LANSURFER_DISCORD_CLIENT_SECRET=ci-only
-LANSURFER_LEGAL_ENTITY_NAME=CI fixture
-LANSURFER_LEGAL_CONTACT_EMAIL=ci@example.invalid
 EOF
+
+# Validate the ACTUAL deployable Compose config first; only the v0.1.0
+# runtime receives the legacy test-only overlay to keep this regression
+# fixture useful until the next release image is available.
+docker compose --project-name "$project" --env-file "$config_file" \
+  -f "$root/deploy/compose.production.yaml" config --format json |
+  docker run --rm -i --network none python:3.13-alpine python3 -c '
+import json, sys
+env = json.load(sys.stdin)["services"]["lansurfer"]["environment"]
+legacy = {"LANSURFER_LEGAL_ENTITY_NAME", "LANSURFER_LEGAL_ADDRESS",
+          "LANSURFER_LEGAL_CONTACT_EMAIL", "LANSURFER_IMPRINT_URL"}
+assert legacy.isdisjoint(env), "Legacy legal fields must not be in production Compose"
+assert env["LANSURFER_IMPRINT_ENABLED"] == "false"
+print("v0.2 Compose app env contains no legacy legal fields.")
+'
 
 # The runner host is intentionally bare (no native Python dependency).
 # Pipe synthetic effective configuration to a disposable, network-isolated Python container.
 "${compose[@]}" config --format json |
   docker run --rm -i --network none python:3.13-alpine \
     python3 -c "$(cat "$root/scripts/test-production-compose.py")" --test-mutations
+
+# Verify the Traefik override without starting a proxy or creating its external network.
+TRAEFIK_HOST=ci.example.invalid TRAEFIK_NETWORK=ci-traefik-net TRAEFIK_CERT_RESOLVER=ci-resolver \
+  docker compose --project-name "$project" --env-file "$config_file" \
+    -f "$root/deploy/compose.production.yaml" -f "$root/deploy/compose.traefik.yaml" \
+    config --format json |
+  docker run --rm -i --network none python:3.13-alpine python3 -c '
+import json, sys
+model = json.load(sys.stdin)
+app = model["services"]["lansurfer"]
+db = model["services"]["postgres"]
+labels = app["labels"]
+assert set(model["services"]) == {"lansurfer", "postgres"}
+assert "default" in app.get("networks", {}) and "traefik" in app["networks"]
+assert "traefik" not in db.get("networks", {})
+assert model["networks"]["traefik"]["external"] is True
+assert model["networks"]["traefik"]["name"] == "ci-traefik-net"
+assert labels["traefik.docker.network"] == "ci-traefik-net"
+assert labels["traefik.http.routers.lansurfer.rule"] == "Host(" + chr(96) + "ci.example.invalid" + chr(96) + ")"
+assert labels["traefik.http.routers.lansurfer.tls.certresolver"] == "ci-resolver"
+assert labels["traefik.http.services.lansurfer.loadbalancer.server.port"] == "8080"
+assert db["labels"]["traefik.enable"] == "false"
+assert db.get("ports", []) == []
+assert app["ports"][0]["host_ip"] == "127.0.0.1"
+print("Traefik Compose config validated (no live proxy started).")
+'
 # GHCR read token lives in an ephemeral Docker config, never the runner's home.
 printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin >/dev/null
 

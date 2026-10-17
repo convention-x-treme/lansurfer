@@ -1,0 +1,26 @@
+# Optional Traefik overlay for the production Compose file.
+# Use only with an EXISTING Traefik container on an external shared network.
+# Fixed router/service labels support one LANsurfer instance per proxy setup.
+# Standalone use: set COMPOSE_FILE=compose.yaml:compose.traefik.yaml in .env.
+services:
+  postgres:
+    labels:
+      - "traefik.enable=false"
+  lansurfer:
+    # Keep the default PostgreSQL network as well as the proxy network.
+    networks:
+      - default
+      - traefik
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=${TRAEFIK_NETWORK:?Set TRAEFIK_NETWORK to Traefik's existing network}"
+      - "traefik.http.routers.lansurfer.rule=Host(`${TRAEFIK_HOST:?Set TRAEFIK_HOST to the public hostname}`)"
+      - "traefik.http.routers.lansurfer.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}"
+      - "traefik.http.routers.lansurfer.tls=true"
+      - "traefik.http.routers.lansurfer.tls.certresolver=${TRAEFIK_CERT_RESOLVER:?Set TRAEFIK_CERT_RESOLVER}"
+      - "traefik.http.routers.lansurfer.service=lansurfer"
+      - "traefik.http.services.lansurfer.loadbalancer.server.port=8080"
+networks:
+  traefik:
+    external: true
+    name: ${TRAEFIK_NETWORK:?Set TRAEFIK_NETWORK to Traefik's existing network}
