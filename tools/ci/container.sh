@@ -53,6 +53,7 @@ case "$job" in
     goreleaser check
     bash -n scripts/release/publish.sh
     python3 -m unittest discover -s scripts/release -p 'test_release_policy.py' -v
+    python3 -m unittest discover -s scripts/release -p 'test_deployment_assets.py' -v
     bash scripts/release/test-changelog.sh
     builder="lansurfer-snapshot-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
     docker buildx create --driver docker-container --name "$builder" --use
@@ -77,6 +78,7 @@ case "$job" in
     command -v docker && docker buildx version
     command -v jq && command -v python3
     bash -n scripts/release/publish.sh
+    python3 -m unittest discover -s scripts/release -p 'test_deployment_assets.py' -v
     echo "Release publishing toolbox is ready."
     ;;
 

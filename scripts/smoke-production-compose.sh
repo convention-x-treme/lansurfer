@@ -31,14 +31,16 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Resolve both release references from the single checked-in example instead of
-# duplicating version or digest pins in CI. Explicitly clear host overrides.
+# CI-only baseline image fixture: the source operator env template is
+# deliberately unrendered until the publisher has a verified tag and digest.
 unset LANSURFER_IMAGE POSTGRES_IMAGE
-image_refs="$(grep -E '^(LANSURFER_IMAGE|POSTGRES_IMAGE)=' "$root/deploy/production.env.example")"
-[[ "$(printf '%s\n' "$image_refs" | wc -l)" -eq 2 ]] || {
-  echo 'Production image references are missing from production.env.example' >&2
+test_image_ref="$(grep '^LANSURFER_IMAGE=' "$root/tools/ci/production-smoke-image.env")"
+postgres_image_ref="$(grep '^POSTGRES_IMAGE=' "$root/deploy/production.env.example")"
+[[ -n "$test_image_ref" && -n "$postgres_image_ref" ]] || {
+  echo "Missing immutable CI image references" >&2
   exit 1
 }
+image_refs="$(printf '%s\n%s\n' "$test_image_ref" "$postgres_image_ref")"
 cat > "$config_file" <<EOF
 $image_refs
 POSTGRES_PASSWORD=$(openssl rand -hex 32)
