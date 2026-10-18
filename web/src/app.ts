@@ -32,7 +32,44 @@ htmx.config.includeIndicatorStyles = false;
 
 let pendingSessionDialogOpen = false;
 let pendingGameRequestEditOpen = false;
-let pendingGameRequestDetailRefresh = false;
+
+const gameRequestRefreshCoalesceMs = 200;
+type GameRequestRefreshTarget = "#game-request-list" | "#game-request-detail";
+type GameRequestRefreshOptions = {
+  immediate?: boolean;
+  highlightId?: string;
+  closeEditor?: boolean;
+};
+type GameRequestRefreshAttempt = {
+  target: GameRequestRefreshTarget;
+  element: HTMLElement;
+  options: GameRequestRefreshOptions;
+  xhr: XMLHttpRequest | null;
+  invalidated: boolean;
+  swapped: boolean;
+  failed: boolean;
+  isRetry: boolean;
+  completed: boolean;
+  beforeSwapHandler?: (event: Event) => void;
+};
+type GameRequestRefreshState = {
+  pending: boolean;
+  dueAt: number;
+  nextAllowedAt: number;
+  timer: number | null;
+  inFlight: GameRequestRefreshAttempt | null;
+  retryUsed: boolean;
+  highlightId: string | null;
+  closeEditor: boolean;
+};
+const gameRequestRefreshStates: Record<GameRequestRefreshTarget, GameRequestRefreshState> = {
+  "#game-request-list": { pending: false, dueAt: 0, nextAllowedAt: 0, timer: null, inFlight: null, retryUsed: false, highlightId: null, closeEditor: false },
+  "#game-request-detail": { pending: false, dueAt: 0, nextAllowedAt: 0, timer: null, inFlight: null, retryUsed: false, highlightId: null, closeEditor: false },
+};
+const schedulerAttempts = new WeakMap<XMLHttpRequest, GameRequestRefreshAttempt>();
+const activeHtmxRequests = new Set<XMLHttpRequest>();
+let dispatchingRefreshAttempt: GameRequestRefreshAttempt | null = null;
+let pageRefreshSuspended = false;
 
 
 function sessionDialogFocusSelector(trigger: HTMLElement): string {
@@ -109,18 +146,10 @@ document.addEventListener("htmx:afterSwap", (event) => {
     (invalid ?? alert ?? form.querySelector<HTMLElement>("input[name='max_players']"))?.focus({ preventScroll: true });
     return;
   }
-  if (target.id === "game-request-detail" && pendingGameRequestDetailRefresh) {
-    pendingGameRequestDetailRefresh = false;
-    const dialog = document.querySelector<HTMLDialogElement>("#game-request-edit-dialog");
-    if (dialog?.open) dialog.close();
-  }
 });
 
 document.addEventListener("game-request-details-saved", () => {
-  const detail = document.querySelector<HTMLElement>("[data-game-request-detail]");
-  if (!detail?.dataset.refreshUrl) return;
-  pendingGameRequestDetailRefresh = true;
-  void htmx.ajax("get", detail.dataset.refreshUrl, { target: "#game-request-detail", swap: "outerHTML" });
+  queueGameRequestRefresh("#game-request-detail", { immediate: true, closeEditor: true });
 });
 
 document.addEventListener("htmx:afterSwap", (event) => {
@@ -424,30 +453,102 @@ type GameRequestEvent = {
 // A mutation request targets a single row, and refreshing the list replaces
 // that row. Refreshes therefore wait for pending mutations to settle instead of
 // removing the element a response is about to be swapped into.
-let pendingMutations = 0;
-let refreshQueued = false;
-let queuedRefreshFailure: (() => void) | null = null;
 let lobbyRefreshQueued = false;
 let queuedLobbyRequestID: string | null = null;
 
-document.addEventListener("htmx:beforeRequest", () => {
-  pendingMutations += 1;
+document.addEventListener("htmx:beforeRequest", (event) => {
+  const detail = (event as CustomEvent<{
+    xhr: XMLHttpRequest;
+    target?: Element;
+    requestConfig?: { verb?: string; path?: string };
+  }>).detail;
+  const xhr = detail.xhr;
+  activeHtmxRequests.add(xhr);
+  const attempt = dispatchingRefreshAttempt;
+  if (attempt) {
+    attempt.xhr = xhr;
+    schedulerAttempts.set(xhr, attempt);
+    xhr.addEventListener("loadend", () => queueMicrotask(() => completeGameRequestRefresh(attempt)), { once: true });
+  } else {
+    const method = detail.requestConfig?.verb?.toLowerCase() ?? "get";
+    const path = detail.requestConfig?.path ?? "";
+    const relevantMutation = method !== "get" && method !== "head" &&
+      /^(?:https?:\/\/[^/]+)?\/game-requests(?:\/[^/?#]+\/(?:join|leave|start|close|cancel|details))?(?:\?.*)?$/.test(path);
+    const target = detail.target;
+    const swapsRefreshTarget = target?.id === "game-request-list" || target?.id === "game-request-detail";
+    const changesRefreshTarget = relevantMutation || ((method === "get" || method === "head") && swapsRefreshTarget);
+    if (!changesRefreshTarget) return;
+    for (const selector of ["#game-request-list", "#game-request-detail"] as const) {
+      const state = gameRequestRefreshStates[selector];
+      const inFlight = state.inFlight;
+      if (!inFlight || inFlight.swapped || inFlight.invalidated || inFlight.failed || inFlight.xhr?.readyState === XMLHttpRequest.DONE) continue;
+      inFlight.invalidated = true;
+      queueGameRequestRefresh(selector, {
+        immediate: true,
+        highlightId: inFlight.options.highlightId,
+        closeEditor: inFlight.options.closeEditor,
+      });
+    }
+  }
 });
 
-document.addEventListener("htmx:afterRequest", () => {
-  pendingMutations = Math.max(0, pendingMutations - 1);
-  if (pendingMutations > 0) return;
-  if (refreshQueued) {
-    refreshQueued = false;
-    const onFailure = queuedRefreshFailure;
-    queuedRefreshFailure = null;
-    refreshGameRequests(undefined, onFailure ?? undefined);
-  }
-  if (lobbyRefreshQueued) {
+document.addEventListener("htmx:afterRequest", (event) => {
+  const xhr = (event as CustomEvent<{ xhr: XMLHttpRequest }>).detail.xhr;
+  if (xhr) activeHtmxRequests.delete(xhr);
+  if (lobbyRefreshQueued && activeHtmxRequests.size === 0) {
     lobbyRefreshQueued = false;
     const requestID = queuedLobbyRequestID;
     queuedLobbyRequestID = null;
     if (requestID) refreshGameRequestLobby(requestID);
+  }
+  queueMicrotask(flushGameRequestRefreshes);
+});
+
+for (const eventName of ["htmx:responseError", "htmx:sendError", "htmx:timeout"]) {
+  document.addEventListener(eventName, (event) => {
+    const xhr = (event as CustomEvent<{ xhr: XMLHttpRequest }>).detail.xhr;
+    const attempt = xhr && schedulerAttempts.get(xhr);
+    if (attempt) attempt.failed = true;
+  });
+}
+
+document.addEventListener("htmx:beforeSwap", (event) => {
+  const detail = (event as CustomEvent<{ target: HTMLElement; xhr: XMLHttpRequest }>).detail;
+  const attempt = schedulerAttempts.get(detail.xhr);
+  if (!attempt) return;
+  const state = gameRequestRefreshStates[attempt.target];
+  if (document.hidden || pageRefreshSuspended) {
+    attempt.invalidated = true;
+    queueGameRequestRefresh(attempt.target, {
+      immediate: true,
+      highlightId: attempt.options.highlightId,
+      closeEditor: attempt.options.closeEditor,
+    });
+    event.preventDefault();
+    return;
+  }
+  const current = document.getElementById(attempt.element.id) === attempt.element;
+  if (!current) {
+    attempt.invalidated = true;
+    if (attempt.target === "#game-request-detail") {
+      state.pending = false;
+      state.highlightId = null;
+      state.closeEditor = false;
+    }
+    event.preventDefault();
+    return;
+  }
+  if (attempt.invalidated) event.preventDefault();
+});
+
+document.addEventListener("htmx:afterSwap", (event) => {
+  const detail = (event as CustomEvent<{ target: HTMLElement; xhr: XMLHttpRequest }>).detail;
+  const attempt = schedulerAttempts.get(detail.xhr);
+  if (!attempt || detail.target !== attempt.element) return;
+  attempt.swapped = true;
+  if (attempt.options.closeEditor) {
+    const dialog = document.querySelector<HTMLDialogElement>("#game-request-edit-dialog");
+    if (dialog?.open) dialog.close();
   }
 });
 
@@ -464,6 +565,7 @@ type RequestDetailFieldDraft = {
 const requestDetailsDrafts = new WeakMap<HTMLElement, RequestDetailFieldDraft[]>();
 
 document.addEventListener("htmx:beforeSwap", (event) => {
+  if (event.defaultPrevented) return;
   const target = (event as CustomEvent<{ target: HTMLElement }>).detail.target;
   if (target.id !== "game-request-detail") return;
   const form = target.querySelector<HTMLFormElement>("form[action$='/details']");
@@ -555,69 +657,163 @@ document.addEventListener("htmx:afterSwap", (event) => {
   }
   focus?.focus({ preventScroll: true });
 });
-// Without an event the current view is refreshed as a whole, which is what a
-// page needs after it was disconnected from the stream for a while. A deferred
-// refresh drops the event, and with it only the highlight on a new row; the
-// rows themselves come from the database either way.
-function refreshGameRequests(event?: GameRequestEvent, onFailure?: () => void): void {
-  if (pendingMutations > 0) {
-    refreshQueued = true;
-    if (onFailure) queuedRefreshFailure = onFailure;
-    return;
-  }
-
-  const requestRefresh = (url: string, target: string): void => {
-    if (!onFailure) {
-      void htmx.ajax("get", url, { target, swap: "outerHTML" });
-      return;
-    }
-    let failed = false;
-    const fail = (): void => {
-      if (failed) return;
-      failed = true;
-      onFailure();
-    };
-    const onRequestError = (requestEvent: Event): void => {
-      const responseTarget = (requestEvent as CustomEvent<{ target: Element }>).detail.target;
-      if (responseTarget === document.querySelector(target)) fail();
-    };
-    document.addEventListener("htmx:responseError", onRequestError);
-    document.addEventListener("htmx:sendError", onRequestError);
-    document.addEventListener("htmx:timeout", onRequestError);
-    void htmx.ajax("get", url, { target, swap: "outerHTML" })
-      .catch(fail)
-      .finally(() => {
-        document.removeEventListener("htmx:responseError", onRequestError);
-        document.removeEventListener("htmx:sendError", onRequestError);
-        document.removeEventListener("htmx:timeout", onRequestError);
-      });
-  };
-
-  // The refresh reloads whatever selection the player is looking at, so a live
-  // update never silently drops their discovery filters.
+function refreshGameRequests(event?: GameRequestEvent): void {
   const list = document.querySelector<HTMLElement>("[data-game-request-list]");
-  if (list) {
-    const parameters = new URLSearchParams(list.dataset.filterQuery ?? "");
-    if (event?.type === "GameRequestCreated") parameters.set("highlight", event.requestId);
-    const query = parameters.toString();
-    requestRefresh(`/game-requests/refresh${query ? `?${query}` : ""}`, "#game-request-list");
+  if (list && event?.type === "GameRequestCreated") {
+    queueGameRequestRefresh("#game-request-list", { highlightId: event.requestId });
+  } else if (list) {
+    queueGameRequestRefresh("#game-request-list", { immediate: event === undefined });
   }
 
   const detail = document.querySelector<HTMLElement>("[data-game-request-detail]");
-  const detailID = detail?.dataset.gameRequestId;
-  const detailRefreshURL = detail?.dataset.refreshUrl;
-  if (detailID && detailRefreshURL && (event === undefined || detailID === event.requestId)) {
-    const refreshURL = new URL(detailRefreshURL, window.location.href);
+  if (detail && (!event || detail.dataset.gameRequestId === event.requestId)) {
+    queueGameRequestRefresh("#game-request-detail", { immediate: event === undefined });
+  }
+}
+
+function queueGameRequestRefresh(target: GameRequestRefreshTarget, options: GameRequestRefreshOptions = {}): void {
+  const state = gameRequestRefreshStates[target];
+  const element = document.querySelector<HTMLElement>(target);
+  if (!element || (target === "#game-request-detail" && !element.dataset.refreshUrl)) {
+    if (state.timer !== null) window.clearTimeout(state.timer);
+    state.timer = null;
+    state.pending = false;
+    state.highlightId = null;
+    state.closeEditor = false;
+    return;
+  }
+  const now = performance.now();
+  if (!state.pending) {
+    state.pending = true;
+    state.dueAt = options.immediate ? now : Math.max(now + gameRequestRefreshCoalesceMs, state.nextAllowedAt);
+  } else if (options.immediate && !state.retryUsed) {
+    state.dueAt = Math.min(state.dueAt, now);
+  }
+  mergeRefreshOptions(state, options);
+  scheduleGameRequestRefresh(target);
+}
+
+function scheduleGameRequestRefresh(target: GameRequestRefreshTarget): void {
+  const state = gameRequestRefreshStates[target];
+  if (!state.pending || state.inFlight) return;
+  if (document.hidden || pageRefreshSuspended) {
+    if (state.timer !== null) window.clearTimeout(state.timer);
+    state.timer = null;
+    return;
+  }
+  if (state.timer !== null) window.clearTimeout(state.timer);
+  const delay = Math.max(0, state.dueAt - performance.now());
+  state.timer = window.setTimeout(() => {
+    state.timer = null;
+    flushGameRequestRefreshes();
+  }, delay);
+}
+
+function flushGameRequestRefreshes(): void {
+  if (document.hidden || pageRefreshSuspended || activeHtmxRequests.size > 0) return;
+  for (const target of ["#game-request-list", "#game-request-detail"] as const) {
+    const state = gameRequestRefreshStates[target];
+    if (!state.pending || state.inFlight) continue;
+    if (performance.now() < state.dueAt) {
+      scheduleGameRequestRefresh(target);
+      continue;
+    }
+    dispatchGameRequestRefresh(target, state);
+    if (activeHtmxRequests.size > 0) return;
+  }
+}
+
+function dispatchGameRequestRefresh(target: GameRequestRefreshTarget, state: GameRequestRefreshState): void {
+  const element = document.querySelector<HTMLElement>(target);
+  if (!element || (target === "#game-request-detail" && !element.dataset.refreshUrl)) {
+    state.pending = false;
+    state.highlightId = null;
+    state.closeEditor = false;
+    return;
+  }
+  const options: GameRequestRefreshOptions = {
+    highlightId: state.highlightId ?? undefined,
+    closeEditor: state.closeEditor,
+  };
+  state.pending = false;
+  state.nextAllowedAt = performance.now() + 100;
+  state.highlightId = null;
+  state.closeEditor = false;
+  const attempt: GameRequestRefreshAttempt = {
+    target, element, options, xhr: null, invalidated: false, swapped: false,
+    failed: false, isRetry: state.retryUsed, completed: false,
+  };
+  attempt.beforeSwapHandler = (event) => {
+    const detail = (event as CustomEvent<{ xhr: XMLHttpRequest }>).detail;
+    if (detail.xhr !== attempt.xhr) return;
+    if (document.hidden || pageRefreshSuspended || document.getElementById(element.id) !== element || attempt.invalidated) {
+      attempt.invalidated = true;
+      event.preventDefault();
+    }
+  };
+  element.addEventListener("htmx:beforeSwap", attempt.beforeSwapHandler);
+  state.inFlight = attempt;
+  let url: string;
+  if (target === "#game-request-list") {
+    const parameters = new URLSearchParams(element.dataset.filterQuery ?? "");
+    if (options.highlightId) parameters.set("highlight", options.highlightId);
+    const query = parameters.toString();
+    url = `/game-requests/refresh${query ? `?${query}` : ""}`;
+  } else {
+    const refreshURL = new URL(element.dataset.refreshUrl ?? "", window.location.href);
     for (const key of ["edit", "session_add", "session_edit"]) {
       const value = new URL(window.location.href).searchParams.get(key);
       if (value !== null) refreshURL.searchParams.set(key, value);
     }
-    requestRefresh(refreshURL.toString(), "#game-request-detail");
+    url = refreshURL.toString();
+  }
+  try {
+    dispatchingRefreshAttempt = attempt;
+    void htmx.ajax("get", url, { source: document.body, target: element, swap: "outerHTML" })
+      .catch(() => { attempt.failed = true; })
+      .finally(() => queueMicrotask(() => completeGameRequestRefresh(attempt)));
+  } catch {
+    attempt.failed = true;
+    queueMicrotask(() => completeGameRequestRefresh(attempt));
+  } finally {
+    dispatchingRefreshAttempt = null;
   }
 }
 
+function mergeRefreshOptions(state: GameRequestRefreshState, options: GameRequestRefreshOptions): void {
+  if (options.highlightId) state.highlightId = options.highlightId;
+  state.closeEditor ||= options.closeEditor === true;
+}
+
+function completeGameRequestRefresh(attempt: GameRequestRefreshAttempt): void {
+  if (attempt.completed) return;
+  attempt.completed = true;
+  const state = gameRequestRefreshStates[attempt.target];
+  const xhr = attempt.xhr;
+  if (attempt.beforeSwapHandler) attempt.element.removeEventListener("htmx:beforeSwap", attempt.beforeSwapHandler);
+  if (xhr) activeHtmxRequests.delete(xhr);
+  if (state.inFlight !== attempt) return;
+  state.inFlight = null;
+  const succeeded = !attempt.invalidated && !attempt.failed && attempt.swapped &&
+    xhr !== null && xhr.status >= 200 && xhr.status < 300;
+  if (attempt.invalidated) {
+    // Foreign work already queued one revalidation with the consumed metadata.
+  } else if (succeeded) {
+    state.retryUsed = false;
+  } else if (attempt.isRetry) {
+    state.retryUsed = false;
+    if (state.pending) mergeRefreshOptions(state, attempt.options);
+  } else {
+    state.pending = true;
+    mergeRefreshOptions(state, attempt.options);
+    state.retryUsed = true;
+    state.dueAt = performance.now() + 1000;
+  }
+  flushGameRequestRefreshes();
+}
+
 function refreshGameRequestLobby(requestID: string): void {
-  if (pendingMutations > 0) {
+  if (activeHtmxRequests.size > 0) {
     lobbyRefreshQueued = true;
     queuedLobbyRequestID = requestID;
     return;
@@ -644,13 +840,7 @@ if (realtime?.dataset.realtimeUrl) {
       document.querySelector("[data-live-connection-alert]")?.remove();
       if (reconnectPending) {
         reconnectPending = false;
-        let retries = 0;
-        const retryOnce = (): void => {
-          if (retries > 0) return;
-          retries += 1;
-          window.setTimeout(() => refreshGameRequests(undefined, retryOnce), 1000);
-        };
-        refreshGameRequests(undefined, retryOnce);
+        refreshGameRequests();
       }
     });
     events.addEventListener("game-request", (message) => {
@@ -700,21 +890,38 @@ if (realtime?.dataset.realtimeUrl) {
   // holding a stream each therefore exhaust the pool and every further request
   // waits forever. Only a visible page needs live updates, so a hidden one
   // releases its stream and refetches the current state when it returns.
-  document.addEventListener("visibilitychange", () => {
-    if (document.hidden) {
-      disconnectRealtime();
-      return;
+  const suspendRefreshScheduler = (): void => {
+    pageRefreshSuspended = true;
+    for (const state of Object.values(gameRequestRefreshStates)) {
+      if (state.timer !== null) window.clearTimeout(state.timer);
+      state.timer = null;
     }
+  };
+  const resumeRealtime = (): void => {
+    pageRefreshSuspended = false;
     reconnectPending = false;
     connectRealtime();
     refreshGameRequests();
+  };
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      suspendRefreshScheduler();
+      disconnectRealtime();
+      return;
+    }
+    resumeRealtime();
   });
 
   // A page kept in the back/forward cache is hidden without a visibility
   // change, so release the stream on unload as well.
-  window.addEventListener("pagehide", disconnectRealtime);
+  window.addEventListener("pagehide", () => {
+    suspendRefreshScheduler();
+    disconnectRealtime();
+  });
   window.addEventListener("pageshow", () => {
-    if (!document.hidden) connectRealtime();
+    if (!document.hidden && pageRefreshSuspended) resumeRealtime();
+    else if (!document.hidden) connectRealtime();
   });
 }
 

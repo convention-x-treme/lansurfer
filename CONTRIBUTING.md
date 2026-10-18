@@ -210,7 +210,7 @@ Run `task generate` before final verification when your change affects generated
 
 ## Local load and reliability testing
 
-The optional load-test harness uses **only** the isolated Compose project `lansurfer-loadtest` (database `lansurfer_loadtest`, HTTP `127.0.0.1:18080`, PostgreSQL `127.0.0.1:55433`). It does not use the development/production database, Keycloak, or real notification accounts. Run it on WSL2/Linux with Docker Compose, Go, Task, Node.js/npm and Playwright Chromium. Read the [complete load-test guide](tools/loadtest/README.md) for the workloads, safeguards, report handling, and reset procedure.
+The standard load-test stack uses isolated Compose project `lansurfer-loadtest` (database `lansurfer_loadtest`, HTTP `127.0.0.1:18080`, PostgreSQL on `127.0.0.1:55433`). Paired coalescing workspaces use separate `lansurfer-loadtest-<workspace>` projects and the same dedicated test database name and host ports. Neither workflow reads `LANSURFER_DATABASE_URL` or touches the development stack. Read the [complete load-test guide](tools/loadtest/README.md) for safeguards, report handling, and cleanup.
 
 From the repository root, bootstrap the browser tools, start the isolated stack, and initialize its test data:
 

@@ -31,10 +31,16 @@ export function classifyHtmx(response, action, { plannedConflict = false } = {})
   return Array.from(notices[action] || []).some((notice) => (response.body || '').includes(notice)) ? 'conflict' : 'unexpected';
 }
 
-export async function waitForIdle(statsList, timeoutMs) {
-  const deadline = Date.now() + timeoutMs;
-  while (statsList.some((stats) => stats.active > 0)) {
-    if (Date.now() >= deadline) throw new Error('browser refresh requests did not settle');
+export async function waitForIdle(statsList, timeoutMs, quietMs = 1500) {
+  const startedAt = Date.now();
+  const deadline = startedAt + timeoutMs;
+  for (const stats of statsList) stats.lastActivityAt ??= startedAt;
+  while (true) {
+    const idle = statsList.every((stats) => stats.active === 0);
+    const lastActivityAt = Math.max(...statsList.map((stats) => stats.lastActivityAt));
+    const now = Date.now();
+    if (idle && now - lastActivityAt >= quietMs) return;
+    if (now >= deadline) throw new Error('browser refresh requests did not settle');
     await new Promise((resolveWait) => setTimeout(resolveWait, 50));
   }
 }
@@ -46,6 +52,7 @@ export function calibrationFailures(summary, browserClients) {
   if (summary.idleError) failures.push(summary.idleError);
   if (summary.totals.failed > 0) failures.push(summary.totals.failed + ' refresh requests failed');
   if (summary.totals.convergedBrowsers !== browserClients) failures.push('only ' + summary.totals.convergedBrowsers + ' of ' + browserClients + ' browsers converged');
+  if (summary.probe && summary.totals.eventToVisibleMs.missing > 0) failures.push(summary.totals.eventToVisibleMs.missing + ' event-to-visible samples missing');
   summary.browsers.forEach((item, index) => {
     if (Object.keys(item.statuses).some((status) => Number(status) !== 200)) failures.push('browser ' + index + ' saw non-200 refresh responses');
     if (item.active > 0) failures.push('browser ' + index + ' has ' + item.active + ' unfinished refresh requests');

@@ -9,6 +9,7 @@ fixtures="${LANSURFER_LOADTEST_FIXTURES_FILE:-$HOME/lansurfer-loadtest-fixtures.
 sessions="${LANSURFER_LOADTEST_SESSIONS_FILE:-$HOME/lansurfer-loadtest-sessions.jsonl}"
 reports="${LANSURFER_LOADTEST_REPORT_DIR:-$HOME/lansurfer-loadtest-reports}"
 base_url="${BASE_URL:-http://lansurfer:8080}"
+loadtest_network="${LOADTEST_NETWORK:-lansurfer-loadtest_default}"
 workload="${WORKLOAD:-writes}"
 session_offset="${SESSION_OFFSET:-0}"
 seed="${SEED:-139}"
@@ -66,8 +67,8 @@ if [[ "$profile" == writes ]]; then
   mounts+=(--mount "type=bind,src=$root/tools/loadtest/outcomes.mjs,dst=/work/outcomes.mjs,readonly")
 fi
 # Only connect to the private test-stack network, never a public URL.
-if ! docker network inspect lansurfer-loadtest_default >/dev/null 2>&1; then
-  echo 'Load-test stack network is absent. Start the isolated Compose stack first.' >&2
+if ! docker network inspect "$loadtest_network" >/dev/null 2>&1; then
+  echo "Load-test stack network is absent: $loadtest_network" >&2
   exit 2
 fi
 
@@ -78,8 +79,9 @@ echo "$profile HTTP profile: $users virtual players for $duration"
 echo "Result: $reports/$output"
 # The session file is mode 0600. Match the host UID to read it in Docker.
 docker run --rm --user "$(id -u):$(id -g)" \
-  --network lansurfer-loadtest_default \
-  --label com.lansurfer.loadtest.role=k6 \
+  --network "$loadtest_network" \
+  --label "com.lansurfer.loadtest.role=k6" \
+  --label "com.lansurfer.loadtest.workspace=${COMPOSE_PROJECT_NAME:-lansurfer-loadtest}" \
   --mount "type=bind,src=$(realpath "$sessions"),dst=/sessions.jsonl,readonly" \
   --mount "type=bind,src=$root/tools/loadtest/$profile.js,dst=/work/script.js,readonly" \
   --mount "type=bind,src=$(realpath "$reports"),dst=/reports" \

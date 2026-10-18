@@ -75,8 +75,9 @@ tasks:
       - goreleaser release --snapshot --clean
 
   test:
-    desc: Run unit tests with the race detector
+    desc: Run shell regression and unit tests with the race detector
     cmds:
+      - bash tools/loadtest/coalescing-result.test.sh
       - go test -race ./...
 
   test:browser:
@@ -216,7 +217,7 @@ tasks:
   loadtest:sse:
     desc: Test concurrent authenticated SSE streams with optional event fan-out
     cmds:
-      - go run ./tools/loadtest/sse -clients '{{.USERS | default "20"}}' -duration '{{.DURATION | default "1m"}}' {{if .REQUEST}}-request '{{.REQUEST}}' -trigger '{{.TRIGGER | default "20"}}'{{end}} -trigger-delay '{{.TRIGGER_DELAY | default "0s"}}' -refresh-mode '{{.MODE | default "off"}}' -base-url '{{.BASE_URL | default "http://127.0.0.1:18080"}}' -session-offset '{{.SESSION_OFFSET | default "0"}}' {{if eq (.RECONNECT | default "") "1"}}-allow-reconnect{{end}} {{if eq (.ALLOW_MISSING_EVENTS | default "") "1"}}-allow-missing-events{{end}} -sessions "${LANSURFER_LOADTEST_SESSIONS_FILE:-$HOME/lansurfer-loadtest-sessions.jsonl}"
+      - go run ./tools/loadtest/sse -clients '{{.USERS | default "20"}}' -duration '{{.DURATION | default "1m"}}' {{if .REQUEST}}-request '{{.REQUEST}}' -trigger '{{.TRIGGER | default "20"}}'{{end}} -trigger-delay '{{.TRIGGER_DELAY | default "0s"}}' -refresh-mode '{{.MODE | default "off"}}' -base-url '{{.BASE_URL | default "http://127.0.0.1:18080"}}' -session-offset '{{.SESSION_OFFSET | default "0"}}' {{if eq (.RECONNECT | default "") "1"}}-allow-reconnect{{end}} {{if eq (.ALLOW_MISSING_EVENTS | default "") "1"}}-allow-missing-events{{end}} {{if eq (.GAME_REQUEST_REFRESH_ONLY | default "") "1"}}-game-request-refresh-only{{end}} -sessions "${LANSURFER_LOADTEST_SESSIONS_FILE:-$HOME/lansurfer-loadtest-sessions.jsonl}"
 
 
   loadtest:proxy:
@@ -236,7 +237,7 @@ tasks:
     requires:
       vars: [REQUEST]
     cmds:
-      - BASE_URL='{{.BASE_URL | default "http://127.0.0.1:18080"}}' REQUEST='{{.REQUEST}}' SIMULATED_USERS='{{.SIMULATED_USERS | default "120"}}' BROWSER_CLIENTS='{{.BROWSER_CLIENTS | default "5"}}' DURATION='{{.DURATION | default "75s"}}' TRIGGER='{{.TRIGGER | default "20"}}' TRIGGER_INTERVAL='{{.TRIGGER_INTERVAL | default "500ms"}}' TRIGGER_DELAY='{{.TRIGGER_DELAY | default "0s"}}' ALLOW_RECONNECT='{{.ALLOW_RECONNECT | default "0"}}' ALLOW_MISSING_EVENTS='{{.ALLOW_MISSING_EVENTS | default "0"}}' VIEW='{{.VIEW | default "mixed"}}' FILTER_GAME='{{.FILTER_GAME | default "Warcraft III"}}' node tools/loadtest/browser-calibration.mjs
+      - BASE_URL='{{.BASE_URL | default "http://127.0.0.1:18080"}}' REQUEST='{{.REQUEST}}' SIMULATED_USERS='{{.SIMULATED_USERS | default "120"}}' SIMULATED_SESSION_OFFSET='{{.SIMULATED_SESSION_OFFSET}}' BROWSER_CLIENTS='{{.BROWSER_CLIENTS | default "5"}}' DURATION='{{.DURATION | default "75s"}}' TRIGGER='{{.TRIGGER | default "20"}}' TRIGGER_INTERVAL='{{.TRIGGER_INTERVAL | default "500ms"}}' TRIGGER_DELAY='{{.TRIGGER_DELAY}}' ALLOW_RECONNECT='{{.ALLOW_RECONNECT | default "0"}}' ALLOW_MISSING_EVENTS='{{.ALLOW_MISSING_EVENTS | default "0"}}' VIEW='{{.VIEW | default "mixed"}}' FILTER_GAME='{{.FILTER_GAME | default "Warcraft III"}}' REFRESH_MODE='{{.REFRESH_MODE}}' COALESCING='{{.COALESCING | default "0"}}' PROBE='{{.PROBE | default "0"}}' WRITERS='{{.WRITERS | default "0"}}' WRITER_SESSION_OFFSET='{{.WRITER_SESSION_OFFSET}}' WRITER_DURATION='{{.WRITER_DURATION | default "90s"}}' PROFILE_DURATION='{{.PROFILE_DURATION | default "90s"}}' node tools/loadtest/browser-calibration.mjs
   loadtest:calibrate:
     desc: Run the ordered 120/400 browser-like and worst-case calibration matrix
     requires:
@@ -246,6 +247,26 @@ tasks:
       - docker compose -f tools/loadtest/compose.yaml -f tools/loadtest/compose.chaos.yaml up -d --build --wait proxy
       - PHASE=calibrate REQUEST='{{.REQUEST}}' USERS='{{.USERS | default "120"}}' BROWSERS='{{.BROWSERS | default "5"}}' DURATION='{{.DURATION | default "90s"}}' MODE='{{.MODE}}' bash tools/loadtest/report/run.sh calibrate node tools/loadtest/run-phase2.mjs
 
+  loadtest:coalescing:down:
+    desc: Stop one paired SSE-refresh workspace and keep its database volume
+    requires:
+      vars: [WORKSPACE]
+    cmds:
+      - WORKSPACE='{{.WORKSPACE}}' bash tools/loadtest/coalescing.sh down
+
+  loadtest:coalescing:prepare:
+    desc: Prepare private paired SSE-refresh load-test snapshots and images
+    requires:
+      vars: [WORKSPACE, PRODUCT_REVISION, HARNESS_REVISION]
+    cmds:
+      - WORKSPACE='{{.WORKSPACE}}' PRODUCT_REVISION='{{.PRODUCT_REVISION}}' HARNESS_REVISION='{{.HARNESS_REVISION}}' bash tools/loadtest/coalescing.sh prepare
+
+  loadtest:coalescing:
+    desc: Run one isolated paired SSE-refresh measurement cell (small profile by default)
+    requires:
+      vars: [WORKSPACE, PRODUCT_REVISION, HARNESS_REVISION, VARIANT, REPETITION]
+    cmds:
+      - WORKSPACE='{{.WORKSPACE}}' PRODUCT_REVISION='{{.PRODUCT_REVISION}}' HARNESS_REVISION='{{.HARNESS_REVISION}}' VARIANT='{{.VARIANT}}' REPETITION='{{.REPETITION}}' LOADTEST_PROFILE='{{.PROFILE | default "small"}}' ALLOW_400_CLIENT_PROFILE='{{.ALLOW_400_CLIENT_PROFILE | default "0"}}' bash tools/loadtest/coalescing.sh run
   loadtest:loss:
     desc: Prove persistent state survives deliberately lost SSE signals
     requires:
@@ -275,7 +296,7 @@ tasks:
     requires:
       vars: [REPORT_PATH]
     cmds:
-      - go run ./tools/loadtest/report -mode scan -sessions "${LANSURFER_LOADTEST_SESSIONS_FILE:-$HOME/lansurfer-loadtest-sessions.jsonl}" -metrics-key-file "$HOME/lansurfer-loadtest-metrics-key" -path '{{.REPORT_PATH}}'
+      - go run ./tools/loadtest/report -mode scan -sessions "${LANSURFER_LOADTEST_SESSIONS_FILE:-$HOME/lansurfer-loadtest-sessions.jsonl}" -metrics-key-file "${LANSURFER_LOADTEST_METRICS_KEY_FILE:-$HOME/lansurfer-loadtest-metrics-key}" -path '{{.REPORT_PATH}}'
 
   loadtest:report:
     desc: List private load-test reports and run bundles

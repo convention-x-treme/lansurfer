@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"testing"
 	"testing/iotest"
+	"testing/synctest"
 	"time"
 )
 
@@ -194,4 +195,164 @@ func TestRefreshCountsTruncatedOKBodyAsFailure(t *testing.T) {
 	if _, failures := f.report(1); failures != 1 || f.refreshes2xx != 0 {
 		t.Fatalf("truncated 200: failures=%d ok=%d, want 1 failure and 0 ok", failures, f.refreshes2xx)
 	}
+}
+func TestCoalescedRefreshWaits200msAndCoalescesBurst(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		var requests atomic.Int64
+		client := &http.Client{Transport: roundTrip(func(*http.Request) (*http.Response, error) {
+			requests.Add(1)
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(""))}, nil
+		})}
+		f := newFanout("", 0, time.Millisecond, "coalesced", client)
+		f.baseURL = "http://loadtest.invalid"
+		state := &clientState{token: "test"}
+		for range 20 {
+			f.observe(state, eventData{streamName: "game-request"}, time.Now())
+		}
+		synctest.Wait()
+		if got := requests.Load(); got != 0 {
+			t.Fatalf("requests before collection window = %d, want 0", got)
+		}
+		time.Sleep(199 * time.Millisecond)
+		synctest.Wait()
+		if got := requests.Load(); got != 0 {
+			t.Fatalf("requests before 200 ms = %d, want 0", got)
+		}
+		time.Sleep(time.Millisecond)
+		synctest.Wait()
+		if got := requests.Load(); got != 1 {
+			t.Fatalf("requests at 200 ms = %d, want 1", got)
+		}
+	})
+}
+func TestCoalescedRefreshDoesNotSlideUnderContinuousSignals(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		var requests atomic.Int64
+		client := &http.Client{Transport: roundTrip(func(*http.Request) (*http.Response, error) {
+			requests.Add(1)
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(""))}, nil
+		})}
+		f := newFanout("", 0, time.Millisecond, "coalesced", client)
+		f.baseURL = "http://loadtest.invalid"
+		state := &clientState{token: "test"}
+		for i := range 20 {
+			f.observe(state, eventData{streamName: "game-request"}, time.Now())
+			time.Sleep(50 * time.Millisecond)
+			synctest.Wait()
+			if i == 2 && requests.Load() != 0 {
+				t.Fatalf("request before 200 ms = %d, want 0", requests.Load())
+			}
+			if i == 3 && requests.Load() != 1 {
+				t.Fatalf("requests at 200 ms = %d, want 1", requests.Load())
+			}
+			if i == 7 && requests.Load() != 2 {
+				t.Fatalf("requests at 400 ms = %d, want 2", requests.Load())
+			}
+		}
+		f.wg.Wait()
+		if got := requests.Load(); got >= 20 {
+			t.Fatalf("requests under continuous signals = %d, want coalesced work", got)
+		}
+	})
+}
+
+func TestCoalescedRefreshQueuesOneRequestBehindHeldResponse(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		entered := make(chan struct{}, 1)
+		release := make(chan struct{})
+		var requests atomic.Int64
+		client := &http.Client{Transport: roundTrip(func(*http.Request) (*http.Response, error) {
+			if requests.Add(1) == 1 {
+				entered <- struct{}{}
+				<-release
+			}
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(""))}, nil
+		})}
+		f := newFanout("", 0, time.Millisecond, "coalesced", client)
+		f.baseURL = "http://loadtest.invalid"
+		state := &clientState{token: "test"}
+		f.observe(state, eventData{streamName: "game-request"}, time.Now())
+		time.Sleep(200 * time.Millisecond)
+		synctest.Wait()
+		<-entered
+		for range 20 {
+			f.observe(state, eventData{streamName: "game-request"}, time.Now())
+			time.Sleep(50 * time.Millisecond)
+		}
+		got := requests.Load()
+		close(release)
+		f.wg.Wait()
+		if got != 1 {
+			t.Fatalf("requests while first response held = %d, want 1", got)
+		}
+		if final := requests.Load(); final != 2 {
+			t.Fatalf("requests after held response = %d, want one trailing request", final)
+		}
+	})
+}
+
+func TestCoalescedRefreshRetriesOnceAfterOneSecond(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		var requests atomic.Int64
+		client := &http.Client{Transport: roundTrip(func(*http.Request) (*http.Response, error) {
+			requests.Add(1)
+			return &http.Response{StatusCode: http.StatusServiceUnavailable, Body: io.NopCloser(strings.NewReader(""))}, nil
+		})}
+		f := newFanout("", 0, time.Millisecond, "coalesced", client)
+		f.baseURL = "http://loadtest.invalid"
+		f.observe(&clientState{token: "test"}, eventData{streamName: "game-request"}, time.Now())
+		synctest.Wait()
+		if got := requests.Load(); got != 0 {
+			t.Fatalf("requests before collection window = %d, want 0", got)
+		}
+		time.Sleep(200 * time.Millisecond)
+		synctest.Wait()
+		if got := requests.Load(); got != 1 {
+			t.Fatalf("requests at 200 ms = %d, want 1", got)
+		}
+		time.Sleep(999 * time.Millisecond)
+		synctest.Wait()
+		if got := requests.Load(); got != 1 {
+			t.Fatalf("requests before retry delay = %d, want 1", got)
+		}
+		time.Sleep(time.Millisecond)
+		synctest.Wait()
+		if got := requests.Load(); got != 2 {
+			t.Fatalf("requests at retry delay = %d, want 2", got)
+		}
+		time.Sleep(5 * time.Second)
+		synctest.Wait()
+		if got := requests.Load(); got != 2 {
+			t.Fatalf("requests after failed retry = %d, want no third request", got)
+		}
+	})
+}
+func TestCoalescedRefreshIgnoresChatAndActivityFrames(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		var requests atomic.Int64
+		client := &http.Client{Transport: roundTrip(func(*http.Request) (*http.Response, error) {
+			requests.Add(1)
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(""))}, nil
+		})}
+		f := newFanout("r1", 1, time.Millisecond, "coalesced", client)
+		f.baseURL = "http://loadtest.invalid"
+		state := &clientState{token: "test"}
+		f.register(state)
+		var stats counters
+		frames := "event: game-request\ndata: {\"type\":\"GameRequestJoined\",\"requestId\":\"r1\"}\n\n" +
+			"event: game-request-chat\ndata: {\"type\":\"GameRequestChatMessage\",\"requestId\":\"r1\"}\n\n" +
+			"event: game-request-activity\ndata: {\"type\":\"GameRequestActivity\",\"requestId\":\"r1\"}\n\n"
+		if err := consumeEvents(strings.NewReader(frames), &stats, func(event eventData) {
+			f.observe(state, event, time.Now())
+		}); err != io.EOF {
+			t.Fatalf("consumeEvents error = %v, want EOF", err)
+		}
+		f.wg.Wait()
+		if got := requests.Load(); got != 1 {
+			t.Fatalf("refresh requests = %d, want only game-request frame", got)
+		}
+		if f.refreshSignals != 1 {
+			t.Fatalf("refresh signals = %d, want 1", f.refreshSignals)
+		}
+	})
 }

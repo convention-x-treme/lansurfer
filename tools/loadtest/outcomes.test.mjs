@@ -37,7 +37,7 @@ const cleanSummary = (browsers = [cleanBrowser], extra = {}) => ({ runnerExitCod
 
 test('a hung refresh fails the calibration even when the visible state matches', async () => {
   const hung = { active: 1 };
-  await assert.rejects(waitForIdle([{ active: 0 }, hung], 120), /did not settle/);
+  await assert.rejects(waitForIdle([{ active: 0 }, hung], 120, 0), /did not settle/);
   const failures = calibrationFailures(cleanSummary([{ ...cleanBrowser, active: 1 }], { idleError: 'browser refresh requests did not settle' }), 1);
   assert.deepEqual(failures, ['browser refresh requests did not settle', 'browser 0 has 1 unfinished refresh requests']);
 });
@@ -50,7 +50,58 @@ test('residual loading, disabled or unfinished HTMX state fails the calibration'
   assert.equal(calibrationFailures(cleanSummary([cleanBrowser]), 2).length, 1);
 });
 
+test('missing event-to-visible probe samples fail probe calibration', () => {
+  const summary = cleanSummary([cleanBrowser], {
+    probe: true,
+    totals: { failed: 0, convergedBrowsers: 1, eventToVisibleMs: { missing: 1 } },
+  });
+  assert.deepEqual(calibrationFailures(summary, 1), ['1 event-to-visible samples missing']);
+});
+
 test('a fully settled calibration passes', async () => {
-  await waitForIdle([{ active: 0 }], 50);
+  await waitForIdle([{ active: 0 }], 50, 0);
   assert.deepEqual(calibrationFailures(cleanSummary([cleanBrowser, cleanBrowser]), 2), []);
+});
+
+async function advanceTimers(t, duration) {
+  for (let elapsed = 0; elapsed < duration; elapsed += 50) {
+    t.mock.timers.tick(Math.min(50, duration - elapsed));
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+}
+
+test('waitForIdle requires the quiet window after the last request', async (t) => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 0 });
+  const waiting = waitForIdle([{ active: 0 }], 2000);
+  let settled = false;
+  waiting.then(() => { settled = true; });
+  await advanceTimers(t, 1499);
+  await Promise.resolve();
+  assert.equal(settled, false);
+  await advanceTimers(t, 1);
+  await waiting;
+  assert.equal(settled, true);
+});
+
+test('waitForIdle restarts quiet window after delayed activity', async (t) => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 0 });
+  const stats = { active: 0 };
+  const waiting = waitForIdle([stats], 3000);
+  let settled = false;
+  waiting.then(() => { settled = true; });
+  await advanceTimers(t, 1000);
+  stats.lastActivityAt = Date.now();
+  await advanceTimers(t, 1499);
+  await Promise.resolve();
+  assert.equal(settled, false);
+  await advanceTimers(t, 1);
+  await waiting;
+  assert.equal(settled, true);
+});
+
+test('waitForIdle rejects continuous active work at deadline', async (t) => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 0 });
+  const waiting = assert.rejects(waitForIdle([{ active: 1 }], 100), /did not settle/);
+  await advanceTimers(t, 100);
+  await waiting;
 });

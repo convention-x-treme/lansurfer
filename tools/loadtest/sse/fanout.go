@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
@@ -23,10 +25,11 @@ const (
 // refreshQuery is an optional validated query appended to synthetic refresh GETs.
 var refreshQuery string
 
-// eventData is the JSON payload of a "game-request" SSE event.
+// eventData is the JSON payload of a Game Request SSE event.
 type eventData struct {
-	Type      string `json:"type"`
-	RequestID string `json:"requestId"`
+	Type       string `json:"type"`
+	RequestID  string `json:"requestId"`
+	streamName string
 }
 
 // percentile returns the nearest-rank p-th percentile (0 < p <= 100) of values.
@@ -59,20 +62,23 @@ type fanout struct {
 	sentAt      []atomic.Int64
 	chat        bool
 
-	mu             sync.Mutex
-	clients        []*clientState
-	delays         []time.Duration
-	refreshes      []time.Duration
-	postLatencies  []time.Duration
-	outOfOrder     int
-	observed       int
-	unassignable   int
-	duplicates     int
-	refreshFailure int
-	refreshes2xx   int
-	refreshActive  int
-	refreshPeak    int
-	wg             sync.WaitGroup
+	mu              sync.Mutex
+	clients         []*clientState
+	delays          []time.Duration
+	refreshes       []time.Duration
+	postLatencies   []time.Duration
+	outOfOrder      int
+	observed        int
+	unassignable    int
+	duplicates      int
+	refreshFailure  int
+	refreshTimeouts int
+	refreshes2xx    int
+	refreshActive   int
+	refreshPeak     int
+	refreshSignals  int
+	gameRequestOnly bool
+	wg              sync.WaitGroup
 }
 
 func newFanout(request string, mutations int, interval time.Duration, refreshMode string, client *http.Client) *fanout {
@@ -82,13 +88,16 @@ func newFanout(request string, mutations int, interval time.Duration, refreshMod
 // clientState counts target-request events seen by one player, so the k-th
 // event can be matched to the k-th mutation (join, leave, join, ...).
 type clientState struct {
-	token         string
-	seen          int
-	mappingGap    bool
-	received      []time.Time
-	refreshMu     sync.Mutex
-	refreshActive bool
-	refreshQueued bool
+	token            string
+	seen             int
+	mappingGap       bool
+	received         []time.Time
+	refreshMu        sync.Mutex
+	refreshActive    bool
+	refreshQueued    bool
+	refreshPending   bool
+	refreshDue       time.Time
+	refreshAllowedAt time.Time
 }
 
 func (f *fanout) register(state *clientState) {
@@ -101,21 +110,32 @@ func (f *fanout) register(state *clientState) {
 }
 
 func (f *fanout) observe(state *clientState, event eventData, at time.Time) {
-	if f.refreshMode != "off" {
-		state.refreshMu.Lock()
-		if f.refreshMode == "browser-like" && state.refreshActive {
-			state.refreshQueued = true
-			state.refreshMu.Unlock()
-		} else if f.refreshMode == "browser-like" {
+	gameRequest := event.streamName == "game-request"
+	if f.refreshMode != "off" && ((!f.gameRequestOnly && f.refreshMode != "coalesced") || gameRequest) {
+		f.mu.Lock()
+		f.refreshSignals++
+		f.mu.Unlock()
+		switch f.refreshMode {
+		case "browser-like":
+			state.refreshMu.Lock()
+			if state.refreshActive {
+				state.refreshQueued = true
+				state.refreshMu.Unlock()
+				break
+			}
 			state.refreshActive = true
 			state.refreshMu.Unlock()
 			f.wg.Add(1)
 			go f.refreshBrowserLike(state)
-		} else {
-			state.refreshMu.Unlock()
+		case "coalesced":
+			f.refreshCoalesced(state)
+		default:
 			f.wg.Add(1)
 			go func() { defer f.wg.Done(); f.refreshList(state.token) }()
 		}
+	}
+	if (f.gameRequestOnly || f.refreshMode == "coalesced") && !gameRequest {
+		return
 	}
 	if event.RequestID != f.request {
 		return
@@ -157,6 +177,66 @@ func (f *fanout) observe(state *clientState, event eventData, at time.Time) {
 	}
 }
 
+func (f *fanout) refreshCoalesced(state *clientState) {
+	state.refreshMu.Lock()
+	if state.refreshPending {
+		state.refreshMu.Unlock()
+		return
+	}
+	state.refreshPending = true
+	state.refreshDue = time.Now().Add(200 * time.Millisecond)
+	if state.refreshAllowedAt.After(state.refreshDue) {
+		state.refreshDue = state.refreshAllowedAt
+	}
+	if state.refreshActive {
+		state.refreshMu.Unlock()
+		return
+	}
+	state.refreshActive = true
+	f.wg.Add(1)
+	state.refreshMu.Unlock()
+	go f.runCoalescedRefresh(state)
+}
+
+func (f *fanout) runCoalescedRefresh(state *clientState) {
+	defer f.wg.Done()
+	retryUsed := false
+	for {
+		state.refreshMu.Lock()
+		due := state.refreshDue
+		state.refreshMu.Unlock()
+		if delay := time.Until(due); delay > 0 {
+			time.Sleep(delay)
+		}
+		state.refreshMu.Lock()
+		state.refreshPending = false
+		state.refreshAllowedAt = time.Now().Add(100 * time.Millisecond)
+		state.refreshMu.Unlock()
+		ok := f.refreshList(state.token)
+		if !ok && !retryUsed {
+			retryUsed = true
+			time.Sleep(time.Second)
+			state.refreshMu.Lock()
+			state.refreshPending = false
+			state.refreshMu.Unlock()
+			ok = f.refreshList(state.token)
+		}
+		state.refreshMu.Lock()
+		pending := state.refreshPending
+		if ok {
+			retryUsed = false
+		} else if retryUsed {
+			retryUsed = false
+		}
+		if !pending {
+			state.refreshActive = false
+			state.refreshMu.Unlock()
+			return
+		}
+		state.refreshMu.Unlock()
+	}
+}
+
 func (f *fanout) completeMutation(k int, completed time.Time) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -183,12 +263,12 @@ func (f *fanout) refreshBrowserLike(state *clientState) {
 		state.refreshMu.Unlock()
 	}
 }
-func (f *fanout) refreshList(token string) {
+func (f *fanout) refreshList(token string) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, f.baseURL+refreshPath+refreshQuery, nil)
 	if err != nil {
-		return
+		return false
 	}
 	req.AddCookie(&http.Cookie{Name: "lansurfer_session", Value: token})
 	req.Header.Set("HX-Request", "true")
@@ -211,11 +291,18 @@ func (f *fanout) refreshList(token string) {
 	f.refreshActive--
 	defer f.mu.Unlock()
 	if err != nil || resp.StatusCode != http.StatusOK {
+		if err != nil {
+			var timeout net.Error
+			if errors.Is(err, context.DeadlineExceeded) || errors.As(err, &timeout) && timeout.Timeout() {
+				f.refreshTimeouts++
+			}
+		}
 		f.refreshFailure++
-		return
+		return false
 	}
 	f.refreshes2xx++
 	f.refreshes = append(f.refreshes, elapsed)
+	return true
 }
 
 // run performs the mutations as one real player with a real CSRF token. It
@@ -295,11 +382,17 @@ func (f *fanout) report(clients int) (missing, refreshFailures int) {
 	} else {
 		fmt.Fprintln(os.Stdout, "fan-out: mutation->stream latency unavailable because delivery mapping is incomplete")
 	}
-	fmt.Fprintf(os.Stdout, "fan-out: mutation POST latency p50=%v p95=%v max=%v\n",
-		percentile(f.postLatencies, 50), percentile(f.postLatencies, 95), percentile(f.postLatencies, 100))
+	fmt.Fprintf(os.Stdout, "fan-out: mutation POST latency p50=%v p95=%v p99=%v max=%v\n",
+		percentile(f.postLatencies, 50), percentile(f.postLatencies, 95), percentile(f.postLatencies, 99), percentile(f.postLatencies, 100))
+	fmt.Fprintf(os.Stdout, "fan-out: game-request refresh signals=%d refreshes_per_signal=", f.refreshSignals)
+	if f.refreshSignals == 0 {
+		fmt.Fprintln(os.Stdout, "unavailable")
+	} else {
+		fmt.Fprintf(os.Stdout, "%.2f\n", float64(f.refreshes2xx+f.refreshFailure)/float64(f.refreshSignals))
+	}
 	if f.refreshMode != "off" {
-		fmt.Fprintf(os.Stdout, "fan-out: refresh amplification GET %s=%d ok=%d failed=%d peak_parallel=%d latency p50=%v p95=%v p99=%v max=%v\n",
-			refreshPath+refreshQuery, f.refreshes2xx+f.refreshFailure, f.refreshes2xx, f.refreshFailure, f.refreshPeak,
+		fmt.Fprintf(os.Stdout, "fan-out: refresh amplification GET %s=%d ok=%d failed=%d timeouts=%d peak_parallel=%d latency p50=%v p95=%v p99=%v max=%v\n",
+			refreshPath+refreshQuery, f.refreshes2xx+f.refreshFailure, f.refreshes2xx, f.refreshFailure, f.refreshTimeouts, f.refreshPeak,
 			percentile(f.refreshes, 50), percentile(f.refreshes, 95), percentile(f.refreshes, 99), percentile(f.refreshes, 100))
 	}
 	return missing, refreshFailures

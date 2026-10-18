@@ -16,6 +16,8 @@ import { SharedArray } from 'k6/data';
 import { Counter, Rate } from 'k6/metrics';
 import { classifyHtmx, isCsrfRejection } from './outcomes.mjs';
 
+const writeTimeouts = new Counter('loadtest_write_timeouts');
+const writeHTTP502s = new Counter('loadtest_write_http_502s');
 const BASE_URL = __ENV.BASE_URL || 'http://lansurfer:8080';
 const SESSION_OFFSET = Number(__ENV.SESSION_OFFSET || '0');
 const SEED = Number(__ENV.SEED || '139');
@@ -58,6 +60,8 @@ for (const action of actions) {
     thresholds['loadtest_outcomes{action:' + action + ',outcome:' + outcome + '}'] = ['count>=0'];
   }
 }
+thresholds.loadtest_write_timeouts = ['count>=0'];
+thresholds.loadtest_write_http_502s = ['count>=0'];
 
 export const options = {
   scenarios: {
@@ -70,6 +74,11 @@ export const options = {
   summaryTrendStats: ['avg', 'min', 'med', 'p(90)', 'p(95)', 'p(99)', 'max'],
   thresholds,
 };
+
+export function setup() {
+  console.log("loadtest-writers-ready");
+  return {};
+}
 
 // Per-VU state.
 let jar; // created inside the VU: cookie jars are unsupported in the init context
@@ -102,6 +111,8 @@ let unexpectedLogged = 0;
 function record(action, outcome, res) {
   outcomeCounter.add(1, { action, outcome });
   unexpectedRate.add(outcome === 'unexpected', { action });
+  if (res?.error_code === 1050) writeTimeouts.add(1, { action });
+  if (res?.status === 502) writeHTTP502s.add(1, { action });
   // Diagnose without leaking secrets: status and redirect target only, first few per VU.
   if (outcome === 'unexpected' && res && unexpectedLogged++ < 3) {
     console.error('unexpected ' + action + ': status=' + res.status + ' location=' + header(res, 'Location') + ' token_sent=' + lastTokenSent + ' csrf_rejection=' + isCsrfRejection(res) + ' retarget=' + header(res, 'HX-Retarget'));

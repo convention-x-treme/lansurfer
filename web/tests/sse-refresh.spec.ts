@@ -1,0 +1,559 @@
+import { expect, test, type Page } from "@playwright/test";
+import { resetFixture, simulateRealtimeReconnect, waitForRealtime } from "./helpers";
+
+type RefreshProbe = { count: number; active: number; peak: number };
+type TestWindow = Window & { __eventSource?: EventSource; __refreshProbe?: RefreshProbe; __swapPrevented?: boolean[]; __staleSwapPrevented?: boolean };
+
+const requestId = "00000000-0000-0000-0000-000000000003";
+
+async function openList(page: Page, request: Parameters<typeof resetFixture>[0], path = "/game-requests?status=open"): Promise<void> {
+  await page.clock.install();
+  await page.addInitScript(() => {
+    const native = window.EventSource;
+    window.EventSource = class extends native {
+      constructor(...args: ConstructorParameters<typeof EventSource>) {
+        super(...args);
+        (window as TestWindow).__eventSource = this;
+      }
+    };
+    const probe: RefreshProbe = { count: 0, active: 0, peak: 0 };
+    (window as TestWindow).__refreshProbe = probe;
+    document.addEventListener("htmx:beforeRequest", (event) => {
+      const detail = (event as CustomEvent<{ requestConfig?: { path?: string } }>).detail;
+      if (detail.requestConfig?.path?.includes("/refresh")) {
+        probe.count++;
+        probe.active++;
+        probe.peak = Math.max(probe.peak, probe.active);
+      }
+    });
+    document.addEventListener("htmx:afterRequest", (event) => {
+      const detail = (event as CustomEvent<{ requestConfig?: { path?: string } }>).detail;
+      if (detail.requestConfig?.path?.includes("/refresh")) probe.active--;
+    });
+  });
+  await page.goto(path);
+  if (path.startsWith("/game-requests?")) await expect(page.locator("#game-request-list")).toBeVisible();
+  else await expect(page.locator(".detail-shell")).toBeVisible();
+  await waitForRealtime(page, request, 1);
+  await page.clock.pauseAt(new Date("2026-10-20T18:00:00Z"));
+}
+
+async function emit(page: Page, type: string, id = requestId): Promise<void> {
+  await page.evaluate(({ type, id }) => {
+    const source = (window as TestWindow).__eventSource;
+    if (!source) throw new Error("EventSource was not recorded");
+    source.dispatchEvent(new MessageEvent("game-request", {
+      data: JSON.stringify({ type, requestId: id }),
+    }));
+  }, { type, id });
+}
+
+async function emitChat(page: Page, id = requestId): Promise<void> {
+  await page.evaluate((requestId) => {
+    const source = (window as TestWindow).__eventSource;
+    if (!source) throw new Error("EventSource was not recorded");
+    source.dispatchEvent(new MessageEvent("game-request-chat", {
+      data: JSON.stringify({ requestId }),
+    }));
+  }, id);
+}
+
+async function refreshProbe(page: Page): Promise<RefreshProbe> {
+  return await page.evaluate(() => ({ ...(window as TestWindow).__refreshProbe! }));
+}
+
+test.beforeEach(async ({ request }) => {
+  await resetFixture(request);
+});
+
+
+test("detail refresh ignores events for other requests", async ({ page, request }) => {
+  await openList(page, request, `/game-requests/${requestId}`);
+  await emit(page, "GameRequestJoined", "00000000-0000-0000-0000-000000000004");
+  await page.clock.runFor(250);
+  expect((await refreshProbe(page)).count).toBe(0);
+  await emit(page, "GameRequestJoined");
+  await page.clock.runFor(200);
+  await expect.poll(async () => (await refreshProbe(page)).count).toBe(1);
+});
+
+test("lobby refresh does not bypass failed detail refresh retry delay", async ({ page, request }) => {
+  let detailCalls = 0;
+  let lobbyCalls = 0;
+  await page.route(`**/game-requests/${requestId}/refresh*`, async (route) => {
+    detailCalls++;
+    if (detailCalls === 1) await route.fulfill({ status: 503, body: "unavailable" });
+    else await route.continue();
+  });
+  await page.route(`**/game-requests/${requestId}/lobby*`, async (route) => {
+    lobbyCalls++;
+    await route.fulfill({ status: 200, body: '<ol id="game-request-lobby" data-refresh-url="/game-requests/' + requestId + '/lobby"></ol>' });
+  });
+  await openList(page, request, `/game-requests/${requestId}`);
+  await page.locator("[data-game-request-detail]").evaluate((detail, id) => {
+    const lobby = document.createElement("ol");
+    lobby.id = "game-request-lobby";
+    lobby.dataset.refreshUrl = `/game-requests/${id}/lobby`;
+    detail.append(lobby);
+  }, requestId);
+  await emit(page, "GameRequestJoined");
+  await page.clock.runFor(200);
+  await expect.poll(() => detailCalls).toBe(1);
+  await emitChat(page);
+  await expect.poll(() => lobbyCalls).toBe(1);
+  await page.clock.runFor(999);
+  expect(detailCalls).toBe(1);
+  await page.clock.runFor(1);
+  await expect.poll(() => detailCalls).toBe(2);
+});
+test("a Game Request join revalidates a slow lobby-list refresh", async ({ page, request }) => {
+  let releaseRefresh!: () => void;
+  let notifyRefresh!: () => void;
+  let refreshCalls = 0;
+  const held = new Promise<void>((resolve) => { releaseRefresh = resolve; });
+  const started = new Promise<void>((resolve) => { notifyRefresh = resolve; });
+  await page.route("**/game-requests/refresh*", async (route) => {
+    refreshCalls++;
+    if (refreshCalls === 1) {
+      notifyRefresh();
+      await held;
+    }
+    await route.fulfill({ response: await route.fetch() });
+  });
+  await openList(page, request);
+  await emit(page, "GameRequestJoined");
+  await page.clock.runFor(200);
+  await started;
+
+  await page.getByRole("button", { name: "Join" }).first().click();
+  await expect(page.getByRole("button", { name: "Leave" }).first()).toBeVisible();
+  releaseRefresh();
+  await expect.poll(() => refreshCalls).toBe(2);
+  await expect(page.getByRole("button", { name: "Leave" }).first()).toBeVisible();
+});
+
+test("an automatic lobby load does not invalidate a trailing detail refresh", async ({ page, request }) => {
+  let releaseFirst!: () => void;
+  let releaseTrailing!: () => void;
+  let notifyFirst!: () => void;
+  let notifyTrailing!: () => void;
+  let detailCalls = 0;
+  let lobbyCalls = 0;
+  const firstHold = new Promise<void>((resolve) => { releaseFirst = resolve; });
+  const trailingHold = new Promise<void>((resolve) => { releaseTrailing = resolve; });
+  const firstStarted = new Promise<void>((resolve) => { notifyFirst = resolve; });
+  const trailingStarted = new Promise<void>((resolve) => { notifyTrailing = resolve; });
+  await page.route(`**/game-requests/${requestId}/refresh*`, async (route) => {
+    detailCalls++;
+    if (detailCalls === 1) {
+      notifyFirst();
+      await firstHold;
+    } else if (detailCalls === 2) {
+      notifyTrailing();
+      await trailingHold;
+    }
+    await route.fulfill({ response: await route.fetch() });
+  });
+  await page.route(`**/game-requests/${requestId}/lobby*`, async (route) => {
+    lobbyCalls++;
+    await route.fulfill({ status: 200, body: `<ol id="game-request-lobby" data-refresh-url="/game-requests/${requestId}/lobby"></ol>` });
+  });
+  const lifecycle = await request.get("/__test__/lifecycle?status=open&starts_at=2026-10-20T18:00:00Z&joined=1");
+  expect(lifecycle.status()).toBe(204);
+  await openList(page, request, `/game-requests/${requestId}`);
+  await page.evaluate(() => {
+    const browserWindow = window as TestWindow;
+    browserWindow.__swapPrevented = [];
+    document.addEventListener("htmx:beforeSwap", (event) => {
+      const detail = (event as CustomEvent<{ target?: Element }>).detail;
+      if (detail.target?.id === "game-request-detail") browserWindow.__swapPrevented?.push(event.defaultPrevented);
+    });
+  });
+  await emit(page, "GameRequestJoined");
+  await page.clock.runFor(200);
+  await firstStarted;
+  await emit(page, "GameRequestLeft");
+  await page.clock.runFor(200);
+  releaseFirst();
+  await trailingStarted;
+  await page.clock.runFor(20);
+  await expect.poll(() => lobbyCalls).toBe(2);
+  releaseTrailing();
+  await page.clock.runFor(1000);
+  const swapsPrevented = await page.evaluate(() => (window as TestWindow).__swapPrevented ?? []);
+  expect(swapsPrevented).toEqual([false, false]);
+  expect(detailCalls).toBe(2);
+});
+test("waits 200 ms and coalesces a 20-event burst", async ({ page, request }) => {
+  await openList(page, request);
+  await emit(page, "GameRequestJoined");
+  for (let index = 1; index < 20; index++) {
+    await page.clock.runFor(5);
+    await emit(page, index % 2 ? "GameRequestLeft" : "GameRequestJoined");
+  }
+  await page.clock.runFor(104);
+  expect((await refreshProbe(page)).count).toBe(0);
+  await page.clock.runFor(1);
+  await expect.poll(async () => (await refreshProbe(page)).count).toBe(1);
+  expect((await refreshProbe(page)).peak).toBe(1);
+});
+test("keeps live rows and ignores stale out-of-band content after a filter swap", async ({ page, request }) => {
+  let releaseFirst!: () => void;
+  let releaseTrailing!: () => void;
+  let notifyFirst!: () => void;
+  let notifyTrailing!: () => void;
+  let refreshCalls = 0;
+  const firstHold = new Promise<void>((resolve) => { releaseFirst = resolve; });
+  const trailingHold = new Promise<void>((resolve) => { releaseTrailing = resolve; });
+  const firstStarted = new Promise<void>((resolve) => { notifyFirst = resolve; });
+  const trailingStarted = new Promise<void>((resolve) => { notifyTrailing = resolve; });
+  await page.route("**/game-requests/refresh*", async (route) => {
+    refreshCalls++;
+    if (refreshCalls === 1) {
+      const response = await route.fetch();
+      notifyFirst();
+      await firstHold;
+      await route.fulfill({ response });
+    } else if (refreshCalls === 2) {
+      notifyTrailing();
+      await trailingHold;
+      await route.fulfill({ response: await route.fetch() });
+    } else {
+      await route.continue();
+    }
+  });
+  await openList(page, request);
+  await page.locator("#game-request-list").evaluate((element) => {
+    element.addEventListener("htmx:beforeSwap", (event) => {
+      queueMicrotask(() => { (window as TestWindow).__staleSwapPrevented = event.defaultPrevented; });
+    });
+  });
+  await emit(page, "GameRequestCreated");
+  await page.clock.runFor(200);
+  await firstStarted;
+  await expect(page.locator("#game-request-list .request-list-content")).toBeVisible();
+  await page.locator("#request-search").fill("no-matching-game-147");
+  await page.clock.runFor(300);
+  await expect(page.locator("#game-request-list")).toHaveAttribute("data-filter-query", /no-matching-game-147/);
+  const filteredStats = await page.locator("#request-stats").innerText();
+  releaseFirst();
+  await trailingStarted;
+  await expect(page.locator("#request-stats")).toHaveText(filteredStats);
+  await expect.poll(() => page.evaluate(() => (window as TestWindow).__staleSwapPrevented)).toBe(true);
+  releaseTrailing();
+  await page.clock.runFor(1000);
+});
+
+test("keeps the latest Created highlight and active filter across a burst", async ({ page, request }) => {
+  const refreshURLs: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.pathname === "/game-requests/refresh") refreshURLs.push(url.href);
+  });
+  await openList(page, request, "/game-requests?q=warcraft");
+  await emit(page, "GameRequestCreated", "request-a");
+  await emit(page, "GameRequestJoined", "request-b");
+  await emit(page, "GameRequestCreated", "request-c");
+  await page.clock.runFor(200);
+  await expect.poll(() => refreshURLs.length).toBe(1);
+  const refreshURL = new URL(refreshURLs[0]);
+  expect(refreshURL.searchParams.get("q")).toBe("warcraft");
+  expect(refreshURL.searchParams.get("highlight")).toBe("request-c");
+});
+
+test("waits one fixed 200 ms window for events received during a slow refresh", async ({ page, request }) => {
+  let release!: () => void;
+  let notifyStarted!: () => void;
+  let routeCalls = 0;
+  const held = new Promise<void>((resolve) => { release = resolve; });
+  const started = new Promise<void>((resolve) => { notifyStarted = resolve; });
+  await page.route("**/game-requests/refresh*", async (route) => {
+    if (routeCalls++ === 0) {
+      notifyStarted();
+      await held;
+    }
+    await route.continue();
+  });
+  await openList(page, request);
+  await emit(page, "GameRequestJoined");
+  await page.clock.runFor(200);
+  await started;
+  await page.clock.runFor(50);
+  await emit(page, "GameRequestLeft");
+  await page.clock.runFor(25);
+  await emit(page, "GameRequestJoined");
+  await page.clock.runFor(25);
+  await emit(page, "GameRequestLeft");
+  await page.clock.runFor(149);
+  expect((await refreshProbe(page)).count).toBe(1);
+  release();
+  await page.clock.runFor(0);
+  expect((await refreshProbe(page)).count).toBe(1);
+  await page.clock.runFor(1);
+  await expect.poll(async () => (await refreshProbe(page)).count).toBe(2);
+  expect((await refreshProbe(page)).peak).toBe(1);
+});
+
+test("merges events and reconnect resync into one bounded retry", async ({ page, request }) => {
+  let attempts = 0;
+  await page.route("**/game-requests/refresh*", async (route) => {
+    attempts++;
+    await route.fulfill({ status: 503, body: "unavailable" });
+  });
+  await openList(page, request);
+  await emit(page, "GameRequestJoined");
+  await page.clock.runFor(200);
+  await expect.poll(() => attempts).toBe(1);
+  await page.clock.runFor(500);
+  await emit(page, "GameRequestLeft");
+  await emit(page, "GameRequestJoined");
+  await simulateRealtimeReconnect(page);
+  await page.clock.runFor(499);
+  expect(attempts).toBe(1);
+  await page.clock.runFor(1);
+  await expect.poll(() => attempts).toBe(2);
+  await page.clock.runFor(5000);
+  expect(attempts).toBe(2);
+});
+
+test("keeps a pending refresh through hidden and pagehide suspension", async ({ page, request }) => {
+  await openList(page, request);
+  await emit(page, "GameRequestJoined");
+  await page.clock.runFor(200);
+  await expect.poll(async () => (await refreshProbe(page)).count).toBe(1);
+  await expect.poll(async () => (await refreshProbe(page)).active).toBe(0);
+  await emit(page, "GameRequestLeft");
+  await page.clock.runFor(50);
+  await page.evaluate(() => {
+    Object.defineProperty(document, "hidden", { configurable: true, value: true });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await page.clock.runFor(500);
+  expect((await refreshProbe(page)).count).toBe(1);
+  await page.evaluate(() => {
+    Object.defineProperty(document, "hidden", { configurable: true, value: false });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await page.clock.runFor(50);
+  await expect.poll(async () => (await refreshProbe(page)).count).toBe(2);
+
+  await emit(page, "GameRequestJoined");
+  await page.clock.runFor(20);
+  await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent("pagehide")));
+  await page.clock.runFor(500);
+  expect((await refreshProbe(page)).count).toBe(2);
+  await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent("pageshow")));
+  await page.clock.runFor(1);
+  await expect.poll(async () => (await refreshProbe(page)).count).toBe(3);
+});
+test("does not restore an inline draft after a hidden refresh swap is cancelled", async ({ page, request }) => {
+  await page.goto("/game-requests/new?game_id=game-1");
+  await page.getByLabel("Max players").fill("4");
+  const created = page.waitForURL(/\/game-requests\/[0-9a-f-]+(?:\?.*)?$/);
+  await page.getByRole("button", { name: "Create Game Request" }).click();
+  await created;
+  const detailPath = new URL(page.url()).pathname;
+  const id = detailPath.split("/").at(-1)!;
+  let releaseRefresh!: () => void;
+  let notifyRefresh!: () => void;
+  let refreshCalls = 0;
+  const held = new Promise<void>((resolve) => { releaseRefresh = resolve; });
+  const started = new Promise<void>((resolve) => { notifyRefresh = resolve; });
+  await page.route(`**/game-requests/${id}/refresh*`, async (route) => {
+    if (++refreshCalls === 1) {
+      notifyRefresh();
+      await held;
+    }
+    await route.continue();
+  });
+  await openList(page, request, `${detailPath}?edit=1`);
+  const capacity = page.locator("#game-request-detail input[name='max_players']");
+  await expect(capacity).toHaveValue("4");
+  await capacity.fill("6");
+  await emit(page, "GameRequestJoined", id);
+  await page.clock.runFor(200);
+  await started;
+  await page.evaluate(() => {
+    Object.defineProperty(document, "hidden", { configurable: true, value: true });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  releaseRefresh();
+  await page.clock.runFor(0);
+  await expect.poll(async () => (await refreshProbe(page)).active).toBe(0);
+  await capacity.fill("4");
+  await page.evaluate(() => {
+    Object.defineProperty(document, "hidden", { configurable: true, value: false });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await page.clock.runFor(0);
+  await expect.poll(async () => (await refreshProbe(page)).count).toBe(2);
+  await expect(capacity).toHaveValue("4");
+});
+test("retries an aborted refresh once", async ({ page, request }) => {
+  let attempts = 0;
+  await page.route("**/game-requests/refresh*", async (route) => {
+    attempts++;
+    if (attempts === 1) await route.abort();
+    else await route.continue();
+  });
+  await openList(page, request);
+  await emit(page, "GameRequestJoined");
+  await page.clock.runFor(200);
+  await expect.poll(() => attempts).toBe(1);
+  await expect.poll(async () => (await refreshProbe(page)).active).toBe(0);
+  await page.clock.runFor(999);
+  expect(attempts).toBe(1);
+  await page.clock.runFor(1);
+  await expect.poll(() => attempts).toBe(2);
+});
+test("preserves a queued detail refresh when a mutation replaces its target", async ({ page, request }) => {
+  let releaseRefresh!: () => void;
+  let notifyRefresh!: () => void;
+  let refreshCalls = 0;
+  const held = new Promise<void>((resolve) => { releaseRefresh = resolve; });
+  const started = new Promise<void>((resolve) => { notifyRefresh = resolve; });
+  await page.route(`**/game-requests/${requestId}/refresh*`, async (route) => {
+    refreshCalls++;
+    if (refreshCalls === 1) {
+      notifyRefresh();
+      await held;
+    }
+    await route.continue();
+  });
+  await page.route("**/test/replace-detail", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "text/html",
+      body: `<section id="game-request-detail" data-game-request-detail data-game-request-id="${requestId}" data-refresh-url="/game-requests/${requestId}/refresh" data-replaced></section>`,
+    });
+  });
+  await page.route(`**/game-requests/${requestId}`, async (route) => {
+    const response = await route.fetch();
+    const html = await response.text();
+    await route.fulfill({
+      response,
+      body: html.replace("</body>", '<form hx-post="/test/replace-detail" hx-target="#game-request-detail" hx-swap="outerHTML"><button type="submit" data-test-replace-detail>Replace</button></form></body>'),
+    });
+  });
+  await openList(page, request, `/game-requests/${requestId}`);
+  await emit(page, "GameRequestJoined");
+  await page.clock.runFor(200);
+  await started;
+
+  await page.locator("[data-test-replace-detail]").click();
+  await expect(page.locator("#game-request-detail[data-replaced]")).toHaveAttribute("data-replaced", "");
+  await emit(page, "GameRequestLeft");
+  await page.clock.runFor(200);
+  releaseRefresh();
+  await page.clock.runFor(200);
+
+  await expect.poll(() => refreshCalls).toBe(2);
+});
+test("preserves a save-triggered detail refresh while an SSE refresh is in flight", async ({ page, request }) => {
+  let releaseRefresh!: () => void;
+  let notifyRefresh!: () => void;
+  let refreshCalls = 0;
+  const held = new Promise<void>((resolve) => { releaseRefresh = resolve; });
+  const started = new Promise<void>((resolve) => { notifyRefresh = resolve; });
+  await page.route(`**/game-requests/${requestId}/refresh*`, async (route) => {
+    refreshCalls++;
+    if (refreshCalls === 1) {
+      notifyRefresh();
+      await held;
+    }
+    await route.fulfill({ response: await route.fetch() });
+  });
+  await openList(page, request, `/game-requests/${requestId}`);
+  await page.evaluate(() => {
+    const dialog = document.createElement("dialog");
+    dialog.id = "game-request-edit-dialog";
+    dialog.setAttribute("open", "");
+    document.body.append(dialog);
+  });
+  await emit(page, "GameRequestJoined");
+  await page.clock.runFor(200);
+  await started;
+  await page.evaluate(() => document.dispatchEvent(new Event("game-request-details-saved")));
+  await page.clock.runFor(0);
+  expect(refreshCalls).toBe(1);
+  releaseRefresh();
+  await expect.poll(() => refreshCalls).toBe(2);
+  await expect(page.locator("#game-request-edit-dialog")).not.toHaveAttribute("open");
+});
+test("a lobby chat POST does not invalidate a slow detail refresh", async ({ page, request }) => {
+  let releaseRefresh!: () => void;
+  let notifyRefresh!: () => void;
+  let refreshCalls = 0;
+  const held = new Promise<void>((resolve) => { releaseRefresh = resolve; });
+  const started = new Promise<void>((resolve) => { notifyRefresh = resolve; });
+  await page.route(`**/game-requests/${requestId}/refresh*`, async (route) => {
+    refreshCalls++;
+    const firstRefresh = refreshCalls === 1;
+    if (firstRefresh) {
+      notifyRefresh();
+      await held;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "text/html",
+      body: `<section id="game-request-detail" data-game-request-detail data-game-request-id="${requestId}" data-refresh-url="/game-requests/${requestId}/refresh"${firstRefresh ? " data-first-refresh-swapped" : ""}></section>`,
+    });
+  });
+  await page.route(`**/game-requests/${requestId}/chat`, async (route) => {
+    await route.fulfill({ status: 200, contentType: "text/html", body: `<ol id="game-request-lobby" data-refresh-url="/game-requests/${requestId}/lobby" data-chat-posted></ol>` });
+  });
+  const lifecycle = await request.get("/__test__/lifecycle?status=open&starts_at=2026-10-20T18:00:00Z&joined=1");
+  expect(lifecycle.status()).toBe(204);
+  await openList(page, request, `/game-requests/${requestId}`);
+
+  await emit(page, "GameRequestJoined");
+  await page.clock.runFor(200);
+  await started;
+  expect(refreshCalls).toBe(1);
+  await page.getByRole("textbox", { name: "Message the lobby" }).fill("chat message");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(page.locator("#game-request-lobby")).toHaveAttribute("data-chat-posted", "");
+  expect(refreshCalls).toBe(1);
+
+  releaseRefresh();
+  await expect(page.locator("#game-request-detail")).toHaveAttribute("data-first-refresh-swapped", "");
+  expect((await refreshProbe(page)).peak).toBe(1);
+});
+test("real detail save during an SSE refresh gets a serialized revalidation", async ({ page, request }) => {
+  await page.goto("/game-requests/new?game_id=game-1");
+  await page.getByLabel("Max players").fill("4");
+  const created = page.waitForURL(/\/game-requests\/[0-9a-f-]+(?:\?.*)?$/);
+  await page.getByRole("button", { name: "Create Game Request" }).click();
+  await created;
+  const detailPath = new URL(page.url()).pathname;
+  const id = detailPath.split("/").at(-1)!;
+
+  let releaseRefresh!: () => void;
+  let notifyRefresh!: () => void;
+  let refreshCalls = 0;
+  const held = new Promise<void>((resolve) => { releaseRefresh = resolve; });
+  const started = new Promise<void>((resolve) => { notifyRefresh = resolve; });
+  await page.route(`**/game-requests/${id}/refresh*`, async (route) => {
+    if (++refreshCalls === 1) {
+      notifyRefresh();
+      await held;
+    }
+    await route.fulfill({ response: await route.fetch() });
+  });
+  await openList(page, request, detailPath);
+  await page.getByRole("link", { name: "Edit" }).click();
+  await expect(page.locator("#game-request-edit-dialog")).toBeVisible();
+  await emit(page, "GameRequestJoined", id);
+  await page.clock.runFor(200);
+  await started;
+
+  await page.getByLabel("Max players").fill("7");
+  const saved = page.waitForResponse((response) => response.url().endsWith(`/game-requests/${id}/details`) && response.status() === 204);
+  await page.getByRole("button", { name: "Save" }).click();
+  await saved;
+  releaseRefresh();
+  await expect.poll(() => refreshCalls).toBe(2);
+  await expect(page.locator("#game-request-detail")).toContainText("1/7");
+  await expect(page.locator("#game-request-edit-dialog")).toBeHidden();
+  expect((await refreshProbe(page)).peak).toBe(1);
+});
