@@ -56,7 +56,7 @@ verify_bundle() {
 }
 
 prepare() {
-  local product_revision harness_revision runner_revision baseline_image baseline_sha
+  local product_revision harness_revision runner_revision baseline_image baseline_sha proxy_image_id
   product_revision="$(revision "${PRODUCT_REVISION:-}")"
   harness_revision="$(revision "${HARNESS_REVISION:-}")"
   runner_revision="$(git -C "$root" rev-parse HEAD)"
@@ -87,6 +87,8 @@ prepare() {
   "${compose[@]}" exec -T postgres pg_dump -U lansurfer_loadtest -Fc lansurfer_loadtest >"$workspace/database.dump"
   chmod 600 "$workspace/database.dump"
   "${chaos_compose[@]}" up -d --build --wait proxy
+  proxy_image_id="$(docker image inspect --format '{{.Id}}' "${project_name}-proxy")"
+  printf 'proxy_image_id=%s\n' "$proxy_image_id" >>"$workspace/manifest"
   bash "$root/tools/loadtest/collect-env.sh" >"$workspace/environment.txt"
   chmod 600 "$workspace/environment.txt"
   echo "Prepared private paired workspace: $workspace"
@@ -121,7 +123,10 @@ run_profile() {
   chmod 700 "$out"
   restore_snapshot
   compose_override "$image" "$workspace/compose-${variant}.yaml"
-  "${chaos_compose[@]}" build proxy
+  [[ "$(docker image inspect --format '{{.Id}}' "${project_name}-proxy")" == "$proxy_image_id" ]] || {
+    echo 'prepared proxy image changed before profile run' >&2
+    return 1
+  }
   "${chaos_compose[@]}" -f "$workspace/compose-${variant}.yaml" up -d --no-build --force-recreate lansurfer proxy || {
     capture_diagnostics "$variant" "$out"
     return 1
@@ -134,7 +139,7 @@ run_profile() {
     capture_diagnostics "$variant" "$out"
     return 1
   }
-  local image_id proxy_image_id app_container_id proxy_container_id runner_revision dirty refresh_mode="${REFRESH_MODE_OVERRIDE:-}"
+  local image_id runtime_proxy_image_id app_container_id proxy_container_id runner_revision dirty refresh_mode="${REFRESH_MODE_OVERRIDE:-}"
   if [[ -z "$refresh_mode" ]]; then
     refresh_mode=browser-like
     [[ "$variant" == treatment ]] && refresh_mode=coalesced
@@ -145,14 +150,19 @@ run_profile() {
   proxy_container_id="$("${chaos_compose[@]}" -f "$workspace/compose-${variant}.yaml" ps -q proxy)"
   [[ -n "$app_container_id" && -n "$proxy_container_id" ]] || { echo 'app or proxy container did not start' >&2; exit 1; }
   [[ "$(docker inspect --format '{{.Image}}' "$app_container_id")" == "$image_id" ]] || { echo 'started app image differs from selected product image' >&2; exit 1; }
-  proxy_image_id="$(docker inspect --format '{{.Image}}' "$proxy_container_id")"
+  runtime_proxy_image_id="$(docker inspect --format '{{.Image}}' "$proxy_container_id")"
+  [[ "$runtime_proxy_image_id" == "$proxy_image_id" ]] || {
+    echo 'started proxy image differs from prepared proxy image' >&2
+    capture_diagnostics "$variant" "$out"
+    return 1
+  }
   runner_revision="$(git -C "$root" rev-parse HEAD)"
   [[ "$runner_revision" == "$HARNESS_REVISION" ]] || { echo 'running checkout differs from HARNESS_REVISION' >&2; exit 2; }
   dirty=false
   [[ -z "$(git -C "$root" status --porcelain)" ]] || dirty=true
   [[ "$dirty" == false ]] || { echo 'load-test source checkout must be clean' >&2; exit 2; }
   printf '{"schemaVersion":2,"variant":"%s","repetition":%s,"profile":"%s","productRevision":"%s","harnessRevision":"%s","runnerRevision":"%s","dirty":%s,"image":"%s","imageID":"%s","appContainerID":"%s","appContainerImageID":"%s","proxyContainerID":"%s","proxyImageID":"%s","appBundleSHA256":"%s","runtimeBundleVerified":true,"refreshMode":"%s"}\n' \
-    "$variant" "$repetition" "$profile" "$revision" "$HARNESS_REVISION" "$runner_revision" "$dirty" "$image" "$image_id" "$app_container_id" "$image_id" "$proxy_container_id" "$proxy_image_id" "$digest" "$refresh_mode" >"$out/manifest.json"
+    "$variant" "$repetition" "$profile" "$revision" "$HARNESS_REVISION" "$runner_revision" "$dirty" "$image" "$image_id" "$app_container_id" "$image_id" "$proxy_container_id" "$runtime_proxy_image_id" "$digest" "$refresh_mode" >"$out/manifest.json"
   chmod 600 "$out/manifest.json"
   local simulated_users writers sim_offset writer_offset duration=150s run_duration=90s
   case "$profile" in
