@@ -5,6 +5,9 @@
 /deploy/production.env
 
 # Build and test output
+# Python release helpers must not dirty GoReleaser's checked-out tag.
+__pycache__/
+*.py[cod]
 /dist/
 /bin/
 /coverage.out
