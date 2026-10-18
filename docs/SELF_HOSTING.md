@@ -214,6 +214,161 @@ administration page.
 you want to keep.** Store your `.env` securely and verify your
 database backup/restore procedure before relying on important data.
 
+## PostgreSQL backup and restore
+
+LANsurfer persists users, Games, Game Requests, chat, notification state and
+operator-managed legal texts in PostgreSQL. The Docker volume survives
+`docker compose down` **without** `-v`, but a volume is not a backup.
+Back up the database before upgrades and test restores regularly. These
+examples assume the version-matched release Compose directory and its
+PostgreSQL service named `postgres`.
+
+### Create and check a backup
+
+Run from the directory containing your `compose.yaml` and private `.env`:
+
+```bash
+(
+set -euo pipefail
+umask 077
+BACKUP_DIR="$HOME/lansurfer-backups"
+mkdir -p "$BACKUP_DIR"
+BACKUP="$(mktemp "$BACKUP_DIR/lansurfer-XXXXXXXX.dump")"
+if ! docker compose exec -T postgres pg_dump -U lansurfer -d lansurfer \
+  --format=custom --no-owner --no-acl > "$BACKUP" ||
+  ! test -s "$BACKUP" ||
+  ! docker compose exec -T postgres pg_restore --list < "$BACKUP" > /dev/null; then
+  rm -f -- "$BACKUP"
+  echo "Backup creation or validation failed" >&2
+  exit 1
+fi
+(cd "$BACKUP_DIR" && sha256sum "${BACKUP##*/}" > "${BACKUP##*/}.sha256")
+printf 'Backup file: %s\n' "$BACKUP"
+)
+```
+Copy the printed backup path into `BACKUP` before running the checksum or restore examples.
+
+Before restore, verify the checksum from the directory containing both files:
+
+```bash
+BACKUP_DIR="$(cd "$(dirname "$BACKUP")" && pwd)"
+cd "$BACKUP_DIR"
+sha256sum --check "${BACKUP##*/}.sha256"
+```
+
+`-T` is important: it keeps the compressed custom-format dump binary-safe.
+`pg_dump` takes a transactionally consistent snapshot while the app is
+running. Preserve the SHA-256 record, and transfer the dump to encrypted
+**off-host** storage with access controls and a tested retention policy.
+The dump contains personal data and possibly encrypted delivery credentials:
+do not commit it to Git or attach it to GitHub issues/PRs.
+
+Back up the private `.env` **separately and securely** together with the
+exact LANsurfer application version/image digest, deployment Compose files
+and PostgreSQL major version. In particular, preserve the original
+`LANSURFER_DATA_ENCRYPTION_KEY`, `LANSURFER_WEBPUSH_PRIVATE_KEY`,
+`LANSURFER_WEBPUSH_PUBLIC_KEY` and relevant OAuth/Discord credentials.
+These are **not** in the database dump. Never generate replacement keys
+for a restore: stored encrypted subscriptions/webhook credentials would
+become unusable and existing Web Push subscriptions may stop working.
+The cover cache can be recreated and is not part of this database dump.
+
+### Test a restore without touching the running database
+
+Run this Bash block from the directory containing the version-matched
+`compose.yaml` and private `.env`. It creates a separate, temporary Compose
+project. The private `.env` is read but never changed or printed.
+
+```bash
+(
+set -euo pipefail
+BACKUP_DIR="$(cd "$(dirname "$BACKUP")" && pwd)"
+BACKUP="$BACKUP_DIR/$(basename "$BACKUP")"
+(cd "$BACKUP_DIR" && sha256sum --check "${BACKUP##*/}.sha256")
+export LANSURFER_POSTGRES_PORT=0 LANSURFER_HTTP_PORT=0
+COMPOSE_FILE="$(realpath compose.yaml)"
+ENV_FILE="$(realpath .env)"
+verify_dir="$(mktemp -d "${TMPDIR:-/tmp}/lansurfer-restore-XXXXXXXX")"
+base="$(basename "$verify_dir" | tr '[:upper:]' '[:lower:]')"
+RESTORE_PROJECT="lansurfer-restore-verify-$base"
+restore_compose=(docker compose --project-name "$RESTORE_PROJECT" \
+  --env-file "$ENV_FILE" -f "$COMPOSE_FILE")
+project_label="com.docker.compose.project=$RESTORE_PROJECT"
+if [[ -n "$(docker ps -aq --filter "label=$project_label")" ]] ||
+  [[ -n "$(docker volume ls -q --filter "label=$project_label")" ]]; then
+  rm -rf -- "$verify_dir"
+  echo "Restore verification project name already exists" >&2
+  exit 1
+fi
+project_owned=true
+cleanup() {
+  status=$?
+  trap - EXIT INT TERM
+  if [[ "$project_owned" == true ]] &&
+    ! "${restore_compose[@]}" down --volumes --remove-orphans >/dev/null; then
+    echo "Failed to remove isolated restore verification project" >&2
+    (( status != 0 )) || status=1
+  fi
+  rm -rf -- "$verify_dir"
+  exit "$status"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+"${restore_compose[@]}" up -d --wait postgres
+tables="$("${restore_compose[@]}" exec -T postgres psql -X -U lansurfer \
+  -d lansurfer -At -v ON_ERROR_STOP=1 \
+  -c "SELECT count(*) FROM pg_tables WHERE schemaname='public'")"
+[[ "$tables" == 0 ]] || { echo "Restore target database is not empty" >&2; exit 1; }
+"${restore_compose[@]}" exec -T postgres pg_restore -U lansurfer -d lansurfer \
+  --exit-on-error --no-owner --no-acl < "$BACKUP"
+"${restore_compose[@]}" exec -T postgres psql -X -U lansurfer -d lansurfer \
+  -v ON_ERROR_STOP=1 -c 'SELECT count(*) FROM game_requests'
+"${restore_compose[@]}" exec -T postgres psql -X -U lansurfer -d lansurfer \
+  -v ON_ERROR_STOP=1 -c 'SELECT count(*) FROM notification_delivery'
+"${restore_compose[@]}" exec -T postgres psql -X -U lansurfer -d lansurfer \
+  -v ON_ERROR_STOP=1 -c 'SELECT count(*) FROM game_requests req JOIN notification_work work ON work.game_request_id=req.id JOIN notification_delivery delivery ON delivery.work_id=work.id'
+)
+```
+
+Only this self-created test project may be removed with
+`"${restore_compose[@]}" down --volumes --remove-orphans`. Its Bash cleanup
+subshell removes only resources with this unique project name on success,
+failure, or signal. The operator project and original database volume stay
+untouched. Compare representative data and confirm that the restored schema
+matches the exact application release. A readable dump alone does not prove
+recovery works.
+
+### Recover an actual installation
+
+1. Stop the application so it cannot write or run migrations. Retain the
+   existing database volume untouched as a fallback; **never** use
+   `docker compose down -v` or restore over a populated live database.
+2. Provision a **new, empty PostgreSQL database/volume**, preferably on a
+   separate recovery host, with a compatible PostgreSQL major version.
+   Restore the exact operator `.env` (especially encryption and VAPID keys)
+   and choose the matching LANsurfer application release first.
+3. Start **only** the new PostgreSQL service with `docker compose up -d
+   postgres`. Confirm the database `lansurfer` exists and is empty.
+4. Restore the dump into that empty database, **before** starting LANsurfer:
+
+   ```sh
+   docker compose exec -T postgres pg_restore -U lansurfer -d lansurfer \
+     --exit-on-error --no-owner --no-acl < "$BACKUP"
+   ```
+
+5. Verify rows, migration version and restored settings. Then start LANsurfer
+   using `docker compose up -d --wait lansurfer`; check `/readyz`, admin
+   login and representative data/notification settings. Reconfigure DNS/TLS
+   only after the isolated recovery installation has been validated.
+
+LANsurfer database migrations run **forward only** on application startup.
+An older application binary cannot safely reverse a newer schema. Do not
+attempt an automated downgrade or a PostgreSQL major-version upgrade as
+part of a restore; first validate compatibility and follow a separate
+database upgrade plan. If recovery fails, keep the original volume and
+backup intact and investigate before retrying.
+
 ## Updates
 
 LANsurfer does **not** update automatically. Before updating:

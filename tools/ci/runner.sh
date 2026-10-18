@@ -22,21 +22,44 @@ esac
 # Every Compose invocation is scoped to one workflow attempt.
 project="lansurfer-ci-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-smoke"
 if [[ "$job" == smoke ]]; then
+  compose=(docker compose --project-name "$project" -f compose.yaml -f tools/ci/compose.smoke.yaml)
+  if [[ -n "${LANSURFER_SMOKE_IMAGE:-}" ]]; then
+    project="lansurfer-ci-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-artifact-smoke"
+    compose=(docker compose --project-name "$project" -f compose.yaml \
+      -f tools/ci/compose.smoke.yaml -f tools/ci/compose.artifact-smoke.yaml)
+  fi
   export COMPOSE_PROJECT_NAME="$project"
   export LANSURFER_POSTGRES_PORT=0 LANSURFER_HTTP_PORT=0
   cleanup_smoke() {
     code=$?
-    trap - EXIT
-    if (( code != 0 )); then
-      docker compose -f compose.yaml -f tools/ci/compose.smoke.yaml logs --no-color || true
+    trap - EXIT INT TERM
+    if (( code != 0 )); then "${compose[@]}" logs --no-color >&2 || true; fi
+    if ! "${compose[@]}" down --volumes --remove-orphans; then
+      echo "Failed to remove isolated smoke Compose project" >&2
+      (( code != 0 )) || code=1
     fi
-    docker compose -f compose.yaml -f tools/ci/compose.smoke.yaml down --volumes --remove-orphans || true
     exit "$code"
   }
   trap cleanup_smoke EXIT
-  docker compose -f compose.yaml -f tools/ci/compose.smoke.yaml up --detach --build --wait postgres lansurfer
-  docker compose -f compose.yaml -f tools/ci/compose.smoke.yaml build smoke
-  docker compose -f compose.yaml -f tools/ci/compose.smoke.yaml run --rm --no-deps smoke
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  if [[ -n "${LANSURFER_SMOKE_IMAGE:-}" ]]; then
+    "${compose[@]}" up --detach --no-build --wait postgres lansurfer
+  else
+    "${compose[@]}" up --detach --build --wait postgres lansurfer
+  fi
+  "${compose[@]}" build smoke
+  "${compose[@]}" run --rm --no-deps smoke
+  if [[ -n "${LANSURFER_SMOKE_IMAGE:-}" ]]; then
+    version_output="$("${compose[@]}" exec -T lansurfer /lansurfer version)"
+    expected_commit="$(git rev-parse HEAD)"
+    [[ "$version_output" == *SNAPSHOT* && "$version_output" == *"($expected_commit)"* ]] || {
+      echo "Snapshot archive image returned invalid CLI version metadata" >&2
+      exit 1
+    }
+    "${compose[@]}" exec -T lansurfer /lansurfer healthcheck
+  fi
+  bash scripts/release/smoke_backup_restore.sh "$project" "${compose[@]}"
   exit 0
 fi
 
@@ -56,6 +79,19 @@ cleanup() {
     docker network rm "$network" >/dev/null 2>&1 || true
   fi
   docker image rm "$image" >/dev/null 2>&1 || true
+  if [[ "$job" == snapshot ]]; then
+    artifact_project="lansurfer-ci-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-artifact-smoke"
+    artifact_image="lansurfer-archive-smoke:$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+    if ! docker compose --project-name "$artifact_project" down --volumes --remove-orphans >/dev/null; then
+      echo "Failed to remove isolated snapshot artifact smoke project" >&2
+      (( code != 0 )) || code=1
+    fi
+    if docker image inspect "$artifact_image" >/dev/null 2>&1 &&
+      ! docker image rm "$artifact_image" >/dev/null; then
+      echo "Failed to remove snapshot artifact smoke image" >&2
+      (( code != 0 )) || code=1
+    fi
+  fi
   exit "$code"
 }
 trap cleanup EXIT
