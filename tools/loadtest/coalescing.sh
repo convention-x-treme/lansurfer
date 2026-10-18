@@ -123,10 +123,7 @@ run_profile() {
   chmod 700 "$out"
   restore_snapshot
   compose_override "$image" "$workspace/compose-${variant}.yaml"
-  [[ "$(docker image inspect --format '{{.Id}}' "${project_name}-proxy")" == "$proxy_image_id" ]] || {
-    echo 'prepared proxy image changed before profile run' >&2
-    return 1
-  }
+  verify_proxy_image_id "$proxy_image_id" "$(docker image inspect --format '{{.Id}}' "${project_name}-proxy")" || return 1
   "${chaos_compose[@]}" -f "$workspace/compose-${variant}.yaml" up -d --no-build --force-recreate lansurfer proxy || {
     capture_diagnostics "$variant" "$out"
     return 1
@@ -151,8 +148,7 @@ run_profile() {
   [[ -n "$app_container_id" && -n "$proxy_container_id" ]] || { echo 'app or proxy container did not start' >&2; exit 1; }
   [[ "$(docker inspect --format '{{.Image}}' "$app_container_id")" == "$image_id" ]] || { echo 'started app image differs from selected product image' >&2; exit 1; }
   runtime_proxy_image_id="$(docker inspect --format '{{.Image}}' "$proxy_container_id")"
-  [[ "$runtime_proxy_image_id" == "$proxy_image_id" ]] || {
-    echo 'started proxy image differs from prepared proxy image' >&2
+  verify_proxy_image_id "$proxy_image_id" "$runtime_proxy_image_id" || {
     capture_diagnostics "$variant" "$out"
     return 1
   }
