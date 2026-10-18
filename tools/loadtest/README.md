@@ -156,8 +156,6 @@ Stop a paired workspace when finished; this keeps its test database volume:
 task loadtest:coalescing:down WORKSPACE=147m
 ```
 
-
-
 Each run uses same committed, clean harness checkout for both product images. Default profile is `small`: 10 SSE streams, two writers, five browser pages, 40 seconds. Set `PROFILE=120` for 120 SSE streams and 20 writers. The 400-stream/100-writer profile requires `PROFILE=400-writer ALLOW_400_CLIENT_PROFILE=1`; `PROFILE=all` also requires that explicit guard. Standard profiles run SSE for 150s and writers for 90s. Each profile restores same database snapshot. Baseline clients use one in-flight plus one trailing refresh; treatment clients use fixed 200 ms coalescing. App images come from exact product SHAs; manifests record harness/product SHAs, app and proxy image IDs, container IDs, and served app.js checksum.
 
 Calibration failures remain in each JSON report and do not stop the paired run; missing reports or failed database audits still fail the task. The output also retains proxy, app, and database logs plus container exit, restart, and OOM state. Writer HTTP 502 counts are separate from request timeouts.

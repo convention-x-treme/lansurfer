@@ -229,7 +229,7 @@ run() {
 
 down() {
   [[ -d "$workspace" && -O "$workspace" ]] || { echo 'paired workspace is missing or not owned by current user' >&2; exit 2; }
-  "${chaos_compose[@]}" down --remove-orphans
+  "${compose[@]}" down --remove-orphans
 }
 mkdir -p "$workspace_root"
 chmod 700 "$workspace_root"
