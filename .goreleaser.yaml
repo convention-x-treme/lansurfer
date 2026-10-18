@@ -11,7 +11,7 @@ builds:
     flags:
       - -trimpath
     ldflags:
-      - -s -w
+      - -s -w -X main.version=v{{ .Version }} -X main.commit={{ .FullCommit }}
     goos:
       - linux
     goarch:

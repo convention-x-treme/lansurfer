@@ -7,13 +7,20 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/convention-x-treme/lansurfer/internal/app"
 	"github.com/convention-x-treme/lansurfer/internal/notification"
 	"github.com/convention-x-treme/lansurfer/internal/platform/config"
+)
+
+var (
+	version = "dev"
+	commit  = "unknown"
 )
 
 func main() {
@@ -22,12 +29,24 @@ func main() {
 	defer stop()
 
 	if err := run(ctx, os.Args[1:], logger, os.Stdout); err != nil {
-		logger.Error("command failed", "error", err)
+		slog.New(slog.NewJSONHandler(os.Stderr, nil)).Error("command failed", "error", err)
 		os.Exit(1)
 	}
 }
 
 func run(ctx context.Context, arguments []string, logger *slog.Logger, output io.Writer) error {
+	if len(arguments) == 1 && arguments[0] == "version" {
+		_, err := fmt.Fprintf(output, "LANsurfer %s (%s)\n", version, commit)
+		return err
+	}
+
+	if len(arguments) == 1 && (arguments[0] == "help" || arguments[0] == "--help" || arguments[0] == "-h") {
+		return writeHelp(output)
+	}
+
+	if len(arguments) > 0 && arguments[0] == "healthcheck" {
+		return healthcheck(ctx, arguments[1:], output)
+	}
 	if len(arguments) == 0 {
 		cfg, err := config.Load()
 		if err != nil {
@@ -167,9 +186,63 @@ func notificationDeliveryID(arguments []string) (string, error) {
 	}
 	return *deliveryID, nil
 }
+func writeHelp(output io.Writer) error {
+	_, err := fmt.Fprint(output, `LANsurfer command line
+
+Usage:
+  lansurfer
+  lansurfer version
+  lansurfer healthcheck [--url URL]
+  lansurfer help | -h | --help
+  lansurfer admin users
+  lansurfer admin promote --user-id <UUID>
+  lansurfer admin notifications problems
+  lansurfer admin notifications generate-secrets
+  lansurfer admin notifications retry --delivery-id <ID>
+  lansurfer admin notifications retry-uncertain --delivery-id <ID>
+
+With no arguments, start the LANsurfer server.
+`)
+	return err
+}
+
+func healthcheck(ctx context.Context, arguments []string, output io.Writer) error {
+	flags := flag.NewFlagSet("healthcheck", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	endpoint := flags.String("url", "http://127.0.0.1:8080/readyz", "readiness endpoint URL")
+	if err := flags.Parse(arguments); err != nil || flags.NArg() != 0 {
+		return errors.New("usage: lansurfer healthcheck [--url URL]")
+	}
+
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, *endpoint, nil)
+	if err != nil {
+		return errors.New("invalid healthcheck URL")
+	}
+	client := &http.Client{
+		Timeout: 2 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+	response, err := client.Do(request)
+	if err != nil {
+		return errors.New("healthcheck request failed")
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return fmt.Errorf("healthcheck returned HTTP status %d", response.StatusCode)
+	}
+	body, err := io.ReadAll(io.LimitReader(response.Body, 7))
+	if err != nil || string(body) != "ready\n" {
+		return errors.New("healthcheck returned an invalid readiness response")
+	}
+	_, err = fmt.Fprintln(output, "LANsurfer is ready.")
+	return err
+}
 
 func usageError() error {
-	return errors.New("usage: lansurfer [admin users | admin promote --user-id <UUID> | " +
+	return errors.New("usage: lansurfer [version | healthcheck [--url URL] | help | " +
+		"admin users | admin promote --user-id <UUID> | " +
 		"admin notifications problems | admin notifications generate-secrets | " +
 		"admin notifications retry --delivery-id <ID> | " +
 		"admin notifications retry-uncertain --delivery-id <ID>]")

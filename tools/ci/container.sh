@@ -60,6 +60,7 @@ case "$job" in
     python3 -m unittest discover -s scripts/release -p 'test_deployment_assets.py' -v
     python3 -m unittest discover -s scripts/release -p 'test_verify_image_index.py' -v
     bash scripts/release/test-changelog.sh
+    bash scripts/release/test_cli_artifact.sh
     builder="lansurfer-snapshot-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
     docker buildx create --driver docker-container --name "$builder" --use
     trap 'docker buildx rm --force "$builder" >/dev/null 2>&1 || true' EXIT
@@ -69,6 +70,8 @@ case "$job" in
     (cd dist && sha256sum --check checksums.txt)
     jq -e '[.[] | select(.type == "Archive")] | length == 2' dist/artifacts.json
     jq -e '[.[] | select(.type == "Archive") | .goarch] | sort == ["amd64", "arm64"]' dist/artifacts.json
+    archive="$(jq -er '[.[] | select(.type == "Archive" and .goos == "linux" and .goarch == "amd64") | .path] | if length == 1 then .[0] else error("expected one Linux AMD64 archive") end' dist/artifacts.json)"
+    bash scripts/release/verify_cli_artifact.sh "$archive" snapshot "" "$(git rev-parse HEAD)"
     ;;
 
   publish-check)
@@ -83,7 +86,9 @@ case "$job" in
     command -v docker && docker buildx version
     command -v jq && command -v python3 && command -v curl
     docker compose version
+    bash -n scripts/release/verify_cli_artifact.sh
     bash -n scripts/release/publish.sh
+    bash -n scripts/release/test_cli_artifact.sh
     bash -n scripts/release/smoke_deployment.sh
     bash -n scripts/release/manual_release.sh
     bash scripts/release/test-manual-release.sh

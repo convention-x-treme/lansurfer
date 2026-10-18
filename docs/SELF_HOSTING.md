@@ -130,6 +130,14 @@ Open your HTTPS URL. You can check that LANsurfer is up locally with
 `curl -fsS http://127.0.0.1:8080/healthz` (expected `ok`) and
 `curl -fsS http://127.0.0.1:8080/readyz` (expected `ready`).
 
+Check the installed binary and readiness from inside the app container:
+
+```sh
+docker compose exec lansurfer /lansurfer version
+docker compose exec lansurfer /lansurfer healthcheck
+docker compose exec lansurfer /lansurfer help
+```
+
 ## 5. Set up the first administrator
 
 Sign in with your configured provider, choose a Game Nick, and find
