@@ -1,0 +1,103 @@
+# Manual release entrypoint; reuses the CI and guarded tag publisher.
+name: Start release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Base version (e.g. 0.2.0, without v or RC suffix)'
+        required: true
+        type: string
+      channel:
+        description: 'Release type'
+        required: true
+        type: choice
+        default: rc
+        options:
+          - rc
+          - stable
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    name: Select an unused release tag
+    runs-on: ${{ fromJSON(github.event.repository.private && '["self-hosted","linux","x64","docker"]' || '"ubuntu-latest"') }}
+    timeout-minutes: 8
+    outputs:
+      tag: ${{ steps.plan.outputs.tag }}
+      source_sha: ${{ steps.plan.outputs.source_sha }}
+    steps:
+      - name: Check out the selected revision and all tags
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Require main and plan an unused tag
+        id: plan
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_CHANNEL: ${{ inputs.channel }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" != refs/heads/main ]]; then
+            echo "::error::Select main in the Run workflow branch dropdown." >&2
+            exit 1
+          fi
+          tag="$(bash scripts/release/manual_release.sh plan "$RELEASE_VERSION" "$RELEASE_CHANNEL")"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "source_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "Planned release: $tag"
+
+  test:
+    name: Run full CI before creating any tag
+    needs: prepare
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
+  publish:
+    name: Create tag and publish verified release
+    needs: [prepare, test]
+    runs-on: ${{ fromJSON(github.event.repository.private && '["self-hosted","linux","x64","docker"]' || '"ubuntu-latest"') }}
+    timeout-minutes: 55
+    # Exactly the same lock as the tag-push release workflow.
+    concurrency:
+      group: lansurfer-release-publisher
+      queue: max
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - name: Check out the exact commit validated by CI
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Create immutable annotated tag on main
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PLANNED_TAG: ${{ needs.prepare.outputs.tag }}
+          TESTED_SHA: ${{ needs.prepare.outputs.source_sha }}
+        run: bash scripts/release/manual_release.sh create "$PLANNED_TAG" "$TESTED_SHA"
+
+      - name: Set up QEMU for arm64
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+
+      - name: Validate publishing tools inside Docker
+        shell: bash
+        run: bash tools/ci/runner.sh publish-check
+
+      - name: Publish using the same guarded publisher as tag pushes
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LANSURFER_RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+        run: bash tools/ci/runner.sh publish
