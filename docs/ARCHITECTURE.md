@@ -121,7 +121,7 @@ SSE is used for realtime browser updates. Browser-to-server communication remain
 
 Regular Game Request SSE events start a fixed 200 ms collection window. Later events do not extend it. Each visible list or matching detail view permits one active refresh and one pending refresh; events during a request coalesce into that pending refresh. SSE reconnect, the browser `online` event, and visibility return request immediate revalidation; the `online` event revalidates even when EventSource stays open and emits no `open` event. An HTMX mutation that starts during an active refresh invalidates it and queues revalidation after active requests settle; explicit detail-save signals also request revalidation. Failed refreshes retry once after one second. Hidden-page timers pause, and returning to visibility revalidates current targets.
 
-For the current single-instance deployment model, the SSE broker may run in memory. Durable external notifications use PostgreSQL persistence and do not make SSE durable.
+For the current single-instance deployment model, the SSE broker may run in memory. Durable external notifications use PostgreSQL persistence and do not make SSE durable. Each subscription has a bounded buffer; a subscription whose buffer is full is closed and its buffered signals discarded instead of silently missing a signal, so the stream ends and the browser's EventSource reconnect revalidates current state. A write, flush, or authorization call already in progress is not interrupted; the stream ends once it returns.
 
 ```text
 Game Request transaction

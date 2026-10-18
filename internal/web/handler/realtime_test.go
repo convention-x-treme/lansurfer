@@ -74,7 +74,8 @@ func TestRealtimeUnsubscribesWhenClientDisconnects(t *testing.T) {
 
 // The number of open streams is what issue #15's investigation had to
 // reconstruct by hand, and the close reason is what distinguishes a browser
-// that navigated away from a server that shut the stream down.
+// that navigated away from a server that ended the subscription (shutdown or
+// buffer overflow).
 func TestRealtimeLogsStreamLifecycle(t *testing.T) {
 	for _, testCase := range []struct {
 		name   string
@@ -93,10 +94,10 @@ func TestRealtimeLogsStreamLifecycle(t *testing.T) {
 			reason: "client-closed",
 		},
 		{
-			name:   "server shutdown",
+			name:   "subscription closed",
 			events: func() chan gamerequest.Event { closed := make(chan gamerequest.Event); close(closed); return closed }(),
 			ctx:    context.Background,
-			reason: "server-shutdown",
+			reason: "subscription-closed",
 		},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -120,49 +121,58 @@ func TestRealtimeLogsStreamLifecycle(t *testing.T) {
 	}
 }
 
-func TestRealtimeHandlerDropsSeventeenthEventBehindBlockedWriter(t *testing.T) {
+func TestRealtimeHandlerEndsStreamOnOverflow(t *testing.T) {
 	broker := platformSSE.NewBroker()
+	t.Cleanup(broker.Close)
 	writer := &blockedSSEWriter{
 		connected: make(chan struct{}),
 		blocked:   make(chan struct{}),
 		release:   make(chan struct{}),
-		writes:    make(chan string, 17),
+		writes:    make(chan string, 18),
 	}
+	var releaseOnce sync.Once
+	releaseWriter := func() { releaseOnce.Do(func() { close(writer.release) }) }
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() {
 		NewRealtime(broker, nil).GameRequests(writer, httptest.NewRequest("GET", "/events/game-requests", nil).WithContext(ctx))
 		close(done)
 	}()
-	<-writer.connected
+	// Registered after broker.Close so they run first: unblock the writer and
+	// the handler, then wait for it, even when an assertion fails early.
+	t.Cleanup(func() {
+		cancel()
+		releaseWriter()
+		<-done
+	})
+	awaitSignal := func(signal <-chan struct{}, what string) {
+		t.Helper()
+		select {
+		case <-signal:
+		case <-time.After(time.Second):
+			t.Fatalf("timed out waiting for %s", what)
+		}
+	}
+
+	awaitSignal(writer.connected, "stream connect")
 	broker.Publish(gamerequest.Event{Type: gamerequest.EventJoined, RequestID: "in-flight"})
-	<-writer.blocked
+	awaitSignal(writer.blocked, "in-flight write")
 	for i := range 17 {
 		broker.Publish(gamerequest.Event{Type: gamerequest.EventJoined, RequestID: fmt.Sprintf("request-%02d", i)})
 	}
-	close(writer.release)
-	received := make([]string, 0, 17)
-	for range 17 {
-		received = append(received, <-writer.writes)
-	}
-	if !strings.Contains(received[0], `"requestId":"in-flight"`) {
-		t.Fatalf("first event = %q, want in-flight event", received[0])
-	}
-	for i, body := range received[1:] {
-		want := fmt.Sprintf(`"requestId":"request-%02d"`, i)
-		if !strings.Contains(body, want) {
-			t.Fatalf("buffered event %d = %q, want %s", i, body, want)
-		}
+	releaseWriter()
+	awaitSignal(done, "stream end without cancellation or broker close")
+
+	if got := <-writer.writes; !strings.Contains(got, `"requestId":"in-flight"`) {
+		t.Fatalf("first event = %q, want in-flight event", got)
 	}
 	select {
 	case extra := <-writer.writes:
-		t.Fatalf("dropped seventeenth event was delivered: %q", extra)
-	case <-time.After(100 * time.Millisecond):
+		t.Fatalf("overflowed stream wrote buffered event %q", extra)
+	default:
 	}
-	cancel()
-	<-done
-	if broker.Subscribers() != 0 {
-		t.Fatalf("subscribers after cancellation = %d, want 0", broker.Subscribers())
+	if got := broker.Subscribers(); got != 0 {
+		t.Fatalf("subscribers after overflow = %d, want 0", got)
 	}
 }
 

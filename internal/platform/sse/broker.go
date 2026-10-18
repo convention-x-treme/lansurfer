@@ -10,9 +10,9 @@ import (
 
 const subscriberBuffer = 16
 
-// Broker fans GameRequest change signals out to connected browsers. Slow
-// subscribers may miss a signal; every signal causes a fresh database-backed
-// render, so later signals still converge on current state.
+// Broker fans GameRequest change signals out to connected browsers. A
+// subscriber whose buffer is full is disconnected instead of silently missing
+// a signal; its EventSource reconnects and resynchronizes from the database.
 type Broker struct {
 	mu          sync.RWMutex
 	subscribers map[chan gamerequest.Event]struct{}
@@ -24,8 +24,8 @@ func NewBroker() *Broker {
 }
 
 func (b *Broker) Publish(event gamerequest.Event) {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
+	b.mu.Lock()
+	defer b.mu.Unlock()
 	if b.closed {
 		return
 	}
@@ -33,6 +33,11 @@ func (b *Broker) Publish(event gamerequest.Event) {
 		select {
 		case subscriber <- event:
 		default:
+			delete(b.subscribers, subscriber)
+			close(subscriber)
+			// Discard buffered signals so the stream ends at its next receive.
+			for range subscriber {
+			}
 		}
 	}
 }
@@ -61,10 +66,11 @@ func (b *Broker) Subscribe() (<-chan gamerequest.Event, func()) {
 	}
 }
 
-// Subscribers reports how many realtime streams are currently open. Issue #15's
-// root cause was long-lived EventSource connections occupying the browser's
-// per-origin connection pool; this is the number that makes that visible to an
-// operator reading the logs.
+// Subscribers reports how many realtime streams are currently registered; an
+// overflowed stream is removed immediately. Issue #15's root cause was
+// long-lived EventSource connections occupying the browser's per-origin
+// connection pool; this is the number that makes that visible to an operator
+// reading the logs.
 func (b *Broker) Subscribers() int {
 	b.mu.RLock()
 	defer b.mu.RUnlock()

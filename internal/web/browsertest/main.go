@@ -715,6 +715,25 @@ func (f *fixture) controlPlane() http.Handler {
 		entry.request.StartedAt = startedAt
 		w.WriteHeader(http.StatusNoContent)
 	})
+	mux.HandleFunc("/__test__/sse-overflow", func(w http.ResponseWriter, r *http.Request) {
+		requestID := r.URL.Query().Get("request")
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		if _, exists := f.requests[requestID]; !exists {
+			http.NotFound(w, r)
+			return
+		}
+		if f.broker.Subscribers() != 1 {
+			http.Error(w, "expected one realtime subscriber", http.StatusConflict)
+			return
+		}
+		// The matching detail stream can consume at most one signal before
+		// CanReadLobby blocks on f.mu. Eighteen signals overflow its 16-slot buffer.
+		for range 18 {
+			f.broker.Publish(gamerequest.Event{Type: gamerequest.EventChatMessage, RequestID: requestID})
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
 	mux.HandleFunc("/__test__/reset", func(w http.ResponseWriter, _ *http.Request) {
 		f.mu.Lock()
 		fresh := newFixture()
