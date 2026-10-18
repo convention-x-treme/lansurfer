@@ -17,3 +17,8 @@ fi
 [[ -f "$out/compose.log" && -f "$out/container-state.json" && -f "$out/container-inspect.txt" && -f "$out/audit.json" ]]
 [[ "$(cat "$out/audit.json")" == '{"audit":"ok"}' ]]
 [[ "$(cat "$out/calibration-status.json")" == '{"valid":false,"calibrationExitCode":7}' ]]
+if verify_proxy_image_id 'sha256:expected' 'sha256:actual' 2>/dev/null; then
+  echo 'different proxy image IDs passed verification' >&2
+  exit 1
+fi
+verify_proxy_image_id 'sha256:same' 'sha256:same'
