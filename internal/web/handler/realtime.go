@@ -80,7 +80,7 @@ func (h *Realtime) GameRequests(w http.ResponseWriter, r *http.Request) {
 			return
 		case event, open := <-events:
 			if !open {
-				reason = "server-shutdown"
+				reason = "subscription-closed"
 				return
 			}
 			name := "game-request"

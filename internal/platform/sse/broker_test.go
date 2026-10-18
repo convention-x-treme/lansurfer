@@ -2,6 +2,7 @@ package sse
 
 import (
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -68,28 +69,125 @@ func TestBrokerCountsOpenSubscribers(t *testing.T) {
 	}
 }
 
-func TestBrokerDropsSeventeenthUndrainedEvent(t *testing.T) {
+// A subscriber that cannot keep up loses its stream instead of silently
+// missing a signal; its EventSource reconnects and resynchronizes.
+func TestBrokerOverflowDisconnectsOnlySlowSubscribers(t *testing.T) {
 	broker := NewBroker()
-	events, unsubscribe := broker.Subscribe()
-	for i := range 17 {
-		broker.Publish(gamerequest.Event{Type: gamerequest.EventJoined, RequestID: fmt.Sprintf("request-%02d", i)})
-	}
-	for i := range 16 {
-		got := <-events
-		want := fmt.Sprintf("request-%02d", i)
-		if got.RequestID != want {
-			t.Fatalf("event %d = %q, want %q", i, got.RequestID, want)
+	slow, unsubscribeSlow := broker.Subscribe()
+	healthy, unsubscribeHealthy := broker.Subscribe()
+	t.Cleanup(unsubscribeHealthy)
+	receive := func(want string) {
+		t.Helper()
+		select {
+		case got, open := <-healthy:
+			if !open || got.RequestID != want {
+				t.Fatalf("healthy subscriber received %q (open=%v), want %q", got.RequestID, open, want)
+			}
+		default:
+			t.Fatalf("healthy subscriber did not receive %q", want)
 		}
 	}
-	if got := len(events); got != 0 {
-		t.Fatalf("buffer has %d events after drain, want 0", got)
+
+	for i := range 16 {
+		want := fmt.Sprintf("request-%02d", i)
+		broker.Publish(gamerequest.Event{Type: gamerequest.EventJoined, RequestID: want})
+		receive(want)
 	}
-	broker.Publish(gamerequest.Event{Type: gamerequest.EventJoined, RequestID: "after-drain"})
-	if got := (<-events).RequestID; got != "after-drain" {
-		t.Fatalf("post-drain event = %q", got)
+	if got := broker.Subscribers(); got != 2 {
+		t.Fatalf("Subscribers() with full buffer = %d, want 2", got)
 	}
-	unsubscribe()
-	if _, open := <-events; open {
-		t.Fatal("subscriber remains open after overflow and unsubscribe")
+
+	broker.Publish(gamerequest.Event{Type: gamerequest.EventJoined, RequestID: "overflow"})
+	receive("overflow")
+	select {
+	case got, open := <-slow:
+		if open {
+			t.Fatalf("slow subscriber received buffered %q, want closed stream", got.RequestID)
+		}
+	default:
+		t.Fatal("slow subscriber is not closed after overflow")
+	}
+	if got := broker.Subscribers(); got != 1 {
+		t.Fatalf("Subscribers() after overflow = %d, want 1", got)
+	}
+
+	unsubscribeSlow()
+	unsubscribeSlow()
+	if got := broker.Subscribers(); got != 1 {
+		t.Fatalf("Subscribers() after stale unsubscribe = %d, want 1", got)
+	}
+	broker.Publish(gamerequest.Event{Type: gamerequest.EventJoined, RequestID: "after-overflow"})
+	receive("after-overflow")
+
+	fresh, unsubscribeFresh := broker.Subscribe()
+	t.Cleanup(unsubscribeFresh)
+	broker.Publish(gamerequest.Event{Type: gamerequest.EventJoined, RequestID: "fresh"})
+	receive("fresh")
+	select {
+	case got, open := <-fresh:
+		if !open || got.RequestID != "fresh" {
+			t.Fatalf("fresh subscriber received %q (open=%v), want fresh", got.RequestID, open)
+		}
+	default:
+		t.Fatal("fresh subscriber did not receive an event after overflow")
+	}
+}
+
+func TestBrokerConcurrentPublishUnsubscribeAndClose(t *testing.T) {
+	for range 25 {
+		broker := NewBroker()
+		first, unsubscribeFirst := broker.Subscribe()
+		second, unsubscribeSecond := broker.Subscribe()
+		start := make(chan struct{})
+		var wg sync.WaitGroup
+		run := func(work func()) {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				<-start
+				work()
+			}()
+		}
+		for range 2 {
+			run(func() {
+				for i := range 32 {
+					broker.Publish(gamerequest.Event{Type: gamerequest.EventJoined, RequestID: fmt.Sprintf("request-%02d", i)})
+				}
+			})
+		}
+		run(func() {
+			for range 2 {
+				unsubscribeFirst()
+				unsubscribeSecond()
+			}
+		})
+		run(func() {
+			broker.Close()
+			broker.Close()
+		})
+		close(start)
+		wg.Wait()
+
+		for _, events := range []<-chan gamerequest.Event{first, second} {
+			drained := time.After(time.Second)
+			for open := true; open; {
+				select {
+				case _, open = <-events:
+				case <-drained:
+					t.Fatal("subscriber is still open after close")
+				}
+			}
+		}
+		if got := broker.Subscribers(); got != 0 {
+			t.Fatalf("Subscribers() after close = %d, want 0", got)
+		}
+		late, _ := broker.Subscribe()
+		if _, open := <-late; open {
+			t.Fatal("subscription after close is open")
+		}
+		broker.Publish(gamerequest.Event{Type: gamerequest.EventCreated})
+		if got := broker.Subscribers(); got != 0 {
+			t.Fatalf("Subscribers() after late publish = %d, want 0", got)
+		}
 	}
 }
