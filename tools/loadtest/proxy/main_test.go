@@ -2,8 +2,15 @@ package main
 
 import (
 	"io"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestControlValidation(t *testing.T) {
@@ -34,5 +41,59 @@ func TestDropParserPreservesCommentsAndDropsOnlyTargetFrame(t *testing.T) {
 	}
 	if s.dropped.Load() != 1 {
 		t.Fatalf("dropped = %d, want 1", s.dropped.Load())
+	}
+}
+func TestReverseProxyReusesConcurrentUpstreamConnections(t *testing.T) {
+	const parallel = 64
+	var upstreamConnections atomic.Int64
+	upstream := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(10 * time.Millisecond)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	upstream.Config.ConnState = func(_ net.Conn, state http.ConnState) {
+		if state == http.StateNew {
+			upstreamConnections.Add(1)
+		}
+	}
+	upstream.Start()
+	defer upstream.Close()
+
+	target, err := url.Parse(upstream.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reverseProxy := newReverseProxy(target)
+	defer reverseProxy.Transport.(*http.Transport).CloseIdleConnections()
+	proxy := httptest.NewServer(reverseProxy)
+	defer proxy.Close()
+
+	client := proxy.Client()
+	for range 2 {
+		start := make(chan struct{})
+		var requests sync.WaitGroup
+		requests.Add(parallel)
+		for range parallel {
+			go func() {
+				defer requests.Done()
+				<-start
+				resp, err := client.Get(proxy.URL)
+				if err != nil {
+					t.Errorf("GET through proxy: %v", err)
+					return
+				}
+				resp.Body.Close()
+				if resp.StatusCode != http.StatusNoContent {
+					t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusNoContent)
+				}
+			}()
+		}
+		close(start)
+		requests.Wait()
+	}
+
+	got := upstreamConnections.Load()
+	t.Logf("opened %d upstream connections for %d concurrent requests across two waves", got, 2*parallel)
+	if got > parallel+4 {
+		t.Fatalf("opened %d upstream connections; want at most %d", got, parallel+4)
 	}
 }
