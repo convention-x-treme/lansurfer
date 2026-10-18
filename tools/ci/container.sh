@@ -82,6 +82,8 @@ case "$job" in
     docker compose version
     bash -n scripts/release/publish.sh
     bash -n scripts/release/smoke_deployment.sh
+    # Check that Python imports cannot dirty the exact tagged working tree.
+    git check-ignore -q scripts/release/__pycache__/release_policy.cpython-312.pyc
     python3 -m unittest discover -s scripts/release -p 'test_deployment_assets.py' -v
     echo "Release publishing toolbox is ready."
     ;;

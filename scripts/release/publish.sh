@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# notes_config.py imports release_policy.py immediately before GoReleaser.
+# Never generate untracked Python bytecode in the tagged checkout.
+export PYTHONDONTWRITEBYTECODE=1
+
 # Called ONLY by the privileged, serialized tag-release job after reusable CI.
 # No automatic rerun after a partial registry/GitHub draft publication: recovery
 # requires deliberate manual verification or a NEW version (see CONTRIBUTING.md).
