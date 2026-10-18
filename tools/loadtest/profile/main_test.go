@@ -156,7 +156,7 @@ func TestDockerMetricsUsesCurrentComposeProject(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.Count(string(args), "label=com.docker.compose.project=lansurfer-loadtest-147u"); got != 2 {
-		t.Fatalf("project filter appears %d times; want app and postgres filters", got)
+	if got := strings.Count(string(args), "label=com.docker.compose.project=lansurfer-loadtest-147u"); got != 3 {
+		t.Fatalf("project filter appears %d times; want app, postgres, and k6 filters", got)
 	}
 }

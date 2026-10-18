@@ -106,6 +106,31 @@ test("lobby refresh does not bypass failed detail refresh retry delay", async ({
   await page.clock.runFor(1);
   await expect.poll(() => detailCalls).toBe(2);
 });
+test("a Game Request join revalidates a slow lobby-list refresh", async ({ page, request }) => {
+  let releaseRefresh!: () => void;
+  let notifyRefresh!: () => void;
+  let refreshCalls = 0;
+  const held = new Promise<void>((resolve) => { releaseRefresh = resolve; });
+  const started = new Promise<void>((resolve) => { notifyRefresh = resolve; });
+  await page.route("**/game-requests/refresh*", async (route) => {
+    refreshCalls++;
+    if (refreshCalls === 1) {
+      notifyRefresh();
+      await held;
+    }
+    await route.fulfill({ response: await route.fetch() });
+  });
+  await openList(page, request);
+  await emit(page, "GameRequestJoined");
+  await page.clock.runFor(200);
+  await started;
+
+  await page.getByRole("button", { name: "Join" }).first().click();
+  await expect(page.getByRole("button", { name: "Leave" }).first()).toBeVisible();
+  releaseRefresh();
+  await expect.poll(() => refreshCalls).toBe(2);
+  await expect(page.getByRole("button", { name: "Leave" }).first()).toBeVisible();
+});
 
 test("an automatic lobby load does not invalidate a trailing detail refresh", async ({ page, request }) => {
   let releaseFirst!: () => void;
@@ -454,6 +479,45 @@ test("preserves a save-triggered detail refresh while an SSE refresh is in fligh
   releaseRefresh();
   await expect.poll(() => refreshCalls).toBe(2);
   await expect(page.locator("#game-request-edit-dialog")).not.toHaveAttribute("open");
+});
+test("a lobby chat POST does not invalidate a slow detail refresh", async ({ page, request }) => {
+  let releaseRefresh!: () => void;
+  let notifyRefresh!: () => void;
+  let refreshCalls = 0;
+  const held = new Promise<void>((resolve) => { releaseRefresh = resolve; });
+  const started = new Promise<void>((resolve) => { notifyRefresh = resolve; });
+  await page.route(`**/game-requests/${requestId}/refresh*`, async (route) => {
+    refreshCalls++;
+    const firstRefresh = refreshCalls === 1;
+    if (firstRefresh) {
+      notifyRefresh();
+      await held;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "text/html",
+      body: `<section id="game-request-detail" data-game-request-detail data-game-request-id="${requestId}" data-refresh-url="/game-requests/${requestId}/refresh"${firstRefresh ? " data-first-refresh-swapped" : ""}></section>`,
+    });
+  });
+  await page.route(`**/game-requests/${requestId}/chat`, async (route) => {
+    await route.fulfill({ status: 200, contentType: "text/html", body: `<ol id="game-request-lobby" data-refresh-url="/game-requests/${requestId}/lobby" data-chat-posted></ol>` });
+  });
+  const lifecycle = await request.get("/__test__/lifecycle?status=open&starts_at=2026-10-20T18:00:00Z&joined=1");
+  expect(lifecycle.status()).toBe(204);
+  await openList(page, request, `/game-requests/${requestId}`);
+
+  await emit(page, "GameRequestJoined");
+  await page.clock.runFor(200);
+  await started;
+  expect(refreshCalls).toBe(1);
+  await page.getByRole("textbox", { name: "Message the lobby" }).fill("chat message");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(page.locator("#game-request-lobby")).toHaveAttribute("data-chat-posted", "");
+  expect(refreshCalls).toBe(1);
+
+  releaseRefresh();
+  await expect(page.locator("#game-request-detail")).toHaveAttribute("data-first-refresh-swapped", "");
+  expect((await refreshProbe(page)).peak).toBe(1);
 });
 test("real detail save during an SSE refresh gets a serialized revalidation", async ({ page, request }) => {
   await page.goto("/game-requests/new?game_id=game-1");

@@ -460,7 +460,7 @@ document.addEventListener("htmx:beforeRequest", (event) => {
   const detail = (event as CustomEvent<{
     xhr: XMLHttpRequest;
     target?: Element;
-    requestConfig?: { verb?: string };
+    requestConfig?: { verb?: string; path?: string };
   }>).detail;
   const xhr = detail.xhr;
   activeHtmxRequests.add(xhr);
@@ -471,9 +471,12 @@ document.addEventListener("htmx:beforeRequest", (event) => {
     xhr.addEventListener("loadend", () => queueMicrotask(() => completeGameRequestRefresh(attempt)), { once: true });
   } else {
     const method = detail.requestConfig?.verb?.toLowerCase() ?? "get";
+    const path = detail.requestConfig?.path ?? "";
+    const relevantMutation = method !== "get" && method !== "head" &&
+      /^(?:https?:\/\/[^/]+)?\/game-requests(?:\/[^/?#]+\/(?:join|leave|start|close|cancel|details))?(?:\?.*)?$/.test(path);
     const target = detail.target;
-    const changesRefreshTarget = method !== "get" && method !== "head" ||
-      (!!target?.closest("#game-request-list, #game-request-detail") && target?.id !== "game-request-lobby");
+    const swapsRefreshTarget = target?.id === "game-request-list" || target?.id === "game-request-detail";
+    const changesRefreshTarget = relevantMutation || ((method === "get" || method === "head") && swapsRefreshTarget);
     if (!changesRefreshTarget) return;
     for (const selector of ["#game-request-list", "#game-request-detail"] as const) {
       const state = gameRequestRefreshStates[selector];

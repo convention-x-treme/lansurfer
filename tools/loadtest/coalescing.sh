@@ -3,6 +3,7 @@ set -euo pipefail
 umask 077
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+source "$root/tools/loadtest/coalescing-result.sh"
 workspace_name="${WORKSPACE:-}"
 [[ "$workspace_name" =~ ^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$ ]] || { echo 'WORKSPACE must be a 1-32 character name' >&2; exit 2; }
 slug="${workspace_name,,}"
@@ -168,7 +169,7 @@ run_profile() {
   export LANSURFER_LOADTEST_REPORT_DIR="$out" PRODUCT_REVISION="$revision" HARNESS_REVISION="$HARNESS_REVISION"
   export LANSURFER_LOADTEST_METRICS_KEY_FILE="$workspace/metrics-key"
   export BUNDLE_SHA256="$digest" VARIANT="$variant" REPETITION="$repetition"
-  local calibration_exit=0
+  local calibration_exit=0 profile_status=0
   if node "$root/tools/loadtest/browser-calibration.mjs" >"$out/console.log" 2>&1; then
     :
   else
@@ -176,14 +177,13 @@ run_profile() {
   fi
   capture_diagnostics "$variant" "$out"
   local reports=("$out"/browser-calibration-*.json)
+  if [[ ! -f "${reports[0]}" ]] && (( calibration_exit == 0 )); then calibration_exit=1; fi
+  finish_profile "$calibration_exit" "$out" go -C "$root" run ./tools/loadtest/state -mode audit -output "$workspace/control.json" || profile_status=$?
   if [[ ! -f "${reports[0]}" ]]; then
     cat "$out/console.log" >&2
     return 1
   fi
-  if (( calibration_exit )); then
-    printf '%s profile recorded findings: calibration=%d\n' "$profile" "$calibration_exit"
-  fi
-  go -C "$root" run ./tools/loadtest/state -mode audit -output "$workspace/control.json" >"$out/audit.json"
+  (( profile_status == 0 )) || return "$profile_status"
 }
 
 run() {

@@ -75,8 +75,9 @@ tasks:
       - goreleaser release --snapshot --clean
 
   test:
-    desc: Run unit tests with the race detector
+    desc: Run shell regression and unit tests with the race detector
     cmds:
+      - bash tools/loadtest/coalescing-result.test.sh
       - go test -race ./...
 
   test:browser:
