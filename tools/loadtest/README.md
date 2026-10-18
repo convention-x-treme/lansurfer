@@ -139,7 +139,7 @@ Calibration launches 5–10 separate Chromium processes, observes EventSource `o
 
 ### Paired SSE-refresh comparison
 
-`loadtest:coalescing:prepare` creates a private workspace under `$HOME/lansurfer-loadtest-coalescing`, builds the baseline image, seeds 507 test identities, and saves a database snapshot. Each workspace uses a separate Compose project and database volume. Prepare removes only that workspace's volume; it does not touch legacy `lansurfer-loadtest` volumes.
+`loadtest:coalescing:prepare` creates a private workspace under `$HOME/lansurfer-loadtest-coalescing`, builds the baseline product and proxy images, pins the proxy image ID for both variants, seeds 507 test identities, and saves a database snapshot. Each workspace uses a separate Compose project and database volume. Prepare removes only that workspace's volume; it does not touch legacy `lansurfer-loadtest` volumes.
 
 ```sh
 B=baseline-product-commit
