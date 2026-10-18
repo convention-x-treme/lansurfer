@@ -79,11 +79,23 @@ func (s *state) active() control {
 	}
 	return s.cfg
 }
+
+const proxyMaxIdleConnections = 512
+
+func newReverseProxy(target *url.URL) *httputil.ReverseProxy {
+	proxy := httputil.NewSingleHostReverseProxy(target)
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.MaxIdleConns = proxyMaxIdleConnections
+	transport.MaxIdleConnsPerHost = proxyMaxIdleConnections
+	proxy.Transport = transport
+	return proxy
+}
+
 func main() {
 	u, _ := url.Parse(upstreamURL)
 	s := &state{mode: "normal", cfg: control{Mode: "normal"}}
-	proxy := httputil.NewSingleHostReverseProxy(u)
-	proxy.ErrorLog = nil
+	proxy := newReverseProxy(u)
+	defer proxy.Transport.(*http.Transport).CloseIdleConnections()
 	proxy.ModifyResponse = func(r *http.Response) error {
 		cfg := s.active()
 		if cfg.Mode == "fail-refresh" && strings.Contains(r.Request.URL.Path, "/refresh") {
