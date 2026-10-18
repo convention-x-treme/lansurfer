@@ -452,7 +452,11 @@ func dockerMetrics() []containerSample {
 		project = "lansurfer-loadtest"
 	}
 	for _, item := range roles {
-		args := []string{"ps", "-q", "--filter", item.filter, "--filter", "label=com.docker.compose.project=" + project}
+		label := "label=com.docker.compose.project=" + project
+		if item.role == "k6" {
+			label = "label=com.lansurfer.loadtest.workspace=" + project
+		}
+		args := []string{"ps", "-q", "--filter", item.filter, "--filter", label}
 		id, err := exec.Command("docker", args...).Output()
 		if err != nil || len(strings.TrimSpace(string(id))) == 0 {
 			out = append(out, containerSample{Role: item.role, Error: "unavailable"})

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -156,7 +157,74 @@ func TestDockerMetricsUsesCurrentComposeProject(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.Count(string(args), "label=com.docker.compose.project=lansurfer-loadtest-147u"); got != 3 {
-		t.Fatalf("project filter appears %d times; want app, postgres, and k6 filters", got)
+	if got := strings.Count(string(args), "label=com.docker.compose.project=lansurfer-loadtest-147u"); got != 2 {
+		t.Fatalf("Compose project filter appears %d times; want app and postgres filters", got)
+	}
+}
+func TestK6WorkspaceLabelMatchesProfilerFilter(t *testing.T) {
+	dir := t.TempDir()
+	docker := filepath.Join(dir, "docker")
+	log := filepath.Join(dir, "docker-args")
+	script := "#!/bin/sh\nprintf '%s\\n' \"$*\" >>\"$DOCKER_ARGS_LOG\"\ncase \"$1\" in\nnetwork) exit 0;;\nps) echo container-id;;\nstats) echo '1.0%|1MiB / 10MiB';;\nesac\n"
+	if err := os.WriteFile(docker, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("DOCKER_ARGS_LOG", log)
+	sessions := filepath.Join(dir, "sessions.jsonl")
+	fixtures := filepath.Join(dir, "fixtures.json")
+	if err := os.WriteFile(sessions, []byte("session\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(fixtures, []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, test := range []struct{ project, workspace, other string }{
+		{"lansurfer-loadtest-147u", "lansurfer-loadtest-147u", "lansurfer-loadtest-147t"},
+		{"lansurfer-loadtest-147t", "lansurfer-loadtest-147t", "lansurfer-loadtest-147u"},
+		{"", "lansurfer-loadtest", "lansurfer-loadtest-147u"},
+	} {
+		t.Run(test.workspace, func(t *testing.T) {
+			t.Setenv("COMPOSE_PROJECT_NAME", test.project)
+			t.Setenv("LOADTEST_NETWORK", test.workspace+"_default")
+			t.Setenv("LANSURFER_LOADTEST_SESSIONS_FILE", sessions)
+			t.Setenv("LANSURFER_LOADTEST_FIXTURES_FILE", fixtures)
+			t.Setenv("LANSURFER_LOADTEST_REPORT_DIR", filepath.Join(dir, "reports"))
+			if err := os.WriteFile(log, nil, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			cmd := exec.Command("bash", filepath.Join("..", "run-http.sh"), "1", "1s", "http")
+			if output, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("run-http.sh: %v\n%s", err, output)
+			}
+			launchArgs, err := os.ReadFile(log)
+			if err != nil {
+				t.Fatal(err)
+			}
+			workspaceLabel := "com.lansurfer.loadtest.workspace=" + test.workspace
+			if !strings.Contains(string(launchArgs), "--label "+workspaceLabel) {
+				t.Fatalf("k6 launch args do not contain workspace label %q: %s", workspaceLabel, launchArgs)
+			}
+
+			if err := os.WriteFile(log, nil, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			for _, sample := range dockerMetrics() {
+				if !sample.Available {
+					t.Errorf("%s sample unavailable: %s", sample.Role, sample.Error)
+				}
+			}
+			profilerArgs, err := os.ReadFile(log)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(string(profilerArgs), "label="+workspaceLabel) {
+				t.Fatalf("profiler filters do not contain workspace label %q: %s", workspaceLabel, profilerArgs)
+			}
+			if strings.Contains(string(profilerArgs), test.other) {
+				t.Fatalf("profiler filters include another workspace %q: %s", test.other, profilerArgs)
+			}
+		})
 	}
 }

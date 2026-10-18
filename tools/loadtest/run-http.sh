@@ -80,7 +80,8 @@ echo "Result: $reports/$output"
 # The session file is mode 0600. Match the host UID to read it in Docker.
 docker run --rm --user "$(id -u):$(id -g)" \
   --network "$loadtest_network" \
-  --label com.lansurfer.loadtest.role=k6 \
+  --label "com.lansurfer.loadtest.role=k6" \
+  --label "com.lansurfer.loadtest.workspace=${COMPOSE_PROJECT_NAME:-lansurfer-loadtest}" \
   --mount "type=bind,src=$(realpath "$sessions"),dst=/sessions.jsonl,readonly" \
   --mount "type=bind,src=$root/tools/loadtest/$profile.js,dst=/work/script.js,readonly" \
   --mount "type=bind,src=$(realpath "$reports"),dst=/reports" \
