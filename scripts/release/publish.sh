@@ -28,6 +28,11 @@ tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
 python3 "$policy" validate "$tag"
+# GoReleaser supports this explicit override for non-tag-triggered workflows.
+# The git tag object is still checked against GitHub before publishing.
+if [[ "${GITHUB_EVENT_NAME:-}" == workflow_dispatch ]]; then
+  export GORELEASER_CURRENT_TAG="$tag"
+fi
 
 verify_source_tag() {
   local local_ref remote_ref
