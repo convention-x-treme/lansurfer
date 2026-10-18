@@ -389,7 +389,7 @@ Every signed-in screen renders the same navigation, so its numbers and lists mea
 
 ## 12. Live and Durable Notifications
 
-SSE remains the ephemeral in-browser live-update path, with polling fallback where necessary. It can surface new requests, joins, leaves, request-detail updates, and status changes.
+SSE remains the ephemeral in-browser live-update path, with polling fallback where necessary. It can surface new requests, joins, leaves, request-detail updates, and status changes. A visible page revalidates its current Game Request, Lobby, and session information after network recovery, even when no new live event arrives.
 
 The durable notification system has Web Push and Discord transports. External delivery is asynchronous and must never fail or roll back a Game Request action. LANsurfer does not provide a persistent in-app inbox.
 
