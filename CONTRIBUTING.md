@@ -367,9 +367,35 @@ No leading-zero version components, build metadata (`+...`), arbitrary prereleas
 
 **Pre-1.0 pilot releases:** `v0.1.0-rc.1` and `v0.1.0` were published as the first private pilot. Subsequent `v0.x.y` releases still publish only the exact GHCR version tag: no floating GHCR `v0`, `v0.1`, or `latest` aliases. The publisher requests `make_latest=false` for all 0.x releases, but GitHub's `GET /releases/latest` may still resolve the newest published stable 0.x release; that API behavior is **not** evidence of a GHCR `latest` tag. GitHub labels `-rc.N` as a prerelease; an unqualified `v0.x.y` is a regular SemVer release. Public 1.0 remains a separate milestone.
 
-A tag must point to a commit reachable from `main` or an existing `release/vN` maintenance branch. The exact tagged revision runs the existing quality/unit, PostgreSQL, browser and build/Compose CI **before** the publisher receives write permissions. The publisher is serialized across all versions using GitHub Actions' `queue: max` (multiple pending release jobs are queued rather than canceled). Release tags should still be pushed deliberately and verified one at a time.
+A tag must point to a commit reachable from `main` or an existing `release/vN` maintenance branch. The exact tagged revision runs the existing quality/unit, PostgreSQL, browser and build/Compose CI **before** the publisher receives write permissions. The publisher is serialized across all versions using GitHub Actions' `queue: max` (multiple pending release jobs are queued rather than canceled). Releases must be deliberately initiated (with the manual button or a tag push) and verified one at a time.
 
-Once the right reviewed commit is on the appropriate branch, the maintainer can use:
+### Recommended: GitHub Actions "Start release" button
+
+For a release from `main`, open [Actions → Start release](https://github.com/convention-x-treme/lansurfer/actions/workflows/release-manual.yml),
+click **Run workflow**, select **main**, enter the base version without `v`
+(e.g. `0.2.0`), and choose `rc` or `stable`.
+
+- **RC:** Automatically selects the next unused number (`v0.2.0-rc.1`,
+  then `v0.2.0-rc.2`, etc.). The existing tags are never reused or moved.
+- **Stable:** Creates exactly `v0.2.0` and rejects any reused version.
+
+The workflow verifies the selected branch, runs the **full reusable CI before
+creating any tag**, and only then tags the exact tested `main` commit inside
+the serialized release publisher. If `main` changes during CI, tag creation
+aborts rather than releasing untested source. The tag is pushed using the
+temporary GitHub Actions token, which does **not** start a second tag-push
+release workflow. Both paths use the same GoReleaser publisher, GHCR digest
+verification, Compose runtime smoke and release-asset checks.
+
+The button cannot be safely re-run after a partial publication: a tag might
+already exist even if GitHub Release remains a draft. Inspect the state and
+choose a new RC/version rather than force-updating a tag.
+
+### Alternative: explicit Git tag using the CLI
+
+For maintenance branches or operators who prefer Git, the existing tag-push
+workflow remains available. Once the reviewed commit is on the correct branch,
+the maintainer can use:
 
 ```sh
 git fetch origin --tags

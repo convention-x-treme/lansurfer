@@ -53,6 +53,8 @@ case "$job" in
     goreleaser check
     bash -n scripts/release/publish.sh
     bash -n scripts/release/smoke_deployment.sh
+    bash -n scripts/release/manual_release.sh
+    bash scripts/release/test-manual-release.sh
     docker compose version
     python3 -m unittest discover -s scripts/release -p 'test_release_policy.py' -v
     python3 -m unittest discover -s scripts/release -p 'test_deployment_assets.py' -v
@@ -82,6 +84,8 @@ case "$job" in
     docker compose version
     bash -n scripts/release/publish.sh
     bash -n scripts/release/smoke_deployment.sh
+    bash -n scripts/release/manual_release.sh
+    bash scripts/release/test-manual-release.sh
     # Check that Python imports cannot dirty the exact tagged working tree.
     git check-ignore -q scripts/release/__pycache__/release_policy.cpython-312.pyc
     python3 -m unittest discover -s scripts/release -p 'test_deployment_assets.py' -v
@@ -89,10 +93,17 @@ case "$job" in
     ;;
 
   publish)
-    # Defense-in-depth: the token is supplied ONLY via stdin to this job,
-    # never baked into images or Docker container environment metadata.
-    [[ "${GITHUB_EVENT_NAME:-}" == push && "${GITHUB_REF:-}" == refs/tags/v* ]] ||
-      { echo "::error::Publisher requires a version-tag push" >&2; exit 1; }
+    # Only the guarded release jobs may accept the privileged token via stdin.
+    if [[ "${GITHUB_EVENT_NAME:-}" == push && "${GITHUB_REF:-}" == refs/tags/v* ]]; then
+      : # Existing tag-push path.
+    elif [[ "${GITHUB_EVENT_NAME:-}" == workflow_dispatch &&
+            "${GITHUB_REF:-}" == refs/heads/main &&
+            "${LANSURFER_RELEASE_TAG:-}" == v* ]]; then
+      : # Manual path: tagged, CI-tested main revision.
+    else
+      echo "::error::Publisher requires a tag push or guarded manual release" >&2
+      exit 1
+    fi
     token=""
     IFS= read -r token || true
     [[ -n "$token" ]] || { echo "::error::Missing one-time publishing token" >&2; exit 1; }

@@ -9,6 +9,7 @@ on:
       - Dockerfile.release
       - .github/workflows/release-snapshot.yml
       - .github/workflows/release.yml
+      - .github/workflows/release-manual.yml
       - tools/ci/**
       - scripts/release/**
       - Taskfile.yml
