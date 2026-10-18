@@ -4,12 +4,11 @@
 # The caller must supply its isolated Compose project; never run on an operator stack.
 set -euo pipefail
 
-: "${GITHUB_RUN_ID:?Only run with an isolated GitHub Actions project}"
-: "${GITHUB_RUN_ATTEMPT:?Only run with an isolated GitHub Actions attempt}"
-[[ "$GITHUB_RUN_ID" =~ ^[0-9]+$ && "$GITHUB_RUN_ATTEMPT" =~ ^[0-9]+$ ]] || {
+if [[ ! "${GITHUB_RUN_ID:-}" =~ ^[0-9]+$ ||
+      ! "${GITHUB_RUN_ATTEMPT:-}" =~ ^[0-9]+$ ]]; then
   echo "Invalid isolated test run identifier" >&2
   exit 2
-}
+fi
 project="${1:?Usage: smoke_backup_restore.sh PROJECT docker compose ...}"
 shift
 allowed_projects=(

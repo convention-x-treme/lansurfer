@@ -228,6 +228,7 @@ PostgreSQL service named `postgres`.
 Run from the directory containing your `compose.yaml` and private `.env`:
 
 ```bash
+(
 set -euo pipefail
 umask 077
 BACKUP_DIR="$HOME/lansurfer-backups"
@@ -242,7 +243,10 @@ if ! docker compose exec -T postgres pg_dump -U lansurfer -d lansurfer \
   exit 1
 fi
 (cd "$BACKUP_DIR" && sha256sum "${BACKUP##*/}" > "${BACKUP##*/}.sha256")
+printf 'Backup file: %s\n' "$BACKUP"
+)
 ```
+Copy the printed backup path into `BACKUP` before running the checksum or restore examples.
 
 Before restore, verify the checksum from the directory containing both files:
 

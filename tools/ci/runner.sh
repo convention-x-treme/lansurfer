@@ -79,6 +79,19 @@ cleanup() {
     docker network rm "$network" >/dev/null 2>&1 || true
   fi
   docker image rm "$image" >/dev/null 2>&1 || true
+  if [[ "$job" == snapshot ]]; then
+    artifact_project="lansurfer-ci-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-artifact-smoke"
+    artifact_image="lansurfer-archive-smoke:$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+    if ! docker compose --project-name "$artifact_project" down --volumes --remove-orphans >/dev/null; then
+      echo "Failed to remove isolated snapshot artifact smoke project" >&2
+      (( code != 0 )) || code=1
+    fi
+    if docker image inspect "$artifact_image" >/dev/null 2>&1 &&
+      ! docker image rm "$artifact_image" >/dev/null; then
+      echo "Failed to remove snapshot artifact smoke image" >&2
+      (( code != 0 )) || code=1
+    fi
+  fi
   exit "$code"
 }
 trap cleanup EXIT
