@@ -46,7 +46,7 @@ func TestDropParserPreservesCommentsAndDropsOnlyTargetFrame(t *testing.T) {
 func TestReverseProxyReusesConcurrentUpstreamConnections(t *testing.T) {
 	const parallel = 64
 	var upstreamConnections atomic.Int64
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	upstream := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(10 * time.Millisecond)
 		w.WriteHeader(http.StatusNoContent)
 	}))
@@ -55,13 +55,16 @@ func TestReverseProxyReusesConcurrentUpstreamConnections(t *testing.T) {
 			upstreamConnections.Add(1)
 		}
 	}
+	upstream.Start()
 	defer upstream.Close()
 
 	target, err := url.Parse(upstream.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
-	proxy := httptest.NewServer(newReverseProxy(target))
+	reverseProxy := newReverseProxy(target)
+	defer reverseProxy.Transport.(*http.Transport).CloseIdleConnections()
+	proxy := httptest.NewServer(reverseProxy)
 	defer proxy.Close()
 
 	client := proxy.Client()
