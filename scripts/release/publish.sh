@@ -61,7 +61,7 @@ printf '%s' "${GH_TOKEN:?}" |
 
 # Exact version tags are immutable. Distinguish expected "not found" from
 # registry/network/permission failures and fail closed on uncertain responses.
-if docker buildx imagetools inspect "$image:$tag" > "$tmp/version-probe.txt" 2> "$tmp/probe-error.txt"; then
+if docker buildx imagetools inspect --raw "$image:$tag" > "$tmp/version-probe.txt" 2> "$tmp/probe-error.txt"; then
   echo "::error::Exact GHCR image tag already exists: $image:$tag" >&2
   exit 1
 elif ! grep -Eiq 'not found|manifest unknown|name unknown|404' "$tmp/probe-error.txt"; then
@@ -113,19 +113,31 @@ jq -e --arg tag "$tag" --argjson prerelease "$expected_prerelease" '
   (.body | contains("Changelog"))
 ' "$tmp/release.json"
 
-docker buildx imagetools inspect --raw "$image:$tag" > "$tmp/image.json"
-jq -e '
-  ([.manifests[]?.platform | select(.os == "linux") | .architecture] | unique | sort)
-    == ["amd64", "arm64"]
-' "$tmp/image.json"
-
-# Resolve the actual multi-architecture index digest before attaching ANY
-# self-hosting files. Never publish an old image pin for a new release.
-exact_digest="$(docker buildx imagetools inspect "$image:$tag" | awk '/^Digest:/ { print $2; exit }')"
-[[ "$exact_digest" =~ ^sha256:[a-f0-9]{64}$ ]] || {
-  echo "::error::Unable to verify GHCR multi-platform digest" >&2
-  exit 1
+# Read the registry's ORIGINAL index manifest, not the formatted Buildx
+# inspection. The RC.2 publisher validated --raw but the second formatted
+# inspection exited 255, leaving an unpublished draft and image behind.
+# Hash the exact registry bytes instead: OCI indexes are content-addressed.
+# Retrying read-only inspection is safe; NEVER retry creating a release/tag.
+resolve_index_digest() {
+  local reference="$1" raw_file="$2" attempt status
+  for attempt in 1 2 3; do
+    if docker buildx imagetools inspect --raw "$reference" > "$raw_file"; then
+      python3 "$root/scripts/release/verify_image_index.py" "$raw_file"
+      return $?
+    else
+      status=$?
+      echo "::warning::Read-only registry index lookup for $reference failed (attempt $attempt/3; exit $status)" >&2
+      if (( attempt < 3 )); then sleep 2; fi
+    fi
+  done
+  echo "::error::Unable to read the GHCR image index after 3 attempts: $reference" >&2
+  return 1
 }
+
+# Derive and verify the multi-platform digest from one authenticated
+# registry read before attaching any operator-facing deployment assets.
+exact_digest="$(resolve_index_digest "$image:$tag" "$tmp/image.json")" || exit 1
+echo "Verified multi-platform GHCR image index: $image:$tag@$exact_digest"
 deployment_dir="$tmp/deployment"
 python3 "$root/scripts/release/render_deployment.py" "$tag" "$exact_digest" "$deployment_dir"
 (cd "$deployment_dir" && sha256sum --check deployment-checksums.txt)
@@ -179,7 +191,7 @@ if (("${#alias_args[@]}" > 0)); then
   docker buildx imagetools create "${alias_args[@]}" "$image:$tag"
   while IFS= read -r alias; do
     [[ -n "$alias" ]] || continue
-    alias_digest="$(docker buildx imagetools inspect "$image:$alias" | awk '/^Digest:/ { print $2; exit }')"
+    alias_digest="$(resolve_index_digest "$image:$alias" "$tmp/alias-image.json")" || exit 1
     if [[ "$alias_digest" != "$exact_digest" ]]; then
       echo "::error::Alias $alias does not point to exact version digest" >&2
       exit 1

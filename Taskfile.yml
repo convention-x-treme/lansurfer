@@ -61,6 +61,7 @@ tasks:
     desc: Verify SemVer parsing and monotonic GHCR alias planning (no publishing)
     cmds:
       - python3 -m unittest discover -s scripts/release -p 'test_release_policy.py' -v
+      - python3 -m unittest discover -s scripts/release -p 'test_verify_image_index.py' -v
       - bash -n scripts/release/publish.sh
 
   release:notes:test:
