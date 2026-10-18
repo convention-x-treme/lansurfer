@@ -251,6 +251,7 @@ Copy the printed backup path into `BACKUP` before running the checksum or restor
 Before restore, verify the checksum from the directory containing both files:
 
 ```bash
+BACKUP_DIR="$(cd "$(dirname "$BACKUP")" && pwd)"
 cd "$BACKUP_DIR"
 sha256sum --check "${BACKUP##*/}.sha256"
 ```
