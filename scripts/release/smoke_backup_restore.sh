@@ -5,10 +5,19 @@
 set -euo pipefail
 
 : "${GITHUB_RUN_ID:?Only run with an isolated GitHub Actions project}"
+: "${GITHUB_RUN_ATTEMPT:?Only run with an isolated GitHub Actions attempt}"
+[[ "$GITHUB_RUN_ID" =~ ^[0-9]+$ && "$GITHUB_RUN_ATTEMPT" =~ ^[0-9]+$ ]] || {
+  echo "Invalid isolated test run identifier" >&2
+  exit 2
+}
 project="${1:?Usage: smoke_backup_restore.sh PROJECT docker compose ...}"
 shift
-if [[ "$project" != "lansurfer-ci-${GITHUB_RUN_ID}-"* &&
-      "$project" != "lansurfer-release-smoke-${GITHUB_RUN_ID}-"* ]]; then
+allowed_projects=(
+  "lansurfer-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-smoke"
+  "lansurfer-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-artifact-smoke"
+  "lansurfer-release-smoke-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+)
+if [[ ! " ${allowed_projects[*]} " == *" $project "* ]]; then
   echo "Refusing restore test outside the current CI project" >&2
   exit 2
 fi
@@ -17,6 +26,18 @@ if [[ "${1:-}" != docker || "${2:-}" != compose ]]; then
   exit 2
 fi
 compose=("$@")
+[[ "${compose[2]:-}" == --project-name && "${compose[3]:-}" == "$project" ]] || {
+  echo "Compose project does not match the isolated test project" >&2
+  exit 2
+}
+for ((i = 4; i < ${#compose[@]}; i++)); do
+  case "${compose[$i]}" in
+    -p|-p*|--project-name|--project-name=*)
+      echo "Compose project does not match the isolated test project" >&2
+      exit 2
+      ;;
+  esac
+done
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 # Compute the expected schema version from the same checkout that built the app.
@@ -44,6 +65,7 @@ assert_current_schema() {
   }
 }
 assert_current_schema lansurfer
+"${compose[@]}" stop lansurfer
 
 # Every ID, name and delivery here is synthetic. A backfill activity and
 # completed delivery avoid any outbound notification side effects.
@@ -97,6 +119,7 @@ JOIN users guest ON guest.id = member.user_id
 JOIN game_request_messages message ON message.game_request_id = req.id AND message.author_id = guest.id
 JOIN game_request_activity activity ON activity.game_request_id = req.id AND activity.actor_id = host.id
 JOIN notification_work work ON work.activity_sequence = activity.sequence AND work.game_request_id = req.id
+  AND work.actor_id = activity.actor_id AND work.kind = activity.kind
 JOIN notification_delivery delivery ON delivery.work_id = work.id
 JOIN notification_push_preference preference ON preference.user_id = guest.id
 WHERE req.id = '00000000-0000-4000-8000-000000000032'
@@ -114,33 +137,65 @@ WHERE req.id = '00000000-0000-4000-8000-000000000032'
 }
 assert_records lansurfer
 
+database_fingerprint() {
+  "${compose[@]}" exec -T postgres psql -X -qAt -U lansurfer -d "$1" \
+    -v ON_ERROR_STOP=1 <<'SQL' | sha256sum | cut -d ' ' -f 1
+SELECT format(
+  'SELECT %L, coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text), %L::jsonb) FROM %I.%I AS t;',
+  schemaname || '.' || tablename, '[]', schemaname, tablename
+)
+FROM pg_tables
+WHERE schemaname = 'public'
+ORDER BY schemaname, tablename;
+\gexec
+SELECT schemaname, sequencename, last_value
+FROM pg_sequences
+WHERE schemaname = 'public'
+ORDER BY schemaname, sequencename;
+SQL
+}
+
 umask 077
 tmp="$(mktemp -d)"
 target="lansurfer_restore_ci"
 created=false
 cleanup() {
   status=$?
-  trap - EXIT
-  if [[ "$created" == true ]]; then
-    "${compose[@]}" exec -T postgres dropdb -U lansurfer --if-exists "$target" >/dev/null 2>&1 || true
+  trap - EXIT INT TERM
+  if [[ "$created" == true ]] &&
+    ! "${compose[@]}" exec -T postgres dropdb -U lansurfer "$target" >/dev/null 2>&1; then
+    echo "Failed to remove isolated restore database" >&2
+    (( status != 0 )) || status=1
   fi
   rm -rf -- "$tmp"
   exit "$status"
 }
 trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
-# pg_dump uses one transactionally consistent snapshot while the app runs.
+source_before="$(database_fingerprint lansurfer)"
+# pg_dump uses one transactionally consistent snapshot.
 "${compose[@]}" exec -T postgres pg_dump -U lansurfer -d lansurfer \
   --format=custom --no-owner --no-acl > "$tmp/backup.dump"
 [[ -s "$tmp/backup.dump" ]] || { echo "pg_dump returned an empty backup" >&2; exit 1; }
 "${compose[@]}" exec -T postgres pg_restore --list < "$tmp/backup.dump" >/dev/null
 
-# pg_restore must only ever target an empty NEW database, never the source.
+# pg_restore only targets an empty NEW database, never the source.
 "${compose[@]}" exec -T postgres createdb -U lansurfer "$target"
 created=true
 "${compose[@]}" exec -T postgres pg_restore -U lansurfer -d "$target" \
   --exit-on-error --no-owner --no-acl < "$tmp/backup.dump"
 assert_current_schema "$target"
 assert_records "$target"
+[[ "$(database_fingerprint "$target")" == "$source_before" ]] || {
+  echo "Restored database differs from source snapshot" >&2
+  exit 1
+}
+[[ "$(database_fingerprint lansurfer)" == "$source_before" ]] || {
+  echo "Source database changed during backup/restore" >&2
+  exit 1
+}
+assert_current_schema lansurfer
 assert_records lansurfer
 echo "Current migration $expected and isolated pg_dump/pg_restore regression passed."

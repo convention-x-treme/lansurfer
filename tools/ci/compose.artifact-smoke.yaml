@@ -1,0 +1,4 @@
+services:
+  lansurfer:
+    image: ${LANSURFER_SMOKE_IMAGE:?Set the local snapshot smoke image}
+    pull_policy: never

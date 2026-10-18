@@ -17,4 +17,10 @@ if [ "$attempt" -ge 45 ]; then
 fi
 test "$(curl --fail --silent http://lansurfer:8080/healthz)" = ok
 test "$(curl --fail --silent http://lansurfer:8080/readyz)" = ready
+css_type="$(curl --fail --silent --show-error -o /dev/null -w '%{content_type}' http://lansurfer:8080/assets/app.css)"
+case "$css_type" in text/css*) ;; *) echo "Unexpected CSS content type: $css_type" >&2; exit 1 ;; esac
+js_type="$(curl --fail --silent --show-error -o /dev/null -w '%{content_type}' http://lansurfer:8080/assets/app.js)"
+case "$js_type" in text/javascript*|application/javascript*) ;; *) echo "Unexpected JavaScript content type: $js_type" >&2; exit 1 ;; esac
+license="$(curl --fail --silent --show-error http://lansurfer:8080/assets/licenses/htmx-0BSD.txt)"
+case "$license" in *"Zero-Clause BSD"*) ;; *) echo "Bundled HTMX license text is missing" >&2; exit 1 ;; esac
 echo "LANsurfer Compose smoke checks passed."

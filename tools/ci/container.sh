@@ -62,6 +62,7 @@ case "$job" in
     bash scripts/release/test-changelog.sh
     bash scripts/release/test_cli_artifact.sh
     bash -n scripts/release/smoke_backup_restore.sh
+    bash -n scripts/release/smoke_archive.sh
     bash -n scripts/release/verify_archive_contents.sh
     bash -n scripts/release/test_archive_contents.sh
     bash scripts/release/test_archive_contents.sh
@@ -73,14 +74,15 @@ case "$job" in
     test -s dist/checksums.txt
     (cd dist && sha256sum --check checksums.txt)
     jq -e '[.[] | select(.type == "Archive")] | length == 2' dist/artifacts.json
-    jq -e '[.[] | select(.type == "Archive") | .goarch] | sort == ["amd64", "arm64"]' dist/artifacts.json
-    archive="$(jq -er '[.[] | select(.type == "Archive" and .goos == "linux" and .goarch == "amd64") | .path] | if length == 1 then .[0] else error("expected one Linux AMD64 archive") end' dist/artifacts.json)"
-    bash scripts/release/verify_cli_artifact.sh "$archive" snapshot "" "$(git rev-parse HEAD)"
+    jq -e '[.[] | select(.type == "Archive") | [.goos, .goarch]] | sort == [["linux","amd64"],["linux","arm64"]]' dist/artifacts.json
+    amd64_archive="$(jq -er '[.[] | select(.type == "Archive" and .goos == "linux" and .goarch == "amd64") | .path] | if length == 1 then .[0] else error("expected one Linux AMD64 archive") end' dist/artifacts.json)"
+    bash scripts/release/verify_cli_artifact.sh "$amd64_archive" snapshot "" "$(git rev-parse HEAD)"
     mapfile -t archives < <(jq -r '.[] | select(.type == "Archive") | .path' dist/artifacts.json)
     [[ "${#archives[@]}" == 2 ]] || { echo "Expected two Linux release archives" >&2; exit 1; }
     for archive in "${archives[@]}"; do
       bash scripts/release/verify_archive_contents.sh "$archive"
     done
+    bash scripts/release/smoke_archive.sh "$amd64_archive"
     ;;
 
   publish-check)
@@ -97,6 +99,7 @@ case "$job" in
     docker compose version
     bash -n scripts/release/verify_cli_artifact.sh
     bash -n scripts/release/smoke_backup_restore.sh
+    bash -n scripts/release/smoke_archive.sh
     bash -n scripts/release/verify_archive_contents.sh
     bash -n scripts/release/test_archive_contents.sh
     bash scripts/release/test_archive_contents.sh

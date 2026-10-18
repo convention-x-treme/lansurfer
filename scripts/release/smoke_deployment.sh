@@ -17,15 +17,20 @@ compose=(docker compose --project-name "$project" --env-file "$deployment_dir/pr
 
 cleanup() {
   result=$?
-  trap - EXIT
+  trap - EXIT INT TERM
   if (( result != 0 )); then
     "${compose[@]}" ps >&2 || true
     "${compose[@]}" logs --no-color --tail=80 >&2 || true
   fi
-  "${compose[@]}" down --volumes --remove-orphans >/dev/null || true
+  if ! "${compose[@]}" down --volumes --remove-orphans >/dev/null; then
+    echo "Failed to remove isolated release smoke project" >&2
+    (( result != 0 )) || result=1
+  fi
   exit "$result"
 }
 trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 # All release image references are loaded from the generated asset; only
 # otherwise-unconfigured, synthetic operator credentials are supplied here.
