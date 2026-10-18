@@ -37,6 +37,10 @@ if [[ "$job" == smoke ]]; then
   docker compose -f compose.yaml -f tools/ci/compose.smoke.yaml up --detach --build --wait postgres lansurfer
   docker compose -f compose.yaml -f tools/ci/compose.smoke.yaml build smoke
   docker compose -f compose.yaml -f tools/ci/compose.smoke.yaml run --rm --no-deps smoke
+  # The source-built app migrated this disposable DB; verify its current
+  # schema and a real pg_dump/pg_restore with synthetic relational data.
+  bash scripts/release/smoke_backup_restore.sh "$project" docker compose \
+    --project-name "$project" -f compose.yaml -f tools/ci/compose.smoke.yaml
   exit 0
 fi
 

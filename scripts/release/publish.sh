@@ -95,6 +95,13 @@ test -s dist/checksums.txt
 jq -e '[.[] | select(.type == "Archive") | .goarch] | sort == ["amd64","arm64"]' dist/artifacts.json
 archive="$(jq -er '[.[] | select(.type == "Archive" and .goos == "linux" and .goarch == "amd64") | .path] | if length == 1 then .[0] else error("expected one Linux AMD64 archive") end' dist/artifacts.json)"
 bash "$root/scripts/release/verify_cli_artifact.sh" "$archive" release "$tag" "$(git rev-parse HEAD)"
+# Both architecture archives must contain the actual bundled license/notices,
+# not merely a source checkout copy. Fail before making any draft public.
+mapfile -t archives < <(jq -r '.[] | select(.type == "Archive") | .path' dist/artifacts.json)
+[[ "${#archives[@]}" == 2 ]] || { echo "Expected two Linux release archives" >&2; exit 1; }
+for archive in "${archives[@]}"; do
+  bash "$root/scripts/release/verify_archive_contents.sh" "$archive"
+done
 
 verify_source_tag
 # GitHub's /releases/tags/{tag} lookup can return HTTP 404 for an unpublished

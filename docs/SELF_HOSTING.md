@@ -214,6 +214,100 @@ administration page.
 you want to keep.** Store your `.env` securely and verify your
 database backup/restore procedure before relying on important data.
 
+## PostgreSQL backup and restore
+
+LANsurfer persists users, Games, Game Requests, chat, notification state and
+operator-managed legal texts in PostgreSQL. The Docker volume survives
+`docker compose down` **without** `-v`, but a volume is not a backup.
+Back up the database before upgrades and test restores regularly. These
+examples assume the version-matched release Compose directory and its
+PostgreSQL service named `postgres`.
+
+### Create and check a backup
+
+Run from the directory containing your `compose.yaml` and private `.env`:
+
+```sh
+umask 077
+BACKUP_DIR="$HOME/lansurfer-backups"
+mkdir -p "$BACKUP_DIR"
+BACKUP="$BACKUP_DIR/lansurfer-$(date -u +%Y%m%dT%H%M%SZ).dump"
+docker compose exec -T postgres pg_dump -U lansurfer -d lansurfer \
+  --format=custom --no-owner --no-acl > "$BACKUP"
+test -s "$BACKUP"
+docker compose exec -T postgres pg_restore --list < "$BACKUP" > /dev/null
+sha256sum "$BACKUP" > "$BACKUP.sha256"
+```
+
+`-T` is important: it keeps the compressed custom-format dump binary-safe.
+`pg_dump` takes a transactionally consistent snapshot while the app is
+running. Preserve the SHA-256 record, and transfer the dump to encrypted
+**off-host** storage with access controls and a tested retention policy.
+The dump contains personal data and possibly encrypted delivery credentials:
+do not commit it to Git or attach it to GitHub issues/PRs.
+
+Back up the private `.env` **separately and securely** together with the
+exact LANsurfer application version/image digest, deployment Compose files
+and PostgreSQL major version. In particular, preserve the original
+`LANSURFER_DATA_ENCRYPTION_KEY`, `LANSURFER_WEBPUSH_PRIVATE_KEY`,
+`LANSURFER_WEBPUSH_PUBLIC_KEY` and relevant OAuth/Discord credentials.
+These are **not** in the database dump. Never generate replacement keys
+for a restore: stored encrypted subscriptions/webhook credentials would
+become unusable and existing Web Push subscriptions may stop working.
+The cover cache can be recreated and is not part of this database dump.
+
+### Test a restore without touching the running database
+
+Create a **new, empty** database in the same disposable/test PostgreSQL
+instance. The name must not already exist; `createdb` fails if it does.
+
+```sh
+docker compose exec -T postgres createdb -U lansurfer lansurfer_restore_verify
+docker compose exec -T postgres pg_restore -U lansurfer \
+  -d lansurfer_restore_verify --exit-on-error --no-owner --no-acl < "$BACKUP"
+docker compose exec -T postgres psql -U lansurfer -d lansurfer_restore_verify \
+  -c 'SELECT count(*) FROM game_requests;'
+docker compose exec -T postgres psql -U lansurfer -d lansurfer_restore_verify \
+  -c 'SELECT count(*) FROM notification_delivery;'
+```
+
+Compare representative row counts and request/notification references to
+the source database and verify that the restored schema matches the source
+application release. A dump being readable is **not** proof that recovery
+works. For stronger isolation, use a separate disposable Compose project
+or a separate test host. Remove only the explicitly created verification
+database after you have finished inspecting it.
+
+### Recover an actual installation
+
+1. Stop the application so it cannot write or run migrations. Retain the
+   existing database volume untouched as a fallback; **never** use
+   `docker compose down -v` or restore over a populated live database.
+2. Provision a **new, empty PostgreSQL database/volume**, preferably on a
+   separate recovery host, with a compatible PostgreSQL major version.
+   Restore the exact operator `.env` (especially encryption and VAPID keys)
+   and choose the matching LANsurfer application release first.
+3. Start **only** the new PostgreSQL service with `docker compose up -d
+   postgres`. Confirm the database `lansurfer` exists and is empty.
+4. Restore the dump into that empty database, **before** starting LANsurfer:
+
+   ```sh
+   docker compose exec -T postgres pg_restore -U lansurfer -d lansurfer \
+     --exit-on-error --no-owner --no-acl < "$BACKUP"
+   ```
+
+5. Verify rows, migration version and restored settings. Then start LANsurfer
+   using `docker compose up -d --wait lansurfer`; check `/readyz`, admin
+   login and representative data/notification settings. Reconfigure DNS/TLS
+   only after the isolated recovery installation has been validated.
+
+LANsurfer database migrations run **forward only** on application startup.
+An older application binary cannot safely reverse a newer schema. Do not
+attempt an automated downgrade or a PostgreSQL major-version upgrade as
+part of a restore; first validate compatibility and follow a separate
+database upgrade plan. If recovery fails, keep the original volume and
+backup intact and investigate before retrying.
+
 ## Updates
 
 LANsurfer does **not** update automatically. Before updating:

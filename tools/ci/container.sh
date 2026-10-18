@@ -61,6 +61,10 @@ case "$job" in
     python3 -m unittest discover -s scripts/release -p 'test_verify_image_index.py' -v
     bash scripts/release/test-changelog.sh
     bash scripts/release/test_cli_artifact.sh
+    bash -n scripts/release/smoke_backup_restore.sh
+    bash -n scripts/release/verify_archive_contents.sh
+    bash -n scripts/release/test_archive_contents.sh
+    bash scripts/release/test_archive_contents.sh
     builder="lansurfer-snapshot-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
     docker buildx create --driver docker-container --name "$builder" --use
     trap 'docker buildx rm --force "$builder" >/dev/null 2>&1 || true' EXIT
@@ -72,6 +76,11 @@ case "$job" in
     jq -e '[.[] | select(.type == "Archive") | .goarch] | sort == ["amd64", "arm64"]' dist/artifacts.json
     archive="$(jq -er '[.[] | select(.type == "Archive" and .goos == "linux" and .goarch == "amd64") | .path] | if length == 1 then .[0] else error("expected one Linux AMD64 archive") end' dist/artifacts.json)"
     bash scripts/release/verify_cli_artifact.sh "$archive" snapshot "" "$(git rev-parse HEAD)"
+    mapfile -t archives < <(jq -r '.[] | select(.type == "Archive") | .path' dist/artifacts.json)
+    [[ "${#archives[@]}" == 2 ]] || { echo "Expected two Linux release archives" >&2; exit 1; }
+    for archive in "${archives[@]}"; do
+      bash scripts/release/verify_archive_contents.sh "$archive"
+    done
     ;;
 
   publish-check)
@@ -87,6 +96,10 @@ case "$job" in
     command -v jq && command -v python3 && command -v curl
     docker compose version
     bash -n scripts/release/verify_cli_artifact.sh
+    bash -n scripts/release/smoke_backup_restore.sh
+    bash -n scripts/release/verify_archive_contents.sh
+    bash -n scripts/release/test_archive_contents.sh
+    bash scripts/release/test_archive_contents.sh
     bash -n scripts/release/publish.sh
     bash -n scripts/release/test_cli_artifact.sh
     bash -n scripts/release/smoke_deployment.sh

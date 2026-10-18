@@ -77,4 +77,8 @@ wait_ready
 [[ "$(imprint_status)" == "404" ]] ||
   { echo "New release still serves /imprint when disabled" >&2; exit 1; }
 
-echo "Tagged release image and packaged Compose passed startup, DB migration, health and imprint checks."
+# Reuse the same database restore regression against the exact tagged image.
+# Runs only in this disposable release Compose project before draft publication.
+bash "$root/scripts/release/smoke_backup_restore.sh" "$project" "${compose[@]}"
+
+echo "Tagged release image and packaged Compose passed startup, DB migration, restore, health and imprint checks."
