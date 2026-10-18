@@ -60,6 +60,13 @@ imprint_status() {
 }
 
 wait_ready
+version_output="$("${compose[@]}" exec -T lansurfer /lansurfer version)"
+[[ "$version_output" =~ ^LANsurfer\ v[^[:space:]]+\ \([0-9a-f]{40}\)$ ]] ||
+  { echo "Tagged release image returned invalid CLI version metadata" >&2; exit 1; }
+"${compose[@]}" exec -T lansurfer /lansurfer healthcheck
+help_output="$("${compose[@]}" exec -T lansurfer /lansurfer help)"
+[[ "$help_output" == *"admin notifications generate-secrets"* ]] ||
+  { echo "Tagged release image help omits admin commands" >&2; exit 1; }
 [[ "$(imprint_status)" == "200" ]] ||
   { echo "New release did not serve /imprint when enabled" >&2; exit 1; }
 
