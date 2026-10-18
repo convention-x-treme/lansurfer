@@ -68,6 +68,21 @@ class VerifyImageIndexTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "child manifest digest"):
             verify_image_index(raw_index(bad, descriptor("arm64")))
 
+    def test_release_publisher_never_uses_fragile_formatted_digest_scraping(self):
+        # Regression for RC.2: the second, formatted Buildx inspection returned
+        # exit 255 even though the preceding --raw index inspection succeeded.
+        publisher = (ROOT / "publish.sh").read_text(encoding="utf-8")
+        inspections = [
+            line.strip()
+            for line in publisher.splitlines()
+            if "docker buildx imagetools inspect " in line
+            and not line.lstrip().startswith("#")
+        ]
+        self.assertTrue(inspections)
+        self.assertTrue(all("imagetools inspect --raw " in line for line in inspections))
+        self.assertIn('exact_digest="$(resolve_index_digest', publisher)
+        self.assertIn('alias_digest="$(resolve_index_digest', publisher)
+
     def test_cli_fails_closed_on_invalid_index(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "raw.json"
