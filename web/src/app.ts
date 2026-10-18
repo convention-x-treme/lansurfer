@@ -812,6 +812,12 @@ function completeGameRequestRefresh(attempt: GameRequestRefreshAttempt): void {
   flushGameRequestRefreshes();
 }
 
+function handleOfflineRefreshRejection(refresh: Promise<unknown>): void {
+  void refresh.catch((error: unknown) => {
+    if (navigator.onLine) throw error;
+  });
+}
+
 function refreshGameRequestLobby(requestID: string): void {
   if (activeHtmxRequests.size > 0) {
     lobbyRefreshQueued = true;
@@ -821,7 +827,7 @@ function refreshGameRequestLobby(requestID: string): void {
   const detail = document.querySelector<HTMLElement>("[data-game-request-detail]");
   const log = document.querySelector<HTMLElement>("#game-request-lobby[data-refresh-url]");
   if (detail?.dataset.gameRequestId !== requestID || !log?.dataset.refreshUrl) return;
-  void htmx.ajax("get", log.dataset.refreshUrl, { target: "#game-request-lobby", swap: "outerHTML" });
+  handleOfflineRefreshRejection(htmx.ajax("get", log.dataset.refreshUrl, { target: "#game-request-lobby", swap: "outerHTML" }));
 }
 
 const realtime = document.querySelector<HTMLElement>("[data-realtime-url]");
@@ -867,7 +873,7 @@ if (realtime?.dataset.realtimeUrl) {
         const section = document.querySelector<HTMLElement>("#session-information");
         const detail = document.querySelector<HTMLElement>("[data-game-request-detail]");
         if (section && detail?.dataset.gameRequestId === requestId && section.dataset.refreshUrl) {
-          void htmx.ajax("get", section.dataset.refreshUrl, { target: "#session-information", swap: "outerHTML" });
+          handleOfflineRefreshRejection(htmx.ajax("get", section.dataset.refreshUrl, { target: "#session-information", swap: "outerHTML" }));
         }
       } catch {
         // Ignore malformed signal.
@@ -903,6 +909,7 @@ if (realtime?.dataset.realtimeUrl) {
     connectRealtime();
     refreshGameRequests();
   };
+  window.addEventListener("online", () => refreshGameRequests());
 
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) {
