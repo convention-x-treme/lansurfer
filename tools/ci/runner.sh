@@ -61,10 +61,18 @@ cleanup() {
 trap cleanup EXIT
 
 if [[ "$job" == publish ]]; then
-  [[ "${GITHUB_EVENT_NAME:-}" == push && "${GITHUB_REF:-}" == refs/tags/v* ]] ||
-    { echo "::error::Publisher requires a version-tag push" >&2; exit 1; }
+  if [[ "${GITHUB_EVENT_NAME:-}" == push && "${GITHUB_REF:-}" == refs/tags/v* ]]; then
+    : "${GITHUB_REF_NAME:?}"
+  elif [[ "${GITHUB_EVENT_NAME:-}" == workflow_dispatch &&
+          "${GITHUB_REF:-}" == refs/heads/main &&
+          "${LANSURFER_RELEASE_TAG:-}" == v* ]]; then
+    : # Manual button created this immutable tag after full CI.
+  else
+    echo "::error::Publisher requires a tag push or guarded manual release on main" >&2
+    exit 1
+  fi
   : "${GH_TOKEN:?Only the privileged release job may supply GH_TOKEN}"
-  : "${GITHUB_REF_NAME:?}" "${GITHUB_ACTOR:?}" "${GITHUB_REPOSITORY:?}" "${GITHUB_STEP_SUMMARY:?}"
+  : "${GITHUB_ACTOR:?}" "${GITHUB_REPOSITORY:?}" "${GITHUB_STEP_SUMMARY:?}"
   # An untrusted CI job can taint a shared Docker cache; force fresh layers and
   # resolve the pinned GoReleaser base image from the registry.
   docker build --pull --no-cache -f tools/ci/Dockerfile --target "$target" --tag "$image" .
@@ -122,6 +130,7 @@ if [[ "$job" == publish ]]; then
     -i
     -e "GITHUB_EVENT_NAME=$GITHUB_EVENT_NAME"
     -e "GITHUB_REF_NAME=$GITHUB_REF_NAME"
+    -e "LANSURFER_RELEASE_TAG=${LANSURFER_RELEASE_TAG:-}"
     -e "GITHUB_ACTOR=$GITHUB_ACTOR"
     -e "GITHUB_REPOSITORY=$GITHUB_REPOSITORY"
     -e GITHUB_STEP_SUMMARY=/tmp/lansurfer-release-summary.md

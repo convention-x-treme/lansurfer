@@ -9,18 +9,30 @@ export PYTHONDONTWRITEBYTECODE=1
 # No automatic rerun after a partial registry/GitHub draft publication: recovery
 # requires deliberate manual verification or a NEW version (see CONTRIBUTING.md).
 repo="${GITHUB_REPOSITORY:?GitHub repository is required}"
-tag="${GITHUB_REF_NAME:?Release tag is required}"
+# Both entrypoints call this ONE guarded publisher, using identical checks.
+# Tags created by the button's GITHUB_TOKEN do not trigger another workflow.
+if [[ "${GITHUB_EVENT_NAME:-}" == push && "${GITHUB_REF:-}" == refs/tags/v* ]]; then
+  tag="${GITHUB_REF_NAME:?Release tag is required}"
+elif [[ "${GITHUB_EVENT_NAME:-}" == workflow_dispatch &&
+        "${GITHUB_REF:-}" == refs/heads/main &&
+        "${LANSURFER_RELEASE_TAG:-}" == v* ]]; then
+  tag="$LANSURFER_RELEASE_TAG"
+else
+  echo "::error::Release requires a version-tag push or guarded manual workflow" >&2
+  exit 1
+fi
 image="ghcr.io/${repo,,}"
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 policy="$root/scripts/release/release_policy.py"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
-if [[ "${GITHUB_REF:?}" != "refs/tags/$tag" ]]; then
-  echo "::error::Release publication requires an immutable version tag push" >&2
-  exit 1
-fi
 python3 "$policy" validate "$tag"
+# GoReleaser supports this explicit override for non-tag-triggered workflows.
+# The git tag object is still checked against GitHub before publishing.
+if [[ "${GITHUB_EVENT_NAME:-}" == workflow_dispatch ]]; then
+  export GORELEASER_CURRENT_TAG="$tag"
+fi
 
 verify_source_tag() {
   local local_ref remote_ref
