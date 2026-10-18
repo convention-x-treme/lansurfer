@@ -1,0 +1,101 @@
+import { expect, test } from "@playwright/test";
+import { expectStreams, resetFixture } from "./helpers";
+
+const sessions = (session: string) => ({
+  cookies: [{
+    name: "lansurfer_session",
+    value: session,
+    domain: "127.0.0.1",
+    path: "/",
+    expires: -1,
+    httpOnly: true,
+    secure: false,
+    sameSite: "Lax" as const,
+  }],
+  origins: [],
+});
+
+test("an offline lobby converges after reconnect without another domain event", async ({ browser, baseURL }) => {
+  const admin = await browser.newContext({ baseURL, storageState: sessions("browser-test-session") });
+  const other = await browser.newContext({ baseURL, storageState: sessions("browser-test-other") });
+  const adminPage = await admin.newPage();
+  const otherPage = await other.newPage();
+  const reconnect = { states: [] as string[], instances: 0, rejected: [] as string[], failed: [] as string[] };
+  let detailRefreshes = 0;
+  try {
+    await adminPage.addInitScript(() => {
+      const state = window as Window & { __reconnect?: { states: string[]; instances: number; rejected: string[] } };
+      state.__reconnect = { states: [], instances: 0, rejected: [] };
+      const NativeEventSource = window.EventSource;
+      window.EventSource = class extends NativeEventSource {
+        constructor(url: string | URL, options?: EventSourceInit) {
+          super(url, options);
+          if (state.__reconnect) state.__reconnect.instances += 1;
+          this.addEventListener("open", () => state.__reconnect?.states.push("open"));
+          this.addEventListener("error", () => state.__reconnect?.states.push("error"));
+        }
+      };
+      window.addEventListener("unhandledrejection", (event) => {
+        state.__reconnect?.rejected.push(String(event.reason));
+      });
+    });
+    adminPage.on("request", (request) => {
+      if (/\/game-requests\/[^/]+\/refresh(?:\?|$)/.test(request.url())) detailRefreshes += 1;
+    });
+    adminPage.on("requestfailed", (request) => {
+      if (/\/lobby(?:\?|$)|session-information/.test(request.url())) reconnect.failed.push(`${request.method()} ${request.url()}: ${request.failure()?.errorText}`);
+    });
+    adminPage.on("response", (response) => {
+      if (response.status() >= 400 && /\/lobby(?:\?|$)|session-information/.test(response.url())) reconnect.failed.push(`${response.status()} ${response.url()}`);
+    });
+
+    await resetFixture(adminPage.request);
+    await adminPage.goto("/game-requests/new?game_id=game-1");
+    await adminPage.getByRole("button", { name: "Create Game Request" }).click();
+    await adminPage.waitForURL(/\/game-requests\/[0-9a-f-]+/);
+    const requestID = await adminPage.locator("[data-game-request-detail]").getAttribute("data-game-request-id");
+    expect(requestID).not.toBeNull();
+    await otherPage.goto(`/game-requests/${requestID}`);
+    await otherPage.getByRole("button", { name: "Join", exact: true }).click();
+    await expect(otherPage.getByRole("button", { name: "Leave", exact: true })).toBeVisible();
+    await expectStreams(adminPage.request, 2);
+    await expect(adminPage.locator("#game-request-lobby")).toContainText("created the request");
+    await adminPage.waitForTimeout(250);
+    await expect(adminPage.locator(".htmx-request")).toHaveCount(0);
+
+    const refreshCountBeforeOffline = detailRefreshes;
+    await admin.setOffline(true);
+    await expect.poll(() => adminPage.evaluate(() => navigator.onLine)).toBe(false);
+    await expect.poll(async () => adminPage.evaluate(async () => {
+      try {
+        await fetch("/__test__/state");
+        return true;
+      } catch {
+        return false;
+      }
+    })).toBe(false);
+    const message = `offline chat ${Date.now()}`;
+    await otherPage.getByRole("textbox", { name: "Message the lobby" }).fill(message);
+    await otherPage.getByRole("button", { name: "Send", exact: true }).click();
+    await expect(otherPage.locator("#game-request-lobby .chat-message")).toContainText(message);
+    expect(await adminPage.locator("#game-request-lobby").innerText()).not.toContain(message);
+
+
+    await admin.setOffline(false);
+    await expect.poll(() => adminPage.evaluate(() => navigator.onLine)).toBe(true);
+    await expectStreams(adminPage.request, 2);
+    await expect.poll(() => detailRefreshes).toBeGreaterThan(refreshCountBeforeOffline);
+    await expect(adminPage.locator("#game-request-lobby .chat-message")).toContainText(message, { timeout: 10_000 });
+
+    reconnect.states = await adminPage.evaluate(() => (window as Window & { __reconnect?: { states: string[] } }).__reconnect?.states ?? []);
+    reconnect.instances = await adminPage.evaluate(() => (window as Window & { __reconnect?: { instances: number } }).__reconnect?.instances ?? 0);
+    reconnect.rejected = await adminPage.evaluate(() => (window as Window & { __reconnect?: { rejected: string[] } }).__reconnect?.rejected ?? []);
+    expect(reconnect.states).toEqual(["open"]);
+    expect(reconnect.instances).toBe(1);
+    expect(reconnect.rejected).toEqual([]);
+    expect(reconnect.failed.every((failure) => /ERR_INTERNET_DISCONNECTED/.test(failure) && /\/lobby(?:\?|:|$)|session-information/.test(failure))).toBe(true);
+  } finally {
+    await admin.close();
+    await other.close();
+  }
+});

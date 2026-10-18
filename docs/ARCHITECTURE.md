@@ -119,7 +119,7 @@ TypeScript is intentionally limited to progressive enhancement.
 
 SSE is used for realtime browser updates. Browser-to-server communication remains ordinary HTTP.
 
-Regular Game Request SSE events start a fixed 200 ms collection window. Later events do not extend it. Each visible list or matching detail view permits one active refresh and one pending refresh; events during a request coalesce into that pending refresh. Reconnect and visibility return request immediate revalidation. An HTMX mutation that starts during an active refresh invalidates it and queues revalidation after active requests settle; explicit detail-save signals also request revalidation. Failed refreshes retry once after one second. Hidden-page timers pause, and returning to visibility revalidates current targets.
+Regular Game Request SSE events start a fixed 200 ms collection window. Later events do not extend it. Each visible list or matching detail view permits one active refresh and one pending refresh; events during a request coalesce into that pending refresh. SSE reconnect, the browser `online` event, and visibility return request immediate revalidation; the `online` event revalidates even when EventSource stays open and emits no `open` event. An HTMX mutation that starts during an active refresh invalidates it and queues revalidation after active requests settle; explicit detail-save signals also request revalidation. Failed refreshes retry once after one second. Hidden-page timers pause, and returning to visibility revalidates current targets.
 
 For the current single-instance deployment model, the SSE broker may run in memory. Durable external notifications use PostgreSQL persistence and do not make SSE durable.
 
