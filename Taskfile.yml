@@ -246,6 +246,13 @@ tasks:
       - docker compose -f tools/loadtest/compose.yaml -f tools/loadtest/compose.chaos.yaml up -d --build --wait proxy
       - PHASE=calibrate REQUEST='{{.REQUEST}}' USERS='{{.USERS | default "120"}}' BROWSERS='{{.BROWSERS | default "5"}}' DURATION='{{.DURATION | default "90s"}}' MODE='{{.MODE}}' bash tools/loadtest/report/run.sh calibrate node tools/loadtest/run-phase2.mjs
 
+  loadtest:coalescing:down:
+    desc: Stop one paired SSE-refresh workspace and keep its database volume
+    requires:
+      vars: [WORKSPACE]
+    cmds:
+      - WORKSPACE='{{.WORKSPACE}}' bash tools/loadtest/coalescing.sh down
+
   loadtest:coalescing:prepare:
     desc: Prepare private paired SSE-refresh load-test snapshots and images
     requires:

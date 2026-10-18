@@ -8,6 +8,8 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -130,4 +132,31 @@ func histogramCounts(metrics map[string]float64) (keys []string) {
 		}
 	}
 	return keys
+}
+
+func TestDockerMetricsUsesCurrentComposeProject(t *testing.T) {
+	dir := t.TempDir()
+	docker := filepath.Join(dir, "docker")
+	log := filepath.Join(dir, "docker-args")
+	script := "#!/bin/sh\nprintf '%s\\n' \"$*\" >>\"$DOCKER_ARGS_LOG\"\ncase \"$1\" in\nps) echo container-id;;\nstats) echo '1.0%|1MiB / 10MiB';;\nesac\n"
+	if err := os.WriteFile(docker, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("DOCKER_ARGS_LOG", log)
+	t.Setenv("COMPOSE_PROJECT_NAME", "lansurfer-loadtest-147u")
+
+	samples := dockerMetrics()
+	for _, sample := range samples {
+		if !sample.Available {
+			t.Errorf("%s sample unavailable: %s", sample.Role, sample.Error)
+		}
+	}
+	args, err := os.ReadFile(log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Count(string(args), "label=com.docker.compose.project=lansurfer-loadtest-147u"); got != 2 {
+		t.Fatalf("project filter appears %d times; want app and postgres filters", got)
+	}
 }

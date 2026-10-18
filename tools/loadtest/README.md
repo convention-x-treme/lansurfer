@@ -1,6 +1,6 @@
 # LANsurfer local load-test harness
 
-Everything here targets only the isolated Compose project `lansurfer-loadtest` (database `lansurfer_loadtest`, `127.0.0.1:18080`, PostgreSQL on `127.0.0.1:55433`). It never reads `LANSURFER_DATABASE_URL`, never touches the development stack, and needs no Keycloak/OIDC/Discord account.
+The standard harness targets isolated Compose project `lansurfer-loadtest` (database `lansurfer_loadtest`, `127.0.0.1:18080`, PostgreSQL on `127.0.0.1:55433`). Paired workspaces use separate `lansurfer-loadtest-<workspace>` projects with the same dedicated database name and host ports. Neither reads `LANSURFER_DATABASE_URL` or touches development services.
 
 What it provides:
 
@@ -150,6 +150,13 @@ task loadtest:coalescing WORKSPACE=147m PRODUCT_REVISION="$B" HARNESS_REVISION="
 task loadtest:coalescing WORKSPACE=147m PRODUCT_REVISION="$C" HARNESS_REVISION="$H" VARIANT=treatment REPETITION=1
 ```
 
+Stop a paired workspace when finished; this keeps its test database volume:
+
+```sh
+task loadtest:coalescing:down WORKSPACE=147m
+```
+
+
 
 Each run uses same committed, clean harness checkout for both product images. Default profile is `small`: 10 SSE streams, two writers, five browser pages, 40 seconds. Set `PROFILE=120` for 120 SSE streams and 20 writers. The 400-stream/100-writer profile requires `PROFILE=400-writer ALLOW_400_CLIENT_PROFILE=1`; `PROFILE=all` also requires that explicit guard. Standard profiles run SSE for 150s and writers for 90s. Each profile restores same database snapshot. Baseline clients use one in-flight plus one trailing refresh; treatment clients use fixed 200 ms coalescing. App images come from exact product SHAs; manifests record harness/product SHAs, app and proxy image IDs, container IDs, and served app.js checksum.
 
@@ -159,6 +166,7 @@ The single control join changes final membership from `1/8` to `2/8`, so DOM con
 For a same-mode control, prepare a separate workspace and run both variants with `REFRESH_MODE_OVERRIDE=browser-like`. Treat mode-switched synthetic totals as workload-model evidence; use five real Chromium pages for direct product behavior.
 
 For ordinary `loadtest:calibrate`, 400 synthetic streams may share five browser identities. Paired coalescing runs use disjoint browser, stream, writer, and control identities.
+
 
 Orchestrated tasks (`loadtest:run`, `writes`, `profile`, `calibrate`, `loss`, `chaos`, `soak`) create `$HOME/lansurfer-loadtest-reports/<UTC>-<scenario>/` (mode `0700`) with `manifest.json` (SHA, dirty flag, image IDs/creation, container limits, versions, parameters, exit code, actual duration), `console.log`, and artifacts (`0600`). `loadtest:coalescing` stores per-profile `manifest.json` and `environment.txt` in its private workspace. Direct diagnostics such as `loadtest:race`, `loadtest:sse`, and `loadtest:browser` print to the terminal and do not create a run manifest. Run `task loadtest:scan REPORT_PATH=<dir>` on a generated report bundle before publishing; it prints only the number of session-token or metrics-key hits.
 

@@ -447,10 +447,14 @@ func dockerMetrics() []containerSample {
 		{"k6", "label=com.lansurfer.loadtest.role=k6"},
 	}
 	out := make([]containerSample, 0, len(roles))
+	project := os.Getenv("COMPOSE_PROJECT_NAME")
+	if project == "" {
+		project = "lansurfer-loadtest"
+	}
 	for _, item := range roles {
 		args := []string{"ps", "-q", "--filter", item.filter}
 		if item.role != "k6" {
-			args = append(args, "--filter", "label=com.docker.compose.project=lansurfer-loadtest")
+			args = append(args, "--filter", "label=com.docker.compose.project="+project)
 		}
 		id, err := exec.Command("docker", args...).Output()
 		if err != nil || len(strings.TrimSpace(string(id))) == 0 {

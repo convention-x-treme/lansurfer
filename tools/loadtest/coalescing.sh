@@ -226,6 +226,11 @@ run() {
   done
   echo "Completed $variant repetition $repetition; reports: $workspace/results/$variant/rep-$repetition"
 }
+
+down() {
+  [[ -d "$workspace" && -O "$workspace" ]] || { echo 'paired workspace is missing or not owned by current user' >&2; exit 2; }
+  "${chaos_compose[@]}" down --remove-orphans
+}
 mkdir -p "$workspace_root"
 chmod 700 "$workspace_root"
 exec 9>"${workspace_root}/${slug}.lock"
@@ -234,5 +239,6 @@ cd "$root"
 case "${1:-}" in
   prepare) [[ $# == 1 ]] || { echo 'prepare takes no arguments' >&2; exit 2; }; prepare ;;
   run) [[ $# == 1 ]] || { echo 'run takes no arguments' >&2; exit 2; }; run ;;
-  *) echo 'usage: coalescing.sh prepare|run' >&2; exit 2 ;;
+  down) [[ $# == 1 ]] || { echo 'down takes no arguments' >&2; exit 2; }; down ;;
+  *) echo 'usage: coalescing.sh prepare|run|down' >&2; exit 2 ;;
 esac
