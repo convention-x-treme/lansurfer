@@ -58,6 +58,7 @@ case "$job" in
     docker compose version
     python3 -m unittest discover -s scripts/release -p 'test_release_policy.py' -v
     python3 -m unittest discover -s scripts/release -p 'test_deployment_assets.py' -v
+    python3 -m unittest discover -s scripts/release -p 'test_verify_image_index.py' -v
     bash scripts/release/test-changelog.sh
     builder="lansurfer-snapshot-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
     docker buildx create --driver docker-container --name "$builder" --use
@@ -89,6 +90,7 @@ case "$job" in
     # Check that Python imports cannot dirty the exact tagged working tree.
     git check-ignore -q scripts/release/__pycache__/release_policy.cpython-312.pyc
     python3 -m unittest discover -s scripts/release -p 'test_deployment_assets.py' -v
+    python3 -m unittest discover -s scripts/release -p 'test_verify_image_index.py' -v
     echo "Release publishing toolbox is ready."
     ;;
 
