@@ -2,6 +2,7 @@
 
 Usage: docker compose ... config --format json | python3 scripts/test-production-compose.py
 Optional --test-mutations checks that dangerous configuration changes fail.
+CI-only --test-traefik checks the optional proxy overlay with synthetic values.
 """
 
 import copy
@@ -79,6 +80,9 @@ def validate(compose):
     require(len(app.get("volumes", [])) == 1, "unexpected LANsurfer mounts")
 
     app_env, db_env = app.get("environment", {}), db.get("environment", {})
+    legacy = {"LANSURFER_LEGAL_ENTITY_NAME", "LANSURFER_LEGAL_ADDRESS",
+              "LANSURFER_LEGAL_CONTACT_EMAIL", "LANSURFER_IMPRINT_URL"}
+    require(legacy.isdisjoint(app_env), "obsolete legal environment settings must not be shipped")
     password = db_env.get("POSTGRES_PASSWORD", "")
     require(isinstance(password, str) and re.fullmatch(r"[a-fA-F0-9]{64}", password),
             "POSTGRES_PASSWORD must be 64 hexadecimal characters (openssl rand -hex 32)")
@@ -118,6 +122,37 @@ def validate(compose):
     require(oidc_issuer or discord_id or twitch_login, "configure at least one login provider")
 
 
+
+def validate_traefik(compose):
+    """Check the optional overlay using synthetic, fixed CI proxy values."""
+    app, db = compose["services"]["lansurfer"], compose["services"]["postgres"]
+    app_networks = app.get("networks", {})
+    db_networks = db.get("networks", {})
+    proxy = compose.get("networks", {}).get("traefik", {})
+    labels = app.get("labels", {})
+
+    require("default" in app_networks and "traefik" in app_networks,
+            "application must join both private and proxy networks")
+    require("default" in db_networks and "traefik" not in db_networks,
+            "PostgreSQL must remain on the private network")
+    require(proxy.get("external") is True and proxy.get("name") == "ci-traefik-net",
+            "Traefik network must be the configured external network")
+    require(labels.get("traefik.enable") == "true", "Traefik routing must be enabled for app")
+    require(db.get("labels", {}).get("traefik.enable") == "false",
+            "Traefik routing must be disabled for PostgreSQL")
+    expected = {
+        "traefik.docker.network": "ci-traefik-net",
+        "traefik.http.routers.lansurfer.rule": "Host(`ci.example.invalid`)",
+        "traefik.http.routers.lansurfer.entrypoints": "websecure",
+        "traefik.http.routers.lansurfer.tls": "true",
+        "traefik.http.routers.lansurfer.tls.certresolver": "ci-resolver",
+        "traefik.http.routers.lansurfer.service": "lansurfer",
+        "traefik.http.services.lansurfer.loadbalancer.server.port": "8080",
+    }
+    for key, value in expected.items():
+        require(labels.get(key) == value, f"Traefik label {key} is missing or incorrect")
+
+
 def test_mutations(valid):
     """Check fail-closed behavior against the real, resolved Compose model."""
     cases = {
@@ -147,13 +182,15 @@ def test_mutations(valid):
 
 
 def main():
-    if len(sys.argv) > 2 or (len(sys.argv) == 2 and sys.argv[1] != "--test-mutations"):
-        sys.exit("usage: test-production-compose.py [--test-mutations]")
+    if sys.argv[1:] not in ([], ["--test-mutations"], ["--test-traefik"]):
+        sys.exit("usage: test-production-compose.py [--test-mutations|--test-traefik]")
     try:
         compose = json.load(sys.stdin)
         validate(compose)
         if sys.argv[1:] == ["--test-mutations"]:
             test_mutations(compose)
+        elif sys.argv[1:] == ["--test-traefik"]:
+            validate_traefik(compose)
     except (KeyError, TypeError, ValueError) as error:
         sys.exit(f"production Compose validation failed: {error}")
     print("Production Compose configuration and safety checks passed.")
