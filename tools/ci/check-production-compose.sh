@@ -49,4 +49,23 @@ compose_config |
 compose_config -f "$root/deploy/compose.traefik.yaml" |
   docker run --rm -i --network none python:3.13-alpine \
     python3 -c "$validator" --test-traefik
-echo "Current production Compose and Traefik models passed static CI checks."
+# Also catch release template/image-marker and documented env-key drift on
+# deploy-only PRs. The heavyweight release snapshot workflow is not triggered
+# for deploy/**, so run its existing fast offline asset tests here instead.
+# Send only required files over Docker stdin (the runner Docker daemon is remote).
+tar -C "$root" -cf - \
+  scripts/release/release_policy.py \
+  scripts/release/render_deployment.py \
+  scripts/release/test_deployment_assets.py \
+  deploy/compose.production.yaml \
+  deploy/compose.traefik.yaml \
+  deploy/production.env.example \
+  docs/CONFIGURATION.md |
+  docker run --rm -i --network none python:3.13-alpine sh -ec '
+    mkdir -p /workspace
+    cd /workspace
+    tar -xf -
+    python3 -m unittest discover -s scripts/release -p test_deployment_assets.py -v
+  '
+
+echo "Current production Compose, Traefik and release-asset configs passed static CI checks."
