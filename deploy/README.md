@@ -111,14 +111,15 @@ Docker Compose itself validates structure using
 configuration check and negative mutation tests. Operators do not need
 to download or install Python to follow the simple Quickstart.
 
-The project CI uses an isolated Docker runner to boot the published
-baseline image, verify PostgreSQL readiness and persistence, and
-validate the Traefik overlay without launching a proxy. During a real
-tag release, the publisher additionally boots the **freshly built tagged
-image** using its actual rendered deployment package on a disposable
-Docker project. It verifies database startup, health/readiness and the
-enabled/disabled public Imprint route **before** publishing the draft.
-This does not replace a tested operator backup or proxy integration test.
+Regular PR CI builds and smoke-tests the current development source. It
+also validates the production Compose configuration and optional Traefik
+overlay with synthetic values, without starting an older published image.
+During a tag release, the publisher boots the **exact tagged image**
+with its **matching rendered deployment package** in a disposable Docker
+project. It verifies database startup, health/readiness, CLI behavior,
+imprint enabled/disabled and synthetic backup/restore **before** publishing
+the release draft. This does not replace a real operator restore drill or
+proxy integration test.
 The separate [release snapshot pipeline](../.github/workflows/release-snapshot.yml)
 tests release-asset generation with synthetic digests.
 

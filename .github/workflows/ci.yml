@@ -89,6 +89,10 @@ jobs:
         shell: bash
         run: bash tools/ci/runner.sh build
 
+      - name: Validate current production Compose and Traefik models
+        shell: bash
+        run: bash tools/ci/check-production-compose.sh
+
       - name: Probe Compose services through Docker DNS
         shell: bash
         run: bash tools/ci/runner.sh smoke
