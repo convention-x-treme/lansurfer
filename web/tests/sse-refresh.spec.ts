@@ -35,7 +35,7 @@ async function openList(page: Page, request: Parameters<typeof resetFixture>[0],
   if (path.startsWith("/game-requests?")) await expect(page.locator("#game-request-list")).toBeVisible();
   else await expect(page.locator(".detail-shell")).toBeVisible();
   await waitForRealtime(page, request, 1);
-  await page.clock.pauseAt(new Date("2026-10-20T18:00:00Z"));
+  await page.clock.pauseAt(Date.now() + 60_000);
 }
 
 async function emit(page: Page, type: string, id = requestId): Promise<void> {
