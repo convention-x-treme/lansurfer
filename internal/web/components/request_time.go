@@ -35,7 +35,25 @@ func RequestTime(status gamerequest.Status, startsAt time.Time, startedAt *time.
 	if status == gamerequest.StatusCancelled {
 		return RequestTimePresentation{Label: "planned " + startsAt.UTC().Format("Jan 2"), At: startsAt}
 	}
+	if now.Sub(startsAt) > overdueAfter {
+		// An open request has no recorded actual start: say only when it was planned.
+		return RequestTimePresentation{Label: "planned start: " + overdueLabel(now.Sub(startsAt), startsAt), At: startsAt}
+	}
 	return RequestTimePresentation{Label: "starts " + plannedStartLabel(startsAt, now), At: startsAt, Urgency: plannedStartUrgency(startsAt, now)}
+}
+
+// overdueAfter is how long past its planned time an open request still reads "starts now".
+const overdueAfter = 5 * time.Minute
+
+func overdueLabel(elapsed time.Duration, startsAt time.Time) string {
+	switch {
+	case elapsed < time.Hour:
+		return fmt.Sprintf("%d min ago", int(elapsed/time.Minute))
+	case elapsed < 24*time.Hour:
+		return fmt.Sprintf("%d h ago", int(elapsed/time.Hour))
+	default:
+		return startsAt.UTC().Format("Jan 2")
+	}
 }
 
 func historicalRequestTime(at, now time.Time) RequestTimePresentation {
