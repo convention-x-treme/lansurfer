@@ -5,7 +5,7 @@ go 1.27.1
 require (
 	github.com/a-h/templ v0.3.1070
 	github.com/coreos/go-oidc/v3 v3.21.0
-	github.com/go-chi/chi/v5 v5.3.2
+	github.com/go-chi/chi/v5 v5.5.0
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/marknefedov/go-webpush/v2 v2.0.0
 	github.com/pressly/goose/v3 v3.29.0
