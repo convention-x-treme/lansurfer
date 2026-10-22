@@ -32,6 +32,7 @@ type GameRequestCommands interface {
 	Create(context.Context, string, string, *int32, time.Time, string) (gamerequest.GameRequest, error)
 	Join(context.Context, string, string) error
 	Leave(context.Context, string, string) error
+	RemoveMember(ctx context.Context, requestID, hostID, memberID string) error
 	Start(context.Context, string, string) error
 	Close(context.Context, string, string) error
 	Cancel(context.Context, string, string) error
@@ -468,6 +469,13 @@ func (h *GameRequests) Leave(w http.ResponseWriter, r *http.Request) {
 	h.changeRequest(w, r, h.commands.Leave)
 }
 
+func (h *GameRequests) RemoveMember(w http.ResponseWriter, r *http.Request) {
+	memberID := chi.URLParam(r, "userID")
+	h.changeRequest(w, r, func(ctx context.Context, requestID, hostID string) error {
+		return h.commands.RemoveMember(ctx, requestID, hostID, memberID)
+	})
+}
+
 func (h *GameRequests) Start(w http.ResponseWriter, r *http.Request) {
 	h.changeRequest(w, r, h.commands.Start)
 }
@@ -797,6 +805,7 @@ func gameRequestErrorStatus(err error) int {
 		return http.StatusForbidden
 	case errors.Is(err, gamerequest.ErrFull), errors.Is(err, gamerequest.ErrAlreadyMember),
 		errors.Is(err, gamerequest.ErrNotMember), errors.Is(err, gamerequest.ErrCreatorCannotLeave),
+		errors.Is(err, gamerequest.ErrCreatorCannotBeRemoved),
 		errors.Is(err, gamerequest.ErrNotOpen), errors.Is(err, gamerequest.ErrNotPlaying),
 		errors.Is(err, gamerequest.ErrChatClosed), errors.Is(err, gamerequest.ErrNotActive),
 		errors.Is(err, gamerequest.ErrCapacityBelowMembers), errors.Is(err, gamerequest.ErrSessionInformationKeyExists),
@@ -854,6 +863,8 @@ func gameRequestMessage(err error) string {
 		return "You are not currently a member of this Game Request."
 	case errors.Is(err, gamerequest.ErrCreatorCannotLeave):
 		return "The Host cannot leave their own Game Request."
+	case errors.Is(err, gamerequest.ErrCreatorCannotBeRemoved):
+		return "The Host cannot be removed from their own Game Request."
 	case errors.Is(err, gamerequest.ErrNotCreator):
 		return "Only the Host can start, close, or cancel this Game Request."
 	case errors.Is(err, gamerequest.ErrNotOpen):

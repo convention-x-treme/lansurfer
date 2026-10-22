@@ -275,6 +275,32 @@ func (f *fixture) Leave(_ context.Context, requestID, userID string) error {
 	return nil
 }
 
+func (f *fixture) RemoveMember(_ context.Context, requestID, hostID, memberID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	entry, ok := f.requests[requestID]
+	if !ok {
+		return gamerequest.ErrNotFound
+	}
+	if entry.request.CreatorID != hostID {
+		return gamerequest.ErrNotCreator
+	}
+	if !isActiveStatus(entry.request.Status) {
+		return gamerequest.ErrNotActive
+	}
+	if memberID == hostID {
+		return gamerequest.ErrCreatorCannotBeRemoved
+	}
+	if !entry.members[memberID] {
+		return gamerequest.ErrNotMember
+	}
+	delete(entry.members, memberID)
+	entry.request.MemberCount--
+	entry.activity = append(entry.activity, requestquery.Activity{Kind: gamerequest.ActivityRemoved, ActorID: memberID, ActorGameNick: "Ada Player", OccurredAt: time.Now()})
+	f.broker.Publish(gamerequest.Event{Type: gamerequest.EventLeft, RequestID: requestID})
+	return nil
+}
+
 func (f *fixture) Start(_ context.Context, requestID, userID string) error {
 	return f.transition(requestID, userID, gamerequest.StatusOpen, gamerequest.StatusPlaying, gamerequest.ActivityStarted, gamerequest.EventStarted)
 }

@@ -1789,7 +1789,8 @@ func (r *routerGameRequests) Leave(_ context.Context, requestID, userID string) 
 	r.left = requestID + "/" + userID
 	return nil
 }
-func (*routerGameRequests) RecordView(context.Context, string, string) error { return nil }
+func (*routerGameRequests) RemoveMember(context.Context, string, string, string) error { return nil }
+func (*routerGameRequests) RecordView(context.Context, string, string) error           { return nil }
 func (r *routerGameRequests) UpdateDetails(_ context.Context, requestID, userID string, input gamerequest.UpdateDetailsInput) error {
 	r.details = requestID + "/" + userID
 	r.detailsInput = input

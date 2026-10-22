@@ -297,6 +297,7 @@ Time presentation follows lifecycle state. Open requests show planned time and m
 Coordination continues while a request is `playing`:
 
 - players may join or leave while capacity permits; the Host remains a member and cannot leave;
+- the Host may remove another participant from an `open` or `playing` request after confirming; the result matches that participant leaving (place freed, member-only access lost, live update), the history entry reads "was removed" rather than "left", no notification is sent, and the removed player may join again under the usual rules. There is no ban, rejoin block, or moderation state;
 - the Host may change the maximum player count while `open` or `playing`, but never below current participation (see [Capacity](#capacity));
 - the Host maintains generic key/value session information; only the Host and currently joined players read it while the request is `open` or `playing`;
 - terminal requests do not expose session information; leaving removes future read access;

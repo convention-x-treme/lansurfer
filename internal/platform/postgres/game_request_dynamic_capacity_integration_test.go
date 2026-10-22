@@ -808,3 +808,49 @@ func TestCapacityChangesFollowFreePlacesAndStayOutOfTrending(t *testing.T) {
 			after.ActivityCount, after.RequestCount, before.ActivityCount, before.RequestCount)
 	}
 }
+
+func TestHostRemovesParticipant(t *testing.T) {
+	fixture := newPlayingFixture(t)
+	request := fixture.createLimited(t, 2, "Host removal")
+	if err := fixture.requests.Join(t.Context(), request.ID, fixture.guest); err != nil {
+		t.Fatalf("join: %v", err)
+	}
+
+	if err := fixture.requests.RemoveMember(t.Context(), request.ID, fixture.guest, fixture.host); !errors.Is(err, gamerequest.ErrNotCreator) {
+		t.Fatalf("participant removing the host error = %v, want ErrNotCreator", err)
+	}
+	if err := fixture.requests.RemoveMember(t.Context(), request.ID, fixture.host, fixture.host); !errors.Is(err, gamerequest.ErrCreatorCannotBeRemoved) {
+		t.Fatalf("host removing self error = %v, want ErrCreatorCannotBeRemoved", err)
+	}
+	if err := fixture.requests.RemoveMember(t.Context(), request.ID, fixture.host, fixture.outsider); !errors.Is(err, gamerequest.ErrNotMember) {
+		t.Fatalf("removing a non-member error = %v, want ErrNotMember", err)
+	}
+	if err := fixture.requests.RemoveMember(t.Context(), request.ID, fixture.host, fixture.guest); err != nil {
+		t.Fatalf("host removes guest: %v", err)
+	}
+	if got := fixture.memberCount(t, request.ID); got != 1 {
+		t.Fatalf("members after removal = %d, want 1", got)
+	}
+	var removedActor string
+	if err := fixture.pool.QueryRow(t.Context(),
+		`SELECT actor_id::text FROM game_request_activity WHERE game_request_id = $1 AND kind = 'removed'`, request.ID).
+		Scan(&removedActor); err != nil || removedActor != fixture.guest {
+		t.Fatalf("removed activity actor = %q, %v; want the removed guest", removedActor, err)
+	}
+	if err := fixture.requests.Join(t.Context(), request.ID, fixture.guest); err != nil {
+		t.Fatalf("removed participant cannot rejoin: %v", err)
+	}
+
+	if err := fixture.requests.Start(t.Context(), request.ID, fixture.host); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	if err := fixture.requests.RemoveMember(t.Context(), request.ID, fixture.host, fixture.guest); err != nil {
+		t.Fatalf("host removes guest while playing: %v", err)
+	}
+	if err := fixture.requests.Close(t.Context(), request.ID, fixture.host); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	if err := fixture.requests.RemoveMember(t.Context(), request.ID, fixture.host, fixture.guest); !errors.Is(err, gamerequest.ErrNotActive) {
+		t.Fatalf("removal from closed request error = %v, want ErrNotActive", err)
+	}
+}

@@ -12,20 +12,21 @@ import (
 const maxDescriptionLength = 1000
 
 var (
-	ErrNotFound             = errors.New("game request not found")
-	ErrGameUnavailable      = errors.New("game unavailable")
-	ErrInvalidMaxPlayers    = errors.New("invalid maximum players")
-	ErrInvalidStartsAt      = errors.New("invalid start time")
-	ErrInvalidDescription   = errors.New("invalid description")
-	ErrNotOpen              = errors.New("game request is not open")
-	ErrNotPlaying           = errors.New("game request is not playing")
-	ErrNotActive            = errors.New("game request is not active")
-	ErrFull                 = errors.New("game request is full")
-	ErrAlreadyMember        = errors.New("user is already a member")
-	ErrNotMember            = errors.New("user is not a member")
-	ErrCreatorCannotLeave   = errors.New("creator cannot leave game request")
-	ErrNotCreator           = errors.New("user is not the game request creator")
-	ErrCapacityBelowMembers = errors.New("maximum players is below current membership")
+	ErrNotFound               = errors.New("game request not found")
+	ErrGameUnavailable        = errors.New("game unavailable")
+	ErrInvalidMaxPlayers      = errors.New("invalid maximum players")
+	ErrInvalidStartsAt        = errors.New("invalid start time")
+	ErrInvalidDescription     = errors.New("invalid description")
+	ErrNotOpen                = errors.New("game request is not open")
+	ErrNotPlaying             = errors.New("game request is not playing")
+	ErrNotActive              = errors.New("game request is not active")
+	ErrFull                   = errors.New("game request is full")
+	ErrAlreadyMember          = errors.New("user is already a member")
+	ErrNotMember              = errors.New("user is not a member")
+	ErrCreatorCannotLeave     = errors.New("creator cannot leave game request")
+	ErrNotCreator             = errors.New("user is not the game request creator")
+	ErrCreatorCannotBeRemoved = errors.New("creator cannot be removed from game request")
+	ErrCapacityBelowMembers   = errors.New("maximum players is below current membership")
 )
 
 type Status string
@@ -94,6 +95,7 @@ const (
 	ActivityCreated   ActivityKind = "created"
 	ActivityJoined    ActivityKind = "joined"
 	ActivityLeft      ActivityKind = "left"
+	ActivityRemoved   ActivityKind = "removed"
 	ActivityStarted   ActivityKind = "started"
 	ActivityClosed    ActivityKind = "closed"
 	ActivityCancelled ActivityKind = "cancelled"
@@ -122,6 +124,7 @@ type Repository interface {
 	Create(context.Context, GameRequest) (GameRequest, error)
 	Join(context.Context, string, string) error
 	Leave(context.Context, string, string) error
+	RemoveMember(ctx context.Context, requestID, hostID, memberID string) error
 	SetStatus(context.Context, string, string, Status) error
 	RecordView(context.Context, string, string) error
 	PostMessage(ctx context.Context, requestID, userID, body string) (Message, error)
@@ -207,6 +210,16 @@ func (s *Service) Join(ctx context.Context, requestID, userID string) error {
 
 func (s *Service) Leave(ctx context.Context, requestID, userID string) error {
 	err := s.repository.Leave(ctx, requestID, userID)
+	if err == nil {
+		s.publish(Event{Type: EventLeft, RequestID: requestID})
+	}
+	return err
+}
+
+// RemoveMember lets the Host free a participant's place. The result matches
+// Leave, so it publishes the same realtime event.
+func (s *Service) RemoveMember(ctx context.Context, requestID, hostID, memberID string) error {
+	err := s.repository.RemoveMember(ctx, requestID, hostID, memberID)
 	if err == nil {
 		s.publish(Event{Type: EventLeft, RequestID: requestID})
 	}

@@ -19,6 +19,7 @@ const (
 	ActivityCreated   ActivityKind = "created"
 	ActivityJoined    ActivityKind = "joined"
 	ActivityLeft      ActivityKind = "left"
+	ActivityRemoved   ActivityKind = "removed"
 	ActivityStarted   ActivityKind = "started"
 	ActivityClosed    ActivityKind = "closed"
 	ActivityCancelled ActivityKind = "cancelled"
