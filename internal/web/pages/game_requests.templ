@@ -712,6 +712,12 @@ templ GameRequestDetailContentWithSession(request requestquery.Request, viewerID
 							if member.ID == request.CreatorID {
 								<span class="status-chip status-chip-host">Host</span>
 							}
+							if requestActive(request) && request.CreatorID == viewerID && member.ID != request.CreatorID {
+								<form method="post" action={ "/game-requests/" + request.ID + "/members/" + member.ID + "/remove" } data-confirm={ "Remove " + member.GameNick + " from this Game Request? They can join again." }>
+									@components.CSRFInput()
+									<button class="btn btn-quiet btn-square btn-sm" type="submit" aria-label={ "Remove " + member.GameNick } title={ "Remove " + member.GameNick }><i class="ph ph-user-minus" aria-hidden="true"></i></button>
+								</form>
+							}
 							if !activityTime(member, request).IsZero() {
 								<time class="member-time" datetime={ activityTime(member, request).Format(time.RFC3339) } title={ components.AbsoluteTime(activityTime(member, request)) } data-local-time="clock">{ memberTimeLabel(member, request) }</time>
 							}
@@ -1025,7 +1031,7 @@ func activityIcon(kind gamerequest.ActivityKind) string {
 		return "ph-plus-circle"
 	case gamerequest.ActivityJoined:
 		return "ph-user-plus"
-	case gamerequest.ActivityLeft:
+	case gamerequest.ActivityLeft, gamerequest.ActivityRemoved:
 		return "ph-user-minus"
 	case gamerequest.ActivityStarted:
 		return "ph-play"
@@ -1053,6 +1059,8 @@ func activityLabel(entry requestquery.Activity) string {
 		return entry.ActorGameNick + " joined"
 	case gamerequest.ActivityLeft:
 		return entry.ActorGameNick + " left"
+	case gamerequest.ActivityRemoved:
+		return entry.ActorGameNick + " was removed"
 	case gamerequest.ActivityClosed:
 		return entry.ActorGameNick + " closed the request"
 	case gamerequest.ActivityStarted:

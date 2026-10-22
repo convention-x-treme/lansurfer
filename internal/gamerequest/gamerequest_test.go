@@ -289,8 +289,9 @@ func (r *recordingRepository) Create(_ context.Context, request GameRequest) (Ga
 	request.ID = "request-1"
 	return request, nil
 }
-func (r *recordingRepository) Join(context.Context, string, string) error { return r.joinErr }
-func (*recordingRepository) Leave(context.Context, string, string) error  { return nil }
+func (r *recordingRepository) Join(context.Context, string, string) error               { return r.joinErr }
+func (*recordingRepository) Leave(context.Context, string, string) error                { return nil }
+func (*recordingRepository) RemoveMember(context.Context, string, string, string) error { return nil }
 func (r *recordingRepository) SetStatus(_ context.Context, _, _ string, status Status) error {
 	r.status = status
 	return r.statusErr

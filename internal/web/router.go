@@ -130,6 +130,8 @@ type RouterDependencies struct {
 	// BaseURL is config.Config.BaseURL, used only by /admin/pwa diagnostics
 	// (manifest/worker URLs and the expected secure-context status).
 	BaseURL string
+	// Version is the running build version shown in the footer.
+	Version string
 }
 
 // NewRouter constructs the HTTP router.
@@ -193,6 +195,7 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 	// brand name a second time beside the wordmark on every screen.
 	router.Use(webmiddleware.Instance(dependencies.InstanceName))
 	router.Use(webmiddleware.Imprint(dependencies.ImprintEnabled))
+	router.Use(webmiddleware.Version(dependencies.Version))
 
 	var metricsHandler *handler.Metrics
 	if dependencies.MetricsKeys != nil && dependencies.Metrics != nil {
@@ -296,6 +299,7 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 				requests.Get("/{requestID}/refresh", gameRequestsHandler.RefreshView)
 				requests.Post("/{requestID}/join", gameRequestsHandler.Join)
 				requests.Post("/{requestID}/leave", gameRequestsHandler.Leave)
+				requests.Post("/{requestID}/members/{userID}/remove", gameRequestsHandler.RemoveMember)
 				requests.Post("/{requestID}/start", gameRequestsHandler.Start)
 				requests.Post("/{requestID}/close", gameRequestsHandler.Close)
 				requests.Post("/{requestID}/cancel", gameRequestsHandler.Cancel)

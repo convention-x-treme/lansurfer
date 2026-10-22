@@ -52,7 +52,7 @@ func run(ctx context.Context, arguments []string, logger *slog.Logger, output io
 		if err != nil {
 			return fmt.Errorf("load configuration: %w", err)
 		}
-		if err := app.Run(ctx, cfg, logger); err != nil {
+		if err := app.Run(ctx, cfg, logger, version); err != nil {
 			return fmt.Errorf("application stopped: %w", err)
 		}
 		return nil

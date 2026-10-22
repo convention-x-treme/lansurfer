@@ -38,7 +38,7 @@ const (
 )
 
 // Run constructs and runs the LANsurfer application until ctx is cancelled.
-func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
+func Run(ctx context.Context, cfg config.Config, logger *slog.Logger, version string) error {
 	if !web.SecureContextStatus(cfg.BaseURL) {
 		logger.Warn(
 			"LANSURFER_BASE_URL is not a secure context: normal LANsurfer operation is unaffected, "+
@@ -220,6 +220,7 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		LegalDocuments:             legal.NewStore(pool),
 		ImprintEnabled:             cfg.ImprintEnabled,
 		BaseURL:                    cfg.BaseURL,
+		Version:                    version,
 	}
 	if cfg.DiscordDelivery != nil {
 		routerDependencies.DiscordSetup = discordSetup

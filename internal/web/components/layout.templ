@@ -476,6 +476,14 @@ templ Footer(brand branding.Brand) {
 				<p>Game data by <a class="link link-hover" href="https://www.igdb.com" target="_blank" rel="noopener noreferrer">IGDB.com</a></p>
 				<span class="hidden text-base-content/50 sm:inline" aria-hidden="true">│</span>
 				@OperatorAttribution("")
+				if version := webmiddleware.BuildVersion(ctx); version != "" {
+					<span class="hidden text-base-content/50 sm:inline" aria-hidden="true">│</span>
+					if url := branding.ReleaseURL(version); url != "" {
+						<p><a class="link link-hover font-mono text-xs" href={ templ.URL(url) } target="_blank" rel="noopener noreferrer" aria-label={ "Release notes for " + version }>{ version }</a></p>
+					} else {
+						<p class="font-mono text-xs">{ version }</p>
+					}
+				}
 			</div>
 		</div>
 	</footer>

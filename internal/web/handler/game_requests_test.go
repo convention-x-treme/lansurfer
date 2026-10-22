@@ -46,8 +46,11 @@ func (f *fakeGameRequestCommands) Create(_ context.Context, _, gameID string, ma
 	}
 	return f.created, nil
 }
-func (f *fakeGameRequestCommands) Join(context.Context, string, string) error   { return nil }
-func (f *fakeGameRequestCommands) Leave(context.Context, string, string) error  { return nil }
+func (f *fakeGameRequestCommands) Join(context.Context, string, string) error  { return nil }
+func (f *fakeGameRequestCommands) Leave(context.Context, string, string) error { return nil }
+func (f *fakeGameRequestCommands) RemoveMember(context.Context, string, string, string) error {
+	return nil
+}
 func (f *fakeGameRequestCommands) Close(context.Context, string, string) error  { return nil }
 func (f *fakeGameRequestCommands) Cancel(context.Context, string, string) error { return nil }
 func (f *fakeGameRequestCommands) Start(_ context.Context, requestID, userID string) error {

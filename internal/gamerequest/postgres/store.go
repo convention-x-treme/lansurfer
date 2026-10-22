@@ -135,6 +135,36 @@ func (s *Store) Leave(ctx context.Context, requestID, userID string) error {
 	})
 }
 
+// RemoveMember removes another participant on the Host's behalf. The activity
+// row names the removed participant under its own kind, never as a Leave.
+func (s *Store) RemoveMember(ctx context.Context, requestID, hostID, memberID string) error {
+	databaseRequestID, databaseMemberID, err := parseIDs(requestID, memberID)
+	if err != nil {
+		return gamerequest.ErrNotFound
+	}
+	return s.withLockedRequest(ctx, databaseRequestID, func(queries *sqlcgen.Queries, locked sqlcgen.LockGameRequestRow) error {
+		if locked.CreatorID != hostID {
+			return gamerequest.ErrNotCreator
+		}
+		if !isActive(locked.Status) {
+			return gamerequest.ErrNotActive
+		}
+		if memberID == hostID {
+			return gamerequest.ErrCreatorCannotBeRemoved
+		}
+		removed, err := queries.RemoveGameRequestMember(ctx, sqlcgen.RemoveGameRequestMemberParams{
+			GameRequestID: databaseRequestID, UserID: databaseMemberID,
+		})
+		if err != nil {
+			return fmt.Errorf("remove game request member: %w", err)
+		}
+		if removed == 0 {
+			return gamerequest.ErrNotMember
+		}
+		return recordActivity(ctx, queries, databaseRequestID, databaseMemberID, gamerequest.ActivityRemoved)
+	})
+}
+
 // RecordView notes that a player opened a Game Request. A deleted request or
 // an unparsable ID is not an error the viewer should ever see: the detail page
 // they are reading rendered fine, and the navigation's "Recently viewed" list

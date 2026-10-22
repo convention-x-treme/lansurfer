@@ -261,3 +261,27 @@ func TestFooterUsesFullViewportWidth(t *testing.T) {
 		t.Errorf("footer mobile rows are not centered with added spacing: %s", body)
 	}
 }
+
+func TestFooterShowsVersionWithReleaseLinkOnlyForReleases(t *testing.T) {
+	render := func(version string) string {
+		var carried context.Context
+		webmiddleware.Version(version)(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+			carried = r.Context()
+		})).ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil))
+		var rendered bytes.Buffer
+		if err := Footer(branding.Default()).Render(carried, &rendered); err != nil {
+			t.Fatalf("render Footer: %v", err)
+		}
+		return rendered.String()
+	}
+	release := render("v1.2.3")
+	if !strings.Contains(release, `href="`+branding.RepositoryURL+`/releases/tag/v1.2.3"`) {
+		t.Errorf("release footer lacks release-notes link: %s", release)
+	}
+	for _, version := range []string{"dev", "v0.0.0-SNAPSHOT-abc1234"} {
+		body := render(version)
+		if !strings.Contains(body, version) || strings.Contains(body, "/releases/tag/") {
+			t.Errorf("version %q must render without a release link: %s", version, body)
+		}
+	}
+}

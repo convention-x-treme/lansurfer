@@ -1,7 +1,12 @@
 // Package branding contains LANsurfer's fixed brand definition.
 package branding
 
-import "github.com/convention-x-treme/lansurfer/internal/web/assets"
+import (
+	"regexp"
+	"strings"
+
+	"github.com/convention-x-treme/lansurfer/internal/web/assets"
+)
 
 //go:generate go run ./cmd/brandcss -output ../../../web/src/brand.generated.css
 
@@ -18,6 +23,17 @@ const (
 	RepositoryURL = "https://github.com/convention-x-treme/lansurfer"
 	IssuesURL     = RepositoryURL + "/issues"
 )
+
+var releaseVersion = regexp.MustCompile(`^v\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$`)
+
+// ReleaseURL returns the GitHub release-notes URL for a tagged build version,
+// or "" for development and snapshot builds, which have no published release.
+func ReleaseURL(version string) string {
+	if !releaseVersion.MatchString(version) || strings.Contains(version, "SNAPSHOT") {
+		return ""
+	}
+	return RepositoryURL + "/releases/tag/" + version
+}
 
 // Brand is the fixed product identity consumed by the web layer and asset
 // generator. It is deliberately application data rather than configuration.
