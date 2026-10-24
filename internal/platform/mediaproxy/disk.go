@@ -1,6 +1,7 @@
 package mediaproxy
 
 import (
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -13,7 +14,8 @@ import (
 // Service.Prune removes unknown avatars. Operators may delete the directory
 // to reset it.
 type DiskStore struct {
-	dir string
+	dir  string
+	root *os.Root
 }
 
 func NewDiskStore(dir string, buckets ...string) (*DiskStore, error) {
@@ -28,11 +30,35 @@ func NewDiskStore(dir string, buckets ...string) (*DiskStore, error) {
 	}
 	_ = probe.Close()
 	_ = os.Remove(probe.Name())
-	return &DiskStore{dir: dir}, nil
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return nil, fmt.Errorf("open media cache directory: %w", err)
+	}
+	return &DiskStore{dir: dir, root: root}, nil
+}
+
+// errUnsafeName rejects bucket or id values that are not one plain path
+// element, so no caller can reach outside the store directory.
+var errUnsafeName = errors.New("media cache name is not a single path element")
+
+// name returns the root-relative path bucket/id. Each must be one clean
+// element: not empty, not "." or "..", and free of separators. The os.Root
+// additionally stops symlinks from leading out of the directory.
+func name(bucket, id string) (string, error) {
+	for _, element := range []string{bucket, id} {
+		if element == "" || element == "." || element == ".." || strings.ContainsAny(element, `/\`) {
+			return "", fmt.Errorf("%w: %q", errUnsafeName, element)
+		}
+	}
+	return bucket + "/" + id, nil
 }
 
 func (d *DiskStore) Get(size, id string) ([]byte, bool, error) {
-	image, err := os.ReadFile(filepath.Join(d.dir, size, id))
+	file, err := name(size, id)
+	if err != nil {
+		return nil, false, err
+	}
+	image, err := d.root.ReadFile(file)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, false, nil
 	}
@@ -45,11 +71,16 @@ func (d *DiskStore) Get(size, id string) ([]byte, bool, error) {
 // Put writes through a temp file and rename so a reader never sees a
 // partial image. Temp names start with "." and cannot collide with IDs.
 func (d *DiskStore) Put(size, id string, image []byte) error {
-	temp, err := os.CreateTemp(filepath.Join(d.dir, size), ".tmp-*")
+	file, err := name(size, id)
 	if err != nil {
 		return err
 	}
-	defer os.Remove(temp.Name()) // no-op after a successful rename
+	tempName := size + "/.tmp-" + rand.Text()
+	temp, err := d.root.OpenFile(tempName, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return err
+	}
+	defer d.root.Remove(tempName) // no-op after a successful rename
 	if _, err := temp.Write(image); err != nil {
 		_ = temp.Close()
 		return err
@@ -57,7 +88,7 @@ func (d *DiskStore) Put(size, id string, image []byte) error {
 	if err := temp.Close(); err != nil {
 		return err
 	}
-	return os.Rename(temp.Name(), filepath.Join(d.dir, size, id))
+	return d.root.Rename(tempName, file)
 }
 
 // IDs lists cached images, skipping the "." temp files of in-flight Puts.
@@ -76,7 +107,11 @@ func (d *DiskStore) IDs(bucket string) ([]string, error) {
 }
 
 func (d *DiskStore) Delete(bucket, id string) error {
-	if err := os.Remove(filepath.Join(d.dir, bucket, id)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+	file, err := name(bucket, id)
+	if err != nil {
+		return err
+	}
+	if err := d.root.Remove(file); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
 	return nil
