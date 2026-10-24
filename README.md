@@ -376,3 +376,4 @@ Third-party license notices are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.
 Sometimes the best game at a LAN is the twenty-year-old one you suddenly discover ten other people also want to play.
 
 **Built for LAN parties. Built for gaming communities. Built in the open.**
+
