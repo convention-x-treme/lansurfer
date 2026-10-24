@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# Toolchains run in Docker, not on the dedicated self-hosted LXC.
+# Hermetic CI toolchains: pinned images, identical locally and on GitHub-hosted runners.
 FROM golang:1.27.1-bookworm AS go
 ENV GOTOOLCHAIN=local
 WORKDIR /workspace
@@ -15,7 +15,7 @@ WORKDIR /workspace
 
 # Matches release workflow; bundled Go, Docker CLI and Buildx.
 FROM goreleaser/goreleaser:v2.18.3 AS release
-RUN apk add --no-cache bash python3 jq git coreutils github-cli curl docker-cli-compose
+RUN apk add --no-cache bash python3 jq git coreutils curl docker-cli-compose
 ENV GOTOOLCHAIN=local
 WORKDIR /workspace
 
