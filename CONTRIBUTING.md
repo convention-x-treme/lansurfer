@@ -462,6 +462,7 @@ Where GitHub branch/tag rulesets are not enforced (#150 tracks enabling them), m
 - Inspect existing code and the relevant product/architecture sections before designing new structures.
 - Add tests where regressions would matter.
 - Do not add dependencies for hypothetical future flexibility.
+- The `Dependency review` workflow checks new Go/npm dependencies against a license allow-list kept in `.github/workflows/dependency-review.yml`; it fails on disallowed or unparseable licenses but only lists dependencies with no license data, so check those by hand.
 - Update documentation when public behavior, configuration, or architecture changes.
 - Explain new direct dependencies, significant tradeoffs, verification limits, and affected cross-capability contracts in the pull request.
 - Feature-branch specs/plans/tasks are allowed when they help collaboration. Before merge, promote durable decisions to canonical docs, move remaining work to GitHub Issues, remove temporary working artifacts, and prefer a squash merge for branches that contained them.
