@@ -25,7 +25,11 @@ jobs:
           # listed: add one only after a maintainer reviews it and updates
           # THIRD_PARTY_NOTICES.md.
           allow-licenses: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, MPL-2.0, OFL-1.1
-          # Vulnerabilities: action defaults (fail on any new runtime advisory).
+          # Scopes apply to the license check too; the default (runtime) would
+          # skip every devDependency, so include all scopes. This also makes
+          # vulnerability gating cover new dev/unknown-scope dependencies.
+          fail-on-scopes: runtime, development, unknown
+          # Vulnerabilities: otherwise action defaults (fail on any severity).
           # Non-SPDX/unparseable license strings ("unresolved") FAIL the check.
           # Dependencies with no license data at all ("unlicensed") are only
           # listed in the job log/summary; the action cannot fail on them, so
