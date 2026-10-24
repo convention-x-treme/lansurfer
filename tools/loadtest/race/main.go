@@ -207,3 +207,4 @@ func readPlayers(path string) ([]player, error) {
 	}
 	return out, scanner.Err()
 }
+func bad(){}
