@@ -1,0 +1,38 @@
+name: Dependency review
+
+# Required status check "Dependency review". Runs on every PR (no path filters)
+# so docs-only PRs still report a status. Compares the PR's Go (go.mod) and npm
+# (package-lock.json) manifests against base via GitHub's dependency graph.
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-review:
+    name: Dependency review
+    runs-on: ubuntu-latest
+    steps:
+      - name: Review dependency changes
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          # License policy (SPDX allow-list) lives here; LANsurfer is AGPL-3.0.
+          # Permissive licenses only: the set present in go.mod/package-lock.json
+          # (MIT, Apache-2.0, BSD-3-Clause, ISC, 0BSD, MPL-2.0, OFL-1.1 fonts)
+          # plus BSD-2-Clause. Copyleft (GPL/LGPL/AGPL) is deliberately not
+          # listed: add one only after a maintainer reviews it and updates
+          # THIRD_PARTY_NOTICES.md.
+          allow-licenses: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, MPL-2.0, OFL-1.1
+          # Scopes apply to the license check too; the default (runtime) would
+          # skip every devDependency, so include all scopes. This also makes
+          # vulnerability gating cover new dev/unknown-scope dependencies.
+          fail-on-scopes: runtime, development, unknown
+          # Vulnerabilities: otherwise action defaults (fail on any severity).
+          # Non-SPDX/unparseable license strings ("unresolved") FAIL the check.
+          # Dependencies with no license data at all ("unlicensed") are only
+          # listed in the job log/summary; the action cannot fail on them, so
+          # a reviewer must check them. Exempt a verified one with
+          # allow-dependencies-licenses: pkg:npm/<name>
+          comment-summary-in-pr: never
