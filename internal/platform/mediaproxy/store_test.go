@@ -55,6 +55,46 @@ func TestDiskStoreRoundTrip(t *testing.T) {
 	}
 }
 
+func TestDiskStoreRejectsPathTraversal(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "cache")
+	store, err := NewDiskStore(dir, "small")
+	if err != nil {
+		t.Fatal(err)
+	}
+	victim := filepath.Join(root, "victim")
+	if err := os.WriteFile(victim, []byte("keep"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct{ bucket, id string }{
+		{"small", "../victim"}, {"small", "a/b"}, {"small", `a\b`}, {"small", ".."}, {"small", "."},
+		{"small", ""}, {"..", "victim"}, {"", "x"}, {"../small", "x"}, {"small", "/etc/passwd"},
+	} {
+		if _, _, err := store.Get(c.bucket, c.id); err == nil {
+			t.Errorf("Get(%q, %q) error = nil", c.bucket, c.id)
+		}
+		if err := store.Put(c.bucket, c.id, []byte("evil")); err == nil {
+			t.Errorf("Put(%q, %q) error = nil", c.bucket, c.id)
+		}
+		if err := store.Delete(c.bucket, c.id); err == nil {
+			t.Errorf("Delete(%q, %q) error = nil", c.bucket, c.id)
+		}
+	}
+	if got, err := os.ReadFile(victim); err != nil || string(got) != "keep" {
+		t.Errorf("victim = %q, %v", got, err)
+	}
+	var found []string
+	_ = filepath.WalkDir(root, func(p string, e os.DirEntry, _ error) error {
+		if !e.IsDir() {
+			found = append(found, p)
+		}
+		return nil
+	})
+	if len(found) != 1 || found[0] != victim {
+		t.Errorf("unexpected files after rejected writes: %v", found)
+	}
+}
+
 func TestDiskStoreRejectsUnusableDirectory(t *testing.T) {
 	file := filepath.Join(t.TempDir(), "file")
 	if err := os.WriteFile(file, nil, 0o600); err != nil {

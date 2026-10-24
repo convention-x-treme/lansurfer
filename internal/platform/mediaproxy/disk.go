@@ -31,8 +31,27 @@ func NewDiskStore(dir string, buckets ...string) (*DiskStore, error) {
 	return &DiskStore{dir: dir}, nil
 }
 
+// errUnsafeName rejects bucket or id values that are not one plain path
+// element, so no caller can reach outside the store directory.
+var errUnsafeName = errors.New("media cache name is not a single path element")
+
+// path joins bucket and id under d.dir. Each must be one clean element: not
+// empty, not "." or "..", and free of separators.
+func (d *DiskStore) path(bucket, id string) (string, error) {
+	for _, name := range []string{bucket, id} {
+		if name == "" || name == "." || name == ".." || strings.ContainsAny(name, `/\`) || !filepath.IsLocal(name) {
+			return "", fmt.Errorf("%w: %q", errUnsafeName, name)
+		}
+	}
+	return filepath.Join(d.dir, bucket, id), nil
+}
+
 func (d *DiskStore) Get(size, id string) ([]byte, bool, error) {
-	image, err := os.ReadFile(filepath.Join(d.dir, size, id))
+	name, err := d.path(size, id)
+	if err != nil {
+		return nil, false, err
+	}
+	image, err := os.ReadFile(name)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, false, nil
 	}
@@ -45,7 +64,11 @@ func (d *DiskStore) Get(size, id string) ([]byte, bool, error) {
 // Put writes through a temp file and rename so a reader never sees a
 // partial image. Temp names start with "." and cannot collide with IDs.
 func (d *DiskStore) Put(size, id string, image []byte) error {
-	temp, err := os.CreateTemp(filepath.Join(d.dir, size), ".tmp-*")
+	name, err := d.path(size, id)
+	if err != nil {
+		return err
+	}
+	temp, err := os.CreateTemp(filepath.Dir(name), ".tmp-*")
 	if err != nil {
 		return err
 	}
@@ -57,7 +80,7 @@ func (d *DiskStore) Put(size, id string, image []byte) error {
 	if err := temp.Close(); err != nil {
 		return err
 	}
-	return os.Rename(temp.Name(), filepath.Join(d.dir, size, id))
+	return os.Rename(temp.Name(), name)
 }
 
 // IDs lists cached images, skipping the "." temp files of in-flight Puts.
@@ -76,7 +99,11 @@ func (d *DiskStore) IDs(bucket string) ([]string, error) {
 }
 
 func (d *DiskStore) Delete(bucket, id string) error {
-	if err := os.Remove(filepath.Join(d.dir, bucket, id)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+	name, err := d.path(bucket, id)
+	if err != nil {
+		return err
+	}
+	if err := os.Remove(name); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
 	return nil
