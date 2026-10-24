@@ -83,63 +83,8 @@ case "$job" in
       bash scripts/release/verify_archive_contents.sh "$archive"
     done
     bash scripts/release/smoke_archive.sh "$amd64_archive"
-    ;;
-
-  publish-check)
-    # Safe to run on PRs: no tag, GH token, registry login, or publishing.
-    marker=""
-    IFS= read -r marker || true
-    [[ "$marker" == "lansurfer-publish-stdin-smoke" ]] ||
-      { echo "::error::Disposable publisher stdin transport failed" >&2; exit 1; }
-    unset marker
-    command -v gh && gh --version
-    command -v goreleaser && goreleaser --version
-    command -v docker && docker buildx version
-    command -v jq && command -v python3 && command -v curl
-    docker compose version
-    bash -n scripts/release/verify_cli_artifact.sh
-    bash -n scripts/release/smoke_backup_restore.sh
-    bash -n scripts/release/smoke_archive.sh
-    bash -n scripts/release/verify_archive_contents.sh
-    bash -n scripts/release/test_archive_contents.sh
-    bash scripts/release/test_archive_contents.sh
-    bash -n scripts/release/publish.sh
-    bash -n scripts/release/test_cli_artifact.sh
-    bash -n scripts/release/smoke_deployment.sh
-    bash -n scripts/release/manual_release.sh
-    bash scripts/release/test-manual-release.sh
-    # Check that Python imports cannot dirty the exact tagged working tree.
+    # Python imports must not dirty the exact tagged working tree.
     git check-ignore -q scripts/release/__pycache__/release_policy.cpython-312.pyc
-    python3 -m unittest discover -s scripts/release -p 'test_deployment_assets.py' -v
-    python3 -m unittest discover -s scripts/release -p 'test_verify_image_index.py' -v
-    echo "Release publishing toolbox is ready."
-    ;;
-
-  publish)
-    # Only the guarded release jobs may accept the privileged token via stdin.
-    if [[ "${GITHUB_EVENT_NAME:-}" == push && "${GITHUB_REF:-}" == refs/tags/v* ]]; then
-      : # Existing tag-push path.
-    elif [[ "${GITHUB_EVENT_NAME:-}" == workflow_dispatch &&
-            "${GITHUB_REF:-}" == refs/heads/main &&
-            "${LANSURFER_RELEASE_TAG:-}" == v* ]]; then
-      : # Manual path: tagged, CI-tested main revision.
-    else
-      echo "::error::Publisher requires a tag push or guarded manual release" >&2
-      exit 1
-    fi
-    token=""
-    IFS= read -r token || true
-    [[ -n "$token" ]] || { echo "::error::Missing one-time publishing token" >&2; exit 1; }
-    export GH_TOKEN="$token" GITHUB_TOKEN="$token"
-    unset token
-    builder="lansurfer-publish-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-    docker buildx create --driver docker-container --name "$builder" --use
-    trap 'docker buildx rm --force "$builder" >/dev/null 2>&1 || true' EXIT
-    docker buildx inspect --bootstrap
-    # Existing script preserves tag immutability, GHCR digest verification,
-    # GitHub draft verification and release notes before making it public.
-    bash scripts/release/publish.sh
-    unset GH_TOKEN GITHUB_TOKEN
     ;;
 
   validate)

@@ -1,4 +1,3 @@
-# Private repository CI uses Patrick's isolated runner; public repositories use GitHub-hosted runners for untrusted contributions.
 name: PR title
 
 # Run from the trusted target branch, never from untrusted PR code.
@@ -17,7 +16,7 @@ concurrency:
 jobs:
   validate:
     name: Conventional PR title
-    runs-on: ${{ fromJSON(github.event.repository.private && '["self-hosted","linux","x64","docker"]' || '"ubuntu-latest"') }}
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Check out current trusted target branch
