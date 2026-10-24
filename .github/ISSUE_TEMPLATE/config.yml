@@ -1,1 +1,5 @@
 blank_issues_enabled: true
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/convention-x-treme/lansurfer/security/advisories/new
+    about: Do not open a public issue. See SECURITY.md.

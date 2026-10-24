@@ -328,6 +328,18 @@ Squash-merge subjects feed the release notes that GoReleaser generates (see [Val
 
 Sign off every commit with `git commit -s`. The `Signed-off-by:` trailer certifies that you agree to the [Developer Certificate of Origin 1.1](https://developercertificate.org/). No bot enforces this; maintainers may ask you to amend a missing sign-off.
 
+## Review and merge policy
+
+GitHub rulesets enforce this on `main`; nobody is exempt, including administrators.
+
+- Changes land only through a pull request with one approving review from a maintainer other than the author; authors cannot approve their own PR.
+- Required checks: `Quality and unit tests`, `PostgreSQL integration tests`, `Browser interaction tests`, `Build and Compose smoke test`, `Conventional PR title`, and `Dependency review`.
+- Force pushes and branch deletion are blocked. PRs are squash-merged only, with the PR title as the commit subject; head branches are deleted after merge.
+- Resolving review conversations is not enforced, but expected before merge.
+- Workflows from fork PRs need maintainer approval before they run, and the default `GITHUB_TOKEN` is read-only.
+- New third-party GitHub Actions must be added to the repository's allowed-actions list and pinned by full commit SHA.
+- Release tags `v*` cannot be moved or deleted (tag creation stays allowed so the release workflow can publish). Future `release/vN` maintenance branches get equivalent protection when they are created.
+
 ## Validating release artifacts locally
 
 Release build configuration lives in `.goreleaser.yaml`. We use **GoReleaser OSS v2.18.3** for the release-build baseline (see #84); the existing `Dockerfile` continues to build development/Compose images, while `Dockerfile.release` packages the **same GoReleaser-built Linux amd64 and arm64 binaries** in `scratch` images.
@@ -352,7 +364,7 @@ GoReleaser OSS generates and groups changelog entries from reachable Git history
 
 ## Creating and recovering official releases
 
-Official tag-driven releases are implemented in #84. The first RC (`v0.1.0-rc.1`) and stable version (`v0.1.0`) were published in October 2026; never reuse or move either tag. Repository visibility, GHCR image visibility and release-tag protection are GitHub settings tracked in #150.
+Official tag-driven releases are implemented in #84. The first RC (`v0.1.0-rc.1`) and stable version (`v0.1.0`) were published in October 2026; never reuse or move either tag. Release tags are protected as described in [Review and merge policy](#review-and-merge-policy).
 
 ### Maintainer-controlled release
 
@@ -369,7 +381,7 @@ v2.1.0-rc.1
 
 No leading-zero version components, build metadata (`+...`), arbitrary prerelease names or retagging. **The maintainer chooses the SemVer number**, not Conventional Commits or automated version bumping.
 
-**Pre-1.0 pilot releases:** `v0.1.0-rc.1` and `v0.1.0` were the first releases. Subsequent `v0.x.y` releases still publish only the exact GHCR version tag: no floating GHCR `v0`, `v0.1`, or `latest` aliases. The publisher requests `make_latest=false` for all 0.x releases, but GitHub's `GET /releases/latest` may still resolve the newest published stable 0.x release; that API behavior is **not** evidence of a GHCR `latest` tag. GitHub labels `-rc.N` as a prerelease; an unqualified `v0.x.y` is a regular SemVer release. Public 1.0 remains a separate milestone.
+**Pre-1.0 releases:** `v0.1.0-rc.1` and `v0.1.0` were the first releases. All `v0.x.y` releases publish only the exact GHCR version tag: no floating GHCR `v0`, `v0.1`, or `latest` aliases. The publisher requests `make_latest=false` for all 0.x releases, but GitHub's `GET /releases/latest` may still resolve the newest published stable 0.x release; that API behavior is **not** evidence of a GHCR `latest` tag. GitHub labels `-rc.N` as a prerelease; an unqualified `v0.x.y` is a regular SemVer release.
 
 A tag must point to a commit reachable from `main` or an existing `release/vN` maintenance branch. The exact tagged revision runs the existing quality/unit, PostgreSQL, browser and build/Compose CI **before** the publisher receives write permissions. The publisher is serialized across all versions using GitHub Actions' `queue: max` (multiple pending release jobs are queued rather than canceled). Releases must be deliberately initiated (with the manual button or a tag push) and verified one at a time.
 
@@ -453,7 +465,7 @@ There is **no atomic transaction** across GitHub draft creation, release-asset u
 - **Alias promotion fails:** avoid marking a release successful. Verify or repair the mutable aliases with the semver policy; don't point `latest` or `vN` to an older release.
 - **After the GitHub Release is public:** preserve the tag/artifacts; fixes get a new SemVer version.
 
-Where GitHub branch/tag rulesets are not enforced (#150 tracks enabling them), maintainers must avoid manual tag movement or bypassing these conventions. The workflow checks for moved refs but cannot guarantee protection from out-of-band administrative changes.
+The workflow also checks for moved refs, as defence in depth.
 
 ## Making changes
 
