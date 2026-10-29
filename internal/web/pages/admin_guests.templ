@@ -20,6 +20,7 @@ type AdminGuestRow struct {
 // current page; Total counts all guests.
 type AdminGuestsView struct {
 	Enabled   bool
+	ShowOnLogin bool
 	InviteURL string
 	Guests    []AdminGuestRow
 	Total     int
@@ -82,6 +83,15 @@ templ AdminGuests(brand branding.Brand, navigation components.NavigationState, v
 						</form>
 					}
 				</div>
+				<form method="post" action="/admin/guests/login-option" class="mt-4 grid gap-2">
+					@components.CSRFInput()
+					<label class="flex items-center gap-2 text-sm"><input class="checkbox checkbox-sm" type="checkbox" name="show_on_login" value="true" checked?={ view.ShowOnLogin }/>Show “Login as Guest” on the login page</label>
+					<p class="text-sm text-base-content/70">Anyone visiting the login page can create a new guest account. This does not restore an existing guest account.</p>
+					if !view.Enabled {
+						<p class="text-sm text-base-content/70">This option takes effect when guest access is opened.</p>
+					}
+					<div><button class="btn btn-quiet btn-sm" type="submit"><i class="ph ph-check" aria-hidden="true"></i>Save</button></div>
+				</form>
 			</section>
 			<section class="detail-card max-w-4xl" aria-labelledby="guest-accounts">
 				<h2 id="guest-accounts" class="text-[1.0625rem] font-semibold">

@@ -17,6 +17,9 @@ import (
 
 type guestBackend struct {
 	enabled     bool
+	showOnLogin bool
+	setErr      error
+	stateErr    error
 	invite      string
 	registered  []string
 	registerErr error
@@ -28,11 +31,19 @@ type guestBackend struct {
 }
 
 func (b *guestBackend) State(context.Context) (auth.GuestAccessState, error) {
-	return auth.GuestAccessState{Enabled: b.enabled, Invite: b.invite}, nil
+	return auth.GuestAccessState{Enabled: b.enabled, ShowOnLogin: b.showOnLogin, Invite: b.invite}, b.stateErr
 }
 func (b *guestBackend) SetEnabled(_ context.Context, enabled bool) error {
 	b.mutations++
 	b.enabled = enabled
+	return nil
+}
+func (b *guestBackend) SetShowOnLogin(_ context.Context, show bool) error {
+	b.mutations++
+	if b.setErr != nil {
+		return b.setErr
+	}
+	b.showOnLogin = show
 	return nil
 }
 func (b *guestBackend) Rotate(context.Context) error { b.mutations++; return nil }
@@ -166,6 +177,7 @@ func TestGuestManagementIsAdminOnly(t *testing.T) {
 	routes := []struct{ method, path string }{
 		{http.MethodGet, "/admin/guests"},
 		{http.MethodPost, "/admin/guests/access"},
+		{http.MethodPost, "/admin/guests/login-option"},
 		{http.MethodPost, "/admin/guests/invite/rotate"},
 		{http.MethodPost, "/admin/guests/11111111-1111-1111-1111-111111111111/delete"},
 		{http.MethodPost, "/admin/guests/delete-selected"},
@@ -184,6 +196,106 @@ func TestGuestManagementIsAdminOnly(t *testing.T) {
 		if backend.mutations != 0 {
 			t.Errorf("%s reached a mutation", name)
 		}
+	}
+}
+
+func TestGuestLoginOptionAvailability(t *testing.T) {
+	for _, tc := range []struct {
+		enabled, show bool
+		invite        string
+		fail          bool
+		want          bool
+	}{
+		{false, true, testInvite, false, false}, {true, false, testInvite, false, false},
+		{true, true, "", false, false}, {true, true, testInvite, true, false},
+		{true, true, testInvite, false, true},
+	} {
+		backend := &guestBackend{enabled: tc.enabled, showOnLogin: tc.show, invite: tc.invite}
+		if tc.fail {
+			backend.stateErr = errors.New("unavailable")
+		}
+		response := guestRequest(guestRouter(backend, nil, false), http.MethodGet, "/auth/login", nil, false, false)
+		body := response.Body.String()
+		if response.Code != http.StatusOK || strings.Contains(body, "/auth/guest/start") != tc.want || strings.Contains(body, testInvite) {
+			t.Fatalf("state %+v: status %d", tc, response.Code)
+		}
+		if tc.want && (strings.Contains(body, "Login is not configured") || !strings.Contains(body, "Terms of Service")) {
+			t.Fatal("guest-only login lacks legal notice or shows warning")
+		}
+	}
+	player := user.User{ID: "player", GameNick: "Player", Role: user.RoleUser}
+	backend := &guestBackend{enabled: true, showOnLogin: true, invite: testInvite}
+	page := guestRequest(guestRouter(backend, &player, false), http.MethodGet, "/auth/login", nil, true, false)
+	if strings.Contains(page.Body.String(), "/auth/guest/start") {
+		t.Fatal("signed-in viewer sees guest entry")
+	}
+	page = guestRequest(NewRouter(RouterDependencies{GuestInvites: backend}), http.MethodGet, "/auth/login", nil, false, false)
+	if strings.Contains(page.Body.String(), "/auth/guest/start") {
+		t.Fatal("guest entry visible without all dependencies")
+	}
+}
+
+func TestGuestLoginStartUsesCurrentInvite(t *testing.T) {
+	backend := &guestBackend{enabled: true, showOnLogin: true, invite: "a+b /"}
+	router := guestRouter(backend, nil, false)
+	start := func() *httptest.ResponseRecorder {
+		return guestRequest(router, http.MethodGet, "/auth/guest/start", nil, false, false)
+	}
+	if got := start(); got.Code != http.StatusSeeOther || got.Header().Get("Location") != "/auth/guest?invite="+url.QueryEscape(backend.invite) {
+		t.Fatalf("start: %d %s", got.Code, got.Header().Get("Location"))
+	}
+	backend.invite = "new"
+	if got := start(); got.Header().Get("Location") != "/auth/guest?invite=new" {
+		t.Fatalf("rotated: %d", got.Code)
+	}
+	backend.showOnLogin = false
+	if got := start(); got.Code != http.StatusNotFound {
+		t.Fatalf("hidden: %d", got.Code)
+	}
+	backend.showOnLogin = true
+	backend.enabled = false
+	if got := start(); got.Code != http.StatusNotFound {
+		t.Fatalf("disabled: %d", got.Code)
+	}
+	backend.enabled = true
+	backend.invite = ""
+	if got := start(); got.Code != http.StatusNotFound {
+		t.Fatalf("empty: %d", got.Code)
+	}
+	backend.stateErr = errors.New("failed")
+	if got := start(); got.Code != http.StatusServiceUnavailable {
+		t.Fatalf("error: %d", got.Code)
+	}
+	player := user.User{ID: "player", GameNick: "Player", Role: user.RoleUser}
+	signed := guestRequest(guestRouter(backend, &player, false), http.MethodGet, "/auth/guest/start", nil, true, false)
+	if signed.Code != http.StatusSeeOther || signed.Header().Get("Location") != "/account" {
+		t.Fatalf("signed in: %d %s", signed.Code, signed.Header().Get("Location"))
+	}
+	if len(backend.registered) != 0 {
+		t.Fatal("start registered an account")
+	}
+}
+
+func TestGuestLoginOptionManagement(t *testing.T) {
+	admin := user.User{ID: "admin", GameNick: "Admin", Role: user.RoleAdmin}
+	backend := &guestBackend{}
+	router := guestRouter(backend, &admin, false)
+	path := "/admin/guests/login-option"
+	if got := guestRequest(router, http.MethodPost, path, url.Values{"show_on_login": {"true"}}, true, false); got.Code != http.StatusForbidden {
+		t.Fatalf("no CSRF: %d", got.Code)
+	}
+	if got := guestRequest(router, http.MethodPost, path, url.Values{"show_on_login": {"bad"}}, true, true); got.Code != http.StatusBadRequest {
+		t.Fatalf("invalid: %d", got.Code)
+	}
+	if got := guestRequest(router, http.MethodPost, path, url.Values{"show_on_login": {"true"}}, true, true); got.Code != http.StatusSeeOther || !backend.showOnLogin {
+		t.Fatalf("enable: %d", got.Code)
+	}
+	if got := guestRequest(router, http.MethodPost, path, nil, true, true); got.Code != http.StatusSeeOther || backend.showOnLogin {
+		t.Fatalf("disable: %d", got.Code)
+	}
+	backend.setErr = errors.New("failed")
+	if got := guestRequest(router, http.MethodPost, path, url.Values{"show_on_login": {"true"}}, true, true); got.Code != http.StatusServiceUnavailable {
+		t.Fatalf("failure: %d", got.Code)
 	}
 }
 
@@ -256,7 +368,7 @@ func TestGuestManagementIsReadOnlyInDemoMode(t *testing.T) {
 	router := guestRouter(backend, &admin, true)
 
 	for _, path := range []string{
-		"/admin/guests/access", "/admin/guests/invite/rotate", "/admin/guests/" + guestID + "/delete",
+		"/admin/guests/access", "/admin/guests/login-option", "/admin/guests/invite/rotate", "/admin/guests/" + guestID + "/delete",
 		"/admin/guests/delete-selected", "/admin/guests/delete-all",
 	} {
 		form := url.Values{"enabled": {"false"}, "confirm_delete": {"true"}, "user_id": {guestID}}
@@ -268,14 +380,18 @@ func TestGuestManagementIsReadOnlyInDemoMode(t *testing.T) {
 	if backend.mutations != 0 || !backend.enabled {
 		t.Fatalf("a blocked action reached the service: %d mutations", backend.mutations)
 	}
-	htmx := httptest.NewRequest(http.MethodPost, "/admin/guests/delete-all", strings.NewReader(""))
+	htmx := httptest.NewRequest(http.MethodPost, "/admin/guests/login-option", strings.NewReader("show_on_login=true"))
 	htmx.Header.Set("HX-Request", "true")
+	htmx.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	htmx.AddCookie(&http.Cookie{Name: webmiddleware.SessionCookieName, Value: "opaque-session"})
 	addCSRF(htmx)
 	recorder := httptest.NewRecorder()
 	router.ServeHTTP(recorder, htmx)
 	if recorder.Code != http.StatusNoContent || recorder.Header().Get("HX-Redirect") != "/admin/guests?notice=demo-forbidden" {
 		t.Errorf("HTMX delete-all = %d %q", recorder.Code, recorder.Header().Get("HX-Redirect"))
+	}
+	if backend.mutations != 0 || backend.showOnLogin {
+		t.Fatal("demo HTMX changed preference")
 	}
 
 	if page := guestRequest(router, http.MethodGet, "/admin/guests", nil, true, false); page.Code != http.StatusOK {

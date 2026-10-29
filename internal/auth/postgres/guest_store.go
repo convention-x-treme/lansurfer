@@ -36,7 +36,18 @@ func (s *GuestAccessStore) State(ctx context.Context) (auth.GuestAccessRecord, e
 	if err != nil {
 		return auth.GuestAccessRecord{}, fmt.Errorf("get guest access: %w", err)
 	}
-	return auth.GuestAccessRecord{Enabled: row.Enabled, InviteCiphertext: row.InviteCiphertext}, nil
+	return auth.GuestAccessRecord{Enabled: row.Enabled, ShowOnLogin: row.ShowOnLogin, InviteCiphertext: row.InviteCiphertext}, nil
+}
+
+func (s *GuestAccessStore) SetShowOnLogin(ctx context.Context, show bool) error {
+	rows, err := s.queries.SetGuestShowOnLogin(ctx, show)
+	if err != nil {
+		return fmt.Errorf("set guest login option: %w", err)
+	}
+	if rows == 0 {
+		return errors.New("guest access row missing")
+	}
+	return nil
 }
 
 func (s *GuestAccessStore) SetEnabled(ctx context.Context, enabled bool, ciphertext []byte) error {

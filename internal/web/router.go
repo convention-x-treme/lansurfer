@@ -154,9 +154,13 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 	if resolvedInstanceName == "" {
 		resolvedInstanceName = brand.Name
 	}
+	var guestLogin handler.GuestLoginState
+	if dependencies.GuestInvites != nil && dependencies.GuestRegistration != nil && dependencies.GuestQueries != nil && dependencies.GuestDeletion != nil {
+		guestLogin = dependencies.GuestInvites
+	}
 	authenticationHandler := handler.NewAuthentication(
 		dependencies.Authentication, dependencies.Sessions, brand, dependencies.SecureCookies,
-		dependencies.PushDevices,
+		dependencies.PushDevices, guestLogin,
 	)
 	onboardingHandler := handler.NewOnboarding(
 		dependencies.PendingIdentities, dependencies.AccountRegistration, dependencies.GameNickClaims,
@@ -274,6 +278,7 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 		// already-signed-out request still succeeds as a no-op.
 		authenticated.Post("/auth/logout", authenticationHandler.Logout)
 		if guestsHandler != nil {
+			authenticated.Get("/auth/guest/start", guestsHandler.Start)
 			authenticated.Get("/auth/guest", guestsHandler.Show)
 			authenticated.Post("/auth/guest", guestsHandler.Submit)
 		}
@@ -359,6 +364,7 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 				if guestsHandler != nil {
 					admin.Get("/guests", guestsHandler.Manage)
 					admin.With(demoBlocked("/admin/guests")).Post("/guests/access", guestsHandler.SetAccess)
+					admin.With(demoBlocked("/admin/guests")).Post("/guests/login-option", guestsHandler.SetLoginOption)
 					admin.With(demoBlocked("/admin/guests")).Post("/guests/invite/rotate", guestsHandler.RotateInvite)
 					admin.With(demoBlocked("/admin/guests")).Post("/guests/{userID}/delete", guestsHandler.Delete)
 					admin.With(demoBlocked("/admin/guests")).Post("/guests/delete-selected", guestsHandler.DeleteSelected)

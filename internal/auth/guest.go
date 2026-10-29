@@ -19,20 +19,23 @@ var (
 
 const guestProvider = "guest"
 
-// GuestAccessState is the administrator-facing view of Guest Access.
+// GuestAccessState describes Guest Access and its public visibility.
 type GuestAccessState struct {
-	Enabled bool
-	Invite  string // administrator-only presentation
+	Enabled     bool
+	ShowOnLogin bool
+	Invite      string // Administrator presentation or explicitly enabled public entry redirect only.
 }
 
 // GuestAccessRecord is the stored singleton; the invite is encrypted.
 type GuestAccessRecord struct {
 	Enabled          bool
+	ShowOnLogin      bool
 	InviteCiphertext []byte
 }
 
 type GuestAccessRepository interface {
 	State(context.Context) (GuestAccessRecord, error)
+	SetShowOnLogin(context.Context, bool) error
 	// SetEnabled sets the flag and initializes the invite ciphertext only when
 	// none is stored yet.
 	SetEnabled(context.Context, bool, []byte) error
@@ -59,7 +62,11 @@ func (s *GuestAccessService) State(ctx context.Context) (GuestAccessState, error
 	if err != nil {
 		return GuestAccessState{}, err
 	}
-	return GuestAccessState{Enabled: record.Enabled, Invite: invite}, nil
+	return GuestAccessState{Enabled: record.Enabled, ShowOnLogin: record.ShowOnLogin, Invite: invite}, nil
+}
+
+func (s *GuestAccessService) SetShowOnLogin(ctx context.Context, show bool) error {
+	return s.repository.SetShowOnLogin(ctx, show)
 }
 
 func (s *GuestAccessService) SetEnabled(ctx context.Context, enabled bool) error {

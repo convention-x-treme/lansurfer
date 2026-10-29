@@ -2,7 +2,10 @@
 SELECT enabled FROM auth_guest_access WHERE singleton FOR UPDATE;
 
 -- name: GetGuestAccess :one
-SELECT enabled, invite_ciphertext FROM auth_guest_access WHERE singleton;
+SELECT enabled, show_on_login, invite_ciphertext FROM auth_guest_access WHERE singleton;
+
+-- name: SetGuestShowOnLogin :execrows
+UPDATE auth_guest_access SET show_on_login = sqlc.arg(show_on_login) WHERE singleton;
 
 -- name: SetGuestAccessEnabled :execrows
 UPDATE auth_guest_access

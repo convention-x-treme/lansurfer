@@ -131,8 +131,9 @@ Twitch is an optional third authentication provider. Twitch login reuses the sam
 - An administrator may enable **Guest Access**: one shared invite link lets anyone choose a Game Nick and join without an external provider. Each join creates a normal local User with a persistent session in that browser.
 - The invite never signs anyone into an existing account. A guest who loses the session cannot return to that account; linking a permanent sign-in method while signed in converts the same account (same Game Nick and data) into a permanent one.
 - Disabling Guest Access stops new joins and keeps existing guests signed in. Re-enabling restores the same invite; an explicit rotation is the only way to replace it.
+- An administrator may separately show `Login as Guest` on the login page. The option defaults off and takes effect only while Guest Access is open. Hiding it does not revoke existing invite links.
 - Administrators list accounts that still have guest access and delete them completely, using the account-deletion semantics below. Converted accounts are never listed or deletable there.
-- In demo mode Guest Management is read-only, and the daily reset deletes guest accounts but keeps the enabled flag and invite.
+- In demo mode Guest Management is read-only, and the daily reset deletes guest accounts but keeps the enabled flag, login-page preference, and invite.
 
 ### Account deletion
 

@@ -21,18 +21,19 @@ func (q *Queries) DeleteGuestIdentity(ctx context.Context, userID pgtype.UUID) e
 }
 
 const getGuestAccess = `-- name: GetGuestAccess :one
-SELECT enabled, invite_ciphertext FROM auth_guest_access WHERE singleton
+SELECT enabled, show_on_login, invite_ciphertext FROM auth_guest_access WHERE singleton
 `
 
 type GetGuestAccessRow struct {
 	Enabled          bool
+	ShowOnLogin      bool
 	InviteCiphertext []byte
 }
 
 func (q *Queries) GetGuestAccess(ctx context.Context) (GetGuestAccessRow, error) {
 	row := q.db.QueryRow(ctx, getGuestAccess)
 	var i GetGuestAccessRow
-	err := row.Scan(&i.Enabled, &i.InviteCiphertext)
+	err := row.Scan(&i.Enabled, &i.ShowOnLogin, &i.InviteCiphertext)
 	return i, err
 }
 
@@ -160,6 +161,18 @@ type SetGuestAccessEnabledParams struct {
 
 func (q *Queries) SetGuestAccessEnabled(ctx context.Context, arg SetGuestAccessEnabledParams) (int64, error) {
 	result, err := q.db.Exec(ctx, setGuestAccessEnabled, arg.Enabled, arg.InviteCiphertext)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const setGuestShowOnLogin = `-- name: SetGuestShowOnLogin :execrows
+UPDATE auth_guest_access SET show_on_login = $1 WHERE singleton
+`
+
+func (q *Queries) SetGuestShowOnLogin(ctx context.Context, showOnLogin bool) (int64, error) {
+	result, err := q.db.Exec(ctx, setGuestShowOnLogin, showOnLogin)
 	if err != nil {
 		return 0, err
 	}

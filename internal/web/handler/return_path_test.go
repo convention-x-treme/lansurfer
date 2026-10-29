@@ -47,7 +47,7 @@ func TestValidReturnPath(t *testing.T) {
 }
 
 func TestLoginCapturesReturnPath(t *testing.T) {
-	handler := NewAuthentication(&stubAuthentication{available: true}, &stubSessions{}, branding.Default(), true, nil)
+	handler := NewAuthentication(&stubAuthentication{available: true}, &stubSessions{}, branding.Default(), true, nil, nil)
 	response := httptest.NewRecorder()
 
 	handler.Login(response, httptest.NewRequest(http.MethodGet, "/auth/login?return_to="+url.QueryEscape("/game-requests?q=Counter Strike"), nil))
@@ -60,7 +60,7 @@ func TestLoginCapturesReturnPath(t *testing.T) {
 }
 
 func TestLoginIgnoresInvalidReturnPath(t *testing.T) {
-	handler := NewAuthentication(&stubAuthentication{available: true}, &stubSessions{}, branding.Default(), true, nil)
+	handler := NewAuthentication(&stubAuthentication{available: true}, &stubSessions{}, branding.Default(), true, nil, nil)
 	response := httptest.NewRecorder()
 
 	handler.Login(response, httptest.NewRequest(http.MethodGet, "/auth/login?return_to=//evil.example", nil))
@@ -81,7 +81,7 @@ func TestCallbackRedirectsToReturnPathAndClearsIt(t *testing.T) {
 	authentication := &stubAuthentication{available: true, result: auth.OAuthResult{
 		Operation: auth.FlowLogin, Resolution: auth.Resolution{Session: auth.BrowserSession{Token: "opaque-session"}},
 	}}
-	handler := NewAuthentication(authentication, &stubSessions{}, branding.Default(), true, nil)
+	handler := NewAuthentication(authentication, &stubSessions{}, branding.Default(), true, nil, nil)
 	request := returnCookieRequest(httptest.NewRequest(http.MethodGet, "/auth/callback?code=code&state=state", nil), "/games")
 	request.AddCookie(&http.Cookie{Name: browserBindingCookieName, Value: "binding"})
 	response := httptest.NewRecorder()
@@ -100,7 +100,7 @@ func TestCallbackFallsBackWhenReturnCookieIsTampered(t *testing.T) {
 	authentication := &stubAuthentication{available: true, result: auth.OAuthResult{
 		Operation: auth.FlowLogin, Resolution: auth.Resolution{Session: auth.BrowserSession{Token: "opaque-session"}},
 	}}
-	handler := NewAuthentication(authentication, &stubSessions{}, branding.Default(), true, nil)
+	handler := NewAuthentication(authentication, &stubSessions{}, branding.Default(), true, nil, nil)
 	request := returnCookieRequest(httptest.NewRequest(http.MethodGet, "/auth/callback?code=code&state=state", nil), "https://evil.example/")
 	request.AddCookie(&http.Cookie{Name: browserBindingCookieName, Value: "binding"})
 	response := httptest.NewRecorder()
@@ -114,7 +114,7 @@ func TestCallbackFallsBackWhenReturnCookieIsTampered(t *testing.T) {
 
 func TestCallbackLinkFlowIgnoresReturnPath(t *testing.T) {
 	authentication := &stubAuthentication{available: true, result: auth.OAuthResult{Operation: auth.FlowLink}}
-	handler := NewAuthentication(authentication, &stubSessions{}, branding.Default(), true, nil)
+	handler := NewAuthentication(authentication, &stubSessions{}, branding.Default(), true, nil, nil)
 	request := returnCookieRequest(httptest.NewRequest(http.MethodGet, "/auth/callback?code=code&state=state", nil), "/games")
 	request.AddCookie(&http.Cookie{Name: browserBindingCookieName, Value: "binding"})
 	response := httptest.NewRecorder()

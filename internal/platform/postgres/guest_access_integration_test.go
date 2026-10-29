@@ -113,6 +113,60 @@ func waitForLockWaiter(t *testing.T, pool *pgxpool.Pool) {
 	t.Fatal("no backend ever waited on a lock")
 }
 
+func TestGuestLoginOptionPreference(t *testing.T) {
+	e := newGuestEnv(t)
+	ctx := t.Context()
+	keyless := auth.NewGuestAccessService(authpostgres.NewGuestAccessStore(e.pool), nil)
+	state, err := keyless.State(ctx)
+	if err != nil || state.ShowOnLogin {
+		t.Fatalf("fresh state = %#v, %v", state, err)
+	}
+	if err := keyless.SetShowOnLogin(ctx, true); err != nil {
+		t.Fatal(err)
+	}
+	var ciphertext []byte
+	if err := e.pool.QueryRow(ctx, `SELECT invite_ciphertext FROM auth_guest_access`).Scan(&ciphertext); err != nil || len(ciphertext) != 0 {
+		t.Fatalf("keyless preference created ciphertext: %v", err)
+	}
+	if err := keyless.SetShowOnLogin(ctx, false); err != nil {
+		t.Fatal(err)
+	}
+	invite := e.enable(t)
+	state, err = e.access.State(ctx)
+	if err != nil || state.ShowOnLogin {
+		t.Fatalf("enabled state = %#v, %v", state, err)
+	}
+	if err := e.access.SetShowOnLogin(ctx, true); err != nil {
+		t.Fatal(err)
+	}
+	fresh := auth.NewGuestAccessService(authpostgres.NewGuestAccessStore(e.pool), guestTestKey)
+	state, err = fresh.State(ctx)
+	if err != nil || !state.ShowOnLogin || state.Invite != invite {
+		t.Fatalf("persisted state = %#v, %v", state, err)
+	}
+	if err := fresh.SetEnabled(ctx, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := fresh.SetEnabled(ctx, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := fresh.Rotate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	state, err = fresh.State(ctx)
+	if err != nil || !state.ShowOnLogin || !state.Enabled || state.Invite == invite {
+		t.Fatalf("rotated state = %#v, %v", state, err)
+	}
+	invite = state.Invite
+	if err := fresh.SetShowOnLogin(ctx, false); err != nil {
+		t.Fatal(err)
+	}
+	state, err = fresh.State(ctx)
+	if err != nil || state.ShowOnLogin || !state.Enabled || state.Invite != invite {
+		t.Fatalf("hidden state = %#v, %v", state, err)
+	}
+}
+
 func TestGuestInviteLifecycle(t *testing.T) {
 	e := newGuestEnv(t)
 	ctx := t.Context()
@@ -667,6 +721,9 @@ func TestGuestConversionSerializesWithDeletion(t *testing.T) {
 func TestGuestAccessSurvivesDemoReset(t *testing.T) {
 	e := newGuestEnv(t)
 	invite := e.enable(t)
+	if err := e.access.SetShowOnLogin(t.Context(), true); err != nil {
+		t.Fatal(err)
+	}
 	e.join(t, invite, "Before Reset")
 	var before []byte
 	if err := e.pool.QueryRow(t.Context(), `SELECT invite_ciphertext FROM auth_guest_access`).Scan(&before); err != nil {
@@ -676,9 +733,9 @@ func TestGuestAccessSurvivesDemoReset(t *testing.T) {
 		t.Fatalf("reset: %v", err)
 	}
 	var after []byte
-	var enabled bool
-	if err := e.pool.QueryRow(t.Context(), `SELECT enabled, invite_ciphertext FROM auth_guest_access`).Scan(&enabled, &after); err != nil || !enabled || !bytes.Equal(before, after) {
-		t.Fatalf("guest access after reset = %v, %v", enabled, err)
+	var enabled, show bool
+	if err := e.pool.QueryRow(t.Context(), `SELECT enabled, show_on_login, invite_ciphertext FROM auth_guest_access`).Scan(&enabled, &show, &after); err != nil || !enabled || !show || !bytes.Equal(before, after) {
+		t.Fatalf("guest access after reset = enabled %v, show %v, %v", enabled, show, err)
 	}
 	if e.count(t, `SELECT count(*) FROM users`) != 0 || e.count(t, `SELECT count(*) FROM user_identities`) != 0 || e.count(t, `SELECT count(*) FROM auth_sessions`) != 0 {
 		t.Fatal("reset kept guest accounts")

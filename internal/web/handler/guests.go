@@ -22,6 +22,7 @@ import (
 type GuestInvites interface {
 	State(context.Context) (auth.GuestAccessState, error)
 	SetEnabled(context.Context, bool) error
+	SetShowOnLogin(context.Context, bool) error
 	Rotate(context.Context) error
 	Valid(context.Context, string) (bool, error)
 }
@@ -58,6 +59,24 @@ type Guests struct {
 
 func NewGuests(invites GuestInvites, registration GuestRegistration, queries GuestQueries, deletion GuestDeletion, navigation *Navigation, brand branding.Brand, baseURL string, secureCookies bool) *Guests {
 	return &Guests{invites: invites, registration: registration, queries: queries, deletion: deletion, navigation: navigation, brand: brand, baseURL: baseURL, secureCookies: secureCookies}
+}
+
+func (h *Guests) Start(w http.ResponseWriter, r *http.Request) {
+	if _, ok := webmiddleware.CurrentUser(r.Context()); ok {
+		http.Redirect(w, r, "/account", http.StatusSeeOther)
+		return
+	}
+	state, err := h.invites.State(r.Context())
+	if err != nil {
+		webmiddleware.LogError(r, "start guest signup", err)
+		http.Error(w, "guest access unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	if !state.Enabled || !state.ShowOnLogin || state.Invite == "" {
+		h.invalid(w, r)
+		return
+	}
+	http.Redirect(w, r, "/auth/guest?invite="+url.QueryEscape(state.Invite), http.StatusSeeOther)
 }
 
 // Show renders the signup form for a valid invite. It never creates an account.
@@ -130,7 +149,7 @@ func (h *Guests) render(w http.ResponseWriter, r *http.Request, status int, prob
 		http.Error(w, "guest list unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	view := pages.AdminGuestsView{Enabled: state.Enabled, Error: problem}
+	view := pages.AdminGuestsView{Enabled: state.Enabled, ShowOnLogin: state.ShowOnLogin, Error: problem}
 	if state.Invite != "" {
 		view.InviteURL = h.baseURL + "/auth/guest?invite=" + url.QueryEscape(state.Invite)
 	}
@@ -175,6 +194,19 @@ func (h *Guests) SetAccess(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.mutateInvite(w, r, "set guest access", func() error { return h.invites.SetEnabled(r.Context(), enabled) })
+}
+
+func (h *Guests) SetLoginOption(w http.ResponseWriter, r *http.Request) {
+	var show bool
+	switch r.PostFormValue("show_on_login") {
+	case "true":
+		show = true
+	case "", "false":
+	default:
+		http.Error(w, "show_on_login must be true or false", http.StatusBadRequest)
+		return
+	}
+	h.mutateInvite(w, r, "set guest login option", func() error { return h.invites.SetShowOnLogin(r.Context(), show) })
 }
 
 // RotateInvite replaces the shared invite.
