@@ -74,6 +74,7 @@ WITH locked AS (
 DELETE FROM user_identities
 WHERE id = sqlc.arg(id)::uuid
   AND user_id = sqlc.arg(user_id)::uuid
+  AND provider_kind <> 'guest'
   AND (SELECT count(*) FROM locked) > 1;
 
 -- name: CreateSession :exec

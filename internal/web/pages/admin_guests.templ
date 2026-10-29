@@ -1,0 +1,143 @@
+package pages
+
+import (
+	"fmt"
+
+	"github.com/convention-x-treme/lansurfer/internal/web/branding"
+	"github.com/convention-x-treme/lansurfer/internal/web/components"
+)
+
+// AdminGuestRow is one account that still has a guest identity.
+type AdminGuestRow struct {
+	ID        string
+	GameNick  string
+	Role      string
+	CreatedAt    string
+	CreatedAtISO string
+}
+
+// AdminGuestsView carries the Guest Management state. Guests holds only the
+// current page; Total counts all guests.
+type AdminGuestsView struct {
+	Enabled   bool
+	InviteURL string
+	Guests    []AdminGuestRow
+	Total     int
+	From, To  int
+	PrevHref  string
+	NextHref  string
+	Notice    components.Notice
+	Error     string
+}
+
+templ AdminGuests(brand branding.Brand, navigation components.NavigationState, view AdminGuestsView) {
+	@components.Layout(brand, "Guest Management", navigation) {
+		<header class="app-topbar">
+			<div class="min-w-0">
+				<h1 class="app-title">Guest Management</h1>
+				<p class="text-sm text-base-content/70">Let people join with a Game Nick through one shared invite link.</p>
+			</div>
+		</header>
+		<div class="content-page grid content-start gap-4">
+			@components.NoticeAlert(view.Notice, "")
+			if view.Error != "" {
+				<div role="alert" class="alert alert-error"><span>{ view.Error }</span></div>
+			}
+			<section class="detail-card max-w-4xl" aria-labelledby="guest-access">
+				<div class="flex flex-wrap items-center justify-between gap-3">
+					<h2 id="guest-access" class="text-[1.0625rem] font-semibold">Invite link</h2>
+					if view.Enabled {
+						<span class="status-chip"><i class="ph ph-check-circle" aria-hidden="true"></i>Open for guests</span>
+					} else {
+						<span class="status-chip"><i class="ph ph-lock-simple" aria-hidden="true"></i>Closed</span>
+					}
+				</div>
+				if view.InviteURL != "" {
+					<div class="mt-3 flex gap-2">
+						<label class="sr-only" for="guest-invite-link">Invite link</label>
+						<input id="guest-invite-link" class="input data-text w-full min-w-0 text-base sm:text-sm" type="text" value={ view.InviteURL } readonly autocomplete="off" spellcheck="false"/>
+						<button class="btn btn-quiet btn-square" type="button" data-copy-value={ view.InviteURL } aria-label="Copy invite link" title="Copy invite link"><i class="ph ph-copy" aria-hidden="true"></i></button>
+					</div>
+					if !view.Enabled {
+						<p class="mt-2 text-sm text-base-content/70">The link does not work until guest access is opened again.</p>
+					}
+				} else {
+					<p class="mt-2 text-sm text-base-content/70">No invite yet. Open guest access to create one.</p>
+				}
+				<div class="mt-4 flex flex-wrap items-center gap-2">
+					<form method="post" action="/admin/guests/access">
+						@components.CSRFInput()
+						if view.Enabled {
+							<input type="hidden" name="enabled" value="false"/>
+							<button class="btn btn-step-back btn-sm" type="submit"><i class="ph ph-lock-simple" aria-hidden="true"></i>Close guest access</button>
+						} else {
+							<input type="hidden" name="enabled" value="true"/>
+							<button class="btn btn-primary btn-sm" type="submit"><i class="ph ph-lock-simple-open" aria-hidden="true"></i>Open guest access</button>
+						}
+					</form>
+					if view.InviteURL != "" {
+						<form method="post" action="/admin/guests/invite/rotate" data-confirm="Replace the invite? The current link stops working immediately. Existing guests stay signed in.">
+							@components.CSRFInput()
+							<button class="btn btn-ghost btn-sm" type="submit"><i class="ph ph-arrows-clockwise" aria-hidden="true"></i>New link</button>
+						</form>
+					}
+				</div>
+			</section>
+			<section class="detail-card max-w-4xl" aria-labelledby="guest-accounts">
+				<h2 id="guest-accounts" class="text-[1.0625rem] font-semibold">
+					Guests
+					<span class="data-text ml-1 text-base-content/70">{ fmt.Sprint(view.Total) }</span>
+				</h2>
+				if view.Total == 0 {
+					<p class="mt-3 text-sm">No guest accounts.</p>
+				} else {
+					<form method="post" action="/admin/guests/delete-selected" class="mt-3">
+						@components.CSRFInput()
+						<div>
+							<table class="table w-full">
+								<thead>
+									<tr>
+										<th class="w-10"><span class="sr-only">Select</span></th>
+										<th>Game Nick</th>
+										<th class="hidden sm:table-cell">Role</th>
+										<th>Joined</th>
+									</tr>
+								</thead>
+								<tbody>
+									for _, guest := range view.Guests {
+										<tr>
+											<td><input class="checkbox checkbox-sm" type="checkbox" name="user_id" value={ guest.ID } aria-label={ "Select " + guest.GameNick }/></td>
+											<td class="data-text">{ guest.GameNick }</td>
+											<td class="hidden sm:table-cell">{ guest.Role }</td>
+											<td class="whitespace-nowrap"><time class="data-text" datetime={ guest.CreatedAtISO } data-local-time="absolute">{ guest.CreatedAt }</time></td>
+										</tr>
+									}
+								</tbody>
+							</table>
+						</div>
+						<div class="mt-4 flex flex-wrap items-center justify-between gap-3">
+							<p class="data-text text-sm text-base-content/70">{ fmt.Sprintf("%d–%d of %d", view.From, view.To, view.Total) }</p>
+							<nav class="flex gap-2" aria-label="Guest pages">
+								if view.PrevHref != "" {
+									<a class="btn btn-quiet btn-sm" href={ templ.SafeURL(view.PrevHref) }><i class="ph ph-arrow-left" aria-hidden="true"></i>Previous</a>
+								}
+								if view.NextHref != "" {
+									<a class="btn btn-quiet btn-sm" href={ templ.SafeURL(view.NextHref) }><i class="ph ph-arrow-right" aria-hidden="true"></i>Next</a>
+								}
+							</nav>
+						</div>
+						<fieldset class="mt-5 grid gap-3 border-t border-base-300 pt-4">
+							<legend class="sr-only">Delete guests</legend>
+							<p class="text-sm text-base-content/70">Deleting is permanent. Their Game Requests disappear for every player, and sessions, follows, devices, memberships and activity are removed. The Game Nick becomes free again.</p>
+							<label class="flex items-center gap-2 text-sm"><input class="checkbox checkbox-sm" type="checkbox" name="confirm_delete" value="true" required/>I understand this cannot be undone</label>
+							<div class="flex flex-wrap gap-2">
+								<button class="btn btn-danger btn-sm" type="submit"><i class="ph ph-trash" aria-hidden="true"></i>Delete checked</button>
+								<button class="btn btn-danger btn-sm" type="submit" formaction="/admin/guests/delete-all"><i class="ph ph-trash" aria-hidden="true"></i>{ fmt.Sprintf("Delete all %d", view.Total) }</button>
+							</div>
+						</fieldset>
+					</form>
+				}
+			</section>
+		</div>
+	}
+}

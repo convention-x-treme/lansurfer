@@ -460,6 +460,7 @@ WITH locked AS (
 DELETE FROM user_identities
 WHERE id = $1::uuid
   AND user_id = $2::uuid
+  AND provider_kind <> 'guest'
   AND (SELECT count(*) FROM locked) > 1
 `
 

@@ -91,7 +91,7 @@ key** when enabling another feature, and protect it with your backups.
 | `LANSURFER_WEBPUSH_PUBLIC_KEY` | Required **for Web Push** | VAPID P-256 public key encoded as **Base64url**; generated alongside the matching private key. |
 | `LANSURFER_WEBPUSH_PRIVATE_KEY` | Required **for Web Push** | Matching **secret** Base64url P-256 VAPID key. Protect it; existing browser subscriptions depend on this pair. |
 | `LANSURFER_WEBPUSH_SUBJECT` | Required **for Web Push** | Contact identifier starting with `mailto:` (e.g. `mailto:admin@example.org`) or `https://`. |
-| `LANSURFER_DATA_ENCRYPTION_KEY` | Required **for Web Push or Discord delivery** | A secret **32-byte AES key in standard Base64**, used to encrypt stored push credentials and Discord webhook secrets. Generate once, reuse across integrations, and preserve across backups/restores. Replacing it makes previously stored credentials unreadable. |
+| `LANSURFER_DATA_ENCRYPTION_KEY` | Required **for Web Push, Discord delivery, or Guest Access** | A secret **32-byte AES key in standard Base64**, used to encrypt stored push credentials, Discord webhook secrets, and the shared guest invite. Generate once, reuse across integrations, and preserve across backups/restores. Replacing it makes previously stored credentials unreadable; LANsurfer refuses to start if a stored guest invite cannot be decrypted. |
 
 ## Twitch login and IGDB (optional)
 

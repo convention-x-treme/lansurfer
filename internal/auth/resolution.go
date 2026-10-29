@@ -92,47 +92,10 @@ func (s *ResolutionService) Link(ctx context.Context, profile Profile, userID st
 	if err := validateProfile(profile); err != nil {
 		return Identity{}, err
 	}
-	existing, err := s.identities.ByProviderSubject(ctx, profile.ProviderKind, profile.ProviderKey, profile.Subject)
-	if err == nil {
-		if existing.UserID != userID {
-			return Identity{}, ErrIdentityConflict
-		}
-		if err := s.identities.UpdateMetadata(ctx, profile); err != nil {
-			return Identity{}, err
-		}
-		return existing, nil
-	}
-	if !errors.Is(err, ErrIdentityNotFound) {
-		return Identity{}, err
-	}
-	linked, err := s.identities.ListByUser(ctx, userID)
-	if err != nil {
-		return Identity{}, err
-	}
-	for _, identity := range linked {
-		if identity.ProviderKind == profile.ProviderKind && identity.ProviderKey == profile.ProviderKey {
-			return Identity{}, ErrProviderAlreadyLinked
-		}
-	}
-	identity, err := s.identities.Create(ctx, Identity{
+	return s.identities.Link(ctx, Identity{
 		UserID: userID, ProviderKind: profile.ProviderKind, ProviderKey: profile.ProviderKey,
 		Subject: profile.Subject, DisplayName: profile.Name, Email: profile.Email, AvatarRef: profile.AvatarRef,
 	})
-	if errors.Is(err, ErrIdentityExists) {
-		// The pre-check above raced with a concurrent identical link request
-		// (double-click, two tabs) and lost. Resolve it the same way the
-		// ByProviderSubject branch above would have, instead of assuming a
-		// real conflict: a same-user race completes idempotently.
-		raced, raceErr := s.identities.ByProviderSubject(ctx, profile.ProviderKind, profile.ProviderKey, profile.Subject)
-		if raceErr != nil {
-			return Identity{}, fmt.Errorf("resolve concurrent identity link: %w", raceErr)
-		}
-		if raced.UserID != userID {
-			return Identity{}, ErrIdentityConflict
-		}
-		return raced, nil
-	}
-	return identity, err
 }
 
 func (s *ResolutionService) ProveExisting(ctx context.Context, proof Profile, pendingID, browserBinding string) (Resolution, error) {

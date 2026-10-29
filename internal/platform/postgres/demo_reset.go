@@ -25,6 +25,9 @@ var DemoResetKeptTables = []string{
 	"legal_documents",
 	// Rotation is blocked in demo mode; keeps the operator's scrape working.
 	"metrics_access_key",
+	// Guest Access changes are blocked in demo mode; the operator's enabled
+	// flag and invite survive so the shared link keeps working after a reset.
+	"auth_guest_access",
 	// Legacy prototype table, empty on a demo instance.
 	"events",
 }

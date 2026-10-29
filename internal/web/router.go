@@ -63,6 +63,10 @@ type RouterDependencies struct {
 	AccountRegistration  handler.AccountRegistration
 	GameNickClaims       handler.GameNickClaims
 	AccountDeleter       handler.AccountDeleter
+	GuestInvites         handler.GuestInvites
+	GuestRegistration    handler.GuestRegistration
+	GuestQueries         handler.GuestQueries
+	GuestDeletion        handler.GuestDeletion
 	Identities           handler.IdentityLookup
 	IdentityUnlinker     handler.IdentityUnlinker
 	Games                handler.GameAdministration
@@ -211,6 +215,13 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 		demoBlocked = handler.DemoForbidden
 	}
 
+	var guestsHandler *handler.Guests
+	if dependencies.GuestInvites != nil && dependencies.GuestRegistration != nil && dependencies.GuestQueries != nil && dependencies.GuestDeletion != nil {
+		guestsHandler = handler.NewGuests(
+			dependencies.GuestInvites, dependencies.GuestRegistration, dependencies.GuestQueries, dependencies.GuestDeletion,
+			navigation, brand, dependencies.BaseURL, dependencies.SecureCookies,
+		)
+	}
 	var metricsHandler *handler.Metrics
 	if dependencies.MetricsKeys != nil && dependencies.Metrics != nil {
 		metricsHandler = handler.NewMetrics(dependencies.MetricsKeys, dependencies.Metrics, navigation, brand)
@@ -262,6 +273,10 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 		// authentication (RequireAuthentication is never applied here), so an
 		// already-signed-out request still succeeds as a no-op.
 		authenticated.Post("/auth/logout", authenticationHandler.Logout)
+		if guestsHandler != nil {
+			authenticated.Get("/auth/guest", guestsHandler.Show)
+			authenticated.Post("/auth/guest", guestsHandler.Submit)
+		}
 		authenticated.Route("/onboarding", func(onboarding chi.Router) {
 			onboarding.Get("/", onboardingHandler.ShowExisting)
 			onboarding.Post("/", onboardingHandler.SubmitExisting)
@@ -338,9 +353,17 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 		if dependencies.Realtime != nil {
 			authenticated.With(handler.RequireAuthentication(dependencies.SecureCookies), handler.RequireGameNick).Get("/events/game-requests", realtimeHandler.GameRequests)
 		}
-		if dependencies.Games != nil || discordDeliveryHandler != nil || metricsHandler != nil || dependencies.LegalDocuments != nil {
+		if dependencies.Games != nil || discordDeliveryHandler != nil || metricsHandler != nil || dependencies.LegalDocuments != nil || guestsHandler != nil {
 			authenticated.Route("/admin", func(admin chi.Router) {
 				admin.Use(handler.RequireAdmin, handler.RequireGameNick)
+				if guestsHandler != nil {
+					admin.Get("/guests", guestsHandler.Manage)
+					admin.With(demoBlocked("/admin/guests")).Post("/guests/access", guestsHandler.SetAccess)
+					admin.With(demoBlocked("/admin/guests")).Post("/guests/invite/rotate", guestsHandler.RotateInvite)
+					admin.With(demoBlocked("/admin/guests")).Post("/guests/{userID}/delete", guestsHandler.Delete)
+					admin.With(demoBlocked("/admin/guests")).Post("/guests/delete-selected", guestsHandler.DeleteSelected)
+					admin.With(demoBlocked("/admin/guests")).Post("/guests/delete-all", guestsHandler.DeleteAll)
+				}
 				if metricsHandler != nil {
 					admin.Get("/metrics", metricsHandler.Show)
 					admin.With(demoBlocked("/admin/metrics")).Post("/metrics/key", metricsHandler.Rotate)

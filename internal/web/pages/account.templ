@@ -75,6 +75,7 @@ templ Account(brand branding.Brand, navigation components.NavigationState, curre
 					<fieldset class="account-choices">
 						<legend class="sr-only">Avatar source</legend>
 						for _, identity := range identities {
+							if identity.Kind != "guest" {
 							<label class="account-choice">
 								<input class="radio radio-sm" type="radio" name="identity" value={ identity.ID } checked?={ identity.AvatarSelected } disabled?={ !identity.HasAvatar }/>
 								<span class="icon-label"><i class={ providerIcon(identity.Kind) } aria-hidden="true"></i>{ identity.Label }</span>
@@ -82,6 +83,7 @@ templ Account(brand branding.Brand, navigation components.NavigationState, curre
 									<span class="ml-auto text-xs text-base-content/60">No picture</span>
 								}
 							</label>
+							}
 						}
 						<label class="account-choice">
 							<input class="radio radio-sm" type="radio" name="identity" value="default" checked?={ avatarKey == "" }/>
@@ -114,12 +116,17 @@ templ Account(brand branding.Brand, navigation components.NavigationState, curre
 										@components.CSRFInput()
 										<button class="btn btn-step-back btn-sm" type="submit"><i class="ph ph-link-break" aria-hidden="true"></i>Unlink</button>
 									</form>
+								} else if identity.Kind == "guest" {
+									<span class="shrink-0 text-xs text-base-content/60">Browser session only</span>
 								} else {
 									<span class="shrink-0 text-xs text-base-content/60">Only sign-in method</span>
 								}
 							</li>
 						}
 					</ul>
+					if accountHasGuest(identities) {
+						<p class="text-sm text-base-content/70">Guest access lives in this browser's session only. If you sign out or lose the session, you cannot get back into this account. Link a sign-in method below to keep it.</p>
+					}
 					if len(linkable) > 0 {
 						<div class="flex flex-wrap gap-2">
 							for _, option := range linkable {
@@ -163,4 +170,13 @@ func accountGameNickValue(input, current string) string {
 		return input
 	}
 	return current
+}
+
+func accountHasGuest(identities []AccountIdentityRow) bool {
+	for _, identity := range identities {
+		if identity.Kind == "guest" {
+			return true
+		}
+	}
+	return false
 }

@@ -467,6 +467,10 @@ LANsurfer User
 
 LANsurfer supports provider-neutral generic OIDC, Discord OAuth2 authorization-code login, and Twitch as independent providers.
 
+Guest Access adds a `guest` identity kind. `auth_guest_access` is an auth-owned checked singleton holding the enabled flag and the shared invite encrypted with `LANSURFER_DATA_ENCRYPTION_KEY` (administrators must be able to revisit it; no recoverable plaintext). Startup fails if a stored invite cannot be decrypted. `Valid` reads the database on every call. Guest signup locks the singleton row, validates the invite, registers the User, creates the `guest` identity (random per-guest subject, never the invite), and persists a normal session in one transaction (`app.GuestAccounts`), so rotation and disabling serialize with signup. The invite travels in a query/form field, never a path segment.
+
+`IdentityStore.Link` and `Unlink` lock the User row first; a successful link deletes the guest marker in the same transaction, and a guest marker only leaves through conversion or account deletion. Guest deletion (`GuestAccounts.DeleteGuests/DeleteAllGuests`) locks administrators in ID order, then each selected User, re-checks guest status in a separate statement after each lock, and reuses `user.Service.DeleteAccount`; any failure rolls back the whole batch. `internal/query/user` lists guests. The demo reset keeps `auth_guest_access`.
+
 The initial deployment may use Keycloak, but application/domain code must not assume Keycloak.
 
 Do not use external provider IDs as LANsurfer user IDs and never merge identities based solely on email addresses.

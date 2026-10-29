@@ -311,6 +311,11 @@ templ NavigationLinks(state NavigationState) {
 					<i class="ph ph-chart-line" aria-hidden="true"></i><span>Metrics</span>
 				</a>
 			</li>
+			<li>
+				<a class={ navigationSubLinkClass(state.Section == "administration-guests") } href="/admin/guests" aria-current={ navigationCurrent(state.Section == "administration-guests") }>
+					<i class="ph ph-user-plus" aria-hidden="true"></i><span>Guest Management</span>
+				</a>
+			</li>
 		}
 	</ul>
 }

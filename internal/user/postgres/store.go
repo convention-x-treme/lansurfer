@@ -158,3 +158,28 @@ func parseUUID(value string) (pgtype.UUID, error) {
 	}
 	return id, nil
 }
+
+// LockAdministrators locks every administrator row in ID order until the
+// surrounding transaction ends.
+func (s *Store) LockAdministrators(ctx context.Context) error {
+	if err := s.queries.LockAdministrators(ctx); err != nil {
+		return fmt.Errorf("lock administrators: %w", err)
+	}
+	return nil
+}
+
+// LockByID locks and returns one user until the surrounding transaction ends.
+func (s *Store) LockByID(ctx context.Context, id string) (user.User, error) {
+	databaseID, err := parseUUID(id)
+	if err != nil {
+		return user.User{}, user.ErrNotFound
+	}
+	row, err := s.queries.LockUserByID(ctx, databaseID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return user.User{}, user.ErrNotFound
+	}
+	if err != nil {
+		return user.User{}, fmt.Errorf("lock user: %w", err)
+	}
+	return fromUser(row.ID, row.GameNick, row.Role, row.CreatedAt, row.UpdatedAt), nil
+}

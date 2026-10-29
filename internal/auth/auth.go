@@ -82,7 +82,7 @@ type Provider interface {
 type IdentityStore interface {
 	ByProviderSubject(context.Context, string, string, string) (Identity, error)
 	ListByUser(context.Context, string) ([]Identity, error)
-	Create(context.Context, Identity) (Identity, error)
+	Link(context.Context, Identity) (Identity, error)
 	UpdateMetadata(context.Context, Profile) error
 	Unlink(context.Context, string, string) error
 }
