@@ -132,6 +132,11 @@ type RouterDependencies struct {
 	BaseURL string
 	// Version is the running build version shown in the footer.
 	Version string
+	// Demo is the demo reset schedule; nil outside demo mode. Demo mode
+	// renders the banner, registers POST /demo/admin backed by DemoAdmins,
+	// and replaces the blocked admin actions with a notice.
+	Demo       *webmiddleware.DemoSchedule
+	DemoAdmins handler.DemoAdminPromoter
 }
 
 // NewRouter constructs the HTTP router.
@@ -196,6 +201,15 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 	router.Use(webmiddleware.Instance(dependencies.InstanceName))
 	router.Use(webmiddleware.Imprint(dependencies.ImprintEnabled))
 	router.Use(webmiddleware.Version(dependencies.Version))
+	// demoBlocked is the identity outside demo mode, so the routes it wraps
+	// behave exactly as before.
+	demoBlocked := func(string) func(http.Handler) http.Handler {
+		return func(next http.Handler) http.Handler { return next }
+	}
+	if dependencies.Demo != nil {
+		router.Use(webmiddleware.Demo(*dependencies.Demo))
+		demoBlocked = handler.DemoForbidden
+	}
 
 	var metricsHandler *handler.Metrics
 	if dependencies.MetricsKeys != nil && dependencies.Metrics != nil {
@@ -255,6 +269,9 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 			onboarding.Post("/{pendingID}", onboardingHandler.SubmitPending)
 		})
 		authenticated.With(handler.RequireAuthentication(dependencies.SecureCookies), handler.RequireGameNick).Get("/welcome", onboardingHandler.ShowWelcome)
+		if dependencies.Demo != nil && dependencies.DemoAdmins != nil {
+			authenticated.With(handler.RequireAuthentication(dependencies.SecureCookies), handler.RequireGameNick).Post("/demo/admin", handler.DemoAdmin(dependencies.DemoAdmins))
+		}
 		authenticated.Route("/account", func(account chi.Router) {
 			account.Use(handler.RequireAuthentication(dependencies.SecureCookies), handler.RequireGameNick)
 			account.Get("/", accountHandler.Show)
@@ -326,7 +343,7 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 				admin.Use(handler.RequireAdmin, handler.RequireGameNick)
 				if metricsHandler != nil {
 					admin.Get("/metrics", metricsHandler.Show)
-					admin.Post("/metrics/key", metricsHandler.Rotate)
+					admin.With(demoBlocked("/admin/metrics")).Post("/metrics/key", metricsHandler.Rotate)
 				}
 				if dependencies.LegalDocuments != nil {
 					admin.Get("/legal", legalHandler.Admin)
@@ -338,26 +355,26 @@ func NewRouter(dependencies RouterDependencies) http.Handler {
 					admin.Post("/games/{gameID}", administrationHandler.UpdateGame)
 					admin.Post("/games/{gameID}/active", administrationHandler.SetGameActive)
 					admin.Post("/games/{gameID}/aliases", administrationHandler.AddGameAlias)
-					admin.Post("/games/{gameID}/aliases/{aliasID}/remove", administrationHandler.RemoveGameAlias)
+					admin.With(demoBlocked("/admin/games")).Post("/games/{gameID}/aliases/{aliasID}/remove", administrationHandler.RemoveGameAlias)
 					admin.Get("/games/{gameID}/igdb", administrationHandler.GameIGDB)
 					admin.Post("/games/{gameID}/igdb", administrationHandler.LinkGameIGDB)
-					admin.Post("/games/{gameID}/igdb/unlink", administrationHandler.UnlinkGameIGDB)
+					admin.With(demoBlocked("/admin/games")).Post("/games/{gameID}/igdb/unlink", administrationHandler.UnlinkGameIGDB)
 					admin.Get("/games/{gameID}/merge", administrationHandler.MergeGamePage)
-					admin.Post("/games/{gameID}/merge", administrationHandler.MergeGame)
-					admin.Post("/games/{gameID}/delete", administrationHandler.DeleteGame)
+					admin.With(demoBlocked("/admin/games")).Post("/games/{gameID}/merge", administrationHandler.MergeGame)
+					admin.With(demoBlocked("/admin/games")).Post("/games/{gameID}/delete", administrationHandler.DeleteGame)
 					if dependencies.ProviderSync != nil {
 						admin.Get("/igdb", administrationHandler.IGDB)
 						admin.Get("/igdb/status", administrationHandler.IGDBStatus)
-						admin.Post("/igdb/sync", administrationHandler.SyncIGDB)
+						admin.With(demoBlocked("/admin/igdb")).Post("/igdb/sync", administrationHandler.SyncIGDB)
 					}
 					admin.Get("/pwa", administrationHandler.PWA)
 				}
 				if discordDeliveryHandler != nil {
 					admin.Get("/discord", discordDeliveryHandler.Show)
-					admin.Post("/discord/connect", discordDeliveryHandler.Start)
-					admin.Post("/discord/reconnect", discordDeliveryHandler.Start)
+					admin.With(demoBlocked("/admin/discord")).Post("/discord/connect", discordDeliveryHandler.Start)
+					admin.With(demoBlocked("/admin/discord")).Post("/discord/reconnect", discordDeliveryHandler.Start)
 					admin.Get("/discord/callback", discordDeliveryHandler.Callback)
-					admin.Post("/discord/disconnect", discordDeliveryHandler.Disconnect)
+					admin.With(demoBlocked("/admin/discord")).Post("/discord/disconnect", discordDeliveryHandler.Disconnect)
 				}
 			})
 		}

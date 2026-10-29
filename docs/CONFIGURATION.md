@@ -113,6 +113,22 @@ Both options share one Twitch Developer application, but can be enabled
 | `LANSURFER_CHAT_RATE_LIMIT` | Optional; default `5` | Maximum number of chat messages per player and Game Request during the configured rate window; must be a **positive integer**. |
 | `LANSURFER_CHAT_RATE_WINDOW` | Optional; default `20s` | Rate-limiting duration, e.g. `20s` or `1m`; must be at least `1s`. Both chat settings can be overridden independently. |
 
+## Demo mode (public demo instances only)
+
+These variables are **not** in the release env example: the
+[demo overlay](../deploy/demo/compose.demo.yaml) sets them. See the
+[demo deployment guide](../deploy/demo/README.md). **Never enable demo mode
+on a real instance:** every signed-in player can make themselves administrator.
+
+- `LANSURFER_DEMO_MODE` — optional, default `false`. `true` shows the demo
+  banner, offers self-service admin rights, disables destructive admin
+  actions, and permits `lansurfer admin demo reset`.
+- `LANSURFER_DEMO_RESET_TIME` — optional, default `04:00`. Daily reset time
+  shown in the banner, `HH:MM`. Display only; must match the host timer.
+  Ignored unless demo mode is on.
+- `LANSURFER_DEMO_RESET_TIMEZONE` — optional, default `Europe/Berlin`. IANA
+  time zone of the reset time. Display only; ignored unless demo mode is on.
+
 ## Traefik Docker reverse proxy (optional)
 
 These entries are **commented out** in the release env example.

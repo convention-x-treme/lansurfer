@@ -522,6 +522,9 @@ LANSURFER_TWITCH_AUTH_ENABLED
 LANSURFER_IGDB_ENABLED
 LANSURFER_COVER_CACHE_DIR
 LANSURFER_IMPRINT_ENABLED
+LANSURFER_DEMO_MODE
+LANSURFER_DEMO_RESET_TIME
+LANSURFER_DEMO_RESET_TIMEZONE
 ```
 
 `LANSURFER_OIDC_CLIENT_SECRET` is optional for public clients using PKCE and required when the provider configures LANsurfer as a confidential client.
@@ -537,6 +540,8 @@ Provider credentials, the 32-byte data-encryption key, VAPID private key, and Di
 Minimum instance identity, if configurable, is deployment/product state with a deliberately small surface. Do not introduce an administrator-managed welcome-text/contact/logo/icon branding surface through configuration indirection.
 
 Legal texts are the one contact-bearing exception. The Terms of Service, Privacy Policy, and Imprint are Markdown rows in `legal_documents`, owned by `internal/platform/legal` (instance-operator content, like the metrics key, not a business module) and edited only by administrators at `/admin/legal`. Migration `00031` seeds generic samples flagged `sample`; the public page states it is a sample until an administrator saves it. Rendering uses goldmark defaults (raw HTML omitted, dangerous link schemes dropped); bodies are trimmed, non-empty, and at most 20,000 characters, enforced by the store and a database CHECK, sized to the 64 KiB form limit. `/terms` and `/privacy` are always public; `/imprint` exists only with `LANSURFER_IMPRINT_ENABLED`, which reaches the footer through request-context middleware like the instance name. This is not a general content/branding surface.
+
+`LANSURFER_DEMO_MODE` (strict boolean) enables demo mode; `LANSURFER_DEMO_RESET_TIME` (`HH:MM`, default `04:00`) and `LANSURFER_DEMO_RESET_TIMEZONE` (IANA zone, default `Europe/Berlin`) are display-only and validated only when demo mode is on. The next reset instant reaches every layout through request-context middleware (`middleware.Demo`) like the instance name; it is computed per request with `time.Date` in the configured zone, so DST transitions are correct. Demo mode is deployment policy at the transport edge: `NewRouter` wraps the blocked admin routes with `handler.DemoForbidden` (redirect with `?notice=demo-forbidden`, no service call) and registers `POST /demo/admin` only in demo mode. Domain packages stay unaware of it.
 
 Browser state is necessary-only: the server-set HttpOnly cookies `lansurfer_session`, `lansurfer_csrf`, `lansurfer_auth_binding`, `lansurfer_return`, `lansurfer_device`, and `lansurfer_theme`; no script-written cookies, localStorage, sessionStorage, IndexedDB, or Cache Storage, and no analytics. Every cookie is `SameSite=Lax`, `Secure` on HTTPS, and expires within 13 months, as the [Twitch Developer Services Agreement](https://legal.twitch.com/legal/developer-agreement/) (Schedule 1, A) requires of applications using Twitch APIs; `internal/web/middleware/cookies_test.go` guards this. The README lists purpose and lifetime. Any optional storage or tracking requires a consent and legal review before it ships.
 
@@ -690,6 +695,12 @@ Migrations remain forward-only.
 
 Supported production deployment must preserve required HTTP behavior through the chosen proxy/deployment path, including normal regression coverage for core interactions.
 
+### Demo reset
+
+`lansurfer admin demo reset --legal-dir DIR` (`app.ResetDemo`) refuses unless demo mode is on, validates `DIR/{terms,privacy}.md` (and `imprint.md` with the imprint enabled) with the `legal` store rules before touching data, applies UP migrations, then `internal/platform/postgres.TruncateForDemoReset` truncates every base table of the current schema except `DemoResetKeptTables` in one `TRUNCATE ... RESTART IDENTITY CASCADE` transaction, and finally saves the legal files. The keep-list is the exception: tables added by future migrations reset by default. No kept table may reference a truncated table (CASCADE would empty it); an integration test pins this. The reset is an operator command, analogous to restoring an empty database, so it deliberately bypasses module write paths and never runs inside the HTTP process.
+
+The host's systemd timer (`deploy/demo/`) is the schedule truth: it stops the app, runs the reset in a one-off container, and starts the app again on success and failure. Restarting discards in-memory state (SSE broker, workers, caches) and the startup avatar prune erases cached avatars of deleted users.
+
 ### Release and distribution
 
 The release source of truth is an immutable SemVer `vX.Y.Z` Git tag on a reviewed `main` or maintained `release/vN` commit. The tag workflow reuses the complete CI at that exact source revision before granting publication rights to a separate job. GoReleaser OSS builds the Linux amd64/arm64 archives and checksums, and `dockers_v2` packages those same binaries in a non-root `scratch` image with required CA certificates. Development/Compose images are built locally with the normal Dockerfile; pushes to `main` no longer publish disposable `:dev` or `:dev-<sha>` images to GHCR. Only intentional SemVer tags trigger official GHCR publishing.
@@ -752,6 +763,7 @@ Important baseline controls:
 - server-constructed IGDB cover and provider-avatar fetches with no third-party requests from player browsers
 - encrypted Discord webhook credentials with key rotation/backup guidance
 - Web Push payload data minimization and explicit permission/consent
+- demo-mode self-promotion (`POST /demo/admin`) exists only in demo mode, always targets the session's own user, and requires a Game Nick and CSRF
 
 Do not invent cryptographic constructions. Use established protocol behavior, Go standard-library AES-GCM for approved credential encryption, and the approved Web Push library behind narrow adapters. Operator and integration credentials, OAuth/client secrets, authentication/session-flow tokens, VAPID private keys, Discord webhook credentials, and encryption keys must never be logged or stored in recoverable plaintext. Secret Session Information is ordinary authorized application data: values remain plaintext in PostgreSQL and in authorized HTML, with presentation privacy only; this data is not application-level encrypted and must never be logged.
 

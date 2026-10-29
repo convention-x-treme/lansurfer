@@ -60,6 +60,16 @@ type WebPush struct {
 	Subject    string
 }
 
+// Demo is the daily reset schedule shown by demo mode (LANSURFER_DEMO_MODE).
+// Display only: the host timer that runs `admin demo reset` is the schedule
+// truth. ponytail: duplicated schedule; move scheduling into the app only if
+// drift ever bites.
+type Demo struct {
+	ResetHour     int
+	ResetMinute   int
+	ResetLocation *time.Location
+}
+
 // Config contains the technical settings required by the application foundation.
 type Config struct {
 	DatabaseURL     string
@@ -92,6 +102,8 @@ type Config struct {
 	// CoverCacheDir is the trimmed LANSURFER_COVER_CACHE_DIR. Empty means
 	// IGDB covers are cached in a bounded in-process memory store instead.
 	CoverCacheDir string
+	// Demo is non-nil only when LANSURFER_DEMO_MODE=true.
+	Demo *Demo
 }
 
 // Load reads configuration from environment variables.
@@ -167,6 +179,11 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 
+	demo, err := loadDemo()
+	if err != nil {
+		return Config{}, err
+	}
+
 	return Config{
 		DatabaseURL:       databaseURL,
 		ListenAddr:        listenAddr,
@@ -183,6 +200,7 @@ func Load() (Config, error) {
 		InstanceName:      instanceName,
 		ImprintEnabled:    imprintEnabled,
 		CoverCacheDir:     strings.TrimSpace(os.Getenv("LANSURFER_COVER_CACHE_DIR")),
+		Demo:              demo,
 	}, nil
 }
 
@@ -209,6 +227,31 @@ func loadChatRate() (int, time.Duration, error) {
 func loadInstanceName() (string, error) {
 	name := strings.TrimSpace(os.Getenv("LANSURFER_INSTANCE_NAME"))
 	return name, checkSingleLine("LANSURFER_INSTANCE_NAME", name, maxInstanceNameLength)
+}
+
+// loadDemo ignores the schedule variables unless demo mode is on.
+func loadDemo() (*Demo, error) {
+	enabled, err := optionalBool("LANSURFER_DEMO_MODE")
+	if err != nil || !enabled {
+		return nil, err
+	}
+	resetTime := strings.TrimSpace(os.Getenv("LANSURFER_DEMO_RESET_TIME"))
+	if resetTime == "" {
+		resetTime = "04:00"
+	}
+	parsed, err := time.Parse("15:04", resetTime)
+	if err != nil || len(resetTime) != len("15:04") {
+		return nil, errors.New("LANSURFER_DEMO_RESET_TIME must be HH:MM, for example 04:00")
+	}
+	zone := strings.TrimSpace(os.Getenv("LANSURFER_DEMO_RESET_TIMEZONE"))
+	if zone == "" {
+		zone = "Europe/Berlin"
+	}
+	location, err := time.LoadLocation(zone)
+	if err != nil {
+		return nil, fmt.Errorf("LANSURFER_DEMO_RESET_TIMEZONE must be an IANA time zone: %w", err)
+	}
+	return &Demo{ResetHour: parsed.Hour(), ResetMinute: parsed.Minute(), ResetLocation: location}, nil
 }
 
 // checkSingleLine rejects control characters, Unicode line/paragraph

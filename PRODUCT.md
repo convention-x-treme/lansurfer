@@ -163,6 +163,17 @@ content, session-information secrets, or identifiers are exported. Collection
 failures must not disrupt player workflows. There is no built-in metrics dashboard,
 generic API-key subsystem, or additional required runtime service.
 
+### Demo mode
+
+An operator may run an instance as a public demo (`LANSURFER_DEMO_MODE`), such as `demo.lansurfer.de`, so visitors try the real application without self-hosting. Login uses the instance's normal configured providers; there is no demo login.
+
+- **Daily reset:** a host-scheduled reset deletes all accounts, provider identities, sessions, Game Requests, chat, follows, materialized Games, push subscriptions, notification state, and product counters, and signs everyone out. The IGDB provider index and sync state, the metrics key, and the legal texts survive; the legal texts are re-applied from operator files at every reset.
+- **Banner:** every page shows a demo notice with the next reset time.
+- **Self-service admin:** a signed-in player with a Game Nick and the `user` role can grant themselves administrator rights with one click from the banner. Outside demo mode this action does not exist.
+- **Blocked actions:** Game delete, merge, alias remove, IGDB unlink, IGDB sync, Discord delivery connect/reconnect/disconnect, and metrics key rotation keep their controls but answer "This action is disabled in the demo." Legal text editing, Game create/rename/activate, and IGDB link stay available; vandalism is visible for at most one day.
+
+The demo privacy text must state retention of at most 24 hours, the providers used, and that Game Nicks, Game Requests, and chat are public to other demo visitors.
+
 ## 8. Single-Event Instance Model
 
 A LANsurfer installation represents one LAN party or gaming event context.

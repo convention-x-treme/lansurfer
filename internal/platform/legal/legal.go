@@ -60,14 +60,23 @@ func (s *Store) Document(ctx context.Context, kind Kind) (Document, error) {
 	return document, nil
 }
 
-// Save replaces a document's text and clears its sample marker.
-func (s *Store) Save(ctx context.Context, kind Kind, body string) error {
+// Normalize trims a document body and checks it against the stored bounds.
+func Normalize(body string) (string, error) {
 	body = strings.TrimSpace(body)
 	if body == "" {
-		return ErrEmpty
+		return "", ErrEmpty
 	}
 	if utf8.RuneCountInString(body) > MaxBodyLength {
-		return ErrTooLong
+		return "", ErrTooLong
+	}
+	return body, nil
+}
+
+// Save replaces a document's text and clears its sample marker.
+func (s *Store) Save(ctx context.Context, kind Kind, body string) error {
+	body, err := Normalize(body)
+	if err != nil {
+		return err
 	}
 	tag, err := s.pool.Exec(ctx, `UPDATE legal_documents SET body = $2, sample = false, updated_at = now() WHERE kind = $1`, string(kind), body)
 	if err != nil {

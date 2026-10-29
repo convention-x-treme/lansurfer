@@ -99,6 +99,22 @@ func run(ctx context.Context, arguments []string, logger *slog.Logger, output io
 		return err
 	}
 
+	if len(arguments) >= 3 && arguments[0] == "admin" && arguments[1] == "demo" && arguments[2] == "reset" {
+		legalDir, err := demoLegalDir(arguments[3:])
+		if err != nil {
+			return err
+		}
+		cfg, err := config.Load()
+		if err != nil {
+			return fmt.Errorf("load configuration: %w", err)
+		}
+		result, err := app.ResetDemo(ctx, cfg, legalDir, logger)
+		if err != nil {
+			return err
+		}
+		_, err = fmt.Fprintf(output, "Demo reset: truncated %d tables, wrote %d legal documents.\n", len(result.TruncatedTables), len(result.LegalDocuments))
+		return err
+	}
 	if len(arguments) == 3 && arguments[0] == "admin" && arguments[1] == "notifications" && arguments[2] == "generate-secrets" {
 		return writeNotificationSecrets(output)
 	}
@@ -186,6 +202,20 @@ func notificationDeliveryID(arguments []string) (string, error) {
 	}
 	return *deliveryID, nil
 }
+
+func demoLegalDir(arguments []string) (string, error) {
+	flags := flag.NewFlagSet("admin demo reset", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	legalDir := flags.String("legal-dir", "", "directory with terms.md, privacy.md, imprint.md")
+	if err := flags.Parse(arguments); err != nil {
+		return "", usageError()
+	}
+	if *legalDir == "" || flags.NArg() != 0 {
+		return "", usageError()
+	}
+	return *legalDir, nil
+}
+
 func writeHelp(output io.Writer) error {
 	_, err := fmt.Fprint(output, `LANsurfer command line
 
@@ -200,8 +230,11 @@ Usage:
   lansurfer admin notifications generate-secrets
   lansurfer admin notifications retry --delivery-id <ID>
   lansurfer admin notifications retry-uncertain --delivery-id <ID>
+  lansurfer admin demo reset --legal-dir <DIR>
 
-With no arguments, start the LANsurfer server.
+With no arguments, start the LANsurfer server. "admin demo reset" empties the
+database except the IGDB catalog and metrics key, then applies the legal texts
+from DIR; it requires LANSURFER_DEMO_MODE=true.
 `)
 	return err
 }
@@ -245,5 +278,6 @@ func usageError() error {
 		"admin users | admin promote --user-id <UUID> | " +
 		"admin notifications problems | admin notifications generate-secrets | " +
 		"admin notifications retry --delivery-id <ID> | " +
-		"admin notifications retry-uncertain --delivery-id <ID>]")
+		"admin notifications retry-uncertain --delivery-id <ID> | " +
+		"admin demo reset --legal-dir <DIR>]")
 }

@@ -28,6 +28,7 @@ import (
 	"github.com/convention-x-treme/lansurfer/internal/user"
 	userpostgres "github.com/convention-x-treme/lansurfer/internal/user/postgres"
 	"github.com/convention-x-treme/lansurfer/internal/web"
+	webmiddleware "github.com/convention-x-treme/lansurfer/internal/web/middleware"
 )
 
 const (
@@ -227,6 +228,12 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger, version st
 		routerDependencies.DiscordAuthorization = discordAuthorization
 		routerDependencies.DiscordConnector = discordConnector
 		routerDependencies.DiscordLifecycle = discordLifecycle
+	}
+	if cfg.Demo != nil {
+		routerDependencies.Demo = &webmiddleware.DemoSchedule{
+			Hour: cfg.Demo.ResetHour, Minute: cfg.Demo.ResetMinute, Location: cfg.Demo.ResetLocation,
+		}
+		routerDependencies.DemoAdmins = userService
 	}
 	routerDependencies = withSubscriptionService(routerDependencies, subscriptionService)
 	server := &http.Server{

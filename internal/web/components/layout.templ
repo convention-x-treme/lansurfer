@@ -101,6 +101,7 @@ templ Layout(brand branding.Brand, title string, navigation NavigationState) {
 					@DesktopNavigation(brand, navigation)
 					<div class="flex min-h-dvh min-w-0 flex-col">
 						@MobileNavigation(brand, navigation)
+						@DemoBanner()
 						<div data-realtime-url="/events/game-requests"></div>
 						<div id="live-notices" class="pointer-events-none fixed bottom-4 right-4 z-50 grid w-[min(24rem,calc(100%-2rem))] gap-3 [&>*]:pointer-events-auto" aria-live="polite"></div>
 						<main id="main-content" class="flex min-w-0 flex-1 flex-col">
@@ -112,6 +113,7 @@ templ Layout(brand branding.Brand, title string, navigation NavigationState) {
 			} else {
 				<div class="flex min-h-screen flex-col">
 					@PublicHeader(brand, navigation)
+					@DemoBanner()
 					<main id="main-content" class="flex-1">
 						{ children... }
 					</main>
@@ -145,6 +147,7 @@ templ AuthLayout(brand branding.Brand, title string) {
 			</header>
 			<div class="flex min-h-dvh flex-col">
 				<main id="main-content" class="flex flex-1 flex-col">{ children... }</main>
+				@DemoBanner()
 				@Footer(brand)
 			</div>
 		</body>
@@ -171,6 +174,7 @@ templ HomeLayout(brand branding.Brand, title string) {
 				<header class="home-header">
 					<a class="brand-wordmark text-3xl" href="/" aria-label={ brand.Name + " home" }><span>LAN</span><span class="text-primary">surfer</span></a>
 				</header>
+				@DemoBanner()
 				<main id="main-content" class="flex min-h-0 flex-1 flex-col">{ children... }</main>
 				@Footer(brand)
 			</div>

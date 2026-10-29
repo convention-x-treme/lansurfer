@@ -1,0 +1,14 @@
+[Unit]
+Description=Reset the LANsurfer demo database
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/lansurfer-demo
+Environment=COMPOSE_FILE=compose.yaml:compose.demo.yaml
+# Stop the app so no in-memory state (SSE, workers, caches) outlives the data.
+ExecStartPre=/usr/bin/docker compose stop lansurfer
+ExecStart=/usr/bin/docker compose run --rm --no-deps lansurfer admin demo reset --legal-dir /legal
+# Runs on success and failure: a failed reset never leaves the demo down.
+ExecStopPost=/usr/bin/docker compose start lansurfer
