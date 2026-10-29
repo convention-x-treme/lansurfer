@@ -33,7 +33,7 @@ case "$job" in
   browser)
     npm ci
     go generate ./internal/web/branding
-    go run github.com/a-h/templ/cmd/templ@v0.3.1020 generate
+    go run github.com/a-h/templ/cmd/templ@v0.3.1100 generate
     npm run build
     if [[ -n "$(git status --short)" ]]; then
       git status --short

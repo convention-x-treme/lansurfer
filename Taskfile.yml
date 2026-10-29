@@ -111,7 +111,7 @@ tasks:
     cmds:
       - npm ci
       - go generate ./internal/web/branding
-      - go run github.com/a-h/templ/cmd/templ@v0.3.1020 generate
+      - go run github.com/a-h/templ/cmd/templ@v0.3.1100 generate
       - npm run build
       - go run github.com/sqlc-dev/sqlc/cmd/sqlc@{{.SQLC_VERSION}} generate
 
@@ -120,7 +120,7 @@ tasks:
     cmds:
       - npm ci
       - go generate ./internal/web/branding
-      - go run github.com/a-h/templ/cmd/templ@v0.3.1020 generate
+      - go run github.com/a-h/templ/cmd/templ@v0.3.1100 generate
       - npm run build
 
   lint:
