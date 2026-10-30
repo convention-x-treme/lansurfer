@@ -188,12 +188,14 @@ func accountIdentityRows(identities []auth.Identity, providers []auth.ProviderAv
 	for _, identity := range identities {
 		linked[identity.ProviderKind] = true
 		label := labels[identity.ProviderKind]
-		if label == "" {
+		if identity.ProviderKind == "guest" {
+			label = "Guest access"
+		} else if label == "" {
 			label = identity.ProviderKind
 		}
 		rows = append(rows, pages.AccountIdentityRow{
 			Kind: identity.ProviderKind, Label: label, PrivateName: identity.DisplayName, PrivateEmail: identity.Email,
-			CanUnlink: canUnlink, UnlinkPath: "/account/identities/" + identity.ID + "/unlink",
+			CanUnlink: canUnlink && identity.ProviderKind != "guest", UnlinkPath: "/account/identities/" + identity.ID + "/unlink",
 			ID: identity.ID, HasAvatar: identity.AvatarKey != "", AvatarSelected: identity.AvatarSelected && identity.AvatarKey != "",
 		})
 	}

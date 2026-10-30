@@ -12,37 +12,21 @@ import (
 type stubIdentityStore struct {
 	found         Identity
 	findErr       error
-	created       Identity
-	createErr     error
 	updatedName   string
 	updatedEmail  string
 	updatedAvatar string
-	listed        []Identity
-
-	// byProviderSubjectCalls/raceWinner let a test simulate a concurrent
-	// identity-creation race: the first ByProviderSubject call (the initial
-	// existence check) returns found/findErr as usual, and every call after
-	// that returns raceWinner instead, standing in for what a concurrent
-	// request committed between this Create's own pre-check and its insert.
-	byProviderSubjectCalls int
-	raceWinner             Identity
 }
 
 func (s *stubIdentityStore) ByProviderSubject(context.Context, string, string, string) (Identity, error) {
-	s.byProviderSubjectCalls++
-	if s.byProviderSubjectCalls > 1 {
-		return s.raceWinner, nil
-	}
 	return s.found, s.findErr
 }
 
 func (s *stubIdentityStore) ListByUser(context.Context, string) ([]Identity, error) {
-	return s.listed, nil
+	return nil, nil
 }
 
-func (s *stubIdentityStore) Create(_ context.Context, identity Identity) (Identity, error) {
-	s.created = identity
-	return identity, s.createErr
+func (s *stubIdentityStore) Link(_ context.Context, identity Identity) (Identity, error) {
+	return identity, nil
 }
 
 func (s *stubIdentityStore) UpdateMetadata(_ context.Context, profile Profile) error {

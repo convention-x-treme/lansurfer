@@ -25,9 +25,11 @@ import (
 	"github.com/convention-x-treme/lansurfer/internal/platform/postgres"
 	"github.com/convention-x-treme/lansurfer/internal/platform/sse"
 	gamerequestquery "github.com/convention-x-treme/lansurfer/internal/query/gamerequest"
+	queryuser "github.com/convention-x-treme/lansurfer/internal/query/user"
 	"github.com/convention-x-treme/lansurfer/internal/user"
 	userpostgres "github.com/convention-x-treme/lansurfer/internal/user/postgres"
 	"github.com/convention-x-treme/lansurfer/internal/web"
+	webmiddleware "github.com/convention-x-treme/lansurfer/internal/web/middleware"
 )
 
 const (
@@ -76,6 +78,13 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger, version st
 		identityStore, flowService, sessionService, userService, authpostgres.NewPendingIdentityAttacher(pool),
 	)
 	accountRegistration := NewAccountRegistration(pool, sessionService)
+	guestAccess := auth.NewGuestAccessService(authpostgres.NewGuestAccessStore(pool), cfg.DataEncryptionKey)
+	// A stored invite that cannot be decrypted (missing or wrong key, damaged
+	// data) must stop startup instead of failing later in the admin page.
+	if _, err := guestAccess.State(ctx); err != nil {
+		return fmt.Errorf("read guest access (check LANSURFER_DATA_ENCRYPTION_KEY): %w", err)
+	}
+	guestAccounts := NewGuestAccounts(pool, cfg.DataEncryptionKey)
 
 	var providers []auth.ConfiguredProvider
 	if cfg.OIDC != nil {
@@ -189,6 +198,10 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger, version st
 		AccountRegistration:        accountRegistration,
 		GameNickClaims:             userService,
 		AccountDeleter:             userService,
+		GuestInvites:               guestAccess,
+		GuestRegistration:          guestAccounts,
+		GuestQueries:               queryuser.NewStore(pool),
+		GuestDeletion:              guestAccounts,
 		Identities:                 identityStore,
 		IdentityUnlinker:           identityStore,
 		AvatarSelector:             identityStore,
@@ -227,6 +240,12 @@ func Run(ctx context.Context, cfg config.Config, logger *slog.Logger, version st
 		routerDependencies.DiscordAuthorization = discordAuthorization
 		routerDependencies.DiscordConnector = discordConnector
 		routerDependencies.DiscordLifecycle = discordLifecycle
+	}
+	if cfg.Demo != nil {
+		routerDependencies.Demo = &webmiddleware.DemoSchedule{
+			Hour: cfg.Demo.ResetHour, Minute: cfg.Demo.ResetMinute, Location: cfg.Demo.ResetLocation,
+		}
+		routerDependencies.DemoAdmins = userService
 	}
 	routerDependencies = withSubscriptionService(routerDependencies, subscriptionService)
 	server := &http.Server{

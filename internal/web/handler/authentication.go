@@ -52,27 +52,41 @@ type PushDeviceRemover interface {
 	RemoveDeviceByHash(ctx context.Context, userID, deviceID string) error
 }
 
+type GuestLoginState interface {
+	State(context.Context) (auth.GuestAccessState, error)
+}
+
 type AuthenticationHandler struct {
 	authentication Authentication
 	sessions       Sessions
 	brand          branding.Brand
 	secureCookies  bool
 	subscriptions  PushDeviceRemover
+	guestAccess    GuestLoginState
 }
 
 // NewAuthentication constructs the handler. subscriptions may be nil, which
 // makes Logout's Push-device cleanup a no-op (Web Push not configured on
 // this instance).
-func NewAuthentication(authentication Authentication, sessions Sessions, brand branding.Brand, secureCookies bool, subscriptions PushDeviceRemover) *AuthenticationHandler {
+func NewAuthentication(authentication Authentication, sessions Sessions, brand branding.Brand, secureCookies bool, subscriptions PushDeviceRemover, guestAccess GuestLoginState) *AuthenticationHandler {
 	return &AuthenticationHandler{
 		authentication: authentication, sessions: sessions, brand: brand, secureCookies: secureCookies,
-		subscriptions: subscriptions,
+		subscriptions: subscriptions, guestAccess: guestAccess,
 	}
 }
 
 func (h *AuthenticationHandler) Login(w http.ResponseWriter, r *http.Request) {
 	setReturnPath(w, r.URL.Query().Get(returnQueryParam), h.secureCookies)
-	render(w, r, http.StatusOK, pages.Login(h.brand, h.providers()))
+	guestAvailable := false
+	if _, signedIn := webmiddleware.CurrentUser(r.Context()); !signedIn && h.guestAccess != nil {
+		state, err := h.guestAccess.State(r.Context())
+		if err != nil {
+			webmiddleware.LogError(r, "read guest login option", err)
+		} else {
+			guestAvailable = state.Enabled && state.ShowOnLogin && state.Invite != ""
+		}
+	}
+	render(w, r, http.StatusOK, pages.Login(h.brand, h.providers(), guestAvailable))
 }
 
 // BeginFor starts a normal login (or, with a resolve query parameter, an

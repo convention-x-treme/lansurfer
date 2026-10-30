@@ -608,6 +608,9 @@ func clearOptionalEnvironment(t *testing.T) {
 		"LANSURFER_WEBPUSH_SUBJECT",
 		"LANSURFER_DATA_ENCRYPTION_KEY",
 		"LANSURFER_IMPRINT_ENABLED",
+		"LANSURFER_DEMO_MODE",
+		"LANSURFER_DEMO_RESET_TIME",
+		"LANSURFER_DEMO_RESET_TIMEZONE",
 	} {
 		t.Setenv(name, "")
 	}
@@ -647,5 +650,37 @@ func TestLoadChatRate(t *testing.T) {
 			t.Errorf("%s=%q accepted", name, value)
 		}
 		t.Setenv(name, map[string]string{"LANSURFER_CHAT_RATE_LIMIT": "3", "LANSURFER_CHAT_RATE_WINDOW": "30s"}[name])
+	}
+}
+
+func TestLoadDemo(t *testing.T) {
+	clearOptionalEnvironment(t)
+	t.Setenv("LANSURFER_DATABASE_URL", "postgres://example")
+	// Off: invalid schedule values are ignored.
+	t.Setenv("LANSURFER_DEMO_RESET_TIME", "late")
+	t.Setenv("LANSURFER_DEMO_RESET_TIMEZONE", "Mars/Olympus")
+	if cfg, err := Load(); err != nil || cfg.Demo != nil {
+		t.Fatalf("demo off = %+v, %v; want nil", cfg.Demo, err)
+	}
+
+	t.Setenv("LANSURFER_DEMO_MODE", "true")
+	t.Setenv("LANSURFER_DEMO_RESET_TIME", "")
+	t.Setenv("LANSURFER_DEMO_RESET_TIMEZONE", "")
+	cfg, err := Load()
+	if err != nil || cfg.Demo == nil || cfg.Demo.ResetHour != 4 || cfg.Demo.ResetMinute != 0 || cfg.Demo.ResetLocation.String() != "Europe/Berlin" {
+		t.Fatalf("demo defaults = %+v, %v", cfg.Demo, err)
+	}
+
+	for name, value := range map[string]string{
+		"LANSURFER_DEMO_MODE":           "yes",
+		"LANSURFER_DEMO_RESET_TIME":     "4:00",
+		"LANSURFER_DEMO_RESET_TIMEZONE": "Mars/Olympus",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv(name, value)
+			if _, err := Load(); err == nil || !strings.Contains(err.Error(), name) {
+				t.Errorf("%s=%q error = %v, want rejection", name, value, err)
+			}
+		})
 	}
 }

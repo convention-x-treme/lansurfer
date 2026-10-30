@@ -1,0 +1,15 @@
+# Demo overlay for the public demo instance (demo.lansurfer.de). Use it on top
+# of the release compose.yaml: COMPOSE_FILE=compose.yaml:compose.demo.yaml.
+# See deploy/demo/README.md.
+services:
+  lansurfer:
+    environment:
+      LANSURFER_DEMO_MODE: "true"
+      # Display only: must match OnCalendar in lansurfer-demo-reset.timer.
+      LANSURFER_DEMO_RESET_TIME: "04:00"
+      LANSURFER_DEMO_RESET_TIMEZONE: Europe/Berlin
+      LANSURFER_IGDB_ENABLED: "true"
+      LANSURFER_IMPRINT_ENABLED: "true"
+    volumes:
+      # terms.md, privacy.md, imprint.md re-applied by every reset.
+      - ./legal:/legal:ro

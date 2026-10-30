@@ -18,6 +18,8 @@ func providerIcon(kind string) string {
 	switch kind {
 	case "discord":
 		return "ph ph-discord-logo"
+	case "guest":
+		return "ph ph-user"
 	case "twitch":
 		return "ph ph-twitch-logo"
 	default:
@@ -25,7 +27,7 @@ func providerIcon(kind string) string {
 	}
 }
 
-templ Login(brand branding.Brand, providers []auth.ProviderAvailability) {
+templ Login(brand branding.Brand, providers []auth.ProviderAvailability, guestAvailable bool) {
 	@components.AuthLayout(brand, "Log in") {
 		<section class="auth-stage">
 			<svg class="auth-waves" viewBox="0 0 1440 420" preserveAspectRatio="none" aria-hidden="true" focusable="false">
@@ -64,6 +66,17 @@ templ Login(brand branding.Brand, providers []auth.ProviderAvailability) {
 							}
 						}
 					</div>
+				}
+				if guestAvailable {
+					if len(providers) > 0 {
+						<div class="divider my-2 text-sm text-base-content/70">or</div>
+					}
+					<div class="mt-4">
+						<a class="btn btn-quiet w-full" href="/auth/guest/start"><i class="ph ph-user" aria-hidden="true"></i>Login as Guest</a>
+						<p class="mt-2 text-sm text-base-content/70">Create a new guest account. An existing guest account cannot be recovered here.</p>
+					</div>
+				}
+				if len(providers) > 0 || guestAvailable {
 					<p class="mt-5 text-xs text-base-content/70">
 						By logging in you agree to the <a class="link" href="/terms">Terms of Service</a> and acknowledge the <a class="link" href="/privacy">Privacy Policy</a>.
 					</p>

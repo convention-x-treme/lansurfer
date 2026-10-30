@@ -1,0 +1,10 @@
+[Unit]
+Description=Reset the LANsurfer demo database daily
+
+[Timer]
+# Must match LANSURFER_DEMO_RESET_TIME / _TIMEZONE in compose.demo.yaml.
+OnCalendar=*-*-* 04:00:00 Europe/Berlin
+Persistent=true
+
+[Install]
+WantedBy=timers.target

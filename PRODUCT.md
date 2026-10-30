@@ -126,6 +126,15 @@ Discord authentication and Discord notification delivery are separate integratio
 
 Twitch is an optional third authentication provider. Twitch login reuses the same local identity, explicit linking, onboarding, and session model as OIDC and Discord. It requests only a stable Twitch subject and display username, never Twitch email; a Twitch account may be explicitly linked to the same local User as the other providers. Twitch login and IGDB discovery share optional Twitch application credentials but remain independently enabled features.
 
+### Guest access
+
+- An administrator may enable **Guest Access**: one shared invite link lets anyone choose a Game Nick and join without an external provider. Each join creates a normal local User with a persistent session in that browser.
+- The invite never signs anyone into an existing account. A guest who loses the session cannot return to that account; linking a permanent sign-in method while signed in converts the same account (same Game Nick and data) into a permanent one.
+- Disabling Guest Access stops new joins and keeps existing guests signed in. Re-enabling restores the same invite; an explicit rotation is the only way to replace it.
+- An administrator may separately show `Login as Guest` on the login page. The option defaults off and takes effect only while Guest Access is open. Hiding it does not revoke existing invite links.
+- Administrators list accounts that still have guest access and delete them completely, using the account-deletion semantics below. Converted accounts are never listed or deletable there.
+- In demo mode Guest Management is read-only, and the daily reset deletes guest accounts but keeps the enabled flag, login-page preference, and invite.
+
 ### Account deletion
 
 - A signed-in player can permanently delete their own account from the **Danger zone** on the account page. No re-authentication is required; the player must retype their current Game Nick exactly before the final action is available.
@@ -162,6 +171,17 @@ retained history and therefore provide historical lower bounds. No PII, arbitrar
 content, session-information secrets, or identifiers are exported. Collection
 failures must not disrupt player workflows. There is no built-in metrics dashboard,
 generic API-key subsystem, or additional required runtime service.
+
+### Demo mode
+
+An operator may run an instance as a public demo (`LANSURFER_DEMO_MODE`), such as `demo.lansurfer.de`, so visitors try the real application without self-hosting. Login uses the instance's normal configured providers; there is no demo login.
+
+- **Daily reset:** a host-scheduled reset deletes all accounts, provider identities, sessions, Game Requests, chat, follows, materialized Games, push subscriptions, notification state, and product counters, and signs everyone out. The IGDB provider index and sync state, the metrics key, and the legal texts survive; the legal texts are re-applied from operator files at every reset.
+- **Banner:** every page shows a demo notice with the next reset time.
+- **Self-service admin:** a signed-in player with a Game Nick and the `user` role can grant themselves administrator rights with one click from the banner. Outside demo mode this action does not exist.
+- **Blocked actions:** Game delete, merge, alias remove, IGDB unlink, IGDB sync, Discord delivery connect/reconnect/disconnect, and metrics key rotation keep their controls but answer "This action is disabled in the demo." Legal text editing, Game create/rename/activate, and IGDB link stay available; vandalism is visible for at most one day.
+
+The demo privacy text must state retention of at most 24 hours, the providers used, and that Game Nicks, Game Requests, and chat are public to other demo visitors.
 
 ## 8. Single-Event Instance Model
 

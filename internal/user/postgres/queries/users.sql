@@ -38,3 +38,12 @@ WITH admins AS (
 DELETE FROM users
 WHERE id = sqlc.arg(id)::uuid
   AND (role <> 'admin' OR (SELECT count(*) FROM admins) > 1);
+
+-- name: LockAdministrators :exec
+SELECT id FROM users WHERE role = 'admin' ORDER BY id FOR UPDATE;
+
+-- name: LockUserByID :one
+SELECT id::text, game_nick, role, created_at, updated_at
+FROM users
+WHERE id = sqlc.arg(id)::uuid
+FOR UPDATE;

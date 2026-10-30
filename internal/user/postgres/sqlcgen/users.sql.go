@@ -142,6 +142,43 @@ func (q *Queries) ListUsers(ctx context.Context) ([]ListUsersRow, error) {
 	return items, nil
 }
 
+const lockAdministrators = `-- name: LockAdministrators :exec
+SELECT id FROM users WHERE role = 'admin' ORDER BY id FOR UPDATE
+`
+
+func (q *Queries) LockAdministrators(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, lockAdministrators)
+	return err
+}
+
+const lockUserByID = `-- name: LockUserByID :one
+SELECT id::text, game_nick, role, created_at, updated_at
+FROM users
+WHERE id = $1::uuid
+FOR UPDATE
+`
+
+type LockUserByIDRow struct {
+	ID        string
+	GameNick  pgtype.Text
+	Role      string
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+}
+
+func (q *Queries) LockUserByID(ctx context.Context, id pgtype.UUID) (LockUserByIDRow, error) {
+	row := q.db.QueryRow(ctx, lockUserByID, id)
+	var i LockUserByIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.GameNick,
+		&i.Role,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const setUserGameNick = `-- name: SetUserGameNick :one
 UPDATE users
 SET game_nick = $1, updated_at = now()

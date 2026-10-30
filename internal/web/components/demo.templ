@@ -1,0 +1,52 @@
+package components
+
+import (
+	"context"
+	"time"
+
+	"github.com/convention-x-treme/lansurfer/internal/user"
+	webmiddleware "github.com/convention-x-treme/lansurfer/internal/web/middleware"
+)
+
+// DemoBanner renders on every full page in demo mode and nothing otherwise.
+// The reset instant is rendered in UTC and localized by app.ts.
+templ DemoBanner() {
+	if demo, ok := webmiddleware.DemoBanner(ctx); ok {
+		<div class="border-b border-warning/40 bg-warning/15 px-4 py-2 text-sm lg:px-6" data-demo-banner>
+			<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+				<p class="icon-label">
+					<i class="ph ph-flask" aria-hidden="true"></i>
+					<span>
+						<strong>Demo instance</strong> — all data is reset daily. Next reset:
+						<time class="data-text" datetime={ demo.NextReset.Format(time.RFC3339) } data-local-time="absolute">{ AbsoluteTime(demo.NextReset) }</time>
+					</span>
+				</p>
+				if demoCanSelfPromote(ctx) {
+					<form method="post" action="/demo/admin">
+						@CSRFInput()
+						<button type="submit" class="btn btn-warning btn-xs"><i class="ph ph-key" aria-hidden="true"></i>Get admin rights</button>
+					</form>
+				}
+			</div>
+			@NoticeAlert(demoNotice(demo.Notice), "mt-2")
+		</div>
+	}
+}
+
+// demoCanSelfPromote offers self-promotion only where POST /demo/admin
+// would accept it: signed in, Game Nick claimed, not yet an administrator.
+func demoCanSelfPromote(ctx context.Context) bool {
+	account, ok := webmiddleware.CurrentUser(ctx)
+	return ok && account.GameNick != "" && account.Role == user.RoleUser
+}
+
+func demoNotice(key string) Notice {
+	switch key {
+	case "demo-forbidden":
+		return Notice{Text: "This action is disabled in the demo.", Tone: NoticeWarning}
+	case "demo-admin-granted":
+		return Notice{Text: "You are now an administrator of this demo.", Tone: NoticeSuccess}
+	default:
+		return Notice{}
+	}
+}

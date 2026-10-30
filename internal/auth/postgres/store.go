@@ -10,6 +10,7 @@ import (
 
 	"github.com/convention-x-treme/lansurfer/internal/auth"
 	"github.com/convention-x-treme/lansurfer/internal/auth/postgres/sqlcgen"
+	"github.com/convention-x-treme/lansurfer/internal/user"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -34,7 +35,7 @@ func NewIdentityStoreDB(db sqlcgen.DBTX) *IdentityStore {
 }
 
 func NewSessionStore(pool *pgxpool.Pool) *SessionStore {
-	return &SessionStore{queries: sqlcgen.New(pool)}
+	return NewSessionStoreDB(pool)
 }
 
 func (s *IdentityStore) ByProviderSubject(ctx context.Context, providerKind, providerKey, subject string) (auth.Identity, error) {
@@ -186,14 +187,22 @@ func (s *IdentityStore) Unlink(ctx context.Context, userID, identityID string) e
 	if err != nil {
 		return auth.ErrIdentityNotFound
 	}
-	deleted, err := s.queries.DeleteIdentityUnlessLast(ctx, sqlcgen.DeleteIdentityUnlessLastParams{ID: databaseIdentityID, UserID: databaseUserID})
-	if err != nil {
-		return fmt.Errorf("unlink identity: %w", err)
-	}
-	if deleted == 0 {
-		return auth.ErrIdentityNotFound
-	}
-	return nil
+	err = s.inTx(ctx, func(q *sqlcgen.Queries) error {
+		if _, err := q.LockUserForIdentity(ctx, databaseUserID); errors.Is(err, pgx.ErrNoRows) {
+			return auth.ErrIdentityNotFound
+		} else if err != nil {
+			return fmt.Errorf("lock user: %w", err)
+		}
+		deleted, err := q.DeleteIdentityUnlessLast(ctx, sqlcgen.DeleteIdentityUnlessLastParams{ID: databaseIdentityID, UserID: databaseUserID})
+		if err != nil {
+			return fmt.Errorf("unlink identity: %w", err)
+		}
+		if deleted == 0 {
+			return auth.ErrIdentityNotFound
+		}
+		return nil
+	})
+	return err
 }
 
 func (s *SessionStore) Create(ctx context.Context, idHash [sha256.Size]byte, userID string, expiresAt time.Time) error {
@@ -269,4 +278,75 @@ func parseUUID(value string) (pgtype.UUID, error) {
 func isUniqueViolation(err error) bool {
 	var databaseError *pgconn.PgError
 	return errors.As(err, &databaseError) && databaseError.Code == "23505"
+}
+
+// Link attaches identity to its user in one transaction that locks the user
+// row first, so it serializes with guest deletion and unlinking. A successful
+// (or idempotent) link removes the user's guest marker.
+func (s *IdentityStore) Link(ctx context.Context, identity auth.Identity) (auth.Identity, error) {
+	userID, err := parseUUID(identity.UserID)
+	if err != nil {
+		return auth.Identity{}, user.ErrNotFound
+	}
+	var linked auth.Identity
+	err = s.inTx(ctx, func(q *sqlcgen.Queries) error {
+		if _, err := q.LockUserForIdentity(ctx, userID); errors.Is(err, pgx.ErrNoRows) {
+			return user.ErrNotFound
+		} else if err != nil {
+			return fmt.Errorf("lock user: %w", err)
+		}
+		avatarKey := nullableText(auth.AvatarKey(identity.ProviderKind, identity.Subject, identity.AvatarRef))
+		row, err := q.InsertIdentityIfAbsent(ctx, sqlcgen.InsertIdentityIfAbsentParams{
+			UserID: userID, ProviderKind: identity.ProviderKind, ProviderKey: identity.ProviderKey,
+			Subject: identity.Subject, DisplayName: nullableText(identity.DisplayName),
+			Email: nullableText(identity.Email), AvatarRef: nullableText(identity.AvatarRef), AvatarKey: avatarKey,
+		})
+		switch {
+		case err == nil:
+			linked = identityFromGetRow(sqlcgen.GetIdentityRow(row))
+		case errors.Is(err, pgx.ErrNoRows):
+			existing, err := q.GetIdentity(ctx, sqlcgen.GetIdentityParams{ProviderKind: identity.ProviderKind, ProviderKey: identity.ProviderKey, Subject: identity.Subject})
+			if errors.Is(err, pgx.ErrNoRows) {
+				// Another subject of this provider is already linked to the user.
+				return auth.ErrProviderAlreadyLinked
+			}
+			if err != nil {
+				return fmt.Errorf("get identity: %w", err)
+			}
+			if existing.UserID != identity.UserID {
+				return auth.ErrIdentityConflict
+			}
+			if err := q.UpdateIdentityMetadata(ctx, sqlcgen.UpdateIdentityMetadataParams{
+				ProviderKind: identity.ProviderKind, ProviderKey: identity.ProviderKey, Subject: identity.Subject,
+				DisplayName: nullableText(identity.DisplayName), Email: nullableText(identity.Email),
+				AvatarRef: nullableText(identity.AvatarRef), AvatarKey: avatarKey,
+			}); err != nil {
+				return fmt.Errorf("refresh identity metadata: %w", err)
+			}
+			linked = identityFromGetRow(existing)
+		default:
+			return fmt.Errorf("link identity: %w", err)
+		}
+		if err := q.DeleteGuestIdentity(ctx, userID); err != nil {
+			return fmt.Errorf("remove guest identity: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return auth.Identity{}, err
+	}
+	return linked, nil
+}
+
+// IsGuest reports whether the user currently has a guest identity.
+func (s *IdentityStore) IsGuest(ctx context.Context, userID string) (bool, error) {
+	id, err := parseUUID(userID)
+	if err != nil {
+		return false, nil
+	}
+	return s.queries.IsGuestUser(ctx, id)
+}
+
+func NewSessionStoreDB(db sqlcgen.DBTX) *SessionStore {
+	return &SessionStore{queries: sqlcgen.New(db)}
 }

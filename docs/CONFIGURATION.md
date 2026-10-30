@@ -91,7 +91,7 @@ key** when enabling another feature, and protect it with your backups.
 | `LANSURFER_WEBPUSH_PUBLIC_KEY` | Required **for Web Push** | VAPID P-256 public key encoded as **Base64url**; generated alongside the matching private key. |
 | `LANSURFER_WEBPUSH_PRIVATE_KEY` | Required **for Web Push** | Matching **secret** Base64url P-256 VAPID key. Protect it; existing browser subscriptions depend on this pair. |
 | `LANSURFER_WEBPUSH_SUBJECT` | Required **for Web Push** | Contact identifier starting with `mailto:` (e.g. `mailto:admin@example.org`) or `https://`. |
-| `LANSURFER_DATA_ENCRYPTION_KEY` | Required **for Web Push or Discord delivery** | A secret **32-byte AES key in standard Base64**, used to encrypt stored push credentials and Discord webhook secrets. Generate once, reuse across integrations, and preserve across backups/restores. Replacing it makes previously stored credentials unreadable. |
+| `LANSURFER_DATA_ENCRYPTION_KEY` | Required **for Web Push, Discord delivery, or Guest Access** | A secret **32-byte AES key in standard Base64**, used to encrypt stored push credentials, Discord webhook secrets, and the shared guest invite. Generate once, reuse across integrations, and preserve across backups/restores. Replacing it makes previously stored credentials unreadable; LANsurfer refuses to start if a stored guest invite cannot be decrypted. |
 
 ## Twitch login and IGDB (optional)
 
@@ -112,6 +112,22 @@ Both options share one Twitch Developer application, but can be enabled
 | `LANSURFER_IMPRINT_ENABLED` | Optional; default `false` | Set `true` to expose `/imprint` and its footer link. Create and review the document in **Administration → Legal texts** (`/admin/legal`); the Terms and Privacy texts live there too. |
 | `LANSURFER_CHAT_RATE_LIMIT` | Optional; default `5` | Maximum number of chat messages per player and Game Request during the configured rate window; must be a **positive integer**. |
 | `LANSURFER_CHAT_RATE_WINDOW` | Optional; default `20s` | Rate-limiting duration, e.g. `20s` or `1m`; must be at least `1s`. Both chat settings can be overridden independently. |
+
+## Demo mode (public demo instances only)
+
+These variables are **not** in the release env example: the
+[demo overlay](../deploy/demo/compose.demo.yaml) sets them. See the
+[demo deployment guide](../deploy/demo/README.md). **Never enable demo mode
+on a real instance:** every signed-in player can make themselves administrator.
+
+- `LANSURFER_DEMO_MODE` — optional, default `false`. `true` shows the demo
+  banner, offers self-service admin rights, disables destructive admin
+  actions, and permits `lansurfer admin demo reset`.
+- `LANSURFER_DEMO_RESET_TIME` — optional, default `04:00`. Daily reset time
+  shown in the banner, `HH:MM`. Display only; must match the host timer.
+  Ignored unless demo mode is on.
+- `LANSURFER_DEMO_RESET_TIMEZONE` — optional, default `Europe/Berlin`. IANA
+  time zone of the reset time. Display only; ignored unless demo mode is on.
 
 ## Traefik Docker reverse proxy (optional)
 

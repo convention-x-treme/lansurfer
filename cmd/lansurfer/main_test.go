@@ -68,6 +68,18 @@ func TestNotificationDeliveryID(t *testing.T) {
 	}
 }
 
+func TestDemoLegalDir(t *testing.T) {
+	dir, err := demoLegalDir([]string{"--legal-dir", "/legal"})
+	if err != nil || dir != "/legal" {
+		t.Fatalf("demoLegalDir() = %q, %v", dir, err)
+	}
+	for _, arguments := range [][]string{nil, {"--legal-dir", ""}, {"--legal-dir", "/legal", "extra"}} {
+		if _, err := demoLegalDir(arguments); err == nil || !strings.Contains(err.Error(), "usage:") {
+			t.Errorf("demoLegalDir(%q) error = %v, want usage error", arguments, err)
+		}
+	}
+}
+
 func TestGenerateSecretsAcceptedByConfig(t *testing.T) {
 	var out strings.Builder
 	if err := run(context.Background(), []string{"admin", "notifications", "generate-secrets"}, slog.New(slog.DiscardHandler), &out); err != nil {
@@ -114,6 +126,7 @@ func TestHelpCommand(t *testing.T) {
 				"admin notifications problems", "admin notifications generate-secrets",
 				"admin notifications retry --delivery-id <ID>",
 				"admin notifications retry-uncertain --delivery-id <ID>",
+				"admin demo reset --legal-dir <DIR>",
 			} {
 				if !strings.Contains(out.String(), command) {
 					t.Errorf("help output missing %q", command)

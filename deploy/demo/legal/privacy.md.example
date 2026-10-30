@@ -1,0 +1,33 @@
+This policy explains which personal data the LANsurfer demo processes and for how long, under the EU General Data Protection Regulation (GDPR).
+
+## 1. Controller
+
+[Operator name]  
+[Postal address]  
+Email: [contact email]
+
+## 2. What the demo stores, and for how long
+
+When you log in with [Discord / Twitch / OpenID Connect provider], the demo stores the provider's user ID, display name, and profile picture reference. It also stores your Game Nick, sessions, and everything you create: Game Requests, chat messages, session information, and followed Games.
+
+**Everything is deleted at the daily reset, at most 24 hours after you enter it.** Cached profile pictures are erased when the demo restarts after the reset.
+
+Your Game Nick, Game Requests, and chat messages are public to every other demo visitor until then.
+
+## 3. Cookies
+
+Only cookies the service needs: session, CSRF protection, login binding, return path, and theme. No analytics or tracking.
+
+## 4. Recipients
+
+- **Login providers:** you are sent to the provider you choose; its privacy policy applies there.
+- **Hosting:** [hosting provider and location].
+- **IGDB (Twitch):** the server loads game data and covers; these requests contain no data about you.
+
+## 5. Server logs
+
+[State what is logged and how long logs are kept.]
+
+## 6. Your rights
+
+Access, rectification, erasure, restriction, portability, and objection (Art. 15–21 GDPR): write to the contact email above. You can also delete your account yourself at any time. You may lodge a complaint with [competent supervisory authority].

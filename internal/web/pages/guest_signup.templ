@@ -1,0 +1,45 @@
+package pages
+
+import (
+	"github.com/convention-x-treme/lansurfer/internal/web/branding"
+	"github.com/convention-x-treme/lansurfer/internal/web/components"
+)
+
+templ GuestSignup(brand branding.Brand, invite, gameNick, errorMessage string) {
+	@components.AuthLayout(brand, "Join as guest") {
+		<section class="auth-stage">
+			<div class="auth-panel justify-self-center">
+				<h1 class="text-3xl font-bold">Join as guest</h1>
+				<p class="mt-2 text-base-content/70">Choose the name other players see on Game Requests.</p>
+				<p class="mt-2 text-sm text-base-content/70">Keep this browser signed in. This invite creates a new account; it cannot sign you back into this guest account.</p>
+				<form method="post" action="/auth/guest" class="mt-6 grid gap-3">
+					@components.CSRFInput()
+					<input type="hidden" name="invite" value={ invite }/>
+					<label class="form-control">
+						<span class="label-text">Game Nick</span>
+						<input class="input input-bordered w-full" type="text" name="game_nick" value={ gameNick } maxlength="32" required autofocus/>
+					</label>
+					if errorMessage != "" {
+						<div role="alert" class="alert alert-error text-sm">
+							<span>{ errorMessage }</span>
+						</div>
+					}
+					<button class="btn btn-primary" type="submit"><i class="ph ph-arrow-right" aria-hidden="true"></i>Join as guest</button>
+				</form>
+				<p class="mt-5 text-xs text-base-content/70">By joining you accept the <a class="link" href="/terms">Terms</a> and the <a class="link" href="/privacy">Privacy Policy</a>.</p>
+			</div>
+		</section>
+	}
+}
+
+templ GuestInviteInvalid(brand branding.Brand) {
+	@components.AuthLayout(brand, "Guest invite unavailable") {
+		<section class="auth-stage">
+			<div class="auth-panel justify-self-center">
+				<h1 class="text-3xl font-bold">Guest invite unavailable</h1>
+				<p class="mt-2 text-base-content/70">This guest invite is invalid or no longer available.</p>
+				<a class="btn btn-quiet btn-sm mt-6 w-fit" href="/auth/login"><i class="ph ph-sign-in" aria-hidden="true"></i>Log in</a>
+			</div>
+		</section>
+	}
+}

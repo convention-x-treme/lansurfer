@@ -34,10 +34,13 @@ Use these terms consistently. Do not invent synonyms for domain concepts unless 
 
 ## Integrations and presentation
 
+- **Guest Access / guest**: the administrator-enabled shared invite link, and an account created through it. A guest is a normal User whose only identity is a `guest` marker until a permanent provider is linked. Not a role, session type, or separate user table.
 - **Discord authentication**: Discord used as a login identity provider.
 - **Discord notification delivery**: the separately configured instance-level incoming-webhook destination. Do not couple it to Discord authentication.
 - **Instance / installation / deployment**: one running LANsurfer installation. The current product model treats the installation itself as the LAN party or gaming-event context.
 - **Instance identity**: the small operator-configurable identity needed to distinguish an installation, such as its instance name.
+- **Demo mode**: deployment setting (`LANSURFER_DEMO_MODE`) for a public demo instance: banner, self-service administrator rights, and disabled destructive admin actions. Not a separate product or module.
+- **Demo reset**: the daily operator command `lansurfer admin demo reset` that empties a demo instance's database except the IGDB catalog, legal texts, and metrics key. Not account deletion and not a backup restore.
 - **LANsurfer brand**: the fixed product brand, tokens, typography, themes, icons, and bundled brand assets, defined in [DESIGN.md](../DESIGN.md). Instance identity must not mutate it.
 - **Event**: a legacy prototype domain concept. The current product model does not use Event selection or membership for Game Requests. Do not reintroduce an Event/context abstraction without an approved scope change.
 
